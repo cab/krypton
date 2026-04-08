@@ -1,5 +1,5 @@
 # expect: ok
 # f(own_buf) where f is unresolved at the call site, later resolves via annotation
 fun apply[a, b](f: (a) -> b, x: a) -> b = f(x)
-fun consume(s: ~String) -> Int = 42
+fun consume(s: ~String) -> Int = match s { _ => 42 }
 fun test(buf: ~String) -> Int = apply(consume, buf)

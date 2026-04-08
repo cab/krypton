@@ -1,7 +1,9 @@
 # expect: ok
 type Buf = { name: String, data: ~String }
 
+fun consume(b: ~Buf) -> String = match b { Buf { name, data: _ } => name }
+
 fun test(s: ~Buf, d: ~String) -> String {
     let s2 = { s | data = d };
-    s.name
+    consume(s2)
 }

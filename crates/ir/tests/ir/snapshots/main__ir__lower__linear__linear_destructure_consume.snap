@@ -2,9 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module ownership__struct_update_replaces_own
+module linear__linear_destructure_consume
 
-struct Buf { name: String, data: ~String }
+type Buf = MkBuf#0(String)
+type Pair = MkPair#0(~Buf, ~Buf)
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -18,16 +19,16 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn consume(v0: ~Buf) -> String =
-  let v1: String = project v0.0
-  let v2: ~String = project v0.1
-  v1
+fn take(v0: ~Buf) -> Unit =
+  switch v0 {
+    0 (v1: String) ->
+      ()
+  }
 
-fn test(v3: ~Buf, v4: ~String) -> String =
-  let_join v9(v5: ~Buf) =
-    let v8: String = call consume(v5)
-    v8
-  in
-  let v6: String = project v3.0
-  let v7: ~Buf = construct Buf(v6, v4)
-  jump v9(v7)
+fn split(v2: ~Pair) -> Unit =
+  switch v2 {
+    0 (v3: ~Buf, v4: ~Buf) ->
+      let v5: Unit = call take(v3)
+      let v6: Unit = call take(v4)
+      v6
+  }

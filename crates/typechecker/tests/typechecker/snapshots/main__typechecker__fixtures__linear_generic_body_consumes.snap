@@ -29,6 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Buf: (String, ~String) -> Buf
-consume: (~Buf) -> String
-test: (~Buf, ~String) -> String
+identity: forall a. (~a) -> ~a
+forward: forall a. (~(~a) -> Unit, ~a) -> Unit

@@ -1,4 +1,4 @@
-# expect: error E0108
+# expect: error E0611
 type File = { fd: Int }
 
 fun take_consume_slot(f: (~File) -> Unit, x: ~File) -> Unit = f(x)

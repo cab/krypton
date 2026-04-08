@@ -1,2 +1,4 @@
-# expect: ok
+# expect: error E0108
+# Under M39-T3 strict linearity, a `~T` parameter that is never used in
+# the body is a linear leak (E0108). This regression pins the new rule.
 fun good(x: ~String) -> Int = 42

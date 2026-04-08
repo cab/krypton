@@ -24,8 +24,16 @@ fn main() -> Unit =
   let v1: ~Option[n8] = construct Option::None#1()
   let v0: ~Option[n8] = v1
   let v2: ~Option[Int] = construct Option::Some#0(42)
-  let v3: Unit = call println(v0)
-  v3
+  let_join v6(v4: Int) =
+    let v5: Unit = call println(v0)
+    v5
+  in
+  switch v2 {
+    0 (v3: d) ->
+      jump v6(0)
+    1 ->
+      jump v6(0)
+  }
 module core/eq
 
 trait Eq[d] { eq(d, d): Bool }

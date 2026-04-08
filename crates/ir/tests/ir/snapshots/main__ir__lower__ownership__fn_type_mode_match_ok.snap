@@ -19,14 +19,15 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
 fn take_borrow_slot(v0: (~File) -> Unit, v1: ~File) -> Unit =
+  let v2: Int = project v1.0
   ()
 
-fn borrow_it(v2: ~File) -> Unit =
+fn borrow_it(v3: ~File) -> Unit =
   ()
 
 fn main() -> Unit =
-  let v3: ~File = construct File(1)
-  let v4: (~File) -> Unit = make_closure(borrow_it, [])
-  let v5: (~File) -> Unit = v4
-  let v6: Unit = call take_borrow_slot(v5, v3)
-  v6
+  let v4: ~File = construct File(1)
+  let v5: (~File) -> Unit = make_closure(borrow_it, [])
+  let v6: (~File) -> Unit = v5
+  let v7: Unit = call take_borrow_slot(v6, v4)
+  v7

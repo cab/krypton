@@ -1,0 +1,11 @@
+# expect: error E0108
+type Buf = MkBuf(String)
+
+fun loop(n: Int) -> Unit =
+    if n >= 3 { () }
+    else {
+        let b: ~Buf = MkBuf("x")
+        recur(n + 1)
+    }
+
+fun main() -> Unit = loop(0)

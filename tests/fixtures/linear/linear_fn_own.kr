@@ -1,0 +1,4 @@
+# expect: error E0108
+# A `~fn` parameter (single-use closure) that is never called leaks
+# under strict linearity.
+fun dead_fn(f: ~(Int) -> Int) -> Unit = ()

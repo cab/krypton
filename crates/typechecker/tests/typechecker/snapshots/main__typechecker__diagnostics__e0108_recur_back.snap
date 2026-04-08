@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0108] Error: linear `~Buf` value `b` is never consumed before `recur`
+   ╭─[ ../../tests/fixtures/linear/linear_recur_leak.kr:8:9 ]
+   │
+ 8 │         recur(n + 1)
+   │         ──────┬─────  
+   │               ╰─────── E0108: linear `~Buf` value `b` is never consumed before `recur`
+   │ 
+   │ Help: `~Buf` value `b` is still live when `recur` jumps back to the loop head; consume `b` explicitly (e.g. by passing it to a function that takes `~Buf`), or `impl Disposable[Buf]` so the compiler can auto-close it
+───╯

@@ -3087,12 +3087,14 @@ fn import_cached_instances(
                     };
                     match trait_registry.register_instance(instance) {
                         Ok(()) => {}
-                        Err((TypeError::DuplicateInstance { .. }, _)) => {
-                            // Expected: same instance imported via multiple transitive paths
-                        }
-                        Err((e, span)) => {
-                            panic!("ICE: unexpected error registering imported instance: {e:?} at {span:?}")
-                        }
+                        Err(boxed) => match *boxed {
+                            (TypeError::DuplicateInstance { .. }, _) => {
+                                // Expected: same instance imported via multiple transitive paths
+                            }
+                            (e, span) => {
+                                panic!("ICE: unexpected error registering imported instance: {e:?} at {span:?}")
+                            }
+                        },
                     }
                     imported_instance_defs.push(
                         crate::module_interface::instance_summary_to_def_info(inst_summary),
@@ -3731,7 +3733,8 @@ fn process_deriving(
                 };
                 trait_registry
                     .register_instance(instance)
-                    .map_err(|(e, existing_span)| {
+                    .map_err(|boxed| {
+                        let (e, existing_span) = *boxed;
                         duplicate_instance_spanned(e, type_decl.span, existing_span)
                     })?;
 
@@ -4121,7 +4124,8 @@ fn register_impl_instances(
 
             trait_registry
                 .register_instance(instance)
-                .map_err(|(e, existing_span)| {
+                .map_err(|boxed| {
+                    let (e, existing_span) = *boxed;
                     duplicate_instance_spanned(e, *span, existing_span)
                 })?;
         }

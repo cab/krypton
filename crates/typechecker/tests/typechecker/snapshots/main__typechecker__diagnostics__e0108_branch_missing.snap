@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0108] Error: linear `~Buf` value `b` is never consumed in some branches
+   ╭─[ ../../tests/fixtures/linear/linear_branch_asymmetric.kr:8:5 ]
+   │
+ 8 │     if true { take(b) } else { () }
+   │     ───────────────┬───────────────  
+   │                    ╰───────────────── E0108: linear `~Buf` value `b` is never consumed in some branches
+   │ 
+   │ Help: `~Buf` value `b` is consumed in some branches but not all; consume `b` explicitly (e.g. by passing it to a function that takes `~Buf`), or `impl Disposable[Buf]` so the compiler can auto-close it
+───╯

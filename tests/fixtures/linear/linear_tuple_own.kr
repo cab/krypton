@@ -1,0 +1,5 @@
+# expect: error E0108
+# Regression: `~(Int, Int)` in a param type previously ICEd in auto_close
+# (Type::Own(Type::Tuple) panicked). It should now produce a linear-leak
+# error because the binding is never consumed.
+fun take_tup(t: ~(Int, Int)) -> Unit = ()

@@ -1,0 +1,11 @@
+# expect: error E0108
+# Shadowing a live non-Disposable linear binding leaks the original.
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("1")
+    let b: ~Buf = MkBuf("2")
+    take(b)
+}

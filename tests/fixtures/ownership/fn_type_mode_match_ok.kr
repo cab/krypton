@@ -1,7 +1,7 @@
 # expect: ok
 type File = { fd: Int }
 
-fun take_borrow_slot(f: (&~File) -> Unit, x: ~File) -> Unit = ()
+fun take_borrow_slot(f: (&~File) -> Unit, x: ~File) -> Unit = match x { File { fd: _ } => () }
 
 fun borrow_it(&y: ~File) -> Unit = ()
 

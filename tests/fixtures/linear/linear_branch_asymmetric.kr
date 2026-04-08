@@ -1,0 +1,9 @@
+# expect: error E0108
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("x")
+    if true { take(b) } else { () }
+}

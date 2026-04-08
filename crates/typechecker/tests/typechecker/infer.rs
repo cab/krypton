@@ -3068,7 +3068,7 @@ fn borrow_slot_preserved_in_scheme() {
 fn consume_slot_stays_consume_in_scheme() {
     use krypton_typechecker::types::{ParamMode, Type};
     let scheme = infer_module_scheme(
-        "type File = { fd: Int }\nfun close(r: ~File) -> Unit = ()",
+        "type File = { fd: Int }\nfun close(r: ~File) -> Unit = match r { File { fd: _ } => () }",
         "close",
     );
     let Type::Fn(params, _) = &scheme.ty else {

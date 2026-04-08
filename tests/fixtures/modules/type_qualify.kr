@@ -9,5 +9,6 @@ extern java "krypton.runtime.KryptonIO" {
 
 fun main() = {
   let p = Point(1, 2)
+  let _ = match p { Point { x, y } => x + y }
   println(length(Cons(1, Cons(2, Cons(3, Nil)))))
 }

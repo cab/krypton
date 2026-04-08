@@ -1,0 +1,7 @@
+# expect: error E0108
+type Buf = MkBuf(String)
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("x")
+    ()
+}

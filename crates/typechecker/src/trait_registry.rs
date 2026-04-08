@@ -116,7 +116,10 @@ impl TraitRegistry {
         Ok(())
     }
 
-    pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), (TypeError, Span)> {
+    pub fn register_instance(
+        &mut self,
+        info: InstanceInfo,
+    ) -> Result<(), Box<(TypeError, Span)>> {
         // Check for overlapping (trait, type tuple) pairs via positionwise unification
         // (only same-trait instances)
         let trait_indices = self
@@ -138,7 +141,7 @@ impl TraitRegistry {
                         .iter()
                         .map(|(name, &id)| (id, name.as_str()))
                         .collect();
-                return Err((
+                return Err(Box::new((
                     TypeError::DuplicateInstance {
                         trait_name: info.trait_name.local_name.clone(),
                         ty: format_type_tuple_with_var_map(&info.target_types, &names),
@@ -148,7 +151,7 @@ impl TraitRegistry {
                         ),
                     },
                     existing.span,
-                ));
+                )));
             }
         }
         let idx = self.instances.len();
@@ -1467,7 +1470,7 @@ mod tests {
         ));
         assert!(matches!(
             result,
-            Err((TypeError::DuplicateInstance { .. }, _))
+            Err(boxed) if matches!(&*boxed, (TypeError::DuplicateInstance { .. }, _))
         ));
     }
 
@@ -1499,7 +1502,7 @@ mod tests {
         ));
         assert!(matches!(
             result,
-            Err((TypeError::DuplicateInstance { .. }, _))
+            Err(boxed) if matches!(&*boxed, (TypeError::DuplicateInstance { .. }, _))
         ));
     }
 
@@ -1577,7 +1580,7 @@ mod tests {
         ));
         assert!(matches!(
             result,
-            Err((TypeError::DuplicateInstance { .. }, _))
+            Err(boxed) if matches!(&*boxed, (TypeError::DuplicateInstance { .. }, _))
         ));
     }
 

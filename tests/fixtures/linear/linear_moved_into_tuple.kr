@@ -1,0 +1,11 @@
+# expect: ok
+# Moving a linear binding into a tuple literal is itself a consuming use;
+# the tuple then flows into a consuming function that destructures it.
+type Buf = MkBuf(String)
+
+fun take_pair(t: (~Buf, Int)) -> Unit = match t { (x, _) => match x { MkBuf(_) => () } }
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("x")
+    take_pair((b, 1))
+}

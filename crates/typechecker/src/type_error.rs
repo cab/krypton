@@ -91,9 +91,23 @@ pub enum TypeErrorCode {
     E0608, // @constructor with self param
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
-    E0108, // Function-type parameter mode mismatch (consume vs borrow)
+    E0108, // Linear `~T` value not consumed before scope exit (T not Disposable)
     E0610, // Duplicate parameter name
+    E0611, // Function-type parameter mode mismatch (consume vs borrow)
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
+}
+
+/// Why a linear `~T` binding was flagged as unconsumed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeakReason {
+    /// Binding reached the end of its enclosing scope without being consumed.
+    ScopeExit,
+    /// Binding was consumed in some branches of an if/match but not others.
+    BranchMissing,
+    /// Binding was live when `recur` jumped back to the loop head.
+    RecurBack,
+    /// Binding was live at a `?` early-return point.
+    EarlyReturnViaQuestion,
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -395,6 +409,17 @@ pub enum TypeError {
         expected_mode: ParamMode,
         actual_mode: ParamMode,
     },
+    /// A `~T` binding was never consumed before reaching a function exit
+    /// point, and `T` does not implement `Disposable` (so auto-close
+    /// cannot synthesize a dispose call).
+    LinearValueNotConsumed {
+        name: String,
+        type_name: String,
+        reason: LeakReason,
+        /// Optional hint for an explicit-consume function the user could
+        /// call, e.g. `"free"` → renders as `free(x)`.
+        consume_hint: Option<String>,
+    },
     UnsupportedConstraint {
         trait_name: String,
         reason: &'static str,
@@ -483,7 +508,8 @@ impl TypeError {
             TypeError::MovedInGuard { .. } => TypeErrorCode::E0107,
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
             TypeError::FnCapabilityMismatch { .. } => TypeErrorCode::E0104,
-            TypeError::ParamModeMismatch { .. } => TypeErrorCode::E0108,
+            TypeError::ParamModeMismatch { .. } => TypeErrorCode::E0611,
+            TypeError::LinearValueNotConsumed { .. } => TypeErrorCode::E0108,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
         }
     }
@@ -785,6 +811,30 @@ impl TypeError {
             }
             TypeError::QualifierConflict { .. } => {
                 Some("a value cannot be both owned (~) and shared in the same position".to_string())
+            }
+            TypeError::LinearValueNotConsumed { name, type_name, reason, consume_hint } => {
+                let base = match reason {
+                    LeakReason::ScopeExit => format!(
+                        "`~{type_name}` value `{name}` is never consumed before it goes out of scope"
+                    ),
+                    LeakReason::BranchMissing => format!(
+                        "`~{type_name}` value `{name}` is consumed in some branches but not all"
+                    ),
+                    LeakReason::RecurBack => format!(
+                        "`~{type_name}` value `{name}` is still live when `recur` jumps back to the loop head"
+                    ),
+                    LeakReason::EarlyReturnViaQuestion => format!(
+                        "`~{type_name}` value `{name}` is still live at this early return (`?`)"
+                    ),
+                };
+                let mut parts = vec![base];
+                parts.push(format!(
+                    "consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"
+                ));
+                if let Some(hint) = consume_hint {
+                    parts.push(format!("e.g. `{hint}({name})`"));
+                }
+                Some(parts.join("; "))
             }
             TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
         }
@@ -1440,6 +1490,19 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "conflicting ownership requirements: already constrained to {existing}, but also required to be {incoming}"
+                )
+            }
+            TypeError::LinearValueNotConsumed { name, type_name, reason, .. } => {
+                let where_ = match reason {
+                    LeakReason::ScopeExit => "at scope exit",
+                    LeakReason::BranchMissing => "in some branches",
+                    LeakReason::RecurBack => "before `recur`",
+                    LeakReason::EarlyReturnViaQuestion => "at `?` early return",
+                };
+                write!(
+                    f,
+                    "linear `~{}` value `{}` is never consumed {}",
+                    type_name, name, where_
                 )
             }
             TypeError::UnsupportedConstraint { trait_name, .. } => {

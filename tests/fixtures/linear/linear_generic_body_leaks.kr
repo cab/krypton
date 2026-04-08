@@ -1,0 +1,4 @@
+# expect: error E0108
+# Polymorphic `~a` parameter with no `Disposable[a]` bound that is never
+# consumed in the body must be reported as a linear leak.
+fun swallow[a](x: ~a) -> Unit = ()

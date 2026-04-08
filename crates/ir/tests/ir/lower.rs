@@ -134,6 +134,7 @@ fn nullary_constructors_have_no_fn_id() {
 type Opt[a] = Some(a) | None
 fun main() = {
     let x = None
+    let _ = match x { Some(_) => 0, None => 0 }
     0
 }
 "#;

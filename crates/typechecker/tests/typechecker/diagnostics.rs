@@ -683,3 +683,43 @@ fn impl_return_type_mismatch_diagnostic() {
         "should not contain 'wrong arity' in:\n{output}"
     );
 }
+
+#[test]
+fn e0108_scope_exit() {
+    let output = render_fixture_error("../../tests/fixtures/linear/linear_scope_exit_leak.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0108"),
+        "expected E0108 in:\n{output}"
+    );
+}
+
+#[test]
+fn e0108_branch_missing() {
+    let output = render_fixture_error("../../tests/fixtures/linear/linear_branch_asymmetric.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0108"),
+        "expected E0108 in:\n{output}"
+    );
+}
+
+#[test]
+fn e0108_recur_back() {
+    let output = render_fixture_error("../../tests/fixtures/linear/linear_recur_leak.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0108"),
+        "expected E0108 in:\n{output}"
+    );
+}
+
+#[test]
+fn e0108_early_return_via_question() {
+    let output = render_fixture_error("../../tests/fixtures/linear/linear_early_return_question_mark.kr");
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0108"),
+        "expected E0108 in:\n{output}"
+    );
+}

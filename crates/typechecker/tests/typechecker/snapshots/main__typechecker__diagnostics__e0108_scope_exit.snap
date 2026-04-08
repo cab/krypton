@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0108] Error: linear `~Buf` value `b` is never consumed at scope exit
+   ╭─[ ../../tests/fixtures/linear/linear_scope_exit_leak.kr:5:5 ]
+   │
+ 5 │     let b: ~Buf = MkBuf("x")
+   │     ────────────┬───────────  
+   │                 ╰───────────── E0108: linear `~Buf` value `b` is never consumed at scope exit
+   │ 
+   │ Help: `~Buf` value `b` is never consumed before it goes out of scope; consume `b` explicitly (e.g. by passing it to a function that takes `~Buf`), or `impl Disposable[Buf]` so the compiler can auto-close it
+───╯

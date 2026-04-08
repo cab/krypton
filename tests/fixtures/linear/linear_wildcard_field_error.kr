@@ -1,0 +1,11 @@
+# expect: error E0108
+# A `_` wildcard in a destructuring `let` cannot discard a linear value
+# — the `_`-bound field is never consumed, so it leaks.
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun drop_one(b: ~Buf) -> Unit = {
+    let _ = b
+    ()
+}

@@ -1,0 +1,5 @@
+# expect: error E0108
+# Regression: `~Vec[Int]` in a param type previously ICEd in auto_close
+# (Type::Own(Type::App) panicked). It should now produce a linear-leak
+# error because the binding is never consumed.
+fun take_vec(v: ~Vec[Int]) -> Unit = ()

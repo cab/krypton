@@ -1,0 +1,7 @@
+# expect: ok
+# Polymorphic `~a` where the body consumes via return or by forwarding
+# into another consume parameter is accepted without a `Disposable[a]`
+# bound (body-sensitive rule).
+fun identity[a](x: ~a) -> ~a = x
+
+fun forward[a](sink: ~(~a) -> Unit, msg: ~a) -> Unit = sink(msg)

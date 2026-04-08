@@ -9,5 +9,6 @@ extern java "krypton.runtime.KryptonIO" {
 fun main() = {
   let x = option.None
   let y = option.Some(42)
+  let _ = match y { Some(_) => 0, None => 0 }
   println(x)
 }

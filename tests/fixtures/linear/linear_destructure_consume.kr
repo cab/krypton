@@ -1,0 +1,11 @@
+# expect: ok
+# Destructuring a linear variant into its linear field bindings rebinds
+# the obligations onto the field bindings; consuming both satisfies
+# linearity.
+type Buf = MkBuf(String)
+
+type Pair = MkPair(~Buf, ~Buf)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun split(p: ~Pair) -> Unit = match p { MkPair(a, b) => { take(a); take(b) } }

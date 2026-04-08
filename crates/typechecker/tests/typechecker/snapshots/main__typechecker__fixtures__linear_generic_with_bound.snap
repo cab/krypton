@@ -29,6 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Buf: (String, ~String) -> Buf
-consume: (~Buf) -> String
-test: (~Buf, ~String) -> String
+closeit: forall a. (~a) -> Unit where a: Disposable

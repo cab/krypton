@@ -1,0 +1,9 @@
+# expect: ok
+# Inside a Disposable dispose impl, the `self` parameter is skipped by
+# the linear check as well as the disposable auto-close, to avoid
+# infinite recursion and bogus self-leak errors.
+type Foo = MkFoo(Int)
+
+impl Disposable[Foo] {
+    fun dispose(f: ~Foo) -> Unit = ()
+}

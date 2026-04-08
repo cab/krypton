@@ -1,4 +1,5 @@
-# expect: ok
-# Mixed ownership in if-branches — result is non-owned
+# expect: error E0108
+# Under M39-T3 strict linearity, the else branch never consumes `x`,
+# so `x` leaks on that branch. This pins the new behaviour.
 fun test(x: ~String, y: String) -> String =
     if true { x } else { y }

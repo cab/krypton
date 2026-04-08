@@ -1,0 +1,10 @@
+# expect: ok
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun main() -> Unit = {
+    let c: Bool = true
+    let b: ~Buf = MkBuf("x")
+    if c { take(b) } else { take(b) }
+}

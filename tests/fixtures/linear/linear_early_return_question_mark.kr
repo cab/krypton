@@ -1,0 +1,10 @@
+# expect: error E0108
+type Buf = MkBuf(String)
+
+fun step() -> Result[String, Int] = Ok(1)
+
+fun f() -> Result[String, Unit] = {
+    let b: ~Buf = MkBuf("x")
+    let _ = step()?;
+    Ok(())
+}

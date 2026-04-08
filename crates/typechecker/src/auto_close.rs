@@ -1,15 +1,28 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::trait_registry::TraitRegistry;
+use crate::type_error::LeakReason;
 use crate::typed_ast::{
-    AutoCloseBinding, AutoCloseInfo, ScopeId, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern,
+    AutoCloseBinding, AutoCloseInfo, ScopeId, TraitName, TypedExpr, TypedExprKind, TypedFnDecl,
+    TypedPattern,
 };
-use crate::types::Type;
+use crate::types::{ParamMode, Type, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 use krypton_parser::ast::Span;
 
-/// A live disposable binding: (name, type_name).
-type LiveBinding = (String, String);
+/// Classification of an `~T` ("own") type for the leak checker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OwnedKind {
+    /// `~T` where `T: Disposable` — auto-close will synthesize a `dispose(x)` call.
+    Disposable(String),
+    /// `~T` where `T` is not Disposable — must be consumed explicitly before
+    /// scope exit, otherwise E0108 fires. The `String` is the pretty-printed
+    /// inner type used in the diagnostic; the `Option<String>` is an optional
+    /// consume-hint function name.
+    Linear(String, Option<String>),
+    /// Not an `~T` value at all.
+    NotOwned,
+}
 
 fn concrete_type_name(ty: &Type) -> Option<&str> {
     match ty {
@@ -22,42 +35,134 @@ fn concrete_type_name(ty: &Type) -> Option<&str> {
     }
 }
 
-/// Check if a type is ~T where T implements Disposable.
-fn is_owned_resource(ty: &Type, registry: &TraitRegistry) -> Option<String> {
-    if let Type::Own(inner) = ty {
-        if let Some(name) = concrete_type_name(inner) {
-            {
-                let disposable_tn = crate::typed_ast::TraitName::core_disposable();
-                if registry.find_instance(&disposable_tn, inner).is_some() {
-                    return Some(name.to_string());
-                }
-            }
-        } else {
-            // #6: Panic on unexpected type inside Own.
-            // Type::Fn is fine (affine closures), Type::Unit is fine (degenerate).
-            // Type::Var is fine (unresolved generics in polymorphic contexts).
-            // Type::App and Type::Tuple inside Own indicate a compiler bug.
-            match inner.as_ref() {
-                Type::Fn(_, _) | Type::Unit | Type::Var(_) => {}
-                Type::App(_, _) | Type::Tuple(_) => {
-                    panic!(
-                        "unexpected type inside Own for auto-close: {:?} — possible compiler bug",
-                        inner
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
-    None
+/// Pretty-print a type for use in a diagnostic. Falls back to `{:?}` only as
+/// a last resort; the analyzer never panics on unfamiliar shapes.
+fn pretty_type(ty: &Type) -> String {
+    format!("{}", ty)
 }
 
-/// Recursively collect all `Var` names in an expression tree whose spans appear
-/// in the ownership checker's move set — i.e., vars that were actually moved.
+/// Classify an `~T` value for the leak checker.
+///
+/// `scheme_constraints` is the current function's where-clause, used to
+/// recognize a polymorphic `~Var(a)` whose type variable carries a
+/// `Disposable[a]` bound (body-sensitive rule).
+fn classify_owned(
+    ty: &Type,
+    registry: &TraitRegistry,
+    has_disposable_trait: bool,
+    scheme_constraints: &[(TraitName, TypeVarId)],
+) -> OwnedKind {
+    let inner = match ty {
+        Type::Own(inner) => inner.as_ref(),
+        _ => return OwnedKind::NotOwned,
+    };
+
+    let disposable_tn = TraitName::core_disposable();
+
+    match inner {
+        // Concrete named type: ask the registry whether it implements Disposable.
+        Type::Named(name, _) => {
+            let is_disposable = has_disposable_trait
+                && registry.find_instance(&disposable_tn, inner).is_some();
+            if is_disposable {
+                OwnedKind::Disposable(name.clone())
+            } else {
+                OwnedKind::Linear(name.clone(), None)
+            }
+        }
+
+        // Polymorphic var: only counts as Disposable if the surrounding scheme
+        // constrains the var with a Disposable bound.
+        Type::Var(id) => {
+            let has_bound = has_disposable_trait
+                && scheme_constraints
+                    .iter()
+                    .any(|(tn, vid)| *tn == disposable_tn && vid == id);
+            let display = id.display_name();
+            if has_bound {
+                OwnedKind::Disposable(display)
+            } else {
+                OwnedKind::Linear(display, None)
+            }
+        }
+
+        // Aggregates and other shapes: never Disposable in v0 (M39-T3 scope).
+        // Replaces the prior ICE at this site.
+        Type::App(_, _) | Type::Tuple(_) | Type::Fn(_, _) => {
+            OwnedKind::Linear(pretty_type(inner), None)
+        }
+
+        // Primitives wrapped in Own — degenerate but legal under M39-T3.
+        Type::Int | Type::Float | Type::Bool | Type::String => {
+            OwnedKind::Linear(pretty_type(inner), None)
+        }
+
+        // Genuine compiler bugs: nested Own, MaybeOwn at this level, etc.
+        Type::Own(_) => {
+            panic!("ICE: Type::Own(Type::Own(_)) reached auto_close — possible compiler bug")
+        }
+        Type::Unit => OwnedKind::Linear("Unit".to_string(), None),
+        Type::MaybeOwn(_, _) => {
+            panic!(
+                "ICE: Type::Own(Type::MaybeOwn(..)) reached auto_close — possible compiler bug"
+            )
+        }
+        Type::FnHole => {
+            panic!("ICE: Type::Own(Type::FnHole) reached auto_close — sentinel must be normalized")
+        }
+    }
+}
+
+/// A live binding tracked by the analyzer. Either a Disposable (auto-closed
+/// at scope exit by inserting `dispose`) or a Linear (must be explicitly
+/// consumed; otherwise E0108 fires).
+#[derive(Debug, Clone)]
+enum LiveKind {
+    Disposable,
+    Linear { consume_hint: Option<String> },
+}
+
+#[derive(Debug, Clone)]
+struct LiveBinding {
+    name: String,
+    type_name: String,
+    kind: LiveKind,
+    binding_span: Span,
+}
+
+impl LiveBinding {
+    fn from_kind(name: String, binding_span: Span, kind: OwnedKind) -> Option<Self> {
+        match kind {
+            OwnedKind::Disposable(type_name) => Some(LiveBinding {
+                name,
+                type_name,
+                kind: LiveKind::Disposable,
+                binding_span,
+            }),
+            OwnedKind::Linear(type_name, consume_hint) => Some(LiveBinding {
+                name,
+                type_name,
+                kind: LiveKind::Linear { consume_hint },
+                binding_span,
+            }),
+            OwnedKind::NotOwned => None,
+        }
+    }
+
+    fn as_auto_close(&self) -> AutoCloseBinding {
+        AutoCloseBinding {
+            name: self.name.clone(),
+            type_name: self.type_name.clone(),
+        }
+    }
+}
+
+/// Recursively collect every `Var` reference inside an expression tree
+/// whose span is recorded in the ownership checker's move set.
 fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>) -> Vec<String> {
-    let mut result = Vec::new();
-    collect_moved_vars_inner(expr, ownership_moves, &mut result);
-    result
+    let mut acc = Vec::new();
+    collect_moved_vars_inner(expr, ownership_moves, &mut acc);
+    acc
 }
 
 fn collect_moved_vars_inner(
@@ -78,48 +183,179 @@ fn collect_moved_vars_inner(
             }
         }
         TypedExprKind::TypeApp { expr, .. } => collect_moved_vars_inner(expr, ownership_moves, acc),
+        TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
+            for e in elems {
+                collect_moved_vars_inner(e, ownership_moves, acc);
+            }
+        }
+        TypedExprKind::StructLit { fields, .. } => {
+            for (_, e) in fields {
+                collect_moved_vars_inner(e, ownership_moves, acc);
+            }
+        }
+        TypedExprKind::StructUpdate { base, fields } => {
+            collect_moved_vars_inner(base, ownership_moves, acc);
+            for (_, e) in fields {
+                collect_moved_vars_inner(e, ownership_moves, acc);
+            }
+        }
+        TypedExprKind::FieldAccess { expr, .. } => {
+            collect_moved_vars_inner(expr, ownership_moves, acc);
+        }
+        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
+            collect_moved_vars_inner(lhs, ownership_moves, acc);
+            collect_moved_vars_inner(rhs, ownership_moves, acc);
+        }
+        TypedExprKind::UnaryOp { operand, .. } => {
+            collect_moved_vars_inner(operand, ownership_moves, acc);
+        }
         _ => {}
     }
 }
 
-/// Recursively collect disposable bindings from a pattern.
-fn collect_resource_bindings(pattern: &TypedPattern, registry: &TraitRegistry) -> Vec<LiveBinding> {
-    let mut result = Vec::new();
-    collect_resource_bindings_inner(pattern, registry, &mut result);
-    result
+/// Walk an expression and return the names of any `Var` nodes that occupy a
+/// "tail" (return-value) position. A function whose body ends in `x` is
+/// returning `x`; we treat that as consuming `x` for the purposes of the
+/// linear-leak check.
+fn collect_tail_vars(expr: &TypedExpr) -> Vec<String> {
+    let mut acc = Vec::new();
+    collect_tail_vars_inner(expr, &mut acc);
+    acc
 }
 
-fn collect_resource_bindings_inner(
+fn collect_tail_vars_inner(expr: &TypedExpr, acc: &mut Vec<String>) {
+    match &expr.kind {
+        TypedExprKind::Var(name) => acc.push(name.clone()),
+        TypedExprKind::Do(exprs) => {
+            if let Some(last) = exprs.last() {
+                collect_tail_vars_inner(last, acc);
+            }
+        }
+        TypedExprKind::Let { body: Some(b), .. } => collect_tail_vars_inner(b, acc),
+        TypedExprKind::LetPattern { body: Some(b), .. } => collect_tail_vars_inner(b, acc),
+        TypedExprKind::If { then_, else_, .. } => {
+            collect_tail_vars_inner(then_, acc);
+            collect_tail_vars_inner(else_, acc);
+        }
+        TypedExprKind::Match { arms, .. } => {
+            for arm in arms {
+                collect_tail_vars_inner(&arm.body, acc);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Recursively collect owned bindings introduced by a let-pattern. For each
+/// `_` wildcard targeting a linear field, also push an immediate scope-exit
+/// E0108 error to `errors`.
+fn collect_owned_bindings(
     pattern: &TypedPattern,
     registry: &TraitRegistry,
+    has_disposable_trait: bool,
+    scheme_constraints: &[(TraitName, TypeVarId)],
+    errors: &mut Vec<SpannedTypeError>,
+) -> Vec<LiveBinding> {
+    let mut acc = Vec::new();
+    collect_owned_bindings_inner(
+        pattern,
+        registry,
+        has_disposable_trait,
+        scheme_constraints,
+        &mut acc,
+        errors,
+    );
+    acc
+}
+
+fn collect_owned_bindings_inner(
+    pattern: &TypedPattern,
+    registry: &TraitRegistry,
+    has_disposable_trait: bool,
+    scheme_constraints: &[(TraitName, TypeVarId)],
     acc: &mut Vec<LiveBinding>,
+    errors: &mut Vec<SpannedTypeError>,
 ) {
     match pattern {
-        TypedPattern::Var { name, ty, .. } => {
-            if let Some(type_name) = is_owned_resource(ty, registry) {
-                acc.push((name.clone(), type_name));
+        TypedPattern::Var { name, ty, span } => {
+            let kind = classify_owned(ty, registry, has_disposable_trait, scheme_constraints);
+            if let Some(b) = LiveBinding::from_kind(name.clone(), *span, kind) {
+                acc.push(b);
+            }
+        }
+        TypedPattern::Wildcard { ty, span } => {
+            let kind = classify_owned(ty, registry, has_disposable_trait, scheme_constraints);
+            if let OwnedKind::Linear(type_name, hint) = kind {
+                errors.push(SpannedTypeError {
+                    error: Box::new(TypeError::LinearValueNotConsumed {
+                        name: "_".to_string(),
+                        type_name,
+                        reason: LeakReason::ScopeExit,
+                        consume_hint: hint,
+                    }),
+                    span: *span,
+                    note: Some(
+                        "`_` cannot discard a linear field; bind it and consume explicitly"
+                            .to_string(),
+                    ),
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
             }
         }
         TypedPattern::Constructor { args, .. } => {
             for arg in args {
-                collect_resource_bindings_inner(arg, registry, acc);
+                collect_owned_bindings_inner(
+                    arg,
+                    registry,
+                    has_disposable_trait,
+                    scheme_constraints,
+                    acc,
+                    errors,
+                );
             }
         }
         TypedPattern::Tuple { elements, .. } => {
             for elem in elements {
-                collect_resource_bindings_inner(elem, registry, acc);
+                collect_owned_bindings_inner(
+                    elem,
+                    registry,
+                    has_disposable_trait,
+                    scheme_constraints,
+                    acc,
+                    errors,
+                );
             }
         }
         TypedPattern::StructPat { fields, .. } => {
             for (_, field_pat) in fields {
-                collect_resource_bindings_inner(field_pat, registry, acc);
+                collect_owned_bindings_inner(
+                    field_pat,
+                    registry,
+                    has_disposable_trait,
+                    scheme_constraints,
+                    acc,
+                    errors,
+                );
             }
+            // Note: `..` rest fields are not iterated in v0. The struct
+            // typechecker has already enforced that the parent expression's
+            // type matched; if any elided field is linear and the parent
+            // struct itself is non-Disposable, the parent binding's leak
+            // diagnostic still fires (the struct is classified as Linear).
         }
-        TypedPattern::Wildcard { .. } | TypedPattern::Lit { .. } => {}
+        TypedPattern::Lit { .. } => {}
         TypedPattern::Or { alternatives, .. } => {
-            // Use bindings from the first alternative (all alternatives bind the same names)
             if let Some(first) = alternatives.first() {
-                collect_resource_bindings_inner(first, registry, acc);
+                collect_owned_bindings_inner(
+                    first,
+                    registry,
+                    has_disposable_trait,
+                    scheme_constraints,
+                    acc,
+                    errors,
+                );
             }
         }
     }
@@ -128,18 +364,69 @@ fn collect_resource_bindings_inner(
 struct AutoCloseAnalyzer<'a> {
     registry: &'a TraitRegistry,
     ownership_moves: &'a HashMap<Span, String>,
+    has_disposable_trait: bool,
+    scheme_constraints: &'a [(TraitName, TypeVarId)],
     info: AutoCloseInfo,
     errors: Vec<SpannedTypeError>,
+    /// Bindings (keyed by `(name, binding_span)`) for which an E0108 has
+    /// already been emitted in the current function. Used to avoid
+    /// double-reporting (e.g. branch-leak + scope-exit on the same binding).
+    reported_linear: HashSet<(String, Span)>,
 }
 
 impl<'a> AutoCloseAnalyzer<'a> {
-    fn new(registry: &'a TraitRegistry, ownership_moves: &'a HashMap<Span, String>) -> Self {
+    fn new(
+        registry: &'a TraitRegistry,
+        ownership_moves: &'a HashMap<Span, String>,
+        has_disposable_trait: bool,
+        scheme_constraints: &'a [(TraitName, TypeVarId)],
+    ) -> Self {
         Self {
             registry,
             ownership_moves,
+            has_disposable_trait,
+            scheme_constraints,
             info: AutoCloseInfo::default(),
             errors: Vec::new(),
+            reported_linear: HashSet::new(),
         }
+    }
+
+    fn classify(&self, ty: &Type) -> OwnedKind {
+        classify_owned(
+            ty,
+            self.registry,
+            self.has_disposable_trait,
+            self.scheme_constraints,
+        )
+    }
+
+    /// Emit a linear-leak diagnostic for `binding`, deduplicated by the
+    /// binding's introduction span.
+    fn emit_linear_leak(&mut self, binding: &LiveBinding, leak_span: Span, reason: LeakReason) {
+        if !self
+            .reported_linear
+            .insert((binding.name.clone(), binding.binding_span))
+        {
+            return;
+        }
+        let consume_hint = match &binding.kind {
+            LiveKind::Linear { consume_hint } => consume_hint.clone(),
+            LiveKind::Disposable => None,
+        };
+        self.errors.push(SpannedTypeError {
+            error: Box::new(TypeError::LinearValueNotConsumed {
+                name: binding.name.clone(),
+                type_name: binding.type_name.clone(),
+                reason,
+                consume_hint,
+            }),
+            span: leak_span,
+            note: None,
+            secondary_span: None,
+            source_file: None,
+            var_names: None,
+        });
     }
 
     fn analyze_function(
@@ -150,29 +437,50 @@ impl<'a> AutoCloseAnalyzer<'a> {
     ) {
         let mut live: Vec<LiveBinding> = Vec::new();
 
-        // The fn-level scope owns the parameters and is the parent of the
-        // body's own scope. Routing fn params through `scoped(fn_scope_id, …)`
-        // unifies them with body locals: the same `scope_exits` map records
-        // both, the same `enter_scope`/`exit_scope` machinery in the lowerer
-        // closes both.
         self.scoped(decl.fn_scope_id, &mut live, |this, live| {
             for (i, param) in decl.params.iter().enumerate() {
                 if let Some(param_ty) = fn_param_types.get(i) {
-                    if let Some(type_name) = is_owned_resource(param_ty, this.registry) {
-                        // Skip the "self" parameter of a Disposable dispose impl to avoid
-                        // infinite recursion (dispose calling itself on its own param).
-                        if close_self_type == Some(type_name.as_str()) {
-                            continue;
+                    // Borrow-mode params (`&~T`) do not transfer ownership to
+                    // the function; the caller still owns the value. Skip them.
+                    if param.mode == ParamMode::Borrow {
+                        continue;
+                    }
+                    // Self-skip: inside an `impl Disposable[T] { fun dispose(...) }`,
+                    // the self parameter is excluded from BOTH the disposable and the
+                    // linear track to avoid infinite recursion / bogus leaks.
+                    if let Some(self_name) = close_self_type {
+                        if let Type::Own(inner) = param_ty {
+                            if concrete_type_name(inner) == Some(self_name) {
+                                continue;
+                            }
                         }
-                        live.push((param.name.clone(), type_name));
+                    }
+                    let kind = this.classify(param_ty);
+                    // TypedParam has no span; use the function body span as a
+                    // stable proxy. Dedup is keyed on (name, span) so two params
+                    // sharing the same span still emit distinct diagnostics.
+                    if let Some(b) = LiveBinding::from_kind(
+                        param.name.clone(),
+                        decl.body.span,
+                        kind,
+                    ) {
+                        live.push(b);
                     }
                 }
             }
             this.walk_expr(&decl.body, live);
+
+            // Tail-return consumption: if the body ends in `x` (or in branches
+            // each ending in some `x`), treat those as consumed by the return.
+            let tail_vars = collect_tail_vars(&decl.body);
+            for var_name in tail_vars {
+                if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                    live.remove(pos);
+                }
+            }
         });
     }
 
-    /// Assert no duplicate span insertion for a HashMap key.
     fn assert_no_duplicate_span(&self, map_name: &str, span: Span, map_contains: bool) {
         assert!(
             !map_contains,
@@ -181,10 +489,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
         );
     }
 
-    /// Run `f` with live as a scope. After f returns, any bindings introduced
-    /// inside the scope are drained and recorded in `scope_exits` under
-    /// `scope_id` in LIFO order. This is how nested blocks get their own
-    /// auto-close tails.
+    /// Run `f` with `live` as a scope. After it returns, any bindings introduced
+    /// inside the scope are processed: Disposable bindings are recorded in
+    /// `scope_exits` for IR lowering; Linear bindings produce E0108 errors.
     fn scoped<F>(&mut self, scope_id: ScopeId, live: &mut Vec<LiveBinding>, f: F)
     where
         F: FnOnce(&mut Self, &mut Vec<LiveBinding>),
@@ -193,17 +500,26 @@ impl<'a> AutoCloseAnalyzer<'a> {
         f(self, live);
         if live.len() > base {
             let drained: Vec<LiveBinding> = live.drain(base..).collect();
-            let bindings: Vec<AutoCloseBinding> = drained
-                .into_iter()
-                .rev()
-                .map(|(name, type_name)| AutoCloseBinding { name, type_name })
-                .collect();
-            assert!(
-                !self.info.scope_exits.contains_key(&scope_id),
-                "duplicate ScopeId in scope_exits: {:?}",
-                scope_id
-            );
-            self.info.scope_exits.insert(scope_id, bindings);
+            let mut disposable_bindings: Vec<AutoCloseBinding> = Vec::new();
+            // Iterate in LIFO order (matches existing behaviour for scope_exits).
+            for b in drained.into_iter().rev() {
+                match b.kind {
+                    LiveKind::Disposable => {
+                        disposable_bindings.push(b.as_auto_close());
+                    }
+                    LiveKind::Linear { .. } => {
+                        self.emit_linear_leak(&b, b.binding_span, LeakReason::ScopeExit);
+                    }
+                }
+            }
+            if !disposable_bindings.is_empty() {
+                assert!(
+                    !self.info.scope_exits.contains_key(&scope_id),
+                    "duplicate ScopeId in scope_exits: {:?}",
+                    scope_id
+                );
+                self.info.scope_exits.insert(scope_id, disposable_bindings);
+            }
         }
     }
 
@@ -217,41 +533,41 @@ impl<'a> AutoCloseAnalyzer<'a> {
             TypedExprKind::Let { name, value, body } => {
                 self.walk_expr(value, live);
 
-                // Shadow check: if name already in live, close the old one
-                if let Some(pos) = live.iter().position(|(n, _)| n == name) {
-                    let (old_name, old_type_name) = live.remove(pos);
-                    // #5: Assert no duplicate span
-                    self.assert_no_duplicate_span(
-                        "shadow_closes",
-                        expr.span,
-                        self.info.shadow_closes.contains_key(&expr.span),
-                    );
-                    self.info.shadow_closes.insert(
-                        expr.span,
-                        AutoCloseBinding {
-                            name: old_name,
-                            type_name: old_type_name,
-                        },
-                    );
+                // Shadow check: a let that re-binds an already-live name closes
+                // the previous binding (Disposable) or leaks it (Linear).
+                if let Some(pos) = live.iter().position(|b| &b.name == name) {
+                    let removed = live.remove(pos);
+                    match &removed.kind {
+                        LiveKind::Disposable => {
+                            self.assert_no_duplicate_span(
+                                "shadow_closes",
+                                expr.span,
+                                self.info.shadow_closes.contains_key(&expr.span),
+                            );
+                            self.info
+                                .shadow_closes
+                                .insert(expr.span, removed.as_auto_close());
+                        }
+                        LiveKind::Linear { .. } => {
+                            self.emit_linear_leak(&removed, expr.span, LeakReason::ScopeExit);
+                        }
+                    }
                 }
 
+                let new_kind = self.classify(&value.ty);
+                let new_binding =
+                    LiveBinding::from_kind(name.clone(), expr.span, new_kind);
+
                 if let Some(body) = body {
-                    // `let x = e1 in e2`: x and anything added inside e2
-                    // are scoped to this Let's ScopeId.
                     let sid = self.expect_scope_id(expr, "Let{body:Some}");
                     self.scoped(sid, live, |this, live| {
-                        if let Some(type_name) = is_owned_resource(&value.ty, this.registry) {
-                            live.push((name.clone(), type_name));
+                        if let Some(b) = new_binding {
+                            live.push(b);
                         }
                         this.walk_expr(body, live);
                     });
-                } else {
-                    // `let x = e1` with body: None — used in Do blocks where
-                    // the binding is visible to later siblings. The enclosing
-                    // Do scopes the binding.
-                    if let Some(type_name) = is_owned_resource(&value.ty, self.registry) {
-                        live.push((name.clone(), type_name));
-                    }
+                } else if let Some(b) = new_binding {
+                    live.push(b);
                 }
             }
 
@@ -260,18 +576,22 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
-                // #4: Deep consumption detection — find all vars that the ownership
-                // checker determined were actually moved in this argument tree
+                // Deep consumption detection: any var moved within an arg is
+                // removed from `live` and recorded in `consumptions`.
                 for arg in args {
                     let consumed = collect_moved_vars(arg, self.ownership_moves);
                     for var_name in consumed {
-                        if let Some(pos) = live.iter().position(|(n, _)| n == &var_name) {
-                            let (name, type_name) = live.remove(pos);
-                            self.info
-                                .consumptions
-                                .entry(arg.span)
-                                .or_default()
-                                .push(AutoCloseBinding { name, type_name });
+                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                            let removed = live.remove(pos);
+                            // Only Disposable consumptions get tooling-tracked;
+                            // linear bindings are silently consumed.
+                            if matches!(removed.kind, LiveKind::Disposable) {
+                                self.info
+                                    .consumptions
+                                    .entry(arg.span)
+                                    .or_default()
+                                    .push(removed.as_auto_close());
+                            }
                         }
                     }
                 }
@@ -283,23 +603,29 @@ impl<'a> AutoCloseAnalyzer<'a> {
 
             TypedExprKind::QuestionMark { expr: inner, .. } => {
                 self.walk_expr(inner, live);
-                // Record snapshot of live bindings for early return
                 if !live.is_empty() {
-                    let bindings: Vec<AutoCloseBinding> = live
-                        .iter()
-                        .rev()
-                        .map(|(name, type_name)| AutoCloseBinding {
-                            name: name.clone(),
-                            type_name: type_name.clone(),
-                        })
-                        .collect();
-                    // #5: Assert no duplicate span
-                    self.assert_no_duplicate_span(
-                        "early_returns",
-                        expr.span,
-                        self.info.early_returns.contains_key(&expr.span),
-                    );
-                    self.info.early_returns.insert(expr.span, bindings);
+                    let mut disposable_snapshot: Vec<AutoCloseBinding> = Vec::new();
+                    for b in live.iter().rev() {
+                        match &b.kind {
+                            LiveKind::Disposable => disposable_snapshot.push(b.as_auto_close()),
+                            LiveKind::Linear { .. } => {
+                                let cloned = b.clone();
+                                self.emit_linear_leak(
+                                    &cloned,
+                                    expr.span,
+                                    LeakReason::EarlyReturnViaQuestion,
+                                );
+                            }
+                        }
+                    }
+                    if !disposable_snapshot.is_empty() {
+                        self.assert_no_duplicate_span(
+                            "early_returns",
+                            expr.span,
+                            self.info.early_returns.contains_key(&expr.span),
+                        );
+                        self.info.early_returns.insert(expr.span, disposable_snapshot);
+                    }
                 }
             }
 
@@ -310,30 +636,40 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 self.walk_expr(then_, &mut then_live);
                 self.walk_expr(else_, &mut else_live);
 
-                // #1: Check for asymmetric branch consumption of ~Disposable values
-                for (name, type_name) in live.iter() {
-                    let in_then = then_live.iter().any(|(n, _)| n == name);
-                    let in_else = else_live.iter().any(|(n, _)| n == name);
+                for binding in live.iter() {
+                    let in_then = then_live.iter().any(|b| b.name == binding.name);
+                    let in_else = else_live.iter().any(|b| b.name == binding.name);
                     if in_then != in_else {
-                        // Consumed in one branch but not the other
-                        self.errors.push(SpannedTypeError {
-                            error: Box::new(TypeError::DisposableBranchLeak {
-                                name: name.clone(),
-                                type_name: type_name.clone(),
-                            }),
-                            span: expr.span,
-                            note: None,
-                            secondary_span: None,
-                            source_file: None,
-                            var_names: None,
-                        });
+                        match &binding.kind {
+                            LiveKind::Disposable => {
+                                self.errors.push(SpannedTypeError {
+                                    error: Box::new(TypeError::DisposableBranchLeak {
+                                        name: binding.name.clone(),
+                                        type_name: binding.type_name.clone(),
+                                    }),
+                                    span: expr.span,
+                                    note: None,
+                                    secondary_span: None,
+                                    source_file: None,
+                                    var_names: None,
+                                });
+                            }
+                            LiveKind::Linear { .. } => {
+                                let cloned = binding.clone();
+                                self.emit_linear_leak(
+                                    &cloned,
+                                    expr.span,
+                                    LeakReason::BranchMissing,
+                                );
+                            }
+                        }
                     }
                 }
 
-                // Merge: keep only bindings present in both branches
+                // Merge: keep only bindings present in both branches.
                 live.retain(|binding| {
-                    then_live.iter().any(|(n, _)| n == &binding.0)
-                        && else_live.iter().any(|(n, _)| n == &binding.0)
+                    then_live.iter().any(|b| b.name == binding.name)
+                        && else_live.iter().any(|b| b.name == binding.name)
                 });
             }
 
@@ -352,47 +688,64 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     branch_lives.push(arm_live);
                 }
 
-                // #1: Check for asymmetric branch consumption of ~Disposable values
-                for (name, type_name) in live.iter() {
+                for binding in live.iter() {
                     let present_count = branch_lives
                         .iter()
-                        .filter(|bl| bl.iter().any(|(n, _)| n == name))
+                        .filter(|bl| bl.iter().any(|b| b.name == binding.name))
                         .count();
                     if present_count > 0 && present_count < branch_lives.len() {
-                        // Consumed in some branches but not all
-                        self.errors.push(SpannedTypeError {
-                            error: Box::new(TypeError::DisposableBranchLeak {
-                                name: name.clone(),
-                                type_name: type_name.clone(),
-                            }),
-                            span: expr.span,
-                            note: None,
-                            secondary_span: None,
-                            source_file: None,
-                            var_names: None,
-                        });
+                        match &binding.kind {
+                            LiveKind::Disposable => {
+                                self.errors.push(SpannedTypeError {
+                                    error: Box::new(TypeError::DisposableBranchLeak {
+                                        name: binding.name.clone(),
+                                        type_name: binding.type_name.clone(),
+                                    }),
+                                    span: expr.span,
+                                    note: None,
+                                    secondary_span: None,
+                                    source_file: None,
+                                    var_names: None,
+                                });
+                            }
+                            LiveKind::Linear { .. } => {
+                                let cloned = binding.clone();
+                                self.emit_linear_leak(
+                                    &cloned,
+                                    expr.span,
+                                    LeakReason::BranchMissing,
+                                );
+                            }
+                        }
                     }
                 }
 
-                // Merge: keep only bindings present in ALL branches
                 live.retain(|binding| {
                     branch_lives
                         .iter()
-                        .all(|bl| bl.iter().any(|(n, _)| n == &binding.0))
+                        .all(|bl| bl.iter().any(|b| b.name == binding.name))
                 });
             }
 
             TypedExprKind::Lambda { body, .. } => {
-                // Lambda captures don't consume disposables for auto-close purposes;
-                // the lambda body has its own scope
-                let mut lambda_live = Vec::new();
+                // Walk the lambda body with a clone of the outer live list so
+                // that linear bindings captured by the closure are seen as
+                // consumed by their reference inside the body. After the walk,
+                // propagate any *linear* removals back to the outer live list
+                // (Disposable bindings remain owned by the outer scope and are
+                // closed there).
+                let mut lambda_live = live.clone();
                 self.walk_expr(body, &mut lambda_live);
+                live.retain(|b| {
+                    if matches!(b.kind, LiveKind::Linear { .. }) {
+                        lambda_live.iter().any(|lb| lb.name == b.name)
+                    } else {
+                        true
+                    }
+                });
             }
 
             TypedExprKind::Do(exprs) => {
-                // The Do block is a lexical scope: bindings introduced via
-                // `let x = ...` with body:None are visible to subsequent
-                // siblings and closed at the Do's tail.
                 let sid = self.expect_scope_id(expr, "Do");
                 self.scoped(sid, live, |this, live| {
                     for e in exprs {
@@ -402,9 +755,17 @@ impl<'a> AutoCloseAnalyzer<'a> {
             }
 
             TypedExprKind::Var(name) => {
-                // A bare variable reference doesn't consume — only consumption
-                // through function calls (handled in App) matters
-                let _ = name;
+                // Linear bindings: any reference at all is treated as a use,
+                // and a use is a consume under M39-T3 strict linearity. The
+                // ownership tracker enforces single-use, so this can fire at
+                // most once per binding. Disposable bindings keep the existing
+                // semantics: only App-arg moves count, attributed via the
+                // App-handler's deep consumption walk.
+                if let Some(pos) = live.iter().position(|b| &b.name == name) {
+                    if matches!(live[pos].kind, LiveKind::Linear { .. }) {
+                        live.remove(pos);
+                    }
+                }
             }
 
             TypedExprKind::BinaryOp { lhs, rhs, .. } => {
@@ -424,6 +785,15 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for (_, e) in fields {
                     self.walk_expr(e, live);
                 }
+                // A struct literal moves any owned vars in its field exprs.
+                for (_, e) in fields {
+                    let consumed = collect_moved_vars(e, self.ownership_moves);
+                    for var_name in consumed {
+                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                            live.remove(pos);
+                        }
+                    }
+                }
             }
 
             TypedExprKind::StructUpdate { base, fields } => {
@@ -440,46 +810,57 @@ impl<'a> AutoCloseAnalyzer<'a> {
             } => {
                 self.walk_expr(value, live);
 
-                // #3: Track disposable bindings from destructured patterns
-                let bindings = collect_resource_bindings(pattern, self.registry);
+                // Destructuring may move owned vars from the value expression.
+                let consumed = collect_moved_vars(value, self.ownership_moves);
+                for var_name in consumed {
+                    if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                        live.remove(pos);
+                    }
+                }
+
+                let bindings = collect_owned_bindings(
+                    pattern,
+                    self.registry,
+                    self.has_disposable_trait,
+                    self.scheme_constraints,
+                    &mut self.errors,
+                );
 
                 if let Some(body) = body {
-                    // `let pat = e1 in e2`: pattern-introduced bindings and
-                    // anything inside e2 are scoped to this LetPattern's ScopeId.
                     let sid = self.expect_scope_id(expr, "LetPattern{body:Some}");
                     self.scoped(sid, live, |this, live| {
-                        for binding in bindings {
-                            live.push(binding);
+                        for b in bindings {
+                            live.push(b);
                         }
                         this.walk_expr(body, live);
                     });
                 } else {
-                    // body: None — visible to later siblings via enclosing Do.
-                    for binding in bindings {
-                        live.push(binding);
+                    for b in bindings {
+                        live.push(b);
                     }
                 }
             }
 
             TypedExprKind::Recur(args) => {
-                // #2: Auto-close before recur — close live disposables before jumping back
-                // Record snapshot of current live bindings for recur point
                 if !live.is_empty() {
-                    let bindings: Vec<AutoCloseBinding> = live
-                        .iter()
-                        .rev()
-                        .map(|(name, type_name)| AutoCloseBinding {
-                            name: name.clone(),
-                            type_name: type_name.clone(),
-                        })
-                        .collect();
-                    // #5: Assert no duplicate span
-                    self.assert_no_duplicate_span(
-                        "recur_closes",
-                        expr.span,
-                        self.info.recur_closes.contains_key(&expr.span),
-                    );
-                    self.info.recur_closes.insert(expr.span, bindings);
+                    let mut disposable_snapshot: Vec<AutoCloseBinding> = Vec::new();
+                    for b in live.iter().rev() {
+                        match &b.kind {
+                            LiveKind::Disposable => disposable_snapshot.push(b.as_auto_close()),
+                            LiveKind::Linear { .. } => {
+                                let cloned = b.clone();
+                                self.emit_linear_leak(&cloned, expr.span, LeakReason::RecurBack);
+                            }
+                        }
+                    }
+                    if !disposable_snapshot.is_empty() {
+                        self.assert_no_duplicate_span(
+                            "recur_closes",
+                            expr.span,
+                            self.info.recur_closes.contains_key(&expr.span),
+                        );
+                        self.info.recur_closes.insert(expr.span, disposable_snapshot);
+                    }
                 }
                 for arg in args {
                     self.walk_expr(arg, live);
@@ -490,6 +871,15 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
+                // Tuple/Vec literals move any owned vars among their elements.
+                for arg in args {
+                    let consumed = collect_moved_vars(arg, self.ownership_moves);
+                    for var_name in consumed {
+                        if let Some(pos) = live.iter().position(|b| b.name == var_name) {
+                            live.remove(pos);
+                        }
+                    }
+                }
             }
 
             TypedExprKind::Lit(_) => {}
@@ -498,7 +888,8 @@ impl<'a> AutoCloseAnalyzer<'a> {
 }
 
 /// Compute auto-close information for all functions in the module.
-/// Returns the auto-close info and any diagnostic errors (e.g., branch leaks).
+/// Returns the auto-close info plus any diagnostic errors (branch leaks +
+/// linear-value-not-consumed).
 pub fn compute_auto_close(
     functions: &[TypedFnDecl],
     fn_types: &[(
@@ -510,26 +901,36 @@ pub fn compute_auto_close(
     ownership_moves: &HashMap<Span, String>,
 ) -> (AutoCloseInfo, Vec<SpannedTypeError>) {
     let disposable_tn = crate::typed_ast::TraitName::core_disposable();
-    if registry.lookup_trait(&disposable_tn).is_none() {
-        return (AutoCloseInfo::default(), Vec::new());
-    }
+    let has_disposable_trait = registry.lookup_trait(&disposable_tn).is_some();
 
-    let mut analyzer = AutoCloseAnalyzer::new(registry, ownership_moves);
+    let mut info = AutoCloseInfo::default();
+    let mut all_errors: Vec<SpannedTypeError> = Vec::new();
 
     for decl in functions {
-        let param_types = fn_types
+        let (param_types, scheme_constraints): (Vec<Type>, Vec<(TraitName, TypeVarId)>) = fn_types
             .iter()
             .find(|(name, _, _)| name == &decl.name)
-            .and_then(|(_, scheme, _)| {
-                if let Type::Fn(params, _) = &scheme.ty {
-                    Some(params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>())
+            .map(|(_, scheme, _)| {
+                let params = if let Type::Fn(params, _) = &scheme.ty {
+                    params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>()
                 } else {
-                    None
-                }
+                    Vec::new()
+                };
+                (params, scheme.constraints.clone())
             })
             .unwrap_or_default();
+
+        let mut analyzer = AutoCloseAnalyzer::new(
+            registry,
+            ownership_moves,
+            has_disposable_trait,
+            &scheme_constraints,
+        );
+        analyzer.info = std::mem::take(&mut info);
         analyzer.analyze_function(decl, &param_types, decl.close_self_type.as_deref());
+        info = std::mem::take(&mut analyzer.info);
+        all_errors.extend(analyzer.errors);
     }
 
-    (analyzer.info, analyzer.errors)
+    (info, all_errors)
 }

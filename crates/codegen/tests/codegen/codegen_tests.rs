@@ -523,7 +523,7 @@ fun main() = { let p = Point(1, 2); let p2 = { p | x = 99 }; println(p2.y) }
 fn test_sum_type_option() {
     let src = r#"
 type Option[a] = Some(a) | None
-fun main() = { let s = Some(42); let n = None; println(s) }
+fun main() = { let s = Some(42); let n = None; let _ = match n { Some(_) => 0, None => 0 }; println(s) }
 "#;
     assert_eq!(run_program(src), "Some");
 }

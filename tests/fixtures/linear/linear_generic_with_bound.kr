@@ -1,0 +1,4 @@
+# expect: ok
+# Polymorphic `~a` with a `where Disposable[a]` bound is accepted because
+# the auto-close machinery will insert a `dispose(x)` on the scope tail.
+fun closeit[a](x: ~a) -> Unit where a: Disposable = dispose(x)

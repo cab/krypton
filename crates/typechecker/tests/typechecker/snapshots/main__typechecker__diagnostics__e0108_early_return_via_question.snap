@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0108] Error: linear `~Buf` value `b` is never consumed at `?` early return
+   ╭─[ ../../tests/fixtures/linear/linear_early_return_question_mark.kr:8:13 ]
+   │
+ 8 │     let _ = step()?;
+   │             ───┬───  
+   │                ╰───── E0108: linear `~Buf` value `b` is never consumed at `?` early return
+   │ 
+   │ Help: `~Buf` value `b` is still live at this early return (`?`); consume `b` explicitly (e.g. by passing it to a function that takes `~Buf`), or `impl Disposable[Buf]` so the compiler can auto-close it
+───╯
