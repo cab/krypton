@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{bind_type_vars, SimpleExprKind, TraitName, Type, TypeVarId};
+use krypton_ir::{bind_type_vars_many, SimpleExprKind, TraitName, Type, TypeVarId};
 use krypton_parser::ast::Span;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
@@ -236,6 +236,7 @@ pub(super) struct TraitDispatchInfo {
 }
 
 /// Info about a trait instance singleton.
+#[derive(Clone, Copy)]
 pub(super) struct InstanceSingletonInfo {
     pub(super) instance_field_ref: u16, // field_ref for INSTANCE field (for getstatic)
 }
@@ -249,17 +250,24 @@ pub(super) struct ExternTraitBridgeInfo {
 /// Trait dispatch state for codegen.
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<TraitName, TraitDispatchInfo>,
-    pub(super) instance_singletons: HashMap<(TraitName, Type), InstanceSingletonInfo>,
+    pub(super) instance_singletons: HashMap<(TraitName, Vec<Type>), InstanceSingletonInfo>,
     pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
-    pub(super) dict_locals: HashMap<(TraitName, TypeVarId), u16>,
+    pub(super) dict_locals: HashMap<(TraitName, Vec<TypeVarId>), u16>,
     pub(super) parameterized_instances: HashMap<TraitName, Vec<ParameterizedInstanceInfo>>,
     pub(super) extern_trait_bridges: HashMap<TraitName, ExternTraitBridgeInfo>,
 }
 
 impl TraitState {
-    /// Look up a dict local by trait name and type variable ID.
-    pub(super) fn get_dict_local(&self, trait_name: &TraitName, var_id: TypeVarId) -> Option<u16> {
-        self.dict_locals.get(&(trait_name.clone(), var_id)).copied()
+    /// Look up a dict local by trait name and a full type variable tuple.
+    /// For single-parameter traits the tuple is length 1.
+    pub(super) fn get_dict_local_many(
+        &self,
+        trait_name: &TraitName,
+        var_ids: &[TypeVarId],
+    ) -> Option<u16> {
+        self.dict_locals
+            .get(&(trait_name.clone(), var_ids.to_vec()))
+            .copied()
     }
 
     /// Look up a dict local by trait name only (for single-constraint lookups like trait_dict).
@@ -276,23 +284,21 @@ impl TraitState {
 #[derive(Clone)]
 pub(super) struct DictRequirement {
     pub(super) trait_name: TraitName,
-    pub(super) type_var: TypeVarId,
+    /// Type variables bound by the trait constraint. Length 1 for single-parameter
+    /// traits (the common case); N for multi-parameter traits.
+    pub(super) type_vars: Vec<TypeVarId>,
 }
 
 impl DictRequirement {
     pub(super) fn trait_name(&self) -> &TraitName {
         &self.trait_name
     }
-
-    pub(super) fn type_var_id(&self) -> TypeVarId {
-        self.type_var
-    }
 }
 
 #[derive(Clone)]
 pub(super) struct ParameterizedInstanceInfo {
     pub(super) class_name: String,
-    pub(super) target_type: Type,
+    pub(super) target_types: Vec<Type>,
     pub(super) requirements: Vec<DictRequirement>,
 }
 
@@ -1840,21 +1846,21 @@ impl<'link> Compiler<'link> {
                 Ok(expected)
             }
 
-            SimpleExprKind::GetDict { instance_ref: _, trait_name, ty } => {
+            SimpleExprKind::GetDict { instance_ref: _, trait_name, target_types } => {
                 let pushed_class = self
                     .traits
                     .trait_dispatch
                     .get(trait_name)
                     .map(|d| d.interface_class)
                     .unwrap_or(self.builder.refs.object_class);
-                self.emit_dict_argument_for_type(trait_name, ty, pushed_class)?;
+                self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
                 Ok(JvmType::StructRef(pushed_class))
             }
 
             SimpleExprKind::MakeDict {
                 instance_ref: _,
                 trait_name,
-                ty,
+                target_types,
                 sub_dicts,
             } => {
                 let pushed_class = self
@@ -1871,7 +1877,11 @@ impl<'link> Compiler<'link> {
                     .and_then(|instances| {
                         instances.iter().find(|inst| {
                             let mut bindings = HashMap::new();
-                            bind_type_vars(&inst.target_type, ty, &mut bindings)
+                            bind_type_vars_many(
+                                &inst.target_types,
+                                target_types,
+                                &mut bindings,
+                            )
                         })
                     })
                     .cloned()
@@ -1905,8 +1915,8 @@ impl<'link> Compiler<'link> {
                     Ok(JvmType::StructRef(pushed_class))
                 } else {
                     // Two-phase dict resolution: try parameterized instance first, then
-                    // fall back to emit_dict_argument_for_type for structural matching
-                    self.emit_dict_argument_for_type(trait_name, ty, pushed_class)?;
+                    // fall back to emit_dict_argument_for_types for structural matching
+                    self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
                     Ok(JvmType::StructRef(pushed_class))
                 }
             }
@@ -2790,7 +2800,7 @@ impl<'link> Compiler<'link> {
             let slot = self.builder.next_local;
             let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
             self.traits.dict_locals.insert(
-                (requirement.trait_name().clone(), requirement.type_var_id()),
+                (requirement.trait_name().clone(), requirement.type_vars.clone()),
                 slot,
             );
             fn_params.push((slot, jvm_ty));

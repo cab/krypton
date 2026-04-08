@@ -2,10 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module traits__multi_param_unique_pin
+module traits__multi_param_dict_concrete
 
 trait Convert[k8] { convert(k8): l8 }
-instance traits__multi_param_unique_pin.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
+instance traits__multi_param_dict_concrete.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -18,10 +18,14 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn main() -> Unit =
-  let v1: Dict[traits__multi_param_unique_pin.Convert, Int] = get_dict traits__multi_param_unique_pin.Convert[Int, String]
-  let v0: String = trait_call traits__multi_param_unique_pin.Convert.convert(v1, 42)
-  ()
+declare println: (h) -> Unit
 
-fn Convert$$Int$$String$$convert(v2: Int) -> String =
+fn main() -> Unit =
+  let v1: Dict[traits__multi_param_dict_concrete.Convert, Int] = get_dict traits__multi_param_dict_concrete.Convert[Int, String]
+  let v2: String = trait_call traits__multi_param_dict_concrete.Convert.convert(v1, 42)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v3: Unit = call println(v0, v2)
+  v3
+
+fn Convert$$Int$$String$$convert(v4: Int) -> String =
   "n"

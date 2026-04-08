@@ -48,7 +48,7 @@ fn classify_owned(
     ty: &Type,
     registry: &TraitRegistry,
     has_disposable_trait: bool,
-    scheme_constraints: &[(TraitName, TypeVarId)],
+    scheme_constraints: &[(TraitName, Vec<TypeVarId>)],
 ) -> OwnedKind {
     let inner = match ty {
         Type::Own(inner) => inner.as_ref(),
@@ -75,7 +75,7 @@ fn classify_owned(
             let has_bound = has_disposable_trait
                 && scheme_constraints
                     .iter()
-                    .any(|(tn, vid)| *tn == disposable_tn && vid == id);
+                    .any(|(tn, vids)| *tn == disposable_tn && vids.contains(id));
             let display = id.display_name();
             if has_bound {
                 OwnedKind::Disposable(display)
@@ -251,7 +251,7 @@ fn collect_owned_bindings(
     pattern: &TypedPattern,
     registry: &TraitRegistry,
     has_disposable_trait: bool,
-    scheme_constraints: &[(TraitName, TypeVarId)],
+    scheme_constraints: &[(TraitName, Vec<TypeVarId>)],
     errors: &mut Vec<SpannedTypeError>,
 ) -> Vec<LiveBinding> {
     let mut acc = Vec::new();
@@ -270,7 +270,7 @@ fn collect_owned_bindings_inner(
     pattern: &TypedPattern,
     registry: &TraitRegistry,
     has_disposable_trait: bool,
-    scheme_constraints: &[(TraitName, TypeVarId)],
+    scheme_constraints: &[(TraitName, Vec<TypeVarId>)],
     acc: &mut Vec<LiveBinding>,
     errors: &mut Vec<SpannedTypeError>,
 ) {
@@ -362,7 +362,7 @@ struct AutoCloseAnalyzer<'a> {
     registry: &'a TraitRegistry,
     ownership_moves: &'a HashMap<Span, String>,
     has_disposable_trait: bool,
-    scheme_constraints: &'a [(TraitName, TypeVarId)],
+    scheme_constraints: &'a [(TraitName, Vec<TypeVarId>)],
     info: AutoCloseInfo,
     errors: Vec<SpannedTypeError>,
     /// Bindings (keyed by `(name, binding_span)`) for which an E0108 has
@@ -376,7 +376,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
         registry: &'a TraitRegistry,
         ownership_moves: &'a HashMap<Span, String>,
         has_disposable_trait: bool,
-        scheme_constraints: &'a [(TraitName, TypeVarId)],
+        scheme_constraints: &'a [(TraitName, Vec<TypeVarId>)],
     ) -> Self {
         Self {
             registry,
@@ -991,7 +991,7 @@ pub fn compute_auto_close(
     let mut all_errors: Vec<SpannedTypeError> = Vec::new();
 
     for decl in functions {
-        let (param_types, scheme_constraints): (Vec<Type>, Vec<(TraitName, TypeVarId)>) = fn_types
+        let (param_types, scheme_constraints): (Vec<Type>, Vec<(TraitName, Vec<TypeVarId>)>) = fn_types
             .iter()
             .find(|(name, _, _)| name == &decl.name)
             .map(|(_, scheme, _)| {

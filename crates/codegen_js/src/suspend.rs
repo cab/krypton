@@ -363,17 +363,20 @@ fn resolve_trait_method(
         if inst.trait_name != *trait_name {
             continue;
         }
-        // Try exact match first.
-        if inst.target_type == *target {
+        // Compare against the primary (first) position only; suspend analysis
+        // does not currently track multi-param dispatch tuples.
+        let Some(primary) = inst.target_types.first() else {
+            continue;
+        };
+        if primary == target {
             return inst
                 .method_fn_ids
                 .iter()
                 .find(|(name, _)| name == method_name)
                 .map(|(_, id)| *id);
         }
-        // Try parametric match via bind_type_vars.
         let mut bindings = HashMap::new();
-        if bind_type_vars(&inst.target_type, target, &mut bindings) {
+        if bind_type_vars(primary, target, &mut bindings) {
             return inst
                 .method_fn_ids
                 .iter()
@@ -1185,7 +1188,7 @@ mod tests {
         // Instance: Handler for Int
         user.instances.push(InstanceDef {
             trait_name: trait_name.clone(),
-            target_type: Type::Int,
+            target_types: vec![Type::Int],
             target_type_name: "Int".to_string(),
             method_fn_ids: vec![("handle".to_string(), FnId(1))],
             sub_dict_requirements: vec![],
@@ -1216,7 +1219,7 @@ mod tests {
                             },
                         },
                         trait_name: trait_name.clone(),
-                        ty: Type::Int,
+                        target_types: vec![Type::Int],
                     }),
                     body: Box::new(expr(
                         Type::Int,

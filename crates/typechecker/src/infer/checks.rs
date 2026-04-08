@@ -139,7 +139,7 @@ pub(super) fn collect_type_var_bindings_strict(
 
 pub(super) fn check_constrained_function_refs(
     expr: &TypedExpr,
-    current_requirements: &[(TraitName, TypeVarId)],
+    current_requirements: &[(TraitName, Vec<TypeVarId>)],
     fn_schemes: &HashMap<String, TypeScheme>,
     trait_registry: &TraitRegistry,
     var_names: &HashMap<TypeVarId, String>,
@@ -185,70 +185,72 @@ pub(super) fn check_constrained_function_refs(
 
                     let mut unsatisfied_constraints: Vec<(String, String)> = Vec::new();
 
-                    for (req_trait_name, req_type_var) in &requirements {
-                        let requirement_ty = resolve_function_ref_requirement_type(
-                            &req_trait_name.local_name,
-                            *req_type_var,
-                            declared_param_types,
-                            actual_param_types,
-                        )
-                        .ok_or_else(|| {
-                            spanned(
-                                TypeError::UnsupportedExpr {
-                                    description: format!(
-                                        "could not resolve `{req_trait_name}` for constrained function reference `{name}`"
-                                    ),
-                                },
-                                expr.span,
+                    for (req_trait_name, req_type_vars) in &requirements {
+                        for req_type_var in req_type_vars {
+                            let requirement_ty = resolve_function_ref_requirement_type(
+                                &req_trait_name.local_name,
+                                *req_type_var,
+                                declared_param_types,
+                                actual_param_types,
                             )
-                        })?;
-
-                        let requirement_ty = strip_own(&requirement_ty);
-                        if free_vars(&requirement_ty).is_empty() {
-                            let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
-                                trait_registry
-                                    .find_instance(req_trait_name, &requirement_ty)
-                                    .is_none()
-                            } else {
-                                true
-                            };
-                            if missing {
-                                return Err(no_instance_error(
-                                    trait_registry,
-                                    req_trait_name,
-                                    &requirement_ty,
+                            .ok_or_else(|| {
+                                spanned(
+                                    TypeError::UnsupportedExpr {
+                                        description: format!(
+                                            "could not resolve `{req_trait_name}` for constrained function reference `{name}`"
+                                        ),
+                                    },
                                     expr.span,
-                                    var_names,
-                                ));
-                            }
-                            continue;
-                        }
+                                )
+                            })?;
 
-                        if let Type::Var(type_var) = requirement_ty {
+                            let requirement_ty = strip_own(&requirement_ty);
+                            if free_vars(&requirement_ty).is_empty() {
+                                let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
+                                    trait_registry
+                                        .find_instance(req_trait_name, &requirement_ty)
+                                        .is_none()
+                                } else {
+                                    true
+                                };
+                                if missing {
+                                    return Err(no_instance_error(
+                                        trait_registry,
+                                        req_trait_name,
+                                        &requirement_ty,
+                                        expr.span,
+                                        var_names,
+                                    ));
+                                }
+                                continue;
+                            }
+
+                            if let Type::Var(type_var) = requirement_ty {
+                                if current_requirements.iter().any(
+                                    |(trait_name, current_type_vars)| {
+                                        trait_name == req_trait_name
+                                            && current_type_vars.contains(&type_var)
+                                    },
+                                ) {
+                                    continue;
+                                }
+                            }
+
                             if current_requirements
                                 .iter()
-                                .any(|(trait_name, current_type_var)| {
-                                    trait_name == req_trait_name && *current_type_var == type_var
-                                })
+                                .any(|(trait_name, _)| trait_name == req_trait_name)
                             {
                                 continue;
                             }
-                        }
 
-                        if current_requirements
-                            .iter()
-                            .any(|(trait_name, _)| trait_name == req_trait_name)
-                        {
-                            continue;
+                            let type_param_name = scheme
+                                .var_names
+                                .get(req_type_var)
+                                .cloned()
+                                .unwrap_or_else(|| format!("?{}", req_type_var.0));
+                            unsatisfied_constraints
+                                .push((req_trait_name.local_name.clone(), type_param_name));
                         }
-
-                        let type_param_name = scheme
-                            .var_names
-                            .get(req_type_var)
-                            .cloned()
-                            .unwrap_or_else(|| format!("?{}", req_type_var.0));
-                        unsatisfied_constraints
-                            .push((req_trait_name.local_name.clone(), type_param_name));
                     }
 
                     if !unsatisfied_constraints.is_empty() {
@@ -333,7 +335,7 @@ pub(super) fn detect_trait_constraints(
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     fn_schemes: &HashMap<String, TypeScheme>,
-    constraints: &mut Vec<(TraitName, TypeVarId)>,
+    constraints: &mut Vec<(TraitName, Vec<TypeVarId>)>,
 ) {
     walk_trait_method_calls(
         expr,
@@ -342,7 +344,7 @@ pub(super) fn detect_trait_constraints(
         fn_type_param_vars,
         fn_schemes,
         &mut |trait_name, var| {
-            constraints.push((trait_name, var));
+            constraints.push((trait_name, vec![var]));
         },
     );
 }
@@ -353,7 +355,7 @@ pub(super) fn validate_trait_constraints(
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
-    declared_constraints: &[(TraitName, TypeVarId)],
+    declared_constraints: &[(TraitName, Vec<TypeVarId>)],
     fn_name: &str,
     type_var_names: &HashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
@@ -375,7 +377,7 @@ pub(super) fn validate_trait_constraints(
             }
             let is_declared = declared_constraints
                 .iter()
-                .any(|(t, v)| t.local_name == trait_name.local_name && *v == var);
+                .any(|(t, v)| t.local_name == trait_name.local_name && v.contains(&var));
             if !is_declared {
                 let type_var_display = type_var_names.get(&var).cloned();
                 first_error = Some(super::spanned(
@@ -461,12 +463,14 @@ fn walk_trait_method_calls(
                                 &actual_ret,
                                 &mut bindings,
                             );
-                            for (req_trait, req_var) in &method.constraints {
-                                if let Some(resolved) = bindings.get(req_var) {
-                                    let concrete = strip_own(resolved);
-                                    if let Some(v) = leading_type_var(&concrete) {
-                                        if fn_type_param_vars.contains(&v) {
-                                            callback(req_trait.clone(), v);
+                            for (req_trait, req_vars) in &method.constraints {
+                                for req_var in req_vars {
+                                    if let Some(resolved) = bindings.get(req_var) {
+                                        let concrete = strip_own(resolved);
+                                        if let Some(v) = leading_type_var(&concrete) {
+                                            if fn_type_param_vars.contains(&v) {
+                                                callback(req_trait.clone(), v);
+                                            }
                                         }
                                     }
                                 }
@@ -491,17 +495,19 @@ fn walk_trait_method_calls(
                                 .iter()
                                 .map(|a| (crate::types::ParamMode::Consume, subst.apply(&a.ty)))
                                 .collect();
-                            for (req_trait, req_var) in &scheme.constraints {
-                                if let Some(resolved) = resolve_function_ref_requirement_type(
-                                    &req_trait.local_name,
-                                    *req_var,
-                                    declared_param_types,
-                                    &actual_param_types,
-                                ) {
-                                    let concrete = strip_own(&resolved);
-                                    if let Some(v) = leading_type_var(&concrete) {
-                                        if fn_type_param_vars.contains(&v) {
-                                            callback(req_trait.clone(), v);
+                            for (req_trait, req_vars) in &scheme.constraints {
+                                for req_var in req_vars {
+                                    if let Some(resolved) = resolve_function_ref_requirement_type(
+                                        &req_trait.local_name,
+                                        *req_var,
+                                        declared_param_types,
+                                        &actual_param_types,
+                                    ) {
+                                        let concrete = strip_own(&resolved);
+                                        if let Some(v) = leading_type_var(&concrete) {
+                                            if fn_type_param_vars.contains(&v) {
+                                                callback(req_trait.clone(), v);
+                                            }
                                         }
                                     }
                                 }
@@ -752,22 +758,24 @@ pub(super) fn check_trait_instances(
                             }
                         }
                         // Check method-level where constraints
-                        for (req_trait, req_var) in &method.constraints {
-                            if let Some(resolved) = bindings.get(req_var) {
-                                let concrete = strip_own(resolved);
-                                if leading_type_var(&concrete).is_none()
-                                    && trait_registry.lookup_trait(req_trait).is_some()
-                                    && trait_registry
-                                        .find_instance(req_trait, &concrete)
-                                        .is_none()
-                                {
-                                    return Err(no_instance_error(
-                                        trait_registry,
-                                        req_trait,
-                                        &concrete,
-                                        expr.span,
-                                        var_names,
-                                    ));
+                        for (req_trait, req_vars) in &method.constraints {
+                            for req_var in req_vars {
+                                if let Some(resolved) = bindings.get(req_var) {
+                                    let concrete = strip_own(resolved);
+                                    if leading_type_var(&concrete).is_none()
+                                        && trait_registry.lookup_trait(req_trait).is_some()
+                                        && trait_registry
+                                            .find_instance(req_trait, &concrete)
+                                            .is_none()
+                                    {
+                                        return Err(no_instance_error(
+                                            trait_registry,
+                                            req_trait,
+                                            &concrete,
+                                            expr.span,
+                                            var_names,
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -783,7 +791,8 @@ pub(super) fn check_trait_instances(
                         if let Some(requirements) = fn_reqs.filter(|r| !r.is_empty()) {
                             // Resolve each constraint's type via bind_type_vars approach
                             let fn_scheme = fn_schemes.get(name);
-                            for (req_trait_name, type_var) in requirements {
+                            for (req_trait_name, type_vars) in requirements {
+                              for type_var in type_vars {
                                 let resolved_ty = fn_scheme.and_then(|scheme| {
                                     if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                                         let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
@@ -854,6 +863,7 @@ pub(super) fn check_trait_instances(
                                         }
                                     }
                                 }
+                              }
                             }
                         }
                     }

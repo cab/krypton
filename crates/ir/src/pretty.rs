@@ -152,16 +152,25 @@ impl fmt::Display for SimpleExpr {
             SimpleExprKind::PrimOp { op, args } => {
                 write!(f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExprKind::GetDict { trait_name, ty, .. } => {
-                write!(f, "get_dict {trait_name}[{ty}]")
+            SimpleExprKind::GetDict {
+                trait_name,
+                target_types,
+                ..
+            } => {
+                write!(f, "get_dict {trait_name}[{}]", fmt_types(target_types))
             }
             SimpleExprKind::MakeDict {
                 trait_name,
-                ty,
+                target_types,
                 sub_dicts,
                 ..
             } => {
-                write!(f, "make_dict {trait_name}[{ty}]({})", fmt_atoms(sub_dicts))
+                write!(
+                    f,
+                    "make_dict {trait_name}[{}]({})",
+                    fmt_types(target_types),
+                    fmt_atoms(sub_dicts)
+                )
             }
             SimpleExprKind::MakeVec { elements, .. } => {
                 write!(f, "make_vec({})", fmt_atoms(elements))
@@ -175,6 +184,14 @@ fn fmt_atoms(atoms: &[Atom]) -> String {
     atoms
         .iter()
         .map(|a| a.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn fmt_types(types: &[crate::Type]) -> String {
+    types
+        .iter()
+        .map(|t| t.to_string())
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -270,18 +287,27 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
             SimpleExprKind::PrimOp { op, args } => {
                 write!(self.f, "{op}({})", fmt_atoms(args))
             }
-            SimpleExprKind::GetDict { trait_name, ty, .. } => {
-                write!(self.f, "get_dict {trait_name}[{ty}]")
+            SimpleExprKind::GetDict {
+                trait_name,
+                target_types,
+                ..
+            } => {
+                write!(
+                    self.f,
+                    "get_dict {trait_name}[{}]",
+                    fmt_types(target_types)
+                )
             }
             SimpleExprKind::MakeDict {
                 trait_name,
-                ty,
+                target_types,
                 sub_dicts,
                 ..
             } => {
                 write!(
                     self.f,
-                    "make_dict {trait_name}[{ty}]({})",
+                    "make_dict {trait_name}[{}]({})",
+                    fmt_types(target_types),
                     fmt_atoms(sub_dicts)
                 )
             }

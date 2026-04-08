@@ -50,17 +50,18 @@ impl InferError {
     }
 }
 
-/// Extract the single type variable name from a parser `TypeConstraint`, or
-/// return an `UnsupportedConstraint` error for multi-parameter / explicit-form
-/// constraints. Used pre-M30-T4 to gate single-parameter-only code paths.
-fn require_single_param_var(
+/// Extract the type variable names bound by a parser `TypeConstraint`.
+/// Accepts single- or multi-parameter constraints as long as every type
+/// argument is a bare identifier. Nested constructors in type arguments
+/// (e.g. `Foo[Array[a]]`) are rejected with `UnsupportedConstraint`.
+fn require_param_vars(
     tc: &TypeConstraint,
-) -> Result<&str, SpannedTypeError> {
-    tc.as_single_param_var().ok_or_else(|| {
+) -> Result<Vec<&str>, SpannedTypeError> {
+    tc.as_param_vars().ok_or_else(|| {
         spanned(
             TypeError::UnsupportedConstraint {
                 trait_name: tc.trait_name.clone(),
-                reason: "multi-parameter trait constraints require M30-T4",
+                reason: "trait constraint arguments must be bare type variables",
             },
             tc.span,
         )
@@ -1236,7 +1237,7 @@ pub(super) struct ExternMethodsResult {
     pub(super) extern_fns: Vec<ExternFnInfo>,
     pub(super) bindings: Vec<ExternBindingInfo>,
     /// Dict requirements for extern functions with `where` clauses.
-    pub(super) fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    pub(super) fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 }
 
 #[derive(Clone)]
@@ -1291,7 +1292,7 @@ fn process_extern_methods(
     };
     let mut extern_fns = Vec::new();
     let mut bindings = Vec::new();
-    let mut fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = HashMap::new();
+    let mut fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = HashMap::new();
     for method in methods {
         let bind_name = &method.name;
 
@@ -1466,8 +1467,12 @@ fn process_extern_methods(
                 if constraint.trait_name == "shared" {
                     continue;
                 }
-                let tv_name = require_single_param_var(constraint)?;
-                if let Some(&type_var) = effective_resolve_map.get(tv_name) {
+                let tv_names = require_param_vars(constraint)?;
+                let type_vars: Vec<TypeVarId> = tv_names
+                    .iter()
+                    .filter_map(|n| effective_resolve_map.get(*n).copied())
+                    .collect();
+                if !type_vars.is_empty() && type_vars.len() == tv_names.len() {
                     let tn = trait_name_lookup
                         .get(&constraint.trait_name)
                         .cloned()
@@ -1477,7 +1482,7 @@ fn process_extern_methods(
                                 constraint.trait_name.clone(),
                             )
                         });
-                    requirements.push((tn, type_var));
+                    requirements.push((tn, type_vars));
                 }
             }
             if !requirements.is_empty() {
@@ -1999,7 +2004,7 @@ type InferFunctionBodiesResult<'a> = (
     Vec<&'a krypton_parser::ast::FnDecl>,
     Vec<Option<TypeScheme>>,
     Vec<Option<TypedExpr>>,
-    HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
     HashMap<String, HashSet<String>>,
 );
 
@@ -2019,7 +2024,7 @@ type LocalExternResult = (
     Vec<ExternFnInfo>,
     Vec<ExternTypeInfo>,
     Vec<ExternBindingInfo>,
-    HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
     Vec<PendingExternTrait>,
 );
 
@@ -2099,7 +2104,7 @@ impl ModuleInferenceState {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
         let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
-        let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> =
+        let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
             HashMap::new();
         let mut pending_extern_traits: Vec<PendingExternTrait> = Vec::new();
 
@@ -2396,7 +2401,7 @@ impl ModuleInferenceState {
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
         _imported_instance_defs: Vec<InstanceDefInfo>,
-        fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, TypeVarId)>>,
+        fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
         _trait_method_map: &HashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
@@ -2638,12 +2643,12 @@ impl ModuleInferenceState {
                 let existing = fn_constraint_requirements
                     .entry(func.name.clone())
                     .or_default();
-                for (trait_name, type_var) in constraints {
+                for (trait_name, type_vars) in constraints {
                     if !existing
                         .iter()
-                        .any(|(t, v)| t == &trait_name && *v == type_var)
+                        .any(|(t, v)| t == &trait_name && *v == type_vars)
                     {
-                        existing.push((trait_name, type_var));
+                        existing.push((trait_name, type_vars));
                     }
                 }
             }
@@ -2685,7 +2690,7 @@ impl ModuleInferenceState {
                     )
                 })
                 .collect();
-            let method_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>> = info
+            let method_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = info
                 .methods
                 .iter()
                 .filter(|m| !m.constraints.is_empty())
@@ -2697,6 +2702,7 @@ impl ModuleInferenceState {
                 methods: method_info,
                 is_imported,
                 type_var_id: info.type_var_id,
+                type_var_ids: info.type_var_ids.clone(),
                 method_tc_types,
                 method_constraints,
             });
@@ -3421,10 +3427,10 @@ fn register_local_traits(
                     ));
                 }
             }
-            // M30-T4: index the first trait type parameter for arity/InstanceInfo
-            // but register ALL trait type parameters in the method resolution
+            // Index the first trait type parameter for arity/InstanceInfo but
+            // register ALL trait type parameters in the method resolution
             // environment so multi-parameter trait method bodies can reference
-            // `b`, `c`, etc. (Resolution of multi-param instances is M30-T5.)
+            // `b`, `c`, etc.
             let type_param = &trait_type_params[0];
             let tv_id = state.gen.fresh();
             let type_var_arity = type_param.arity;
@@ -3538,13 +3544,17 @@ fn register_local_traits(
                 );
 
                 // Resolve method-level where constraints
-                let mut method_constraints: Vec<(TraitName, TypeVarId)> = Vec::new();
+                let mut method_constraints: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
                 for constraint in &method.constraints {
                     if constraint.trait_name == "shared" {
                         continue;
                     }
-                    let tv_name = require_single_param_var(constraint)?;
-                    if let Some(&tv) = method_type_param_map.get(tv_name) {
+                    let tv_names = require_param_vars(constraint)?;
+                    let tvs: Vec<TypeVarId> = tv_names
+                        .iter()
+                        .filter_map(|n| method_type_param_map.get(*n).copied())
+                        .collect();
+                    if tvs.len() == tv_names.len() && !tvs.is_empty() {
                         // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                         // Validation deferred to instance resolution phase.
                         let tn = trait_registry
@@ -3556,7 +3566,7 @@ fn register_local_traits(
                                     constraint.trait_name.clone(),
                                 )
                             });
-                        method_constraints.push((tn, tv));
+                        method_constraints.push((tn, tvs));
                     }
                 }
 
@@ -3584,7 +3594,7 @@ fn register_local_traits(
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
             // Validation deferred to instance resolution phase.
             for sc in superclasses {
-                require_single_param_var(sc)?;
+                require_param_vars(sc)?;
             }
             let superclass_names: Vec<TraitName> = superclasses
                 .iter()
@@ -3807,7 +3817,7 @@ fn resolve_constraints(
     constraints
         .iter()
         .map(|tc| {
-            let tv_name = require_single_param_var(tc)?;
+            let tv_names = require_param_vars(tc)?;
             Ok(ResolvedConstraint {
                 trait_name: trait_registry
                     .lookup_trait_by_name(&tc.trait_name)
@@ -3815,7 +3825,7 @@ fn resolve_constraints(
                     .unwrap_or_else(|| {
                         TraitName::new(module_path.to_string(), tc.trait_name.clone())
                     }),
-                type_var: tv_name.to_string(),
+                type_vars: tv_names.iter().map(|s| s.to_string()).collect(),
                 span: tc.span,
             })
         })
@@ -3871,8 +3881,10 @@ fn register_impl_instances(
                     collect_type_expr_var_names(arg, &mut impl_type_param_names);
                 }
                 for constraint in type_constraints {
-                    let tv_name = require_single_param_var(constraint)?;
-                    impl_type_param_names.insert(tv_name.to_string());
+                    let tv_names = require_param_vars(constraint)?;
+                    for n in tv_names {
+                        impl_type_param_names.insert(n.to_string());
+                    }
                 }
                 let mut sorted_names: Vec<_> = impl_type_param_names.into_iter().collect();
                 sorted_names.sort();
@@ -4269,7 +4281,7 @@ fn infer_function_bodies<'a>(
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
-    let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>> =
+    let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
         HashMap::new();
     let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
@@ -4300,8 +4312,10 @@ fn infer_function_bodies<'a>(
             if !decl.constraints.is_empty() {
                 for constraint in &decl.constraints {
                     if constraint.trait_name == "shared" {
-                        let tv_name = require_single_param_var(constraint)?;
-                        shared_tv_names.insert(tv_name.to_string());
+                        let tv_names = require_param_vars(constraint)?;
+                        for n in tv_names {
+                            shared_tv_names.insert(n.to_string());
+                        }
                     }
                 }
 
@@ -4336,26 +4350,31 @@ fn infer_function_bodies<'a>(
                     }
                 }
 
-                let requirements: Vec<(TraitName, TypeVarId)> = decl
+                let requirements: Vec<(TraitName, Vec<TypeVarId>)> = decl
                     .constraints
                     .iter()
                     .filter(|c| c.trait_name != "shared")
                     .map(|constraint| {
-                        let tv_name = require_single_param_var(constraint)?;
-                        Ok(type_param_map.get(tv_name).copied().map(|type_var| {
-                            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
-                            // Validation deferred to instance resolution phase.
-                            let tn = trait_registry
-                                .lookup_trait_by_name(&constraint.trait_name)
-                                .map(|ti| ti.trait_name())
-                                .unwrap_or_else(|| {
-                                    TraitName::new(
-                                        mod_path.to_string(),
-                                        constraint.trait_name.clone(),
-                                    )
-                                });
-                            (tn, type_var)
-                        }))
+                        let tv_names = require_param_vars(constraint)?;
+                        let tvs: Vec<TypeVarId> = tv_names
+                            .iter()
+                            .filter_map(|n| type_param_map.get(*n).copied())
+                            .collect();
+                        if tvs.len() != tv_names.len() || tvs.is_empty() {
+                            return Ok(None);
+                        }
+                        // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                        // Validation deferred to instance resolution phase.
+                        let tn = trait_registry
+                            .lookup_trait_by_name(&constraint.trait_name)
+                            .map(|ti| ti.trait_name())
+                            .unwrap_or_else(|| {
+                                TraitName::new(
+                                    mod_path.to_string(),
+                                    constraint.trait_name.clone(),
+                                )
+                            });
+                        Ok(Some((tn, tvs)))
                     })
                     .collect::<Result<Vec<Option<_>>, SpannedTypeError>>()?
                     .into_iter()
@@ -4601,10 +4620,12 @@ fn infer_function_bodies<'a>(
 
     // Normalize fn_constraint_requirements
     for requirements in fn_constraint_requirements.values_mut() {
-        for (_, type_var) in requirements.iter_mut() {
-            let resolved = state.subst.apply(&Type::Var(*type_var));
-            if let Type::Var(new_id) = resolved {
-                *type_var = new_id;
+        for (_, type_vars) in requirements.iter_mut() {
+            for type_var in type_vars.iter_mut() {
+                let resolved = state.subst.apply(&Type::Var(*type_var));
+                if let Type::Var(new_id) = resolved {
+                    *type_var = new_id;
+                }
             }
         }
     }
@@ -4817,13 +4838,17 @@ fn typecheck_impl_methods(
                 }
 
                 // Resolve method-level where constraints
-                let mut method_constraint_pairs: Vec<(TraitName, TypeVarId)> = Vec::new();
+                let mut method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
                 for constraint in &method.constraints {
                     if constraint.trait_name == "shared" {
                         continue;
                     }
-                    let tv_name = require_single_param_var(constraint)?;
-                    if let Some(&tv) = impl_method_tpm.get(tv_name) {
+                    let tv_names = require_param_vars(constraint)?;
+                    let tvs: Vec<TypeVarId> = tv_names
+                        .iter()
+                        .filter_map(|n| impl_method_tpm.get(*n).copied())
+                        .collect();
+                    if tvs.len() == tv_names.len() && !tvs.is_empty() {
                         // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                         // Validation deferred to instance resolution phase.
                         let tn = trait_registry
@@ -4835,7 +4860,7 @@ fn typecheck_impl_methods(
                                     constraint.trait_name.clone(),
                                 )
                             });
-                        method_constraint_pairs.push((tn, tv));
+                        method_constraint_pairs.push((tn, tvs));
                     }
                 }
 

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{bind_type_vars, TraitName, Type};
+use krypton_ir::{bind_type_vars_many, TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{
@@ -34,46 +34,67 @@ impl<'link> Compiler<'link> {
 
     // --- Dict / trait resolution helpers ---
 
-    pub(super) fn resolve_dict_requirement_type(
+    pub(super) fn resolve_dict_requirement_types(
         requirement: &DictRequirement,
         instance_info: &ParameterizedInstanceInfo,
-        concrete_ty: &Type,
-    ) -> Option<Type> {
-        let type_var = &requirement.type_var;
+        concrete_tys: &[Type],
+    ) -> Option<Vec<Type>> {
         let mut bindings = HashMap::new();
-        if bind_type_vars(&instance_info.target_type, concrete_ty, &mut bindings) {
-            bindings.get(type_var).cloned()
+        if bind_type_vars_many(&instance_info.target_types, concrete_tys, &mut bindings) {
+            requirement
+                .type_vars
+                .iter()
+                .map(|tv| bindings.get(tv).cloned())
+                .collect()
         } else {
             None
         }
     }
 
+    /// Single-parameter convenience wrapper: emit a dict argument for a single
+    /// concrete type. Delegates to the multi-parameter form.
     pub(super) fn emit_dict_argument_for_type(
         &mut self,
         trait_name: &TraitName,
         ty: &Type,
         pushed_class: u16,
     ) -> Result<(), CodegenError> {
-        if matches!(ty, Type::Var(_))
-            || matches!(ty, Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor))
-        {
-            let var_id = match ty {
-                Type::Var(id) => Some(*id),
-                Type::App(ctor, _) => match ctor.as_ref() {
+        self.emit_dict_argument_for_types(trait_name, std::slice::from_ref(ty), pushed_class)
+    }
+
+    pub(super) fn emit_dict_argument_for_types(
+        &mut self,
+        trait_name: &TraitName,
+        tys: &[Type],
+        pushed_class: u16,
+    ) -> Result<(), CodegenError> {
+        // Fast path: every position is a type var (or abstract-head App) —
+        // dispatch through the enclosing function's dict locals.
+        let all_abstract = tys.iter().all(|ty| {
+            matches!(ty, Type::Var(_))
+                || matches!(ty, Type::App(ctor, _) if Self::is_abstract_type_ctor(ctor))
+        });
+        if all_abstract && !tys.is_empty() {
+            let var_ids: Option<Vec<krypton_ir::TypeVarId>> = tys
+                .iter()
+                .map(|ty| match ty {
                     Type::Var(id) => Some(*id),
+                    Type::App(ctor, _) => match ctor.as_ref() {
+                        Type::Var(id) => Some(*id),
+                        _ => None,
+                    },
                     _ => None,
-                },
-                _ => None,
-            };
-            let dict_slot = var_id
-                .and_then(|id| self.traits.get_dict_local(trait_name, id))
+                })
+                .collect();
+            let dict_slot = var_ids
+                .as_ref()
+                .and_then(|ids| self.traits.get_dict_local_many(trait_name, ids))
                 .or_else(|| self.traits.get_dict_local_by_trait(trait_name));
             if let Some(dict_slot) = dict_slot {
                 self.builder.emit(Instruction::Aload(dict_slot as u8));
                 self.builder.frame.push_type(VerificationType::Object {
                     cpool_index: pushed_class,
                 });
-                // Dict locals are declared as Object; cast to the interface type
                 if pushed_class != self.builder.refs.object_class {
                     self.builder.emit(Instruction::Checkcast(pushed_class));
                 }
@@ -81,18 +102,22 @@ impl<'link> Compiler<'link> {
             }
         }
 
-        let lookup_type = ty.strip_own();
+        let lookup_types: Vec<Type> = tys.iter().map(|t| t.strip_own()).collect();
         // Try full type first (concrete instances), then head-only (HKT instances like Functor[Box])
-        let singleton_key = (trait_name.clone(), lookup_type.clone());
-        let head_key = (
-            trait_name.clone(),
-            Type::Named(krypton_ir::head_type_name(ty), vec![]),
-        );
+        let singleton_key = (trait_name.clone(), lookup_types.clone());
+        let head_key = if tys.len() == 1 {
+            Some((
+                trait_name.clone(),
+                vec![Type::Named(krypton_ir::head_type_name(&tys[0]), vec![])],
+            ))
+        } else {
+            None
+        };
         if let Some(singleton) = self
             .traits
             .instance_singletons
             .get(&singleton_key)
-            .or_else(|| self.traits.instance_singletons.get(&head_key))
+            .or_else(|| head_key.as_ref().and_then(|k| self.traits.instance_singletons.get(k)))
         {
             self.builder
                 .emit(Instruction::Getstatic(singleton.instance_field_ref));
@@ -109,7 +134,7 @@ impl<'link> Compiler<'link> {
             .and_then(|instances| {
                 instances.iter().find(|inst| {
                     let mut bindings = HashMap::new();
-                    bind_type_vars(&inst.target_type, ty, &mut bindings)
+                    bind_type_vars_many(&inst.target_types, tys, &mut bindings)
                 })
             })
             .cloned()
@@ -133,20 +158,20 @@ impl<'link> Compiler<'link> {
                 cpool_index: inst_class,
             });
             for requirement in &instance_info.requirements {
-                let requirement_ty =
-                    Self::resolve_dict_requirement_type(requirement, &instance_info, ty)
+                let requirement_tys =
+                    Self::resolve_dict_requirement_types(requirement, &instance_info, tys)
                         .ok_or_else(|| {
                             CodegenError::UndefinedVariable(
                                 format!(
-                                    "could not resolve dictionary requirement {} for {ty}",
+                                    "could not resolve dictionary requirement {} for instance",
                                     requirement.trait_name()
                                 ),
                                 None,
                             )
                         })?;
-                self.emit_dict_argument_for_type(
+                self.emit_dict_argument_for_types(
                     requirement.trait_name(),
-                    &requirement_ty,
+                    &requirement_tys,
                     self.builder.refs.object_class,
                 )?;
             }
@@ -158,8 +183,13 @@ impl<'link> Compiler<'link> {
             return Ok(());
         }
 
+        let display = tys
+            .iter()
+            .map(|t| format!("{t}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         Err(CodegenError::UndefinedVariable(
-            format!("no instance of {trait_name} for {ty}"),
+            format!("no instance of {trait_name} for {display}"),
             None,
         ))
     }

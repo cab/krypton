@@ -36,13 +36,14 @@ pub(super) fn collect_derived_constraints_for_type(
 
     if let Type::Var(type_var) = field_type {
         if let Some(type_var_name) = local_type_params.get(type_var) {
-            if !constraints
-                .iter()
-                .any(|c| c.trait_name.local_name == trait_name && c.type_var == *type_var_name)
-            {
+            if !constraints.iter().any(|c| {
+                c.trait_name.local_name == trait_name
+                    && c.type_vars.len() == 1
+                    && c.type_vars[0] == *type_var_name
+            }) {
                 constraints.push(ResolvedConstraint {
                     trait_name: trait_info.trait_name(),
-                    type_var: type_var_name.clone(),
+                    type_vars: vec![type_var_name.clone()],
                     span: (0, 0),
                 });
             }
@@ -86,22 +87,24 @@ pub(super) fn collect_derived_constraints_for_type(
     }
 
     for constraint in &instance.constraints {
-        let Some(type_var_id) = instance.type_var_ids.get(&constraint.type_var) else {
-            return false;
-        };
-        let Some(required_type) = bindings.get(type_var_id) else {
-            return false;
-        };
-        if !collect_derived_constraints_for_type(
-            trait_registry,
-            &constraint.trait_name.local_name,
-            required_type,
-            local_type_params,
-            deriving_type_name,
-            visited,
-            constraints,
-        ) {
-            return false;
+        for type_var_name in &constraint.type_vars {
+            let Some(type_var_id) = instance.type_var_ids.get(type_var_name) else {
+                return false;
+            };
+            let Some(required_type) = bindings.get(type_var_id) else {
+                return false;
+            };
+            if !collect_derived_constraints_for_type(
+                trait_registry,
+                &constraint.trait_name.local_name,
+                required_type,
+                local_type_params,
+                deriving_type_name,
+                visited,
+                constraints,
+            ) {
+                return false;
+            }
         }
     }
 

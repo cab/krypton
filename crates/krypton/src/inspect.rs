@@ -887,14 +887,26 @@ pub fn render_inspect(
                         if i > 0 {
                             output.push_str(", ");
                         }
-                        // Pre-M30-T4: only single-parameter constraints are supported;
-                        // fall back to raw trait name if the shape is unsupported.
-                        if let Some(tv) = c.as_single_param_var() {
-                            output.push_str(tv);
-                            output.push_str(": ");
-                            output.push_str(&c.trait_name);
-                        } else {
-                            output.push_str(&c.trait_name);
+                        match c.as_param_vars().as_deref() {
+                            Some([tv]) => {
+                                output.push_str(tv);
+                                output.push_str(": ");
+                                output.push_str(&c.trait_name);
+                            }
+                            Some(tvs) => {
+                                output.push_str(&c.trait_name);
+                                output.push('[');
+                                for (j, tv) in tvs.iter().enumerate() {
+                                    if j > 0 {
+                                        output.push_str(", ");
+                                    }
+                                    output.push_str(tv);
+                                }
+                                output.push(']');
+                            }
+                            None => {
+                                output.push_str(&c.trait_name);
+                            }
                         }
                     }
                 }

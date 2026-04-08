@@ -299,7 +299,11 @@ impl LintContext {
 
             SimpleExprKind::TupleProject { value, .. } => self.check_atom_not_join(value),
 
-            SimpleExprKind::GetDict { trait_name, ty, .. } => {
+            SimpleExprKind::GetDict {
+                trait_name,
+                target_types,
+                ..
+            } => {
                 if !self.known_traits.contains(&trait_name.local_name) {
                     return Err(
                         self.err(format!("GetDict references unknown trait '{trait_name}'"))
@@ -307,13 +311,13 @@ impl LintContext {
                 }
                 // Instance existence is not checked here — instances may be
                 // cross-module and resolved by the codegen from all_ir_modules.
-                let _ = ty;
+                let _ = target_types;
                 Ok(())
             }
 
             SimpleExprKind::MakeDict {
                 trait_name,
-                ty,
+                target_types,
                 sub_dicts,
                 ..
             } => {
@@ -322,7 +326,7 @@ impl LintContext {
                         self.err(format!("MakeDict references unknown trait '{trait_name}'"))
                     );
                 }
-                if let Some(type_name) = concrete_type_name(ty) {
+                if let Some(type_name) = joined_concrete_type_name(target_types) {
                     if let Some((_, _, expected)) = self
                         .instance_sub_dict_counts
                         .iter()
@@ -361,6 +365,17 @@ impl LintContext {
 }
 
 /// Extract the concrete type name from a Type, if it's not a type variable.
+/// Join concrete type names from all positions with "$$", matching the
+/// canonical `target_type_name` convention used by `InstanceDef`.
+fn joined_concrete_type_name(tys: &[Type]) -> Option<String> {
+    let names: Vec<String> = tys.iter().filter_map(concrete_type_name).collect();
+    if names.len() == tys.len() && !names.is_empty() {
+        Some(names.join("$$"))
+    } else {
+        None
+    }
+}
+
 fn concrete_type_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Int => Some("Int".to_string()),

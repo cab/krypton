@@ -21,9 +21,9 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn main() -> Unit =
-  let v1: Dict[traits__multi_param_deferred_then_resolved.Convert, Bool] = get_dict traits__multi_param_deferred_then_resolved.Convert[Bool]
+  let v1: Dict[traits__multi_param_deferred_then_resolved.Convert, Bool] = get_dict traits__multi_param_deferred_then_resolved.Convert[Bool, Int]
   let v2: Int = trait_call traits__multi_param_deferred_then_resolved.Convert.convert(v1, true)
-  let v3: Dict[traits__multi_param_deferred_then_resolved.Convert, Int] = get_dict traits__multi_param_deferred_then_resolved.Convert[Int]
+  let v3: Dict[traits__multi_param_deferred_then_resolved.Convert, Int] = get_dict traits__multi_param_deferred_then_resolved.Convert[Int, String]
   let v0: String = trait_call traits__multi_param_deferred_then_resolved.Convert.convert(v3, v2)
   ()
 

@@ -164,12 +164,25 @@ pub struct TypeConstraint {
 impl TypeConstraint {
     /// Returns the single type variable name bound by this constraint, if it
     /// is single-parameter and the type argument is a bare identifier.
-    /// Pre-M30-T4 callers use this to detect unsupported multi-param shapes.
     pub fn as_single_param_var(&self) -> Option<&str> {
         match self.type_args.as_slice() {
             [TypeExpr::Var { name, .. }] => Some(name.as_str()),
             _ => None,
         }
+    }
+
+    /// Returns all type variable names bound by this constraint, if every
+    /// type argument is a bare identifier. Length is always `type_args.len()`
+    /// on success. Returns `None` if any argument is not a bare type variable
+    /// (e.g. a nested type constructor like `Array[a]`).
+    pub fn as_param_vars(&self) -> Option<Vec<&str>> {
+        self.type_args
+            .iter()
+            .map(|ta| match ta {
+                TypeExpr::Var { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect()
     }
 }
 

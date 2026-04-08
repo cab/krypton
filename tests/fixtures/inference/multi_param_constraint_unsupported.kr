@@ -1,6 +1,0 @@
-# expect: error E0317
-trait Convert[a, b] {
-  fun convert(x: a) -> a
-}
-
-fun bad[a, b](x: a) -> a where a: Convert[b] = convert(x)

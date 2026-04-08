@@ -403,6 +403,23 @@ pub fn bind_type_vars(
     }
 }
 
+/// Zip two lists of types (patterns and concretes) and run `bind_type_vars`
+/// across them in lockstep. Returns `false` if the lengths differ or any
+/// position fails to match. Used by multi-parameter trait instance lookup.
+pub fn bind_type_vars_many(
+    patterns: &[Type],
+    concretes: &[Type],
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> bool {
+    if patterns.len() != concretes.len() {
+        return false;
+    }
+    patterns
+        .iter()
+        .zip(concretes.iter())
+        .all(|(p, a)| bind_type_vars(p, a, bindings))
+}
+
 /// Function names that are compiler intrinsics — they produce inline bytecode
 /// rather than static method calls. Both the IR lowerer and JVM codegen reference
 /// this list to ensure consistency.
@@ -495,7 +512,7 @@ pub struct Module {
     pub module_path: ModulePath,
     /// Function name → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
-    pub fn_dict_requirements: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    pub fn_dict_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
     /// Function name → disposables that must be cleaned up at function exit.
     /// Target-neutral metadata: each backend decides enforcement mechanism
     /// (JVM: exception table finally handlers, JS: try/finally, etc.).
@@ -638,10 +655,12 @@ pub struct TraitMethodDef {
 #[derive(Debug, Clone)]
 pub struct InstanceDef {
     pub trait_name: TraitName,
-    pub target_type: Type,
+    /// Type arguments of the instance. Length 1 for single-parameter traits,
+    /// N for multi-parameter traits like `impl Convert[Int, String]`.
+    pub target_types: Vec<Type>,
     pub target_type_name: String,
     pub method_fn_ids: Vec<(String, FnId)>,
-    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
+    pub sub_dict_requirements: Vec<(TraitName, Vec<TypeVarId>)>,
     pub is_intrinsic: bool,
     pub is_imported: bool,
 }
@@ -670,8 +689,10 @@ pub struct ImportedInstanceRef {
     pub source_module_path: String,
     pub trait_name: TraitName,
     pub target_type_name: String,
-    pub target_type: Type,
-    pub sub_dict_requirements: Vec<(TraitName, TypeVarId)>,
+    /// Type arguments of the instance. Length 1 for single-parameter traits,
+    /// N for multi-parameter traits like `impl Convert[Int, String]`.
+    pub target_types: Vec<Type>,
+    pub sub_dict_requirements: Vec<(TraitName, Vec<TypeVarId>)>,
     pub is_intrinsic: bool,
 }
 

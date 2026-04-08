@@ -163,14 +163,14 @@ pub enum SimpleExprKind {
     GetDict {
         instance_ref: CanonicalRef,
         trait_name: TraitName,
-        ty: Type,
+        target_types: Vec<Type>,
     },
 
     /// Construct a parameterized trait dictionary from sub-dicts.
     MakeDict {
         instance_ref: CanonicalRef,
         trait_name: TraitName,
-        ty: Type,
+        target_types: Vec<Type>,
         sub_dicts: Vec<Atom>,
     },
 

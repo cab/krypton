@@ -1,0 +1,11 @@
+# expect: output n
+
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = "n"
+}
+
+fun main() = println(convert(42))

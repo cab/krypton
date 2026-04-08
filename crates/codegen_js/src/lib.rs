@@ -532,7 +532,7 @@ mod tests {
         let mut module = make_module("test");
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Int,
+            target_types: vec![Type::Int],
             target_type_name: "Int".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(99))],
             sub_dict_requirements: vec![],
@@ -560,7 +560,7 @@ mod tests {
                     value: simple(SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Int"),
                         trait_name: make_trait_name("Eq"),
-                        ty: Type::Int,
+                        target_types: vec![Type::Int],
                     }),
                     body: Box::new(expr(
                         Type::Bool,
@@ -610,7 +610,7 @@ mod tests {
         module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Named("Point".to_string(), vec![]),
+            target_types: vec![Type::Named("Point".to_string(), vec![])],
             target_type_name: "Point".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(1))],
             sub_dict_requirements: vec![],
@@ -641,7 +641,7 @@ mod tests {
                     value: simple(SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Point"),
                         trait_name: make_trait_name("Eq"),
-                        ty: Type::Named("Point".to_string(), vec![]),
+                        target_types: vec![Type::Named("Point".to_string(), vec![])],
                     }),
                     body: Box::new(expr(
                         Type::Bool,
@@ -777,7 +777,7 @@ mod tests {
         module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Named("Point".to_string(), vec![]),
+            target_types: vec![Type::Named("Point".to_string(), vec![])],
             target_type_name: "Point".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(1))],
             sub_dict_requirements: vec![],
@@ -798,7 +798,7 @@ mod tests {
         let mut module = make_module("test");
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Int,
+            target_types: vec![Type::Int],
             target_type_name: "Int".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(99))],
             sub_dict_requirements: vec![],
@@ -836,10 +836,10 @@ mod tests {
             .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
-            target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
+            target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
             target_type_name: "Option".to_string(),
             method_fn_ids: vec![("show".to_string(), FnId(2))],
-            sub_dict_requirements: vec![(make_trait_name("Show"), tv_a)],
+            sub_dict_requirements: vec![(make_trait_name("Show"), vec![tv_a])],
             is_intrinsic: false,
             is_imported: false,
         });
@@ -861,7 +861,7 @@ mod tests {
         let mut module = make_module("test");
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Int,
+            target_types: vec![Type::Int],
             target_type_name: "Int".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(99))],
             sub_dict_requirements: vec![],
@@ -886,7 +886,7 @@ mod tests {
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Int"),
                         trait_name: make_trait_name("Eq"),
-                        ty: Type::Int,
+                        target_types: vec![Type::Int],
                     }),
                     body: Box::new(expr(
                         Type::Unit,
@@ -924,7 +924,7 @@ mod tests {
         module.fn_identities.insert(FnId(2), FnIdentity::Local { name: "Eq$$Pair$$eq".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
-            target_type: Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]),
+            target_types: vec![Type::Tuple(vec![Type::Var(tv), Type::Var(tv)])],
             target_type_name: "$Tuple2".to_string(),
             method_fn_ids: vec![("eq".to_string(), FnId(2))],
             sub_dict_requirements: vec![],
@@ -949,7 +949,7 @@ mod tests {
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "$Tuple2"),
                         trait_name: make_trait_name("Eq"),
-                        ty: Type::Tuple(vec![Type::Int, Type::String]),
+                        target_types: vec![Type::Tuple(vec![Type::Int, Type::String])],
                     }),
                     body: Box::new(expr(
                         Type::Unit,
@@ -998,10 +998,10 @@ mod tests {
             .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
-            target_type: Type::Named("Option".to_string(), vec![Type::Var(tv_a)]),
+            target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
             target_type_name: "Option".to_string(),
             method_fn_ids: vec![("show".to_string(), FnId(2))],
-            sub_dict_requirements: vec![(make_trait_name("Show"), tv_a)],
+            sub_dict_requirements: vec![(make_trait_name("Show"), vec![tv_a])],
             is_intrinsic: false,
             is_imported: false,
         });
@@ -1022,7 +1022,7 @@ mod tests {
                     value: simple(krypton_ir::SimpleExprKind::MakeDict {
                         instance_ref: dummy_instance_ref("Show", "Option"),
                         trait_name: make_trait_name("Show"),
-                        ty: Type::Named("Option".to_string(), vec![Type::Int]),
+                        target_types: vec![Type::Named("Option".to_string(), vec![Type::Int])],
                         sub_dicts: vec![krypton_ir::Atom::Var(d_var)],
                     }),
                     body: Box::new(expr(

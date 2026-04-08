@@ -335,12 +335,21 @@ fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
         .map(|(i, &v)| (v, i))
         .collect();
     let mut where_parts: Vec<String> = Vec::new();
-    for (trait_name, var) in &scheme.constraints {
-        let var_name = id_mapping
-            .get(var)
-            .map(|&i| names[i].clone())
-            .unwrap_or_else(|| var.display_name());
-        where_parts.push(format!("{}: {}", var_name, trait_name.local_name));
+    for (trait_name, vars) in &scheme.constraints {
+        let var_names: Vec<String> = vars
+            .iter()
+            .map(|var| {
+                id_mapping
+                    .get(var)
+                    .map(|&i| names[i].clone())
+                    .unwrap_or_else(|| var.display_name())
+            })
+            .collect();
+        if var_names.len() == 1 {
+            where_parts.push(format!("{}: {}", var_names[0], trait_name.local_name));
+        } else {
+            where_parts.push(format!("{}[{}]", trait_name.local_name, var_names.join(", ")));
+        }
     }
     format!("{} where {}", type_part, where_parts.join(", "))
 }

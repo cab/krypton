@@ -292,7 +292,7 @@ fn impl_where_clause_constraints_are_stored_on_instance_defs() {
         .expect("expected MyEq[Option[a]] instance");
 
     assert_eq!(instance.constraints.len(), 1);
-    assert_eq!(instance.constraints[0].type_var, "a");
+    assert_eq!(instance.constraints[0].type_vars, vec!["a".to_string()]);
     assert_eq!(instance.constraints[0].trait_name.local_name, "MyEq");
 }
 
@@ -2508,7 +2508,7 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
 
     assert_eq!(instance.constraints.len(), 1);
     assert_eq!(instance.constraints[0].trait_name.local_name, "Show");
-    assert_eq!(instance.constraints[0].type_var, "a");
+    assert_eq!(instance.constraints[0].type_vars, vec!["a".to_string()]);
     assert!(instance.type_var_ids.contains_key("a"));
 }
 

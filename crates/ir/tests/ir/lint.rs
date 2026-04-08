@@ -421,7 +421,7 @@ fn getdict_unknown_trait_is_error() {
                         },
                     },
                     trait_name: TraitName::new("test".to_string(), "NonexistentTrait".to_string()),
-                    ty: Type::Int,
+                    target_types: vec![Type::Int],
                 }),
                 body: Box::new(unit_atom()),
             },
@@ -466,7 +466,7 @@ fn getdict_valid_trait_and_instance_passes() {
                         },
                     },
                     trait_name: TraitName::new("core/show".into(), "Show".into()),
-                    ty: Type::Int,
+                    target_types: vec![Type::Int],
                 }),
                 body: Box::new(unit_atom()),
             },
@@ -482,7 +482,7 @@ fn getdict_valid_trait_and_instance_passes() {
     });
     module.instances.push(InstanceDef {
         trait_name: TraitName::new("core/show".into(), "Show".into()),
-        target_type: Type::Int,
+        target_types: vec![Type::Int],
         target_type_name: "Int".into(),
         method_fn_ids: vec![],
         sub_dict_requirements: vec![],

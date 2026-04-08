@@ -571,9 +571,9 @@ impl<'link> Compiler<'link> {
                 .or_insert_with(|| {
                     requirements
                         .iter()
-                        .map(|(trait_name, type_var)| DictRequirement {
+                        .map(|(trait_name, type_vars)| DictRequirement {
                             trait_name: trait_name.clone(),
-                            type_var: *type_var,
+                            type_vars: type_vars.clone(),
                         })
                         .collect()
                 });
@@ -743,7 +743,7 @@ impl<'link> Compiler<'link> {
                         .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 let builtin_type = name_to_builtin_type(entry.type_name);
                 self.traits.instance_singletons.insert(
-                    (trait_key, builtin_type),
+                    (trait_key, vec![builtin_type]),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             }
@@ -753,9 +753,9 @@ impl<'link> Compiler<'link> {
 
     pub(super) fn register_imported_instances(
         &mut self,
-        imported_instances: &HashMap<(TraitName, krypton_ir::Type), ImportedInstanceInfo>,
+        imported_instances: &HashMap<(TraitName, Vec<krypton_ir::Type>), ImportedInstanceInfo>,
     ) -> Result<(), CodegenError> {
-        for ((trait_name, _target_type), imported_instance) in imported_instances {
+        for ((trait_name, _target_types), imported_instance) in imported_instances {
             let inst_class_idx = self.cp.add_class(&imported_instance.class_name)?;
             let inst_desc = format!("L{};", imported_instance.class_name);
             self.types
@@ -766,7 +766,7 @@ impl<'link> Compiler<'link> {
                     self.cp
                         .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
                 self.traits.instance_singletons.insert(
-                    (trait_name.clone(), imported_instance.target_type.clone()),
+                    (trait_name.clone(), imported_instance.target_types.clone()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
@@ -776,7 +776,7 @@ impl<'link> Compiler<'link> {
                     .or_default()
                     .push(ParameterizedInstanceInfo {
                         class_name: imported_instance.class_name.clone(),
-                        target_type: imported_instance.target_type.clone(),
+                        target_types: imported_instance.target_types.clone(),
                         requirements: imported_instance.requirements.clone(),
                     });
             }
@@ -808,9 +808,9 @@ impl<'link> Compiler<'link> {
             let dict_requirements: Vec<DictRequirement> = inst
                 .sub_dict_requirements
                 .iter()
-                .map(|(trait_name, type_var)| DictRequirement {
+                .map(|(trait_name, type_vars)| DictRequirement {
                     trait_name: trait_name.clone(),
-                    type_var: *type_var,
+                    type_vars: type_vars.clone(),
                 })
                 .collect();
 
@@ -882,7 +882,7 @@ impl<'link> Compiler<'link> {
                 ));
             }
 
-            let is_parameterized = type_has_vars(&inst.target_type);
+            let is_parameterized = inst.target_types.iter().any(type_has_vars);
 
             if !is_parameterized {
                 let instance_bytes = generate_instance_class(
@@ -906,7 +906,7 @@ impl<'link> Compiler<'link> {
                         .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;
 
                 self.traits.instance_singletons.insert(
-                    (inst.trait_name.clone(), inst.target_type.clone()),
+                    (inst.trait_name.clone(), inst.target_types.clone()),
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
@@ -928,7 +928,7 @@ impl<'link> Compiler<'link> {
 
                 let new_info = ParameterizedInstanceInfo {
                     class_name: instance_class_name.clone(),
-                    target_type: inst.target_type.clone(),
+                    target_types: inst.target_types.clone(),
                     requirements: dict_requirements,
                 };
                 let entries = self
@@ -936,11 +936,18 @@ impl<'link> Compiler<'link> {
                     .parameterized_instances
                     .entry(inst.trait_name.clone())
                     .or_default();
-                let canonical = krypton_ir::type_to_canonical_name(&inst.target_type);
-                if let Some(pos) = entries
+                let canonical: Vec<String> = inst
+                    .target_types
                     .iter()
-                    .position(|e| krypton_ir::type_to_canonical_name(&e.target_type) == canonical)
-                {
+                    .map(krypton_ir::type_to_canonical_name)
+                    .collect();
+                if let Some(pos) = entries.iter().position(|e| {
+                    e.target_types
+                        .iter()
+                        .map(krypton_ir::type_to_canonical_name)
+                        .collect::<Vec<_>>()
+                        == canonical
+                }) {
                     entries[pos] = new_info;
                 } else {
                     entries.push(new_info);

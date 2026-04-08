@@ -341,7 +341,7 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeScheme {
     pub vars: Vec<TypeVarId>,
-    pub constraints: Vec<(TraitName, TypeVarId)>,
+    pub constraints: Vec<(TraitName, Vec<TypeVarId>)>,
     pub ty: Type,
     /// User-written type parameter names (e.g., from `fun foo[elem](...)`).
     /// Display uses these instead of auto-generated letters when available.
@@ -403,13 +403,18 @@ impl TypeScheme {
         let new_constraints = self
             .constraints
             .iter()
-            .map(|(trait_name, old_var)| {
-                let new_var = mapping
+            .map(|(trait_name, old_vars)| {
+                let new_vars: Vec<TypeVarId> = old_vars
                     .iter()
-                    .find(|(o, _)| o == old_var)
-                    .map(|(_, n)| *n)
-                    .unwrap_or(*old_var);
-                (trait_name.clone(), new_var)
+                    .map(|old_var| {
+                        mapping
+                            .iter()
+                            .find(|(o, _)| o == old_var)
+                            .map(|(_, n)| *n)
+                            .unwrap_or(*old_var)
+                    })
+                    .collect();
+                (trait_name.clone(), new_vars)
             })
             .collect();
         (
@@ -654,12 +659,25 @@ impl fmt::Display for TypeScheme {
                 let id_mapping: HashMap<TypeVarId, usize> =
                     self.vars.iter().enumerate().map(|(i, &v)| (v, i)).collect();
                 let mut where_parts: Vec<String> = Vec::new();
-                for (trait_name, var) in &self.constraints {
-                    let var_name = id_mapping
-                        .get(var)
-                        .map(|&i| names[i].clone())
-                        .unwrap_or_else(|| format!("?{}", var.0));
-                    where_parts.push(format!("{}: {}", var_name, trait_name.local_name));
+                for (trait_name, vars) in &self.constraints {
+                    let var_names: Vec<String> = vars
+                        .iter()
+                        .map(|var| {
+                            id_mapping
+                                .get(var)
+                                .map(|&i| names[i].clone())
+                                .unwrap_or_else(|| format!("?{}", var.0))
+                        })
+                        .collect();
+                    if var_names.len() == 1 {
+                        where_parts.push(format!("{}: {}", var_names[0], trait_name.local_name));
+                    } else {
+                        where_parts.push(format!(
+                            "{}[{}]",
+                            trait_name.local_name,
+                            var_names.join(", ")
+                        ));
+                    }
                 }
                 write!(f, " where {}", where_parts.join(", "))?;
             }

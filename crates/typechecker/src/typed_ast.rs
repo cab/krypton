@@ -366,9 +366,13 @@ pub struct TraitDefInfo {
     pub methods: Vec<(String, usize)>, // (method_name, param_count)
     pub is_imported: bool,
     pub type_var_id: TypeVarId,
+    /// All trait type parameter ids in declaration order. For single-parameter
+    /// traits this has length 1 (`type_var_ids[0] == type_var_id`); for
+    /// multi-parameter traits it carries all params.
+    pub type_var_ids: Vec<TypeVarId>,
     pub method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)>, // name -> (param_types, return_type)
-    /// Method-level constraints: method_name -> Vec<(TraitName, TypeVarId)>
-    pub method_constraints: HashMap<String, Vec<(TraitName, TypeVarId)>>,
+    /// Method-level constraints: method_name -> Vec<(TraitName, Vec<TypeVarId>)>
+    pub method_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 }
 
 #[derive(Clone)]
@@ -397,7 +401,7 @@ pub struct ExportedTraitMethod {
     /// Method-level constraints on method's own type parameters.
     /// TypeVarIds here are the method's own vars (not the trait's type param), so they don't
     /// need remapping during import (only the trait's type var is remapped).
-    pub constraints: Vec<(TraitName, TypeVarId)>,
+    pub constraints: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 #[derive(Clone)]
@@ -406,15 +410,17 @@ pub struct InstanceMethod {
     pub params: Vec<TypedParam>, // parameter names + modes
     pub body: TypedExpr,     // typed method body
     pub scheme: TypeScheme,  // type scheme for the method
-    /// Method-level constraints as resolved (TraitName, TypeVarId) pairs for IR lowering.
-    pub constraint_pairs: Vec<(TraitName, TypeVarId)>,
+    /// Method-level constraints as resolved (TraitName, Vec<TypeVarId>) pairs for IR lowering.
+    pub constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 /// A type constraint with its trait name already resolved to a full TraitName.
+/// `type_vars` has length 1 for single-parameter trait constraints and N for
+/// multi-parameter trait constraints (e.g. `Convert[a, b]` → `type_vars = ["a", "b"]`).
 #[derive(Clone, Debug)]
 pub struct ResolvedConstraint {
     pub trait_name: TraitName,
-    pub type_var: String,
+    pub type_vars: Vec<String>,
     pub span: Span,
 }
 
@@ -444,7 +450,7 @@ pub struct ExternFnInfo {
     pub constructor: bool,
     pub param_types: Vec<Type>,
     pub return_type: Type,
-    pub constraints: Vec<(TraitName, TypeVarId)>,
+    pub constraints: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 #[derive(Debug, Clone)]

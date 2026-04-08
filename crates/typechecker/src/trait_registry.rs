@@ -48,7 +48,7 @@ pub struct TraitMethod {
     pub return_type: Type,
     /// Constraints on the method's own type parameters (not the trait's type param).
     /// e.g., `fun traverse[b](x: f[a]) -> f[b] where b: Default` stores `[(Default, TypeVarId_for_b)]`
-    pub constraints: Vec<(TraitName, TypeVarId)>,
+    pub constraints: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 pub struct InstanceInfo {
@@ -225,13 +225,18 @@ impl TraitRegistry {
             // Where-clause constraints only enforced when all positions are concrete.
             if all_concrete && !inst.constraints.is_empty() {
                 let constraints_ok = inst.constraints.iter().all(|c| {
-                    let Some(type_var_id) = inst.type_var_ids.get(&c.type_var) else {
+                    let bound_tys: Option<Vec<Type>> = c
+                        .type_vars
+                        .iter()
+                        .map(|name| {
+                            let id = inst.type_var_ids.get(name)?;
+                            bindings.get(id).cloned()
+                        })
+                        .collect();
+                    let Some(bound_tys) = bound_tys else {
                         return false;
                     };
-                    let Some(bound_ty) = bindings.get(type_var_id) else {
-                        return false;
-                    };
-                    self.find_instance(&c.trait_name, bound_ty).is_some()
+                    self.find_instance_multi(&c.trait_name, &bound_tys).is_some()
                 });
                 if !constraints_ok {
                     continue;
@@ -325,17 +330,28 @@ impl TraitRegistry {
                         let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
 
                         inst.constraints.iter().all(|constraint| {
-                            let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var)
-                            else {
+                            let bound_tys: Option<Vec<Type>> = constraint
+                                .type_vars
+                                .iter()
+                                .map(|name| {
+                                    let id = inst.type_var_ids.get(name)?;
+                                    Some(bindings.get(id).cloned().unwrap_or_else(|| ctor_binding.clone()))
+                                })
+                                .collect();
+                            let Some(bound_tys) = bound_tys else {
                                 return false;
                             };
-                            let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                            self.find_instance_inner(
-                                &constraint.trait_name,
-                                bound_ty,
-                                resolution_stack,
-                            )
-                            .is_some()
+                            if bound_tys.len() == 1 {
+                                self.find_instance_inner(
+                                    &constraint.trait_name,
+                                    &bound_tys[0],
+                                    resolution_stack,
+                                )
+                                .is_some()
+                            } else {
+                                self.find_instance_multi(&constraint.trait_name, &bound_tys)
+                                    .is_some()
+                            }
                         })
                     })
                 });
@@ -354,14 +370,28 @@ impl TraitRegistry {
                 }
 
                 inst.constraints.iter().all(|constraint| {
-                    let Some(type_var_id) = inst.type_var_ids.get(&constraint.type_var) else {
+                    let bound_tys: Option<Vec<Type>> = constraint
+                        .type_vars
+                        .iter()
+                        .map(|name| {
+                            let id = inst.type_var_ids.get(name)?;
+                            bindings.get(id).cloned()
+                        })
+                        .collect();
+                    let Some(bound_tys) = bound_tys else {
                         return false;
                     };
-                    let Some(bound_ty) = bindings.get(type_var_id) else {
-                        return false;
-                    };
-                    self.find_instance_inner(&constraint.trait_name, bound_ty, resolution_stack)
+                    if bound_tys.len() == 1 {
+                        self.find_instance_inner(
+                            &constraint.trait_name,
+                            &bound_tys[0],
+                            resolution_stack,
+                        )
                         .is_some()
+                    } else {
+                        self.find_instance_multi(&constraint.trait_name, &bound_tys)
+                            .is_some()
+                    }
                 })
             })
         });
@@ -485,15 +515,35 @@ impl TraitRegistry {
                         .constraints
                         .iter()
                         .filter_map(|constraint| {
-                            let type_var_id = inst.type_var_ids.get(&constraint.type_var)?;
-                            let bound_ty = bindings.get(type_var_id).unwrap_or(&ctor_binding);
-                            if self
-                                .find_instance(&constraint.trait_name, bound_ty)
-                                .is_none()
-                            {
+                            let bound_tys: Option<Vec<Type>> = constraint
+                                .type_vars
+                                .iter()
+                                .map(|name| {
+                                    let id = inst.type_var_ids.get(name)?;
+                                    Some(
+                                        bindings
+                                            .get(id)
+                                            .cloned()
+                                            .unwrap_or_else(|| ctor_binding.clone()),
+                                    )
+                                })
+                                .collect();
+                            let bound_tys = bound_tys?;
+                            let satisfied = if bound_tys.len() == 1 {
+                                self.find_instance(&constraint.trait_name, &bound_tys[0])
+                                    .is_some()
+                            } else {
+                                self.find_instance_multi(&constraint.trait_name, &bound_tys)
+                                    .is_some()
+                            };
+                            if !satisfied {
                                 Some(UnsatisfiedBound {
                                     trait_name: constraint.trait_name.local_name.clone(),
-                                    ty: format!("{}", bound_ty.strip_own()),
+                                    ty: bound_tys
+                                        .iter()
+                                        .map(|t| format!("{}", t.strip_own()))
+                                        .collect::<Vec<_>>()
+                                        .join(", "),
                                 })
                             } else {
                                 None
@@ -528,15 +578,30 @@ impl TraitRegistry {
                 .constraints
                 .iter()
                 .filter_map(|constraint| {
-                    let type_var_id = inst.type_var_ids.get(&constraint.type_var)?;
-                    let bound_ty = bindings.get(type_var_id)?;
-                    if self
-                        .find_instance(&constraint.trait_name, bound_ty)
-                        .is_none()
-                    {
+                    let bound_tys: Option<Vec<Type>> = constraint
+                        .type_vars
+                        .iter()
+                        .map(|name| {
+                            let id = inst.type_var_ids.get(name)?;
+                            bindings.get(id).cloned()
+                        })
+                        .collect();
+                    let bound_tys = bound_tys?;
+                    let satisfied = if bound_tys.len() == 1 {
+                        self.find_instance(&constraint.trait_name, &bound_tys[0])
+                            .is_some()
+                    } else {
+                        self.find_instance_multi(&constraint.trait_name, &bound_tys)
+                            .is_some()
+                    };
+                    if !satisfied {
                         Some(UnsatisfiedBound {
                             trait_name: constraint.trait_name.local_name.clone(),
-                            ty: format!("{}", bound_ty.strip_own()),
+                            ty: bound_tys
+                                .iter()
+                                .map(|t| format!("{}", t.strip_own()))
+                                .collect::<Vec<_>>()
+                                .join(", "),
                         })
                     } else {
                         None
@@ -917,7 +982,7 @@ mod tests {
     fn rc(trait_name: &str, type_var: &str) -> ResolvedConstraint {
         ResolvedConstraint {
             trait_name: tn(trait_name),
-            type_var: type_var.to_string(),
+            type_vars: vec![type_var.to_string()],
             span: (0, 0),
         }
     }
@@ -1434,7 +1499,7 @@ mod tests {
         ));
     }
 
-    // ---- M30-T4: multi-parameter instance registration, overlap, lookup ----
+    // ---- Multi-parameter instance registration, overlap, lookup ----
 
     #[test]
     fn register_multi_param_instance_stores_target_types() {

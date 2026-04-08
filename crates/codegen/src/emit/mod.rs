@@ -44,7 +44,7 @@ const JAVA_21: Version = Version::Java21 { minor: 0 };
 #[derive(Clone)]
 struct ImportedInstanceInfo {
     class_name: String,
-    target_type: Type,
+    target_types: Vec<Type>,
     requirements: Vec<DictRequirement>,
 }
 
@@ -224,8 +224,8 @@ fn compile_module_inner(
 fn build_instance_class_map(
     ir_module: &krypton_ir::Module,
     link_view: &ModuleLinkView<'_>,
-) -> HashMap<(TraitName, Type), ImportedInstanceInfo> {
-    let mut map: HashMap<(TraitName, Type), ImportedInstanceInfo> = HashMap::new();
+) -> HashMap<(TraitName, Vec<Type>), ImportedInstanceInfo> {
+    let mut map: HashMap<(TraitName, Vec<Type>), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
 
     // Local non-imported instances
@@ -246,16 +246,16 @@ fn build_instance_class_map(
         let requirements: Vec<DictRequirement> = inst
             .sub_dict_requirements
             .iter()
-            .map(|(trait_name, type_var)| DictRequirement {
+            .map(|(trait_name, type_vars)| DictRequirement {
                 trait_name: trait_name.clone(),
-                type_var: *type_var,
+                type_vars: type_vars.clone(),
             })
             .collect();
         map.insert(
-            (inst.trait_name.clone(), inst.target_type.clone()),
+            (inst.trait_name.clone(), inst.target_types.clone()),
             ImportedInstanceInfo {
                 class_name,
-                target_type: inst.target_type.clone(),
+                target_types: inst.target_types.clone(),
                 requirements,
             },
         );
@@ -277,24 +277,32 @@ fn build_instance_class_map(
             "{}/{}$${}",
             path.as_str(), inst.trait_name.local_name, inst.target_type_name
         );
-        // M30-T4: Until multi-param resolution lands in M30-T5, codegen only
-        // consumes the first type argument.
-        let target_type: krypton_ir::Type = inst.target_types[0].clone().into();
+        let target_types: Vec<krypton_ir::Type> = inst
+            .target_types
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
         let requirements: Vec<DictRequirement> = inst
             .constraints
             .iter()
             .filter_map(|c| {
-                inst.type_var_ids.get(&c.type_var).map(|&id| DictRequirement {
+                let ids: Option<Vec<TypeVarId>> = c
+                    .type_vars
+                    .iter()
+                    .map(|name| inst.type_var_ids.get(name).copied())
+                    .collect();
+                ids.map(|ids| DictRequirement {
                     trait_name: c.trait_name.clone(),
-                    type_var: id,
+                    type_vars: ids,
                 })
             })
             .collect();
         map.insert(
-            (inst.trait_name.clone(), target_type.clone()),
+            (inst.trait_name.clone(), target_types.clone()),
             ImportedInstanceInfo {
                 class_name,
-                target_type,
+                target_types,
                 requirements,
             },
         );

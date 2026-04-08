@@ -201,7 +201,7 @@ pub struct TraitMethodSummary {
     pub name: String,
     pub param_types: Vec<(crate::types::ParamMode, Type)>,
     pub return_type: Type,
-    pub constraints: Vec<(TraitName, TypeVarId)>,
+    pub constraints: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 /// Summary of a local trait instance.
@@ -223,7 +223,7 @@ pub struct InstanceSummary {
 pub struct InstanceMethodSummary {
     pub name: String,
     pub scheme: TypeScheme,
-    pub constraint_pairs: Vec<(TraitName, TypeVarId)>,
+    pub constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)>,
 }
 
 /// Extern type ownership summary.
