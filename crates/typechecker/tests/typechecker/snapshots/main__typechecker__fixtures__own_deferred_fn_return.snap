@@ -29,5 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-make_owned: () -> ~Int
-test: () -> ~Int
+make_owned: () -> ~Option[Int]
+test: () -> ~Option[Int]

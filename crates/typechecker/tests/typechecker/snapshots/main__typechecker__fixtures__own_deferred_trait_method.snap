@@ -29,5 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-test: () -> ~Int
-Default$$Int$$default: () -> ~Int
+test: () -> ~Option[Int]
+Default$$Option$Int$$default: () -> ~Option[Int]

@@ -2,4 +2,4 @@
 fun fold[A, B](xs: List[A], acc: B, f: (B, A) -> B) -> B =
     match xs { Nil => acc, Cons(h, rest) => fold(rest, f(acc, h), f) }
 
-fun test() -> ~Int = fold(Cons(1, Nil), 0, (acc, x) -> acc + x)
+fun test() -> ~Option[Int] = fold(Cons(1, Nil), Some(0), (acc, x) -> Some(x))

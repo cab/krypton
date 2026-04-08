@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v6, v9)
   v10
 
-fn Test$$$Fun0$$Var0$$test(v11: () -> l8) -> ~String =
+fn Test$$$Fun0$$Var0$$test(v11: () -> l8) -> String =
   "got-unit"
 
-fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> m8) -> ~String =
+fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> m8) -> String =
   "got-int"

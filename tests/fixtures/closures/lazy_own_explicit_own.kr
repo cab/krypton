@@ -1,9 +1,14 @@
 # expect: ok
-# Explicit ~Int annotation but body only uses capture in shared position → still fn
+# Explicit ~T annotation but body only uses capture in shared position → still fn
 fun use_twice(f: (Int) -> Int) -> Int = f(1) + f(2)
 
+fun shared_read(o: Option[Int]) -> Int = match o {
+    Some(n) => n,
+    None => 0,
+}
+
 fun test() -> Int {
-    let r: ~Int = 2
-    let f = (x) -> x + r
+    let r: ~Option[Int] = Some(2)
+    let f = (x) -> x + shared_read(r)
     use_twice(f)
 }

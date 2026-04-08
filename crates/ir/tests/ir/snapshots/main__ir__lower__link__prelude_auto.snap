@@ -16,11 +16,11 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn test_option() -> Option[Int] =
+fn test_option() -> ~Option[Int] =
   let v0: ~Option[Int] = construct Option::Some#0(42)
   v0
 
-fn test_list() -> List[Int] =
+fn test_list() -> ~List[Int] =
   let v1: ~List[Int] = construct List::Nil#1()
   let v2: ~List[Int] = construct List::Cons#0(2, v1)
   let v3: ~List[Int] = construct List::Cons#0(1, v2)
@@ -30,12 +30,12 @@ fn test_result() -> Result[String, Int] =
   let v4: ~Result[String, Int] = construct Result::Ok#0(42)
   v4
 
-fn test_ordering() -> Ordering =
+fn test_ordering() -> ~Ordering =
   let v5: ~Ordering = construct Ordering::LT#0()
   v5
 
-fn main() -> Option[Int] =
-  let v6: Option[Int] = call test_option()
+fn main() -> ~Option[Int] =
+  let v6: ~Option[Int] = call test_option()
   v6
 module core/eq
 
@@ -83,7 +83,7 @@ instance core/show.Show[Float] {  } [intrinsic]
 instance core/show.Show[Bool] {  } [intrinsic]
 instance core/show.Show[String] {  } [intrinsic]
 instance core/show.Show[Unit] { show=Show$$Unit$$show }
-fn Show$$Unit$$show(v0: Unit) -> ~String =
+fn Show$$Unit$$show(v0: Unit) -> String =
   "()"
 module core/hash
 
@@ -373,7 +373,7 @@ fn join_elems(v0: Dict[core/show.Show, o6], v1: Vec[o6], v2: Int, v3: String) ->
   let_join [recur] v4(v5: Vec[o6], v6: Int, v7: String) =
     let_join v25(v11: Bool) =
       if v11 {
-        let_join v24(v12: ~String) =
+        let_join v24(v12: String) =
           let v17: Int = add_int(v6, 1)
           let v18: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
           let v19: String = trait_call core/semigroup.Semigroup.combine(v18, v7, v12)

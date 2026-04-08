@@ -1,8 +1,8 @@
 # expect: ok
-# let x: ~Int = 2 preserves ownership
-fun consume(x: ~Int) -> Int = x
+# let x: ~T = owned_call() preserves ownership through the binding
+fun consume(x: ~Option[Int]) -> Option[Int] = x
 
-fun test() -> Int {
-    let s: ~Int = 2
+fun test() -> Option[Int] {
+    let s: ~Option[Int] = Some(2)
     consume(s)
 }

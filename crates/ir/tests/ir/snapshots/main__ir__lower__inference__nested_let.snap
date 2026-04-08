@@ -17,6 +17,6 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn main() -> Int =
-  let v0: ~Int = 1
+  let v0: Int = 1
   let v1: Int = add_int(v0, 2)
   v1

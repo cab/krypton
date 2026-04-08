@@ -3,6 +3,6 @@
 fun ok[T](f: (T) -> String, s: T) -> String = f(s)
 
 fun test() -> String {
-    let lam: (~Int) -> String = a -> "hi"
-    ok(lam, 42)
+    let lam: (~Option[Int]) -> String = a -> "hi"
+    ok(lam, Some(42))
 }

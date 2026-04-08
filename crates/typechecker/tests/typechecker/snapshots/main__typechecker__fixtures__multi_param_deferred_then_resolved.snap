@@ -30,6 +30,6 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 main: () -> Unit
-Convert$$Bool$$Int$$convert: (Bool) -> ~Int
-Convert$$Int$$String$$convert: (Int) -> ~String
-Convert$$Float$$String$$convert: (Float) -> ~String
+Convert$$Bool$$Int$$convert: (Bool) -> Int
+Convert$$Int$$String$$convert: (Int) -> String
+Convert$$Float$$String$$convert: (Float) -> String

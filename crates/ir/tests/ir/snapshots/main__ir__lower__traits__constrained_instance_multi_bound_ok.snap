@@ -35,5 +35,5 @@ fn main() -> Unit =
   let v7: Bool = trait_call core/eq.Eq.eq(v1, v6, "pair")
   jump v10(v7)
 
-fn Show$$Pair$$Var0$$Var1$$show(v11: Dict[core/eq.Eq, m8], v12: Dict[core/show.Show, n8], v13: Pair[m8, n8]) -> ~String =
+fn Show$$Pair$$Var0$$Var1$$show(v11: Dict[core/eq.Eq, m8], v12: Dict[core/show.Show, n8], v13: Pair[m8, n8]) -> String =
   "pair"

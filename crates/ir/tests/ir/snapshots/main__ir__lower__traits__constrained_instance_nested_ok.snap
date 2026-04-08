@@ -36,5 +36,5 @@ fn main() -> Unit =
   let v8: Bool = trait_call core/eq.Eq.eq(v1, v7, "nested")
   jump v11(v8)
 
-fn Show$$Option$$Var0$$show(v12: Dict[core/show.Show, l8], v13: Option[l8]) -> ~String =
+fn Show$$Option$$Var0$$show(v12: Dict[core/show.Show, l8], v13: Option[l8]) -> String =
   "nested"

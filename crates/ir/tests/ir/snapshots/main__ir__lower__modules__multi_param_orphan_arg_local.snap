@@ -22,5 +22,5 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn main() -> Unit =
   ()
 
-fn Convert$$Bar$$String$$convert(v0: Bar) -> ~String =
+fn Convert$$Bar$$String$$convert(v0: Bar) -> String =
   "bar"

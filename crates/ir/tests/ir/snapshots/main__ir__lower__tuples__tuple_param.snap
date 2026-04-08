@@ -24,7 +24,7 @@ fn fst(v0: (Int, String)) -> Int =
   v1
 
 fn main() -> Unit =
-  let v4: (~Int, ~String) = tuple(5, "x")
+  let v4: (Int, String) = tuple(5, "x")
   let v5: Int = call fst(v4)
   let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: Unit = call println(v3, v5)

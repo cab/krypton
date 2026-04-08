@@ -20,7 +20,7 @@ fn consume(v0: ~String) -> String =
   v0
 
 fn test(v1: ~String) -> String =
-  let_join v4(v2: ~String) =
+  let_join v4(v2: String) =
     let v3: String = call consume(v1)
     v3
   in

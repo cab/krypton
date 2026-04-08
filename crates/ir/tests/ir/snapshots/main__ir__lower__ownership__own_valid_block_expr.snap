@@ -16,12 +16,13 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn consume(v0: ~String) -> String =
+fn consume(v0: ~Option[Int]) -> Option[Int] =
   v0
 
-fn test() -> String =
-  let_join v3(v1: ~String) =
-    let v2: String = call consume(v1)
-    v2
+fn test() -> Option[Int] =
+  let_join v4(v2: ~Option[Int]) =
+    let v3: Option[Int] = call consume(v2)
+    v3
   in
-  jump v3("hello")
+  let v1: ~Option[Int] = construct Option::Some#0(0)
+  jump v4(v1)

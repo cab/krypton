@@ -32,7 +32,7 @@ fn main() -> Unit =
   let v6: Unit = call println(v1, v5)
   v6
 
-fn Default$$Int$$default() -> ~Int =
+fn Default$$Int$$default() -> Int =
   0
 
 fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, w8], v8: List[w8]) -> ~List[w8] =

@@ -29,4 +29,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 fold: forall A B. (List[A], B, (B, A) -> B) -> B
-test: () -> ~Int
+test: () -> ~Option[Int]

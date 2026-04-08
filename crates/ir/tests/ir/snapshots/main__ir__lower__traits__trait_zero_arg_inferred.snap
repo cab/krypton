@@ -34,7 +34,7 @@ fn main() -> Unit =
   let v7: Unit = call println(v6, v2)
   v7
 
-fn Default$$Int$$default() -> ~Int =
+fn Default$$Int$$default() -> Int =
   42
 
 fn Default$$MyStruct$$default() -> ~MyStruct =

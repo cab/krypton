@@ -1,8 +1,8 @@
 # expect: ok
 # regular function returning owned value — let binding should preserve ownership
-fun make_owned() -> ~Int = 42
+fun make_owned() -> ~Option[Int] = Some(42)
 
-fun test() -> ~Int {
+fun test() -> ~Option[Int] {
     let y = make_owned()
     y
 }

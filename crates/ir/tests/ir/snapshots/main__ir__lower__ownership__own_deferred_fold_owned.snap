@@ -25,15 +25,16 @@ fn fold(v0: List[r8], v1: t8, v2: (t8, r8) -> t8) -> t8 =
       v6
   }
 
-fn test() -> ~Int =
+fn test() -> ~Option[Int] =
   let v7: ~List[Int] = construct List::Nil#1()
   let v8: ~List[Int] = construct List::Cons#0(3, v7)
   let v9: ~List[Int] = construct List::Cons#0(2, v8)
   let v10: ~List[Int] = construct List::Cons#0(1, v9)
-  let v14: (~Int, Int) -> Int = make_closure(lambda$24, [])
-  let v15: ~Int = call fold(v10, 0, v14)
-  v15
+  let v11: ~Option[Int] = construct Option::Some#0(0)
+  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$24, [])
+  let v16: ~Option[Int] = call fold(v10, v11, v15)
+  v16
 
-fn lambda$24(v11: ~Int, v12: Int) -> Int =
-  let v13: Int = add_int(v11, v12)
-  v13
+fn lambda$24(v12: ~Option[Int], v13: Int) -> ~Option[Int] =
+  let v14: ~Option[Int] = construct Option::Some#0(v13)
+  v14

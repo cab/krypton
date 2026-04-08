@@ -1282,7 +1282,9 @@ impl<'a> InferenceContext<'a> {
     ) -> Result<TypedExpr, SpannedTypeError> {
         let inner_typed = self.infer_expr_inner(expr, None)?;
         let inner_ty = self.subst.apply(&inner_typed.ty);
-        // Strip Own wrapper for analysis
+        // strip_own: structural — we need to read the Option/Result shape of
+        // the operand regardless of whether it is wrapped in `~`. This is not
+        // a data-level drop; the wrapper is preserved in the value flow.
         let inner_ty_unwrapped = super::strip_own(&inner_ty);
 
         // Determine what kind of type the inner expr is
@@ -1300,6 +1302,9 @@ impl<'a> InferenceContext<'a> {
                     .fn_return_type
                     .as_ref()
                     .map(|t| self.subst.apply(t));
+                // strip_own: structural — peek through `~` to inspect the
+                // enclosing fn return shape (Option vs Result) for unification
+                // steering only. The actual return type is unchanged.
                 match fn_ret.as_ref().map(super::strip_own) {
                     Some(Type::Named(name, _)) if name == "Option" => {
                         let a = Type::Var(self.fresh());
@@ -1340,6 +1345,9 @@ impl<'a> InferenceContext<'a> {
             .fn_return_type
             .as_ref()
             .map(|t| self.subst.apply(t));
+        // strip_own: structural — same rationale as above; we are reading the
+        // enclosing fn's return shape to validate `?`, not dropping ownership
+        // from a value flow.
         let fn_ret_unwrapped = fn_ret.map(|t| super::strip_own(&t));
 
         match &fn_ret_unwrapped {
@@ -1440,6 +1448,13 @@ impl<'a> InferenceContext<'a> {
     ) -> Result<TypedExpr, SpannedTypeError> {
         match expr {
             Expr::Lit { value, span } => {
+                // Literals always synthesize bare `T`. The five literal types
+                // (Int, Float, Bool, String, Unit) are all primitives that
+                // cannot implement Disposable, so `~T` on a literal is never
+                // semantically meaningful — there is no resource to track.
+                // This is unconditional, regardless of the expected context:
+                // a `let x: ~Int = 1` is rejected at the binding site by the
+                // (intentionally absent) `T → ~T` coercion.
                 let ty = match value {
                     Lit::Int(_) => Type::Int,
                     Lit::Float(_) => Type::Float,
@@ -1449,7 +1464,7 @@ impl<'a> InferenceContext<'a> {
                 };
                 Ok(TypedExpr {
                     kind: TypedExprKind::Lit(value.clone()),
-                    ty: Type::Own(Box::new(ty)),
+                    ty,
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,

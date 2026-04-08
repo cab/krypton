@@ -18,6 +18,6 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn make_point(v0: Int, v1: Int) -> Point =
+fn make_point(v0: Int, v1: Int) -> ~Point =
   let v2: ~Point = construct Point(v0, v1)
   v2

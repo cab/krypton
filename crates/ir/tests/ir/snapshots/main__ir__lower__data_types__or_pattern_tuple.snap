@@ -34,15 +34,15 @@ fn check(v0: (Bool, Bool)) -> String =
   }
 
 fn main() -> Unit =
-  let v5: (~Bool, ~Bool) = tuple(true, false)
+  let v5: (Bool, Bool) = tuple(true, false)
   let v6: String = call check(v5)
   let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v8: Unit = call println(v7, v6)
-  let v9: (~Bool, ~Bool) = tuple(false, true)
+  let v9: (Bool, Bool) = tuple(false, true)
   let v10: String = call check(v9)
   let v11: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v12: Unit = call println(v11, v10)
-  let v14: (~Bool, ~Bool) = tuple(false, false)
+  let v14: (Bool, Bool) = tuple(false, false)
   let v15: String = call check(v14)
   let v13: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v16: Unit = call println(v13, v15)

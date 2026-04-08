@@ -70,7 +70,7 @@ instance core/show.Show[Float] {  } [intrinsic]
 instance core/show.Show[Bool] {  } [intrinsic]
 instance core/show.Show[String] {  } [intrinsic]
 instance core/show.Show[Unit] { show=Show$$Unit$$show }
-fn Show$$Unit$$show(v0: Unit) -> ~String =
+fn Show$$Unit$$show(v0: Unit) -> String =
   "()"
 module core/hash
 
@@ -360,7 +360,7 @@ fn join_elems(v0: Dict[core/show.Show, o6], v1: Vec[o6], v2: Int, v3: String) ->
   let_join [recur] v4(v5: Vec[o6], v6: Int, v7: String) =
     let_join v25(v11: Bool) =
       if v11 {
-        let_join v24(v12: ~String) =
+        let_join v24(v12: String) =
           let v17: Int = add_int(v6, 1)
           let v18: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
           let v19: String = trait_call core/semigroup.Semigroup.combine(v18, v7, v12)

@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v11: Unit = call println(v7, v10)
   v11
 
-fn Convert$$$Fun1$$Var0$Int$$convert(v12: (l8) -> Int) -> ~String =
+fn Convert$$$Fun1$$Var0$Int$$convert(v12: (l8) -> Int) -> String =
   "to-int"
 
-fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (m8) -> Bool) -> ~String =
+fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (m8) -> Bool) -> String =
   "to-bool"

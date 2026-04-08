@@ -16,16 +16,16 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn ok_val() -> Result[m8, Int] =
+fn ok_val() -> ~Result[m8, Int] =
   let v0: ~Result[m8, Int] = construct Result::Ok#0(42)
   v0
 
-fn err_val() -> Result[String, s8] =
+fn err_val() -> ~Result[String, s8] =
   let v1: ~Result[String, s8] = construct Result::Err#1("oops")
   v1
 
 fn main() -> Int =
-  let v2: Result[a9, Int] = call ok_val()
+  let v2: ~Result[a9, Int] = call ok_val()
   switch v2 {
     0 (v3: Int) ->
       v3

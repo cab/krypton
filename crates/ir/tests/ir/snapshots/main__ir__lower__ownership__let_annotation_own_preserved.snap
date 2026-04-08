@@ -16,10 +16,10 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn consume(v0: ~Int) -> Int =
+fn consume(v0: ~Option[Int]) -> Option[Int] =
   v0
 
-fn test() -> Int =
-  let v1: ~Int = 2
-  let v2: Int = call consume(v1)
+fn test() -> Option[Int] =
+  let v1: ~Option[Int] = construct Option::Some#0(2)
+  let v2: Option[Int] = call consume(v1)
   v2

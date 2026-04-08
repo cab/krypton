@@ -2,11 +2,11 @@
 # All-owned match arms preserve ownership through pair-wise joining
 type Color = Red | Green | Blue
 
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~Option[Int]) -> Option[Int] = buf
 
-fun test(c: Color) -> String =
+fun test(c: Color) -> Option[Int] =
     consume(match c {
-        Red => "red",
-        Green => "green",
-        Blue => "blue",
+        Red => Some(1),
+        Green => Some(2),
+        Blue => Some(3),
     })

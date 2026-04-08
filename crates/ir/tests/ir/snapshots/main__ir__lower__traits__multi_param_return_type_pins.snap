@@ -24,8 +24,8 @@ fn main() -> Unit =
   let v0: String = trait_call traits__multi_param_return_type_pins.Convert.convert(v1, 42)
   ()
 
-fn Convert$$Int$$String$$convert(v2: Int) -> ~String =
+fn Convert$$Int$$String$$convert(v2: Int) -> String =
   "n"
 
-fn Convert$$Int$$Float$$convert(v3: Int) -> ~Float =
+fn Convert$$Int$$Float$$convert(v3: Int) -> Float =
   0.0

@@ -1,8 +1,8 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~Option[Int]) -> Option[Int] = buf
 
-fun test() -> String =
+fun test() -> Option[Int] =
     consume({
         let _ = 1
-        "hello"
+        Some(0)
     })

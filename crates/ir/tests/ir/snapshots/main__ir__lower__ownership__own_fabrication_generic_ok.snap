@@ -21,9 +21,10 @@ fn ok(v0: (l8) -> String, v1: l8) -> String =
   v2
 
 fn test() -> String =
-  let v3: (Int) -> ~String = make_closure(lambda$25, [])
-  let v5: String = call ok(v3, 42)
-  v5
+  let v3: (Option[Int]) -> String = make_closure(lambda$25, [])
+  let v5: ~Option[Int] = construct Option::Some#0(42)
+  let v6: String = call ok(v3, v5)
+  v6
 
-fn lambda$25(v4: Int) -> ~String =
+fn lambda$25(v4: Option[Int]) -> String =
   "hi"

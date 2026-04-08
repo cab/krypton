@@ -20,7 +20,7 @@ fn id(v0: Int) -> Int =
   v0
 
 fn test() -> Int =
-  let v1: ~Int = 2
+  let v1: Int = 2
   let v2: Int = call id(v1)
   let v3: Int = call id(v1)
   v3

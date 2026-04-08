@@ -4520,7 +4520,10 @@ fn infer_function_bodies<'a>(
                     })?;
                 state.subst.apply(&annotated_ret)
             } else {
-                strip_own(&body_ty)
+                // Preserve `Own` in inferred return types — a body that produces
+                // `~T` should yield a `-> ~T` function. The previous `strip_own`
+                // here silently dropped ownership for inferred returns.
+                body_ty.clone()
             };
 
             // Use join_types (not unify) to reconcile the inferred fn type with the pre-bound

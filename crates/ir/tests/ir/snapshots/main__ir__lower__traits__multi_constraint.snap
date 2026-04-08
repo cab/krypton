@@ -52,5 +52,5 @@ fn Eq$$Box$$eq(v17: Box, v18: Box) -> Bool =
   let v22: Bool = trait_call core/eq.Eq.eq(v19, v20, v21)
   v22
 
-fn Show$$Box$$show(v23: Box) -> ~String =
+fn Show$$Box$$show(v23: Box) -> String =
   "Box"

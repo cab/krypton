@@ -24,7 +24,7 @@ fn classify(v0: String) -> Choice =
   v1
 
 fn test(v2: ~String) -> String =
-  let_join v6(v5: ~Int) =
+  let_join v6(v5: Int) =
     v2
   in
   let v3: String = call peek(v2)

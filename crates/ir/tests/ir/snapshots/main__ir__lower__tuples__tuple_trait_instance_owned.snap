@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module tuples__tuple_trait_instance_owned
 
 trait Summarize[k8] { summarize(k8): String }
-instance tuples__tuple_trait_instance_owned.Summarize[$Tuple2$Int$String] { summarize=Summarize$$$Tuple2$Int$String$$summarize }
+instance tuples__tuple_trait_instance_owned.Summarize[$Tuple2$Int$Option$String] { summarize=Summarize$$$Tuple2$Int$Option$String$$summarize }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -20,17 +20,18 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
-fn make_pair(v0: ~String) -> (Int, String) =
-  let v1: (~Int, ~String) = tuple(1, v0)
+fn make_pair(v0: ~Option[String]) -> (Int, Option[String]) =
+  let v1: (Int, ~Option[String]) = tuple(1, v0)
   v1
 
 fn main() -> Unit =
-  let v3: (Int, String) = call make_pair("hi")
-  let v4: Dict[tuples__tuple_trait_instance_owned.Summarize, (Int, String)] = get_dict tuples__tuple_trait_instance_owned.Summarize[(Int, String)]
-  let v5: String = trait_call tuples__tuple_trait_instance_owned.Summarize.summarize(v4, v3)
+  let v3: ~Option[String] = construct Option::Some#0("hi")
+  let v4: (Int, Option[String]) = call make_pair(v3)
+  let v5: Dict[tuples__tuple_trait_instance_owned.Summarize, (Int, Option[String])] = get_dict tuples__tuple_trait_instance_owned.Summarize[(Int, Option[String])]
+  let v6: String = trait_call tuples__tuple_trait_instance_owned.Summarize.summarize(v5, v4)
   let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v6: Unit = call println(v2, v5)
-  v6
+  let v7: Unit = call println(v2, v6)
+  v7
 
-fn Summarize$$$Tuple2$Int$String$$summarize(v7: (Int, String)) -> ~String =
+fn Summarize$$$Tuple2$Int$Option$String$$summarize(v8: (Int, Option[String])) -> String =
   "ok"

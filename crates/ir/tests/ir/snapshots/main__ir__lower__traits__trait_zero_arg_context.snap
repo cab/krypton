@@ -39,5 +39,5 @@ fn main() -> Unit =
   let v10: Unit = call println(v7, v9)
   v10
 
-fn Default$$Int$$default() -> ~Int =
+fn Default$$Int$$default() -> Int =
   42

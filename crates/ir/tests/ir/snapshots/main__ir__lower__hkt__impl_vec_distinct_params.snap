@@ -34,8 +34,8 @@ fn main() -> Unit =
   let v9: Unit = call println(v6, v8)
   v9
 
-fn Tag$$Vec$Int$$tag(v10: Vec[Int]) -> ~String =
+fn Tag$$Vec$Int$$tag(v10: Vec[Int]) -> String =
   "ints"
 
-fn Tag$$Vec$String$$tag(v11: Vec[String]) -> ~String =
+fn Tag$$Vec$String$$tag(v11: Vec[String]) -> String =
   "strings"

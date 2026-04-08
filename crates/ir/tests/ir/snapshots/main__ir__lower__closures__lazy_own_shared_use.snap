@@ -23,11 +23,11 @@ fn use_twice(v0: (Int) -> Int) -> Int =
   v3
 
 fn test() -> Int =
-  let v4: ~Int = 2
+  let v4: Int = 2
   let v5: (Int) -> Int = make_closure(lambda$25, [v4])
   let v9: Int = call use_twice(v5)
   v9
 
-fn lambda$25(v6: ~Int, v7: Int) -> Int =
+fn lambda$25(v6: Int, v7: Int) -> Int =
   let v8: Int = add_int(v7, v6)
   v8

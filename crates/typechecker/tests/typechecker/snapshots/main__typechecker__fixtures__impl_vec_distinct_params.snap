@@ -30,5 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 main: () -> Unit
-Tag$$Vec$Int$$tag: (Vec[Int]) -> ~String
-Tag$$Vec$String$$tag: (Vec[String]) -> ~String
+Tag$$Vec$Int$$tag: (Vec[Int]) -> String
+Tag$$Vec$String$$tag: (Vec[String]) -> String

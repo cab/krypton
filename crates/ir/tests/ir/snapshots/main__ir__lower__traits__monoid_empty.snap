@@ -42,7 +42,7 @@ fn main() -> Unit =
   let v18: Unit = call println(v12, v17)
   v18
 
-fn Monoid$$Int$$empty() -> ~Int =
+fn Monoid$$Int$$empty() -> Int =
   0
 
 fn Monoid$$Int$$combine(v19: Int, v20: Int) -> Int =

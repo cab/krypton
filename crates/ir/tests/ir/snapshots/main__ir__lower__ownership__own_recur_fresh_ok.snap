@@ -16,27 +16,28 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn consume(v0: ~String) -> String =
+fn consume(v0: ~Option[Int]) -> Option[Int] =
   v0
 
-fn make() -> ~String =
-  "hello"
+fn make() -> ~Option[Int] =
+  let v1: ~Option[Int] = construct Option::Some#0(0)
+  v1
 
-fn loop(v1: ~String, v2: Int) -> String =
-  let_join [recur] v3(v4: ~String, v5: Int) =
-    let_join v13(v8: Bool) =
-      if v8 {
-        let v9: String = call consume(v4)
-        v9
+fn loop(v2: ~Option[Int], v3: Int) -> Option[Int] =
+  let_join [recur] v4(v5: ~Option[Int], v6: Int) =
+    let_join v14(v9: Bool) =
+      if v9 {
+        let v10: Option[Int] = call consume(v5)
+        v10
       } else {
-        let v10: String = call consume(v4)
-        let v11: ~String = call make()
-        let v12: Int = sub_int(v5, 1)
-        jump v3(v11, v12)
+        let v11: Option[Int] = call consume(v5)
+        let v12: ~Option[Int] = call make()
+        let v13: Int = sub_int(v6, 1)
+        jump v4(v12, v13)
       }
     in
-    let v6: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-    let v7: Bool = trait_call core/eq.Eq.eq(v6, v5, 0)
-    jump v13(v7)
+    let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v8: Bool = trait_call core/eq.Eq.eq(v7, v6, 0)
+    jump v14(v8)
   in
-  jump v3(v1, v2)
+  jump v4(v2, v3)

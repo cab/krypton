@@ -19,7 +19,7 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v0: ~Int = 0
+  let v0: Int = 0
   let v1: Int = add_int(v0, 1)
   let v2: Int = add_int(v1, 1)
   let v3: Int = add_int(v2, 1)

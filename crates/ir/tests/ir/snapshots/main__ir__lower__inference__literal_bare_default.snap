@@ -2,9 +2,8 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module data_types__sum_basic
+module inference__literal_bare_default
 
-type Option[a] = Some#0(a) | None#1
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[r3]) -> Option[r3]
 import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
@@ -17,7 +16,5 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-
-fn wrap(v0: m8) -> ~Option[m8] =
-  let v1: ~Option[m8] = construct Option::Some#0(v0)
-  v1
+fn bare_default() -> Int =
+  1

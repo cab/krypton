@@ -19,13 +19,13 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v0: ~Int = 10
+  let v0: Int = 10
   let v1: (Int) -> Int = make_closure(lambda$24, [v0])
   let v6: Int = call_closure v1(5)
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v7: Unit = call println(v5, v6)
   v7
 
-fn lambda$24(v2: ~Int, v3: Int) -> Int =
+fn lambda$24(v2: Int, v3: Int) -> Int =
   let v4: Int = add_int(v3, v2)
   v4

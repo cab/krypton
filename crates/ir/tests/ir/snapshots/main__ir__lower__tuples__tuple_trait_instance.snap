@@ -21,12 +21,12 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v1: (~Int, ~String) = tuple(1, "hi")
-  let v2: Dict[tuples__tuple_trait_instance.Describe, (~Int, ~String)] = get_dict tuples__tuple_trait_instance.Describe[(~Int, ~String)]
+  let v1: (Int, String) = tuple(1, "hi")
+  let v2: Dict[tuples__tuple_trait_instance.Describe, (Int, String)] = get_dict tuples__tuple_trait_instance.Describe[(Int, String)]
   let v3: String = trait_call tuples__tuple_trait_instance.Describe.describe(v2, v1)
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v4: Unit = call println(v0, v3)
   v4
 
-fn Describe$$$Tuple2$Int$String$$describe(v5: (Int, String)) -> ~String =
+fn Describe$$$Tuple2$Int$String$$describe(v5: (Int, String)) -> String =
   "ok"

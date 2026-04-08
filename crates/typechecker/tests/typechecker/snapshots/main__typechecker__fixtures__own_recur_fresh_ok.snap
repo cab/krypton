@@ -29,6 +29,6 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-consume: (~String) -> String
-make: () -> ~String
-loop: (~String, Int) -> String
+consume: (~Option[Int]) -> Option[Int]
+make: () -> ~Option[Int]
+loop: (~Option[Int], Int) -> Option[Int]

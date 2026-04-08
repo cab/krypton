@@ -32,5 +32,5 @@ GT: Ordering
 Red: Color
 Green: Color
 Blue: Color
-consume: (~String) -> String
-test: (Color) -> String
+consume: (~Option[Int]) -> Option[Int]
+test: (Color) -> Option[Int]

@@ -75,17 +75,17 @@ fn infer(src: &str) -> String {
 
 #[test]
 fn infer_int_literal() {
-    insta::assert_snapshot!(infer("42"), @"~Int");
+    insta::assert_snapshot!(infer("42"), @"Int");
 }
 
 #[test]
 fn infer_bool_literal() {
-    insta::assert_snapshot!(infer("true"), @"~Bool");
+    insta::assert_snapshot!(infer("true"), @"Bool");
 }
 
 #[test]
 fn infer_string_literal() {
-    insta::assert_snapshot!(infer("\"hello\""), @"~String");
+    insta::assert_snapshot!(infer("\"hello\""), @"String");
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn infer_identity_lambda() {
 
 #[test]
 fn infer_const_lambda() {
-    insta::assert_snapshot!(infer("x -> 42"), @"forall a. (a) -> ~Int");
+    insta::assert_snapshot!(infer("x -> 42"), @"forall a. (a) -> Int");
 }
 
 #[test]
@@ -105,7 +105,7 @@ fn infer_let_id_applied() {
 
 #[test]
 fn infer_if_int() {
-    insta::assert_snapshot!(infer("if true { 1 } else { 2 }"), @"~Int");
+    insta::assert_snapshot!(infer("if true { 1 } else { 2 }"), @"Int");
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn infer_application() {
 
 #[test]
 fn infer_do_block() {
-    insta::assert_snapshot!(infer("{ 1; 2; 3 }"), @"~Int");
+    insta::assert_snapshot!(infer("{ 1; 2; 3 }"), @"Int");
 }
 
 #[test]
@@ -335,7 +335,7 @@ fn infer_undefined_variable() {
 
 #[test]
 fn infer_shadowing() {
-    insta::assert_snapshot!(infer("{ let x = 1; let x = true; x }"), @"~Bool");
+    insta::assert_snapshot!(infer("{ let x = 1; let x = true; x }"), @"Bool");
 }
 
 #[test]
@@ -516,7 +516,7 @@ fn infer_record_constructor() {
     EQ: Ordering
     GT: Ordering
     Point: (Int, Int) -> Point
-    p: () -> Point
+    p: () -> ~Point
     "
     );
 }
@@ -557,7 +557,7 @@ fn infer_sum_constructor() {
     GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
-    wrap: forall a. (a) -> Option[a]
+    wrap: forall a. (a) -> ~Option[a]
     "
     );
 }
@@ -598,7 +598,7 @@ fn infer_bare_variant() {
     GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
-    none: forall a. () -> Option[a]
+    none: forall a. () -> ~Option[a]
     "
     );
 }
@@ -729,7 +729,7 @@ fn infer_struct_update() {
     EQ: Ordering
     GT: Ordering
     Point: (Int, Int) -> Point
-    move_x: () -> Point
+    move_x: () -> ~Point
     "
     );
 }
@@ -926,12 +926,12 @@ fn infer_match_nested_constructor() {
 
 #[test]
 fn infer_tuple_creation() {
-    insta::assert_snapshot!(infer("(1, \"hi\")"), @"(~Int, ~String)");
+    insta::assert_snapshot!(infer("(1, \"hi\")"), @"(Int, String)");
 }
 
 #[test]
 fn infer_tuple_nested() {
-    insta::assert_snapshot!(infer("(1, (true, \"x\"))"), @"(~Int, (~Bool, ~String))");
+    insta::assert_snapshot!(infer("(1, (true, \"x\"))"), @"(Int, (Bool, String))");
 }
 
 #[test]
@@ -975,7 +975,7 @@ fn infer_tuple_in_match() {
 
 #[test]
 fn infer_let_destructure_tuple() {
-    insta::assert_snapshot!(infer("{ let (a, b) = (1, \"hi\"); a }"), @"~Int");
+    insta::assert_snapshot!(infer("{ let (a, b) = (1, \"hi\"); a }"), @"Int");
 }
 
 #[test]

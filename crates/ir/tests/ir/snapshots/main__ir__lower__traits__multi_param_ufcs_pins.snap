@@ -23,5 +23,5 @@ fn main() -> Unit =
   let v0: String = trait_call traits__multi_param_ufcs_pins.Convert.convert(v1, 42)
   ()
 
-fn Convert$$Int$$String$$convert(v2: Int) -> ~String =
+fn Convert$$Int$$String$$convert(v2: Int) -> String =
   "n"

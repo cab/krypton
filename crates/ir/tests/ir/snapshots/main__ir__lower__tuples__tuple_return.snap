@@ -19,7 +19,7 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn make_pair() -> (Int, String) =
-  let v0: (~Int, ~String) = tuple(3, "hello")
+  let v0: (Int, String) = tuple(3, "hello")
   v0
 
 fn main() -> Unit =

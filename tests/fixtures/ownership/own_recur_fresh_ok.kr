@@ -1,7 +1,7 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
-fun make() -> ~String = "hello"
+fun consume(buf: ~Option[Int]) -> Option[Int] = buf
+fun make() -> ~Option[Int] = Some(0)
 
-fun loop(x: ~String, n: Int) -> String =
+fun loop(x: ~Option[Int], n: Int) -> Option[Int] =
     if n == 0 { consume(x) }
     else { consume(x); recur(make(), n - 1) }

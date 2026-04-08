@@ -1,5 +1,8 @@
 # expect: output "hello"
 fun main() -> Unit {
-    let val: ~String = "hello"
-    println(peek(val))
+    let val: ~Option[String] = Some("hello")
+    match peek(val) {
+        Some(s) => println(s),
+        None => (),
+    }
 }

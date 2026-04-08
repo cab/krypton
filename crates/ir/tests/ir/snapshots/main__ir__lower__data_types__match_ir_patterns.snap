@@ -62,9 +62,9 @@ fn literal_match(v8: Int) -> Int =
   }
 
 fn let_tuple() -> Int =
-  let v11: (~Int, ~Int) = tuple(1, 2)
-  let v12: ~Int = tuple_project v11.0
-  let v13: ~Int = tuple_project v11.1
+  let v11: (Int, Int) = tuple(1, 2)
+  let v12: Int = tuple_project v11.0
+  let v13: Int = tuple_project v11.1
   let v14: Int = add_int(v12, v13)
   v14
 

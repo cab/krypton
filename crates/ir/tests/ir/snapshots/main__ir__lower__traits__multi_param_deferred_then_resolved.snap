@@ -27,11 +27,11 @@ fn main() -> Unit =
   let v0: String = trait_call traits__multi_param_deferred_then_resolved.Convert.convert(v3, v2)
   ()
 
-fn Convert$$Bool$$Int$$convert(v4: Bool) -> ~Int =
+fn Convert$$Bool$$Int$$convert(v4: Bool) -> Int =
   0
 
-fn Convert$$Int$$String$$convert(v5: Int) -> ~String =
+fn Convert$$Int$$String$$convert(v5: Int) -> String =
   "i"
 
-fn Convert$$Float$$String$$convert(v6: Float) -> ~String =
+fn Convert$$Float$$String$$convert(v6: Float) -> String =
   "f"

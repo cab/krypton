@@ -16,9 +16,10 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn make_owned() -> ~Int =
-  42
-
-fn test() -> ~Int =
-  let v0: ~Int = call make_owned()
+fn make_owned() -> ~Option[Int] =
+  let v0: ~Option[Int] = construct Option::Some#0(42)
   v0
+
+fn test() -> ~Option[Int] =
+  let v1: ~Option[Int] = call make_owned()
+  v1

@@ -19,12 +19,12 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v1: (~Int, ~Int) = tuple(1, 2)
-  let v0: ((~Int, ~Int), ~Int) = tuple(v1, 3)
-  let v2: (~Int, ~Int) = tuple_project v0.0
+  let v1: (Int, Int) = tuple(1, 2)
+  let v0: ((Int, Int), Int) = tuple(v1, 3)
+  let v2: (Int, Int) = tuple_project v0.0
   let v3: Int = tuple_project v0.1
-  let v4: ~Int = tuple_project v2.0
-  let v5: ~Int = tuple_project v2.1
+  let v4: Int = tuple_project v2.0
+  let v5: Int = tuple_project v2.1
   let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v7: Unit = call println(v6, v3)
   v7

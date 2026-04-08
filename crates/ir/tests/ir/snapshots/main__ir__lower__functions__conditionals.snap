@@ -19,7 +19,7 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let_join v7(v5: ~String) =
+  let_join v7(v5: String) =
     let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
     let v6: Unit = call println(v0, v5)
     v6

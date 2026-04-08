@@ -33,5 +33,5 @@ fn Test$$Vec$$Var0$$name(v5: Dict[traits__trait_zero_arg_constrained_vec.Test, l
   let v6: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v5)
   v6
 
-fn Test$$Int$$name() -> ~String =
+fn Test$$Int$$name() -> String =
   "yo"

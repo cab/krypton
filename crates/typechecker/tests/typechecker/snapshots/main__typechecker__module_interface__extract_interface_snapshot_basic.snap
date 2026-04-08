@@ -1,5 +1,5 @@
 ---
-source: crates/typechecker/tests/module_interface_test.rs
+source: crates/typechecker/tests/typechecker/module_interface.rs
 expression: display_interface(&iface)
 ---
 module test
@@ -21,4 +21,4 @@ exported types:
 
 exported instances:
   instance/Show/Color
-    show: (Color) -> ~String
+    show: (Color) -> String

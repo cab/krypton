@@ -18,5 +18,5 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn MyTrait$$Vec$$Var0$$check(v0: Dict[hkt__impl_vec_trait.MyTrait, l8], v1: Vec[l8]) -> ~String =
+fn MyTrait$$Vec$$Var0$$check(v0: Dict[hkt__impl_vec_trait.MyTrait, l8], v1: Vec[l8]) -> String =
   "vec"

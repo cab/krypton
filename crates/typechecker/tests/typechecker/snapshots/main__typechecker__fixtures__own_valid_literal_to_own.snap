@@ -30,7 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Box: (Int) -> Box
-consume: (~Int) -> Int
 consume_box: (~Box) -> Box
-test_lit: () -> Int
 test_ctor: () -> Box

@@ -16,15 +16,15 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn consume(v0: ~String) -> String =
+fn consume(v0: ~Option[Int]) -> Option[Int] =
   v0
 
-fn test() -> String =
-  let v1: ~String = "hello"
-  let v2: ~() -> String = make_closure(lambda$25, [v1])
-  let v5: String = call_closure v2()
+fn test() -> Option[Int] =
+  let v1: ~Option[Int] = construct Option::Some#0(0)
+  let v2: ~() -> Option[Int] = make_closure(lambda$25, [v1])
+  let v5: Option[Int] = call_closure v2()
   v5
 
-fn lambda$25(v3: ~String) -> String =
-  let v4: String = call consume(v3)
+fn lambda$25(v3: ~Option[Int]) -> Option[Int] =
+  let v4: Option[Int] = call consume(v3)
   v4

@@ -1,4 +1,0 @@
-# expect: ok
-fun f() -> ~String = "hello"
-
-fun main() = f()

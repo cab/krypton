@@ -33,5 +33,5 @@ fn main() -> Unit =
   let v5: Bool = trait_call core/eq.Eq.eq(v1, v4, "box")
   jump v8(v5)
 
-fn Show$$Box$$show(v9: Box) -> ~String =
+fn Show$$Box$$show(v9: Box) -> String =
   "box"

@@ -22,8 +22,8 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn main() -> Unit =
   ()
 
-fn Convert$$Int$$String$$convert(v0: Int) -> ~String =
+fn Convert$$Int$$String$$convert(v0: Int) -> String =
   "str"
 
-fn Convert$$Int$$Float$$convert(v1: Int) -> ~Float =
+fn Convert$$Int$$Float$$convert(v1: Int) -> Float =
   1.0

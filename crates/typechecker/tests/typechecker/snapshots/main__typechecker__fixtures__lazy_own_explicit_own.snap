@@ -30,4 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 use_twice: ((Int) -> Int) -> Int
+shared_read: (Option[Int]) -> Int
 test: () -> Int

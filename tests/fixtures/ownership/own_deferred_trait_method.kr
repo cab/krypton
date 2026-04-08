@@ -4,11 +4,11 @@ trait Default[a] {
     fun default() -> ~a
 }
 
-impl Default[Int] {
-    fun default() -> ~Int = 0
+impl Default[Option[Int]] {
+    fun default() -> ~Option[Int] = Some(0)
 }
 
-fun test() -> ~Int {
-    let x = default[Int]()
+fun test() -> ~Option[Int] {
+    let x = default[Option[Int]]()
     x
 }

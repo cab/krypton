@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 main: () -> Unit
-Shown$$Int$$shown: (Int) -> ~String
+Shown$$Int$$shown: (Int) -> String

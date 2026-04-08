@@ -30,5 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 main: () -> Unit
-Convert$$Int$$String$$convert: (Int) -> ~String
-Convert$$Int$$Float$$convert: (Int) -> ~Float
+Convert$$Int$$String$$convert: (Int) -> String
+Convert$$Int$$Float$$convert: (Int) -> Float
