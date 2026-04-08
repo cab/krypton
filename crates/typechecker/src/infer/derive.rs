@@ -77,6 +77,10 @@ pub(super) fn collect_derived_constraints_for_type(
         return false;
     };
 
+    // All derivable traits are currently single-parameter; the find_instance
+    // call above would have fired a debug_assert otherwise.
+    debug_assert!(instance.target_types.len() == 1);
+
     if instance.constraints.is_empty() {
         return true;
     }

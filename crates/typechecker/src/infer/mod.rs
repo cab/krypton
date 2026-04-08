@@ -4762,9 +4762,21 @@ fn typecheck_impl_methods(
             // For HKT partial application, strip anonymous type var args from the
             // target type so it acts as a partial constructor for substitution.
             // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
-            // For HK partial application + single-parameter substitution, we still
-            // only use the first type arg. Multi-parameter trait method resolution
-            // is deferred to M30-T5.
+            //
+            // Non-HK multi-param traits (e.g. `Convert[a, b]`) also hit this path:
+            // we take position 0 as the primary dispatch type and rely on the
+            // dictionary-passing layer to carry the full tuple. The additional
+            // positions are not consulted here because trait method substitution
+            // only ever binds the primary type variable. Multi-parameter HK traits
+            // (arity > 0 **and** more than one target type) are not expressible in
+            // current Krypton.
+            debug_assert!(
+                !(trait_info.type_var_arity > 0 && instance.target_types.len() > 1),
+                "multi-parameter HK trait method resolution not yet supported \
+                 (trait {}, instance has {} target types)",
+                trait_name,
+                instance.target_types.len()
+            );
             let resolved_target = if trait_info.type_var_arity > 0 {
                 strip_anon_type_args(&instance.target_types[0], &instance.type_var_ids)
             } else {

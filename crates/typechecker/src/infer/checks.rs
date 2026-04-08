@@ -343,8 +343,8 @@ pub(super) fn detect_trait_constraints(
         subst,
         fn_type_param_vars,
         fn_schemes,
-        &mut |trait_name, var| {
-            constraints.push((trait_name, vec![var]));
+        &mut |trait_name, vars| {
+            constraints.push((trait_name, vars));
         },
     );
 }
@@ -371,15 +371,23 @@ pub(super) fn validate_trait_constraints(
         subst,
         fn_type_param_vars,
         &empty_fn_schemes,
-        &mut |trait_name, var| {
+        &mut |trait_name, vars| {
             if first_error.is_some() {
                 return;
             }
-            let is_declared = declared_constraints
-                .iter()
-                .any(|(t, v)| t.local_name == trait_name.local_name && v.contains(&var));
+            // A declared constraint satisfies the use if it names the same trait
+            // and its type-var tuple matches position-by-position. For single-param
+            // traits this degrades to the previous `contains(&var)` check because
+            // both sides are length 1.
+            let is_declared = declared_constraints.iter().any(|(t, declared_vars)| {
+                t.local_name == trait_name.local_name && declared_vars.as_slice() == vars.as_slice()
+            });
             if !is_declared {
-                let type_var_display = type_var_names.get(&var).cloned();
+                // For diagnostics, show the first position's name (existing
+                // single-param error rendering).
+                let type_var_display = vars
+                    .first()
+                    .and_then(|v| type_var_names.get(v).cloned());
                 first_error = Some(super::spanned(
                     TypeError::MissingTraitBound {
                         fn_name: fn_name.to_string(),
@@ -397,14 +405,22 @@ pub(super) fn validate_trait_constraints(
     }
 }
 
-/// Shared walker: finds trait method calls on type variables and invokes the callback for each.
+/// Shared walker: finds trait method calls on type variables and invokes the
+/// callback with the **full position tuple** of the trait's type arguments.
+///
+/// For a single-parameter trait this is `vec![v]`; for multi-parameter traits
+/// like `Convert[a, b]` called as `convert(x): b` where `x: a`, this is
+/// `vec![a_var, b_var]`. The callback is only invoked if **every** trait type
+/// parameter resolves to a fresh type var that belongs to `fn_type_param_vars`.
+/// Positions that resolve to concrete types don't generate constraint
+/// requirements on the enclosing function.
 fn walk_trait_method_calls(
     expr: &TypedExpr,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     fn_type_param_vars: &HashSet<TypeVarId>,
     fn_schemes: &HashMap<String, TypeScheme>,
-    callback: &mut dyn FnMut(TraitName, TypeVarId),
+    callback: &mut dyn FnMut(TraitName, Vec<TypeVarId>),
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -416,63 +432,87 @@ fn walk_trait_method_calls(
                     method_name,
                 })) = typed_callee_resolved_ref(func)
                 {
-                    // Try first arg, then fall back to return type
-                    let candidate_var = if let Some(first_arg) = args.first() {
-                        let arg_ty = subst.apply(&first_arg.ty);
-                        let concrete_ty = strip_own(&arg_ty);
-                        leading_type_var(&concrete_ty)
-                    } else {
-                        None
-                    };
-                    let candidate_var = candidate_var.or_else(|| {
-                        let ret_ty = subst.apply(&func.ty);
-                        let concrete_ret = match &ret_ty {
-                            Type::Fn(_, ret) => strip_own(ret),
-                            other => strip_own(other),
-                        };
-                        leading_type_var(&concrete_ret)
-                    });
-                    if let Some(v) = candidate_var {
-                        if fn_type_param_vars.contains(&v) {
-                            callback(trait_id.clone(), v);
-                        }
-                    }
-                    // Check method-level where constraints for polymorphic propagation
                     let info = trait_registry
                         .lookup_trait(trait_id)
                         .expect("trait in trait_method_map must be in registry");
+
+                    // Build a type-var → resolved-Type binding map by unifying
+                    // the method's declared parameter/return types against the
+                    // call-site's actual types. This carries bindings for every
+                    // trait type-parameter (not just the primary dispatch var).
+                    let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
-                        if !method.constraints.is_empty() {
-                            let mut bindings = HashMap::new();
-                            for ((_, pattern), arg) in
-                                method.param_types.iter().zip(args.iter())
-                            {
-                                collect_type_var_bindings_strict(
-                                    pattern,
-                                    &subst.apply(&arg.ty),
-                                    &mut bindings,
-                                );
-                            }
-                            let ret_ty = subst.apply(&func.ty);
-                            let actual_ret = match &ret_ty {
-                                Type::Fn(_, ret) => ret.as_ref().clone(),
-                                other => other.clone(),
-                            };
+                        for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                             collect_type_var_bindings_strict(
-                                &method.return_type,
-                                &actual_ret,
+                                pattern,
+                                &subst.apply(&arg.ty),
                                 &mut bindings,
                             );
+                        }
+                        let ret_ty = subst.apply(&func.ty);
+                        let actual_ret = match &ret_ty {
+                            Type::Fn(_, ret) => ret.as_ref().clone(),
+                            other => other.clone(),
+                        };
+                        collect_type_var_bindings_strict(
+                            &method.return_type,
+                            &actual_ret,
+                            &mut bindings,
+                        );
+                    }
+
+                    // For each trait type-parameter, extract a leading type var
+                    // from its resolved binding (or fall back to the param id
+                    // itself, which may still be a free var in fn_type_param_vars).
+                    let mut position_vars: Vec<TypeVarId> = Vec::with_capacity(info.type_var_ids.len());
+                    let mut all_free_params = true;
+                    for tv_id in &info.type_var_ids {
+                        let resolved = bindings
+                            .get(tv_id)
+                            .cloned()
+                            .map(|t| subst.apply(&t))
+                            .unwrap_or(Type::Var(*tv_id));
+                        let stripped = strip_own(&resolved);
+                        match leading_type_var(&stripped) {
+                            Some(v) if fn_type_param_vars.contains(&v) => {
+                                position_vars.push(v);
+                            }
+                            _ => {
+                                all_free_params = false;
+                                break;
+                            }
+                        }
+                    }
+                    if all_free_params && !position_vars.is_empty() {
+                        callback(trait_id.clone(), position_vars);
+                    }
+
+                    // Method-level where-constraints propagate independently.
+                    if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
+                        if !method.constraints.is_empty() {
                             for (req_trait, req_vars) in &method.constraints {
+                                let mut resolved_vars: Vec<TypeVarId> =
+                                    Vec::with_capacity(req_vars.len());
+                                let mut all_ok = true;
                                 for req_var in req_vars {
-                                    if let Some(resolved) = bindings.get(req_var) {
-                                        let concrete = strip_own(resolved);
-                                        if let Some(v) = leading_type_var(&concrete) {
-                                            if fn_type_param_vars.contains(&v) {
-                                                callback(req_trait.clone(), v);
-                                            }
+                                    let resolved = bindings
+                                        .get(req_var)
+                                        .cloned()
+                                        .map(|t| subst.apply(&t))
+                                        .unwrap_or(Type::Var(*req_var));
+                                    let concrete = strip_own(&resolved);
+                                    match leading_type_var(&concrete) {
+                                        Some(v) if fn_type_param_vars.contains(&v) => {
+                                            resolved_vars.push(v);
+                                        }
+                                        _ => {
+                                            all_ok = false;
+                                            break;
                                         }
                                     }
+                                }
+                                if all_ok && !resolved_vars.is_empty() {
+                                    callback(req_trait.clone(), resolved_vars);
                                 }
                             }
                         }
@@ -496,20 +536,31 @@ fn walk_trait_method_calls(
                                 .map(|a| (crate::types::ParamMode::Consume, subst.apply(&a.ty)))
                                 .collect();
                             for (req_trait, req_vars) in &scheme.constraints {
+                                let mut resolved_vars: Vec<TypeVarId> =
+                                    Vec::with_capacity(req_vars.len());
+                                let mut all_ok = true;
                                 for req_var in req_vars {
-                                    if let Some(resolved) = resolve_function_ref_requirement_type(
+                                    let resolved = resolve_function_ref_requirement_type(
                                         &req_trait.local_name,
                                         *req_var,
                                         declared_param_types,
                                         &actual_param_types,
-                                    ) {
-                                        let concrete = strip_own(&resolved);
-                                        if let Some(v) = leading_type_var(&concrete) {
-                                            if fn_type_param_vars.contains(&v) {
-                                                callback(req_trait.clone(), v);
-                                            }
+                                    );
+                                    let v = resolved
+                                        .as_ref()
+                                        .and_then(|t| leading_type_var(&strip_own(t)));
+                                    match v {
+                                        Some(v) if fn_type_param_vars.contains(&v) => {
+                                            resolved_vars.push(v);
+                                        }
+                                        _ => {
+                                            all_ok = false;
+                                            break;
                                         }
                                     }
+                                }
+                                if all_ok && !resolved_vars.is_empty() {
+                                    callback(req_trait.clone(), resolved_vars);
                                 }
                             }
                         }
@@ -571,7 +622,7 @@ fn walk_trait_method_calls(
                                 "Ord" => "core/ord",
                                 _ => unreachable!("ICE: unknown numeric op trait: {tn}"),
                             };
-                            callback(TraitName::new(module.into(), tn.into()), v);
+                            callback(TraitName::new(module.into(), tn.into()), vec![v]);
                         }
                     }
                 }
@@ -583,7 +634,7 @@ fn walk_trait_method_calls(
                     let operand_ty = strip_own(&subst.apply(&operand.ty));
                     if let Some(v) = leading_type_var(&operand_ty) {
                         if fn_type_param_vars.contains(&v) {
-                            callback(TraitName::core_neg(), v);
+                            callback(TraitName::core_neg(), vec![v]);
                         }
                     }
                 }

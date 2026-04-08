@@ -180,8 +180,29 @@ impl TraitRegistry {
     }
 
     pub fn find_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<&InstanceInfo> {
+        debug_assert!(
+            self.lookup_trait(trait_name)
+                .map(|t| t.type_var_arity <= 1 && t.type_var_ids.len() <= 1)
+                .unwrap_or(true),
+            "find_instance called with single type on multi-parameter trait {}; \
+             callers with a tuple must use find_instance_for",
+            trait_name.local_name
+        );
         let mut resolution_stack = Vec::new();
-        self.find_instance_inner(trait_name, ty, &mut resolution_stack)
+        self.find_instance_inner(trait_name, std::slice::from_ref(ty), &mut resolution_stack)
+    }
+
+    /// Canonical multi-arg entry point for instance lookup.
+    ///
+    /// Accepts the full tuple of trait type arguments. For single-parameter
+    /// traits, pass a 1-element slice (equivalent to `find_instance`).
+    pub fn find_instance_for(
+        &self,
+        trait_name: &TraitName,
+        tys: &[Type],
+    ) -> Option<&InstanceInfo> {
+        let mut resolution_stack = Vec::new();
+        self.find_instance_inner(trait_name, tys, &mut resolution_stack)
     }
 
     /// Partial-match lookup for multi-parameter trait instances.
@@ -282,28 +303,44 @@ impl TraitRegistry {
     fn find_instance_inner<'a>(
         &'a self,
         trait_name: &TraitName,
-        ty: &Type,
+        target_tys: &[Type],
         resolution_stack: &mut Vec<(TraitName, String)>,
     ) -> Option<&'a InstanceInfo> {
-        let key = (trait_name.clone(), format!("{ty}"));
+        let key_ty = target_tys
+            .iter()
+            .map(|t| format!("{t}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let key = (trait_name.clone(), key_ty);
         if resolution_stack.contains(&key) {
             return None;
         }
 
-        // For HK traits (arity > 0), match by extracting the outermost type constructor
+        // For HK traits (arity > 0), match by extracting the outermost type constructor.
+        // HK matching only inspects position 0 — higher-kinded multi-param traits are
+        // not yet expressible in the language, so `target_tys[1..]` go through the
+        // regular zip path below.
         let trait_info = self.lookup_trait(trait_name);
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
+                let primary = target_tys.first()?;
                 resolution_stack.push(key);
                 let indices = self.instances_by_trait.get(trait_name);
                 let matched = indices.and_then(|idxs| {
                     idxs.iter().map(|&i| &self.instances[i]).find(|inst| {
-                        let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty)
+                        if inst.target_types.len() != target_tys.len() {
+                            return false;
+                        }
+                        let Some(inst_primary) = inst.target_types.first() else {
+                            return false;
+                        };
+                        let Some((actual_ctor, actual_bound_args)) =
+                            split_type_constructor(primary)
                         else {
                             return false;
                         };
                         let Some((inst_ctor, inst_bound_args)) =
-                            split_instance_type_constructor(&inst.target_types[0])
+                            split_instance_type_constructor(inst_primary)
                         else {
                             return false;
                         };
@@ -326,6 +363,15 @@ impl TraitRegistry {
                             return false;
                         }
 
+                        // Zip remaining (non-HK) positions in lockstep.
+                        for (pattern, actual) in
+                            inst.target_types.iter().zip(target_tys.iter()).skip(1)
+                        {
+                            if !types_match_with_bindings(pattern, actual, &mut bindings) {
+                                return false;
+                            }
+                        }
+
                         let bound = &actual_bound_args[..inst_len];
                         let ctor_binding = reconstruct_ctor_type(&actual_ctor, bound);
 
@@ -341,17 +387,12 @@ impl TraitRegistry {
                             let Some(bound_tys) = bound_tys else {
                                 return false;
                             };
-                            if bound_tys.len() == 1 {
-                                self.find_instance_inner(
-                                    &constraint.trait_name,
-                                    &bound_tys[0],
-                                    resolution_stack,
-                                )
-                                .is_some()
-                            } else {
-                                self.find_instance_multi(&constraint.trait_name, &bound_tys)
-                                    .is_some()
-                            }
+                            self.find_instance_inner(
+                                &constraint.trait_name,
+                                &bound_tys,
+                                resolution_stack,
+                            )
+                            .is_some()
                         })
                     })
                 });
@@ -364,9 +405,14 @@ impl TraitRegistry {
         let indices = self.instances_by_trait.get(trait_name);
         let matched = indices.and_then(|idxs| {
             idxs.iter().map(|&i| &self.instances[i]).find(|inst| {
-                let mut bindings = HashMap::new();
-                if !types_match_with_bindings(&inst.target_types[0], ty, &mut bindings) {
+                if inst.target_types.len() != target_tys.len() {
                     return false;
+                }
+                let mut bindings = HashMap::new();
+                for (pattern, actual) in inst.target_types.iter().zip(target_tys.iter()) {
+                    if !types_match_with_bindings(pattern, actual, &mut bindings) {
+                        return false;
+                    }
                 }
 
                 inst.constraints.iter().all(|constraint| {
@@ -381,17 +427,12 @@ impl TraitRegistry {
                     let Some(bound_tys) = bound_tys else {
                         return false;
                     };
-                    if bound_tys.len() == 1 {
-                        self.find_instance_inner(
-                            &constraint.trait_name,
-                            &bound_tys[0],
-                            resolution_stack,
-                        )
-                        .is_some()
-                    } else {
-                        self.find_instance_multi(&constraint.trait_name, &bound_tys)
-                            .is_some()
-                    }
+                    self.find_instance_inner(
+                        &constraint.trait_name,
+                        &bound_tys,
+                        resolution_stack,
+                    )
+                    .is_some()
                 })
             })
         });
@@ -410,7 +451,7 @@ impl TraitRegistry {
         );
         for superclass in &trait_info.superclasses {
             if self
-                .find_instance(superclass, &instance.target_types[0])
+                .find_instance_for(superclass, &instance.target_types)
                 .is_none()
             {
                 return Err(TypeError::NoInstance {
@@ -481,6 +522,10 @@ impl TraitRegistry {
                     if inst.constraints.is_empty() {
                         continue;
                     }
+                    // Single-type diagnostic only covers single-parameter HK traits.
+                    if inst.target_types.len() != 1 {
+                        continue;
+                    }
 
                     let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty) else {
                         continue;
@@ -529,13 +574,9 @@ impl TraitRegistry {
                                 })
                                 .collect();
                             let bound_tys = bound_tys?;
-                            let satisfied = if bound_tys.len() == 1 {
-                                self.find_instance(&constraint.trait_name, &bound_tys[0])
-                                    .is_some()
-                            } else {
-                                self.find_instance_multi(&constraint.trait_name, &bound_tys)
-                                    .is_some()
-                            };
+                            let satisfied = self
+                                .find_instance_for(&constraint.trait_name, &bound_tys)
+                                .is_some();
                             if !satisfied {
                                 Some(UnsatisfiedBound {
                                     trait_name: constraint.trait_name.local_name.clone(),
@@ -562,10 +603,13 @@ impl TraitRegistry {
             }
         }
 
-        // Regular (non-HK) path
+        // Regular (non-HK) path — single-type diagnostic only covers single-parameter traits.
         for &idx in trait_indices {
             let inst = &self.instances[idx];
             if inst.constraints.is_empty() {
+                continue;
+            }
+            if inst.target_types.len() != 1 {
                 continue;
             }
 
@@ -587,13 +631,9 @@ impl TraitRegistry {
                         })
                         .collect();
                     let bound_tys = bound_tys?;
-                    let satisfied = if bound_tys.len() == 1 {
-                        self.find_instance(&constraint.trait_name, &bound_tys[0])
-                            .is_some()
-                    } else {
-                        self.find_instance_multi(&constraint.trait_name, &bound_tys)
-                            .is_some()
-                    };
+                    let satisfied = self
+                        .find_instance_for(&constraint.trait_name, &bound_tys)
+                        .is_some();
                     if !satisfied {
                         Some(UnsatisfiedBound {
                             trait_name: constraint.trait_name.local_name.clone(),
