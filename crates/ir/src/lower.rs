@@ -4912,9 +4912,6 @@ impl LowerCtx {
 
         // Strategy 3: Concrete singleton dict
         let var = self.fresh_var();
-        // `IrType::Dict` stores only the first-position payload (display/erasure);
-        // the full tuple is carried on `GetDict.target_types` for codegen dispatch.
-        let payload_ty = stripped[0].clone();
         let ir_target_types: Vec<IrType> =
             stripped.iter().map(|t| t.clone().into()).collect();
         Ok((
@@ -4922,7 +4919,7 @@ impl LowerCtx {
                 bind: var,
                 ty: IrType::Dict {
                     trait_name: trait_name.clone(),
-                    target: Box::new(payload_ty.into()),
+                    target_types: ir_target_types.clone(),
                 },
                 value: simple_at(
                     (0, 0),
@@ -4953,13 +4950,20 @@ impl LowerCtx {
             return Some(var_id);
         }
         // Single-match heuristic: fresh instantiation TypeVarIds may differ from
-        // enclosing constraint's. Sound when exactly one dict param exists for this trait.
+        // the enclosing constraint's. Sound when exactly one dict param exists
+        // for this trait **at the requested arity** — we must not silently
+        // match a `Display[a]` dict when looking up `Convert[a, b]`.
         let matches: Vec<_> = self
             .dict_params
             .iter()
-            .filter(|((tn, _), _)| tn == trait_name)
+            .filter(|((tn, tvs), _)| tn == trait_name && tvs.len() == tys.len())
             .collect();
         if matches.len() == 1 {
+            debug_assert_eq!(
+                matches[0].0.1.len(),
+                tys.len(),
+                "lookup_dict_var: arity mismatch despite filter"
+            );
             Some(*matches[0].1)
         } else {
             None
@@ -5014,14 +5018,13 @@ impl LowerCtx {
         }
 
         let var = self.fresh_var();
-        let payload_ty = tys[0].clone();
         let ir_target_types: Vec<IrType> =
             tys.iter().map(|t| t.clone().into()).collect();
         all_bindings.push(LetBinding {
             bind: var,
             ty: IrType::Dict {
                 trait_name: trait_name.clone(),
-                target: Box::new(payload_ty.into()),
+                target_types: ir_target_types.clone(),
             },
             value: simple_at(
                 (0, 0),
@@ -5242,21 +5245,30 @@ impl LowerCtx {
         for (trait_name, type_var_ids) in constraints {
             let var = self.fresh_var();
             dict_capture_vars.push(var);
-            // Dict IR type carries a single concrete payload type — for
-            // multi-param traits we use the first position as the canonical
-            // display type; the full tuple is resolved via target_types
-            // through `instance_canonical_ref`.
-            let concrete_ty = type_var_ids
-                .first()
-                .and_then(|id| type_bindings.get(id).cloned())
-                .unwrap_or_else(|| {
-                    Type::Var(*type_var_ids.first().expect("TraitConstraint has no vars"))
-                });
+            // Dict IR type carries the full tuple of concrete target types.
+            // For each trait type parameter, resolve it through the current
+            // bindings, falling back to its fresh TypeVarId if unbound.
+            if type_var_ids.is_empty() {
+                return Err(LowerError::InternalError(format!(
+                    "constraint {} has empty type-var tuple during dict capture",
+                    trait_name.local_name
+                )));
+            }
+            let concrete_tys: Vec<IrType> = type_var_ids
+                .iter()
+                .map(|id| {
+                    type_bindings
+                        .get(id)
+                        .cloned()
+                        .unwrap_or(Type::Var(*id))
+                        .into()
+                })
+                .collect();
             lifted_params.push((
                 var,
                 IrType::Dict {
                     trait_name: trait_name.clone(),
-                    target: Box::new(concrete_ty.into()),
+                    target_types: concrete_tys,
                 },
             ));
         }
@@ -5333,10 +5345,12 @@ impl LowerCtx {
         //    type per trait type parameter.
         let dispatch_tys =
             self.resolve_dispatch_type(trait_name, method_name, expr_ty, type_args)?;
-        let dispatch_ty = dispatch_tys
-            .first()
-            .cloned()
-            .expect("trait has at least one type parameter");
+        if dispatch_tys.is_empty() {
+            return Err(LowerError::InternalError(format!(
+                "trait {} has zero type parameters at dispatch site",
+                trait_name.local_name
+            )));
+        }
 
         // 2. Resolve the dict (using the full tuple for multi-param traits).
         let (dict_bindings, dict_atom) = self.resolve_dict(trait_name, &dispatch_tys)?;
@@ -5359,7 +5373,7 @@ impl LowerCtx {
         let dict_capture_var = self.fresh_var();
         let dict_ty_ir = IrType::Dict {
             trait_name: trait_name.clone(),
-            target: Box::new(dispatch_ty.clone().into()),
+            target_types: dispatch_tys.iter().map(|t| t.clone().into()).collect(),
         };
 
         // User params
@@ -5597,15 +5611,20 @@ impl LowerCtx {
             lifted_params.push((*new_var, ty.clone().into()));
         }
         for (key, new_var) in &dict_var_mappings {
-            // Payload type is first position's var (multi-param traits carry
-            // the full tuple on the instance side; IR Dict type only stores
-            // the primary dispatch type).
-            let payload_var = *key.1.first().expect("dict capture has no type vars");
+            // Dict carries the full tuple of trait type-param vars.
+            if key.1.is_empty() {
+                return Err(LowerError::InternalError(format!(
+                    "dict capture for {} has empty type-var tuple",
+                    key.0.local_name
+                )));
+            }
+            let target_types: Vec<IrType> =
+                key.1.iter().map(|id| IrType::Var(*id)).collect();
             lifted_params.push((
                 *new_var,
                 IrType::Dict {
                     trait_name: key.0.clone(),
-                    target: Box::new(IrType::Var(payload_var)),
+                    target_types,
                 },
             ));
         }
@@ -5708,14 +5727,19 @@ impl LowerCtx {
                 let var = self.fresh_var();
                 self.dict_params
                     .insert((trait_name.clone(), type_var_ids.clone()), var);
-                let payload_var = *type_var_ids
-                    .first()
-                    .expect("constraint must have at least one type var");
+                if type_var_ids.is_empty() {
+                    return Err(LowerError::InternalError(format!(
+                        "constraint {} on fn {} has empty type-var tuple",
+                        trait_name.local_name, decl.name
+                    )));
+                }
+                let target_types: Vec<IrType> =
+                    type_var_ids.iter().map(|id| IrType::Var(*id)).collect();
                 params.push((
                     var,
                     IrType::Dict {
                         trait_name: trait_name.clone(),
-                        target: Box::new(IrType::Var(payload_var)),
+                        target_types,
                     },
                 ));
             }
@@ -6064,12 +6088,16 @@ pub fn lower_module(
             .trait_defs
             .iter()
             .map(|t| {
-                let ids = if t.type_var_ids.is_empty() {
-                    vec![t.type_var_id]
-                } else {
-                    t.type_var_ids.clone()
-                };
-                (t.trait_id.clone(), (ids, t.method_tc_types.clone()))
+                assert!(
+                    !t.type_var_ids.is_empty(),
+                    "ICE: trait {} has empty type_var_ids — every trait must carry \
+                     at least one type parameter, populated during trait elaboration",
+                    t.trait_id.local_name
+                );
+                (
+                    t.trait_id.clone(),
+                    (t.type_var_ids.clone(), t.method_tc_types.clone()),
+                )
             })
             .collect(),
         trait_method_constraints: typed
@@ -7201,7 +7229,11 @@ fn collect_tuple_arities_from_type(ty: &IrType, arities: &mut std::collections::
             }
         }
         IrType::Own(inner) => collect_tuple_arities_from_type(inner, arities),
-        IrType::Dict { target, .. } => collect_tuple_arities_from_type(target, arities),
+        IrType::Dict { target_types, .. } => {
+            for t in target_types {
+                collect_tuple_arities_from_type(t, arities);
+            }
+        }
         _ => {}
     }
 }

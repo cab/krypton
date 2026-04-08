@@ -21,7 +21,7 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v1: Dict[traits__multi_param_dict_concrete.Convert, Int] = get_dict traits__multi_param_dict_concrete.Convert[Int, String]
+  let v1: Dict[traits__multi_param_dict_concrete.Convert, Int, String] = get_dict traits__multi_param_dict_concrete.Convert[Int, String]
   let v2: String = trait_call traits__multi_param_dict_concrete.Convert.convert(v1, 42)
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v3: Unit = call println(v0, v2)

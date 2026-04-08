@@ -19,7 +19,7 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn main() -> Unit =
-  let v1: Dict[traits__multi_param_partial_known.Convert, Int] = get_dict traits__multi_param_partial_known.Convert[Int, String]
+  let v1: Dict[traits__multi_param_partial_known.Convert, Int, String] = get_dict traits__multi_param_partial_known.Convert[Int, String]
   let v0: String = trait_call traits__multi_param_partial_known.Convert.convert(v1, 42)
   ()
 

@@ -555,7 +555,7 @@ mod tests {
                     bind: d,
                     ty: Type::Dict {
                         trait_name: make_trait_name("Eq"),
-                        target: Box::new(Type::Int),
+                        target_types: vec![Type::Int],
                     },
                     value: simple(SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Int"),
@@ -636,7 +636,7 @@ mod tests {
                     bind: d,
                     ty: Type::Dict {
                         trait_name: make_trait_name("Eq"),
-                        target: Box::new(Type::Named("Point".to_string(), vec![])),
+                        target_types: vec![Type::Named("Point".to_string(), vec![])],
                     },
                     value: simple(SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Point"),
@@ -688,7 +688,7 @@ mod tests {
                     dict,
                     Type::Dict {
                         trait_name: make_trait_name("Eq"),
-                        target: Box::new(Type::Var(tv_a)),
+                        target_types: vec![Type::Var(tv_a)],
                     },
                 ),
                 (x, Type::Var(tv_a)),
@@ -881,7 +881,7 @@ mod tests {
                     bind: d,
                     ty: Type::Dict {
                         trait_name: make_trait_name("Eq"),
-                        target: Box::new(Type::Int),
+                        target_types: vec![Type::Int],
                     },
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "Int"),
@@ -944,7 +944,7 @@ mod tests {
                     bind: d,
                     ty: Type::Dict {
                         trait_name: make_trait_name("Eq"),
-                        target: Box::new(Type::Tuple(vec![Type::Int, Type::String])),
+                        target_types: vec![Type::Tuple(vec![Type::Int, Type::String])],
                     },
                     value: simple(krypton_ir::SimpleExprKind::GetDict {
                         instance_ref: dummy_instance_ref("Eq", "$Tuple2"),

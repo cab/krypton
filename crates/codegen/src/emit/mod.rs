@@ -98,7 +98,9 @@ fn type_references_var(ty: &Type, vars: &[TypeVarId]) -> bool {
         }
         Type::Tuple(elems) => elems.iter().any(|e| type_references_var(e, vars)),
         Type::Own(inner) => type_references_var(inner, vars),
-        Type::Dict { target, .. } => type_references_var(target, vars),
+        Type::Dict { target_types, .. } => {
+            target_types.iter().any(|t| type_references_var(t, vars))
+        }
         _ => false,
     }
 }
@@ -112,7 +114,7 @@ fn type_has_vars(ty: &Type) -> bool {
         Type::Fn(params, ret) => params.iter().any(type_has_vars) || type_has_vars(ret),
         Type::Tuple(elems) => elems.iter().any(type_has_vars),
         Type::Own(inner) => type_has_vars(inner),
-        Type::Dict { target, .. } => type_has_vars(target),
+        Type::Dict { target_types, .. } => target_types.iter().any(type_has_vars),
         _ => false,
     }
 }

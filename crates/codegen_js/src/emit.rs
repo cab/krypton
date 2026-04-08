@@ -2255,9 +2255,20 @@ impl<'a> JsEmitter<'a> {
                 } else {
                     // Try intrinsic inline: look up concrete type from dict var
                     let inlined = if let Some(Atom::Var(dict_var)) = args.first() {
-                        if let Some(Type::Dict { target, .. }) = self.var_types.get(dict_var) {
-                            let type_name = head_type_name(target);
-                            js_intrinsic_body(&trait_name.local_name, &type_name, method_name)
+                        if let Some(Type::Dict { target_types, .. }) =
+                            self.var_types.get(dict_var)
+                        {
+                            // Intrinsic lookup uses the first dispatch position's
+                            // head type as the key; this matches the single-arg
+                            // intrinsic table (e.g. `Show$Int`). Multi-arg
+                            // intrinsics are not currently expressible.
+                            target_types.first().and_then(|t| {
+                                js_intrinsic_body(
+                                    &trait_name.local_name,
+                                    &head_type_name(t),
+                                    method_name,
+                                )
+                            })
                         } else {
                             None
                         }

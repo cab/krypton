@@ -26,9 +26,12 @@ pub enum Type {
     Own(Box<Type>),
     Tuple(Vec<Type>),
     /// Trait dictionary. Only exists in IR — never in the typechecker.
+    ///
+    /// `target_types` carries the full tuple of trait type arguments so
+    /// `Dict[Convert, Int, String]` is distinct from `Dict[Convert, Int, Bool]`.
     Dict {
         trait_name: TraitName,
-        target: Box<Type>,
+        target_types: Vec<Type>,
     },
     /// HKT sentinel (carried over from TC for bind_type_vars/decompose_fn_for_app).
     FnHole,
@@ -170,7 +173,13 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
-            Type::Dict { trait_name, target } => write!(f, "Dict[{}, {}]", trait_name, target),
+            Type::Dict { trait_name, target_types } => {
+                write!(f, "Dict[{}", trait_name)?;
+                for t in target_types {
+                    write!(f, ", {}", t)?;
+                }
+                write!(f, "]")
+            }
             Type::FnHole => write!(f, "_"),
         }
     }
@@ -319,8 +328,9 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
                 let parts: Vec<String> = elems.iter().map(|e| inner(e, var_map)).collect();
                 format!("$Tuple${}", parts.join("$"))
             }
-            Type::Dict { trait_name, target } => {
-                format!("$Dict${}${}", trait_name, inner(target, var_map))
+            Type::Dict { trait_name, target_types } => {
+                let parts: Vec<String> = target_types.iter().map(|t| inner(t, var_map)).collect();
+                format!("$Dict${}${}", trait_name, parts.join("$"))
             }
             Type::FnHole => "$FnHole".to_string(),
         }
@@ -406,6 +416,10 @@ pub fn bind_type_vars(
 /// Zip two lists of types (patterns and concretes) and run `bind_type_vars`
 /// across them in lockstep. Returns `false` if the lengths differ or any
 /// position fails to match. Used by multi-parameter trait instance lookup.
+///
+/// On `false`, the input `bindings` is restored to its pre-call state, so
+/// callers that share a bindings map across candidate probes do not observe
+/// partial-binding leakage from a failed match.
 pub fn bind_type_vars_many(
     patterns: &[Type],
     concretes: &[Type],
@@ -414,10 +428,15 @@ pub fn bind_type_vars_many(
     if patterns.len() != concretes.len() {
         return false;
     }
-    patterns
+    let snapshot = bindings.clone();
+    let ok = patterns
         .iter()
         .zip(concretes.iter())
-        .all(|(p, a)| bind_type_vars(p, a, bindings))
+        .all(|(p, a)| bind_type_vars(p, a, bindings));
+    if !ok {
+        *bindings = snapshot;
+    }
+    ok
 }
 
 /// Function names that are compiler intrinsics — they produce inline bytecode

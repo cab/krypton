@@ -335,14 +335,19 @@ fn walk_simple_expr(
             if let Some(Atom::Var(dict_var)) = args.first() {
                 if let Some(Type::Dict {
                     trait_name: dict_trait,
-                    target,
+                    target_types,
                 }) = var_types.get(dict_var)
                 {
-                    if let Some(fn_id) =
-                        resolve_trait_method(module, dict_trait, target, method_name)
-                    {
-                        fn_edges.call_targets.push((mod_idx, fn_id));
-                        return;
+                    // Suspend analysis resolves against the primary dispatch
+                    // position only; multi-param tuples fall back to the
+                    // unresolved-trait-call path.
+                    if let Some(target) = target_types.first() {
+                        if let Some(fn_id) =
+                            resolve_trait_method(module, dict_trait, target, method_name)
+                        {
+                            fn_edges.call_targets.push((mod_idx, fn_id));
+                            return;
+                        }
                     }
                 }
             }
@@ -1160,7 +1165,7 @@ mod tests {
             params: vec![
                 (VarId(0), Type::Dict {
                     trait_name: trait_name.clone(),
-                    target: Box::new(Type::Int),
+                    target_types: vec![Type::Int],
                 }),
                 (VarId(1), Type::Named("Mailbox".to_string(), vec![Type::Int])),
             ],
@@ -1208,7 +1213,7 @@ mod tests {
                     bind: VarId(11),
                     ty: Type::Dict {
                         trait_name: trait_name.clone(),
-                        target: Box::new(Type::Int),
+                        target_types: vec![Type::Int],
                     },
                     value: simple(SimpleExprKind::GetDict {
                         instance_ref: CanonicalRef {
@@ -1271,7 +1276,7 @@ mod tests {
             params: vec![
                 (VarId(0), Type::Dict {
                     trait_name: trait_name.clone(),
-                    target: Box::new(Type::Var(tv)),
+                    target_types: vec![Type::Var(tv)],
                 }),
                 (VarId(1), Type::Int),
             ],
