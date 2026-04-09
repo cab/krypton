@@ -63,21 +63,22 @@ pub(super) fn resolve_multi_param_constraints(
     // 2. Fixed-point loop. Each pass tries to make progress on at least one
     //    entry. If no entry resolves, we stop.
     loop {
-        // Compute the "live" protected set for each function. The declared
-        // type-parameter var ids may have been unified with fresh ids during
-        // body inference (e.g. join_types at the fn boundary can map
-        // `fn_b → ?c2`), so we must chase each original id through `subst`
-        // to find the id it currently represents.
+        // Compute the "live" protected set for each function as the union
+        // of `free_vars(subst.apply(Var(id)))` over every originally-declared
+        // id. This captures the full equivalence class of each declared type
+        // parameter, regardless of whether body inference left it as a bare
+        // var (`fn_b → ?c2` via join_types) or unified it with a structural
+        // type (`fn_b := Tuple([?c1, ?c2])` for fns returning tuples). In
+        // either case, all the free vars belong semantically to the enclosing
+        // fn's declared type params and must stay abstract.
         let live_protected: Vec<HashSet<TypeVarId>> = protected_type_vars
             .iter()
             .map(|original| {
-                original
-                    .iter()
-                    .filter_map(|&id| match subst.apply(&Type::Var(id)) {
-                        Type::Var(v) => Some(v),
-                        _ => None,
-                    })
-                    .collect()
+                let mut out: HashSet<TypeVarId> = HashSet::new();
+                for &id in original {
+                    out.extend(super::free_vars(&subst.apply(&Type::Var(id))));
+                }
+                out
             })
             .collect();
 
@@ -104,21 +105,34 @@ pub(super) fn resolve_multi_param_constraints(
                     let protected = live_protected
                         .get(entry.owning_fn)
                         .map(|s| s as &HashSet<TypeVarId>);
-                    let is_protected = |t: &Type| match t {
-                        Type::Var(v) => {
+                    // "Protected" is a property of individual free vars, not
+                    // positions. A free var is protected iff it belongs to
+                    // the enclosing fn's declared type-parameter equivalence
+                    // class (computed above, incl. structurally-unified
+                    // members). We use two closures:
+                    //   - `contains_protected_free`: position cannot be
+                    //     pinned without polluting a protected var — even
+                    //     one protected free var anywhere in the position
+                    //     is enough to disqualify the entire unify call,
+                    //     because `unify` walks structurally.
+                    //   - `contains_unprotected_free`: position has at least
+                    //     one var worth trying to pin.
+                    let contains_protected_free = |t: &Type| {
+                        super::free_vars(t).iter().any(|v| {
                             protected.map(|s| s.contains(v)).unwrap_or(false)
-                        }
-                        _ => false,
+                        })
                     };
-                    let all_free_protected = resolved.iter().all(|t| {
-                        if contains_type_var(t) {
-                            is_protected(t)
-                        } else {
-                            true
-                        }
-                    });
-                    if all_free_protected {
-                        // Nothing to pin without destroying forwarded constraints.
+                    let contains_unprotected_free = |t: &Type| {
+                        super::free_vars(t).iter().any(|v| {
+                            !protected.map(|s| s.contains(v)).unwrap_or(false)
+                        })
+                    };
+                    // If no position has an unprotected free var, there's
+                    // nothing to pin without polluting forwarded
+                    // constraints. Skip the entry entirely (also avoids
+                    // the cost of freshening the instance).
+                    let any_unprotected = resolved.iter().any(&contains_unprotected_free);
+                    if !any_unprotected {
                         continue;
                     }
 
@@ -133,10 +147,10 @@ pub(super) fn resolve_multi_param_constraints(
                         .collect();
                     let mut local_progress = false;
                     for (pos, target) in resolved.iter().zip(fresh_targets.iter()) {
-                        if is_protected(pos) {
-                            // Leave protected positions abstract — their
-                            // constraint is forwarded via the enclosing fn's
-                            // `where` clause.
+                        if contains_protected_free(pos) {
+                            // Has at least one protected var — unify would
+                            // walk structurally and pollute that var.
+                            // Leave the whole position abstract.
                             continue;
                         }
                         if matches!(pos, Type::Var(_)) {
@@ -145,8 +159,9 @@ pub(super) fn resolve_multi_param_constraints(
                                 local_progress = true;
                             }
                         } else {
-                            // Concrete position — unification should already
-                            // succeed (the partial match implied compatibility).
+                            // Concrete (or structural-with-no-protected-frees)
+                            // position — unification should already succeed
+                            // (the partial match implied compatibility).
                             // If it doesn't, validation will catch it later.
                             let _ = unify(pos, target, subst);
                         }
