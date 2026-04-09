@@ -1,0 +1,41 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_deferred
+
+trait Convert[k8] { convert(k8): l8 }
+instance traits__multi_param_deferred.Convert[Bool$$Int] { convert=Convert$$Bool$$Int$$convert }
+instance traits__multi_param_deferred.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
+instance traits__multi_param_deferred.Convert[Float$$String] { convert=Convert$$Float$$String$$convert }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn main() -> Unit =
+  let v1: Dict[traits__multi_param_deferred.Convert, Bool, Int] = get_dict traits__multi_param_deferred.Convert[Bool, Int]
+  let v2: Int = trait_call traits__multi_param_deferred.Convert.convert(v1, true)
+  let v3: Dict[traits__multi_param_deferred.Convert, Int, String] = get_dict traits__multi_param_deferred.Convert[Int, String]
+  let v0: String = trait_call traits__multi_param_deferred.Convert.convert(v3, v2)
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v5: Unit = call println(v4, v0)
+  v5
+
+fn Convert$$Bool$$Int$$convert(v6: Bool) -> Int =
+  7
+
+fn Convert$$Int$$String$$convert(v7: Int) -> String =
+  "resolved"
+
+fn Convert$$Float$$String$$convert(v8: Float) -> String =
+  "float"

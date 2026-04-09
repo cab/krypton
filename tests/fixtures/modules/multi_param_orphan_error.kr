@@ -1,0 +1,8 @@
+# expect: error E0302
+import multi_param_orphan_error_lib.{MyConvert}
+
+impl MyConvert[Int, String] {
+    fun my_convert(x: Int) -> String = "orphan"
+}
+
+fun main() = ()

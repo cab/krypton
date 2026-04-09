@@ -1,0 +1,13 @@
+# expect: output "hi-42"
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = "hi-42"
+}
+
+fun main() = {
+  let s: String = 42.convert()
+  println(s)
+}

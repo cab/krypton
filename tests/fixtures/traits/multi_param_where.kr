@@ -1,0 +1,17 @@
+# expect: output "sugar-explicit"
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = if x == 1 { "sugar" } else { "explicit" }
+}
+
+fun sugar[a, b](x: a) -> b where a: Convert[b] = convert(x)
+fun explicit[a, b](x: a) -> b where Convert[a, b] = convert(x)
+
+fun main() = {
+  let s1: String = sugar(1)
+  let s2: String = explicit(2)
+  println(s1 + "-" + s2)
+}

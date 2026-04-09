@@ -1,0 +1,25 @@
+# expect: output "resolved"
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+# Unique match for Bool source: pins `b = Int`.
+impl Convert[Bool, Int] {
+  fun convert(x: Bool) -> Int = 7
+}
+
+# Two String-returning impls share `b = String`, so an outer
+# `convert(_) : String` call is ambiguous until the inner call
+# pins the shared slot.
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = "resolved"
+}
+
+impl Convert[Float, String] {
+  fun convert(x: Float) -> String = "float"
+}
+
+fun main() = {
+  let s: String = convert(convert(true))
+  println(s)
+}
