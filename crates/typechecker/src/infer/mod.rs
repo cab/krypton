@@ -4575,8 +4575,23 @@ fn infer_function_bodies<'a>(
         // Eagerly resolve multi-parameter trait method calls before
         // generalization. Pinning secondary trait params (e.g. `?b = String`)
         // here ensures they don't get quantified into a function's scheme.
+        //
+        // Build the per-function set of "protected" type vars — the vars
+        // bound by each function's declared `[a, b, ...]` type parameters.
+        // These must stay abstract through generalization so declared
+        // `where` constraints on polymorphic functions are forwarded to
+        // callers rather than eagerly pinned to a matching instance.
+        let protected_type_vars: Vec<HashSet<TypeVarId>> = (0..fn_bodies.len())
+            .map(|idx| {
+                saved_type_param_maps
+                    .get(&idx)
+                    .map(|m| m.values().copied().collect())
+                    .unwrap_or_default()
+            })
+            .collect();
         resolve_multi::resolve_multi_param_constraints(
             &fn_bodies,
+            &protected_type_vars,
             trait_registry,
             &mut state.subst,
             &mut state.gen,

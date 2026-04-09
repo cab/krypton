@@ -1,0 +1,16 @@
+# expect: output n
+
+trait Convert[a, b] {
+  fun convert(x: a) -> b
+}
+
+impl Convert[Int, String] {
+  fun convert(x: Int) -> String = "n"
+}
+
+fun f[a, b](x: a) -> b where Convert[a, b] = convert(x)
+
+fun main() = {
+  let s: String = f(42)
+  println(s)
+}

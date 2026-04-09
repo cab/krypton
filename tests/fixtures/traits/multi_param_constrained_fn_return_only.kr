@@ -1,0 +1,16 @@
+# expect: output n
+
+trait Make[a, b] {
+  fun make(x: a) -> b
+}
+
+impl Make[Int, String] {
+  fun make(x: Int) -> String = "n"
+}
+
+fun wrap[a, b](x: a) -> b where Make[a, b] = make(x)
+
+fun main() = {
+  let s: String = wrap(42)
+  println(s)
+}

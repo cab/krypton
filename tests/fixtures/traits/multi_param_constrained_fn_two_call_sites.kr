@@ -1,0 +1,22 @@
+# expect: output "int\nbool"
+
+trait Tag[a, b] {
+  fun tag(x: a) -> b
+}
+
+impl Tag[Int, String] {
+  fun tag(x: Int) -> String = "int"
+}
+
+impl Tag[Bool, String] {
+  fun tag(x: Bool) -> String = "bool"
+}
+
+fun f[a, b](x: a) -> b where Tag[a, b] = tag(x)
+
+fun main() = {
+  let s1: String = f(42)
+  let s2: String = f(true)
+  println(s1)
+  println(s2)
+}

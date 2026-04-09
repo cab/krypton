@@ -14,7 +14,7 @@
 //! resolved by `Convert[Int, String]`) are not erroneously generalized into the
 //! function's scheme.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::trait_registry::{freshen_type, PartialMatch, TraitRegistry};
 use crate::typed_ast::{
@@ -31,6 +31,11 @@ struct Entry {
     /// Trait type-var positions in declaration order. Each entry is the type
     /// observed at the call site for the corresponding trait type variable.
     positions: Vec<Type>,
+    /// Index of the enclosing top-level function in the SCC's `fn_bodies`.
+    /// Used to look up the set of declared type-parameter vars that must
+    /// remain abstract — pinning them would monomorphize the enclosing
+    /// polymorphic function and drop its declared `where` constraint.
+    owning_fn: usize,
 }
 
 /// Resolve all multi-parameter trait method calls within a fresh SCC.
@@ -38,14 +43,18 @@ struct Entry {
 /// Mutates `subst` to pin free positions whenever a unique candidate exists.
 pub(super) fn resolve_multi_param_constraints(
     fn_bodies: &[Option<TypedExpr>],
+    protected_type_vars: &[HashSet<TypeVarId>],
     trait_registry: &TraitRegistry,
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) {
-    // 1. Collect entries.
+    // 1. Collect entries, tagging each with the index of the enclosing
+    //    function so we can look up its declared type-parameter var set.
     let mut entries: Vec<Entry> = Vec::new();
-    for body in fn_bodies.iter().flatten() {
-        collect_entries(body, trait_registry, subst, &mut entries);
+    for (idx, body_opt) in fn_bodies.iter().enumerate() {
+        if let Some(body) = body_opt {
+            collect_entries(body, idx, trait_registry, subst, &mut entries);
+        }
     }
     if entries.is_empty() {
         return;
@@ -54,6 +63,24 @@ pub(super) fn resolve_multi_param_constraints(
     // 2. Fixed-point loop. Each pass tries to make progress on at least one
     //    entry. If no entry resolves, we stop.
     loop {
+        // Compute the "live" protected set for each function. The declared
+        // type-parameter var ids may have been unified with fresh ids during
+        // body inference (e.g. join_types at the fn boundary can map
+        // `fn_b → ?c2`), so we must chase each original id through `subst`
+        // to find the id it currently represents.
+        let live_protected: Vec<HashSet<TypeVarId>> = protected_type_vars
+            .iter()
+            .map(|original| {
+                original
+                    .iter()
+                    .filter_map(|&id| match subst.apply(&Type::Var(id)) {
+                        Type::Var(v) => Some(v),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .collect();
+
         let mut progressed = false;
         for entry in &entries {
             // Re-apply the current substitution to each position.
@@ -67,6 +94,34 @@ pub(super) fn resolve_multi_param_constraints(
             }
             match trait_registry.find_instance_multi_partial(&entry.trait_name, &resolved) {
                 PartialMatch::Unique(inst) => {
+                    // If every free position is a type variable belonging to
+                    // the enclosing function's declared type parameters, this
+                    // is a forwarding constraint (e.g. `fun f[a, b](x: a) -> b
+                    // where Convert[a, b] = convert(x)`). Pinning would
+                    // monomorphize `f` and drop its declared `where` clause
+                    // before generalization can preserve it. Skip entirely —
+                    // the constraint will be dispatched at `f`'s caller.
+                    let protected = live_protected
+                        .get(entry.owning_fn)
+                        .map(|s| s as &HashSet<TypeVarId>);
+                    let is_protected = |t: &Type| match t {
+                        Type::Var(v) => {
+                            protected.map(|s| s.contains(v)).unwrap_or(false)
+                        }
+                        _ => false,
+                    };
+                    let all_free_protected = resolved.iter().all(|t| {
+                        if contains_type_var(t) {
+                            is_protected(t)
+                        } else {
+                            true
+                        }
+                    });
+                    if all_free_protected {
+                        // Nothing to pin without destroying forwarded constraints.
+                        continue;
+                    }
+
                     // Freshen the instance's free type vars so we don't
                     // accidentally pollute the substitution with stale ids,
                     // then unify each position with the freshened target.
@@ -78,6 +133,12 @@ pub(super) fn resolve_multi_param_constraints(
                         .collect();
                     let mut local_progress = false;
                     for (pos, target) in resolved.iter().zip(fresh_targets.iter()) {
+                        if is_protected(pos) {
+                            // Leave protected positions abstract — their
+                            // constraint is forwarded via the enclosing fn's
+                            // `where` clause.
+                            continue;
+                        }
                         if matches!(pos, Type::Var(_)) {
                             // Pinning a previously-free position counts as progress.
                             if unify(pos, target, subst).is_ok() {
@@ -108,6 +169,7 @@ pub(super) fn resolve_multi_param_constraints(
 /// Walk a body and append one `Entry` per multi-parameter trait method call.
 fn collect_entries(
     expr: &TypedExpr,
+    owning_fn: usize,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
     out: &mut Vec<Entry>,
@@ -172,6 +234,7 @@ fn collect_entries(
                                 out.push(Entry {
                                     trait_name: trait_name.clone(),
                                     positions,
+                                    owning_fn,
                                 });
                             }
                         }

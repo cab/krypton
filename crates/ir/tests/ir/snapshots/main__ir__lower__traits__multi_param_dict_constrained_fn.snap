@@ -1,0 +1,35 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_dict_constrained_fn
+
+trait Convert[k8] { convert(k8): l8 }
+instance traits__multi_param_dict_constrained_fn.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[r3]) -> Option[r3]
+import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (h) -> Unit
+
+fn f(v0: Dict[traits__multi_param_dict_constrained_fn.Convert, n8, s8], v1: n8) -> s8 =
+  let v2: s8 = trait_call traits__multi_param_dict_constrained_fn.Convert.convert(v0, v1)
+  v2
+
+fn main() -> Unit =
+  let v4: Dict[traits__multi_param_dict_constrained_fn.Convert, Int, String] = get_dict traits__multi_param_dict_constrained_fn.Convert[Int, String]
+  let v3: String = call f(v4, 42)
+  let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v6: Unit = call println(v5, v3)
+  v6
+
+fn Convert$$Int$$String$$convert(v7: Int) -> String =
+  "n"
