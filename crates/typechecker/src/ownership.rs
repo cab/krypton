@@ -550,9 +550,7 @@ pub fn check_ownership(
 ) -> (OwnershipResult, Vec<SpannedTypeError>) {
     // MaybeOwn must be fully resolved before ownership checking.
     debug_assert!(
-        !typed_fns
-            .iter()
-            .any(|f| f.body.ty.contains_maybe_own()),
+        !typed_fns.iter().any(|f| f.body.ty.contains_maybe_own()),
         "MaybeOwn leaked past qualifier resolution into ownership checking"
     );
 
@@ -592,8 +590,10 @@ pub fn check_ownership(
     let mut fn_scheme_params: HashMap<String, Vec<Type>> = HashMap::new();
     for (name, scheme, _) in fn_types {
         if let Type::Fn(params, _) = &scheme.ty {
-            fn_scheme_params
-                .insert(name.clone(), params.iter().map(|(_, t)| t.clone()).collect());
+            fn_scheme_params.insert(
+                name.clone(),
+                params.iter().map(|(_, t)| t.clone()).collect(),
+            );
         }
     }
 
@@ -739,10 +739,7 @@ impl<'a> OwnershipChecker<'a> {
         Ok(())
     }
 
-    fn check_branch(
-        &mut self,
-        expr: &TypedExpr,
-    ) -> Result<BranchConsumeMaps, SpannedTypeError> {
+    fn check_branch(&mut self, expr: &TypedExpr) -> Result<BranchConsumeMaps, SpannedTypeError> {
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
         self.check_expr(expr)?;
@@ -1047,11 +1044,8 @@ impl<'a> OwnershipChecker<'a> {
 
                 for arm in arms {
                     let pattern_owned = collect_owned_pattern_vars(&arm.pattern);
-                    let (arm_consumed, arm_partial) = self.check_match_arm_branch(
-                        &arm.pattern,
-                        arm.guard.as_deref(),
-                        &arm.body,
-                    )?;
+                    let (arm_consumed, arm_partial) =
+                        self.check_match_arm_branch(&arm.pattern, arm.guard.as_deref(), &arm.body)?;
 
                     let newly: HashMap<String, Span> = arm_consumed
                         .into_iter()

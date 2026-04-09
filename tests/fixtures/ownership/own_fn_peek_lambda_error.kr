@@ -1,4 +1,4 @@
 # expect: error E0104
 fun peek[a](x: a) -> a where a: shared = x
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun test(x: ~String) -> String = peek(() -> consume(x))()

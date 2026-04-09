@@ -408,8 +408,8 @@ pub struct ExportedTraitMethod {
 pub struct InstanceMethod {
     pub name: String,            // original method name, e.g. "show"
     pub params: Vec<TypedParam>, // parameter names + modes
-    pub body: TypedExpr,     // typed method body
-    pub scheme: TypeScheme,  // type scheme for the method
+    pub body: TypedExpr,         // typed method body
+    pub scheme: TypeScheme,      // type scheme for the method
     /// Method-level constraints as resolved (TraitName, Vec<TypeVarId>) pairs for IR lowering.
     pub constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)>,
 }

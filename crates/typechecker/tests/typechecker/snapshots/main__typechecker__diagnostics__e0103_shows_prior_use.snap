@@ -1,5 +1,5 @@
 ---
-source: crates/typechecker/tests/diagnostics_test.rs
+source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
 [E0103] Error: capture of moved value: `x`

@@ -60,8 +60,8 @@ fn classify_owned(
     match inner {
         // Concrete named type: ask the registry whether it implements Disposable.
         Type::Named(name, _) => {
-            let is_disposable = has_disposable_trait
-                && registry.find_instance(&disposable_tn, inner).is_some();
+            let is_disposable =
+                has_disposable_trait && registry.find_instance(&disposable_tn, inner).is_some();
             if is_disposable {
                 OwnedKind::Disposable(name.clone())
             } else {
@@ -86,14 +86,10 @@ fn classify_owned(
 
         // Aggregates and other shapes: never Disposable in v0 (M39-T3 scope).
         // Replaces the prior ICE at this site.
-        Type::App(_, _) | Type::Tuple(_) | Type::Fn(_, _) => {
-            OwnedKind::Linear(inner.to_string())
-        }
+        Type::App(_, _) | Type::Tuple(_) | Type::Fn(_, _) => OwnedKind::Linear(inner.to_string()),
 
         // Primitives wrapped in Own — degenerate but legal under M39-T3.
-        Type::Int | Type::Float | Type::Bool | Type::String => {
-            OwnedKind::Linear(inner.to_string())
-        }
+        Type::Int | Type::Float | Type::Bool | Type::String => OwnedKind::Linear(inner.to_string()),
 
         // Genuine compiler bugs: nested Own, MaybeOwn at this level, etc.
         Type::Own(_) => {
@@ -101,9 +97,7 @@ fn classify_owned(
         }
         Type::Unit => OwnedKind::Linear("Unit".to_string()),
         Type::MaybeOwn(_, _) => {
-            panic!(
-                "ICE: Type::Own(Type::MaybeOwn(..)) reached auto_close — possible compiler bug"
-            )
+            panic!("ICE: Type::Own(Type::MaybeOwn(..)) reached auto_close — possible compiler bug")
         }
         Type::FnHole => {
             panic!("ICE: Type::Own(Type::FnHole) reached auto_close — sentinel must be normalized")
@@ -519,11 +513,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     // TypedParam has no span; use the function body span as a
                     // stable proxy. Dedup is keyed on (name, span) so two params
                     // sharing the same span still emit distinct diagnostics.
-                    if let Some(b) = LiveBinding::from_kind(
-                        param.name.clone(),
-                        decl.body.span,
-                        kind,
-                    ) {
+                    if let Some(b) =
+                        LiveBinding::from_kind(param.name.clone(), decl.body.span, kind)
+                    {
                         live.push(b);
                     }
                 }
@@ -615,8 +607,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
 
                 let new_kind = self.classify(&value.ty);
-                let new_binding =
-                    LiveBinding::from_kind(name.clone(), expr.span, new_kind);
+                let new_binding = LiveBinding::from_kind(name.clone(), expr.span, new_kind);
 
                 if let Some(body) = body {
                     let sid = self.expect_scope_id(expr, "Let{body:Some}");
@@ -684,7 +675,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
                             expr.span,
                             self.info.early_returns.contains_key(&expr.span),
                         );
-                        self.info.early_returns.insert(expr.span, disposable_snapshot);
+                        self.info
+                            .early_returns
+                            .insert(expr.span, disposable_snapshot);
                     }
                 }
             }
@@ -946,7 +939,9 @@ impl<'a> AutoCloseAnalyzer<'a> {
                             expr.span,
                             self.info.recur_closes.contains_key(&expr.span),
                         );
-                        self.info.recur_closes.insert(expr.span, disposable_snapshot);
+                        self.info
+                            .recur_closes
+                            .insert(expr.span, disposable_snapshot);
                     }
                 }
             }
@@ -991,18 +986,19 @@ pub fn compute_auto_close(
     let mut all_errors: Vec<SpannedTypeError> = Vec::new();
 
     for decl in functions {
-        let (param_types, scheme_constraints): (Vec<Type>, Vec<(TraitName, Vec<TypeVarId>)>) = fn_types
-            .iter()
-            .find(|(name, _, _)| name == &decl.name)
-            .map(|(_, scheme, _)| {
-                let params = if let Type::Fn(params, _) = &scheme.ty {
-                    params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                (params, scheme.constraints.clone())
-            })
-            .unwrap_or_default();
+        let (param_types, scheme_constraints): (Vec<Type>, Vec<(TraitName, Vec<TypeVarId>)>) =
+            fn_types
+                .iter()
+                .find(|(name, _, _)| name == &decl.name)
+                .map(|(_, scheme, _)| {
+                    let params = if let Type::Fn(params, _) = &scheme.ty {
+                        params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>()
+                    } else {
+                        Vec::new()
+                    };
+                    (params, scheme.constraints.clone())
+                })
+                .unwrap_or_default();
 
         let mut analyzer = AutoCloseAnalyzer::new(
             registry,

@@ -1,5 +1,5 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun make(x: ~String) -> String {
     let f = () -> consume(x);

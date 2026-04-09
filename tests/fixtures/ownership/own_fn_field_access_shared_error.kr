@@ -1,4 +1,4 @@
 # expect: error E0001
 type Callback = { run: ~() -> String }
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun test(cb: Callback) -> String = (cb.run)()

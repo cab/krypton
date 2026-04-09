@@ -1,4 +1,4 @@
-# expect: ok
-# shared bound strips ownership: passing ~String to shared-bounded param yields String
+# expect: error E0001
+# shared-bound parameters do not create an implicit owned-to-bare data drop
 fun inspect[a](x: a) -> a where a: shared = x
 fun test(s: ~String) -> String = inspect(s)

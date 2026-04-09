@@ -1,4 +1,4 @@
-# expect: ok
-# ~T coerces to T at call site
+# expect: error E0001
+# ~T no longer coerces to T at call sites.
 fun len(s: String) -> Int = 42
 fun test(buf: ~String) -> Int = len(buf)

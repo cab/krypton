@@ -54,9 +54,7 @@ impl InferError {
 /// Accepts single- or multi-parameter constraints as long as every type
 /// argument is a bare identifier. Nested constructors in type arguments
 /// (e.g. `Foo[Array[a]]`) are rejected with `UnsupportedConstraint`.
-fn require_param_vars(
-    tc: &TypeConstraint,
-) -> Result<Vec<&str>, SpannedTypeError> {
+fn require_param_vars(tc: &TypeConstraint) -> Result<Vec<&str>, SpannedTypeError> {
     tc.as_param_vars().ok_or_else(|| {
         spanned(
             TypeError::UnsupportedConstraint {
@@ -767,7 +765,9 @@ fn remap_type_vars(ty: &Type, remap: &HashMap<TypeVarId, TypeVarId>) -> Type {
             Box::new(remap_type_vars(ctor, remap)),
             args.iter().map(|a| remap_type_vars(a, remap)).collect(),
         ),
-        Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_type_vars(e, remap)).collect()),
+        Type::Tuple(elems) => {
+            Type::Tuple(elems.iter().map(|e| remap_type_vars(e, remap)).collect())
+        }
         Type::Own(inner) => Type::Own(Box::new(remap_type_vars(inner, remap))),
         Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(remap_type_vars(inner, remap))),
         _ => ty.clone(),
@@ -901,11 +901,7 @@ pub(crate) fn collect_parser_pattern_bindings(pattern: &Pattern) -> Vec<&str> {
 /// in the typed body. A capture demands own unless ALL of its occurrences
 /// are in known-shared positions: binary-op operands, unary-op operands,
 /// field-access bases, or function args where the param type is not `~T`.
-fn capture_demands_own(
-    body: &TypedExpr,
-    capture_name: &str,
-    subst: &Substitution,
-) -> bool {
+fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitution) -> bool {
     use crate::typed_ast::TypedExprKind;
 
     /// Returns true if `expr` is `Var(capture_name)`.
@@ -923,20 +919,16 @@ fn capture_demands_own(
         TypedExprKind::BinaryOp { lhs, rhs, .. } => {
             // If the capture is a direct operand, it's shared — skip it.
             // Only recurse into non-capture sub-expressions.
-            (!is_capture(lhs, capture_name)
-                && capture_demands_own(lhs, capture_name, subst))
-                || (!is_capture(rhs, capture_name)
-                    && capture_demands_own(rhs, capture_name, subst))
+            (!is_capture(lhs, capture_name) && capture_demands_own(lhs, capture_name, subst))
+                || (!is_capture(rhs, capture_name) && capture_demands_own(rhs, capture_name, subst))
         }
         // Unary-op operand is shared
         TypedExprKind::UnaryOp { operand, .. } => {
-            !is_capture(operand, capture_name)
-                && capture_demands_own(operand, capture_name, subst)
+            !is_capture(operand, capture_name) && capture_demands_own(operand, capture_name, subst)
         }
         // Field-access base is shared
         TypedExprKind::FieldAccess { expr, .. } => {
-            !is_capture(expr, capture_name)
-                && capture_demands_own(expr, capture_name, subst)
+            !is_capture(expr, capture_name) && capture_demands_own(expr, capture_name, subst)
         }
 
         // Function application: check param types to decide shared vs own
@@ -987,9 +979,9 @@ fn capture_demands_own(
                     .as_ref()
                     .is_some_and(|b| capture_demands_own(b, capture_name, subst))
         }
-        TypedExprKind::Do(exprs) => {
-            exprs.iter().any(|e| capture_demands_own(e, capture_name, subst))
-        }
+        TypedExprKind::Do(exprs) => exprs
+            .iter()
+            .any(|e| capture_demands_own(e, capture_name, subst)),
         TypedExprKind::Match { scrutinee, arms } => {
             capture_demands_own(scrutinee, capture_name, subst)
                 || arms.iter().any(|arm| {
@@ -999,12 +991,8 @@ fn capture_demands_own(
                         || capture_demands_own(&arm.body, capture_name, subst)
                 })
         }
-        TypedExprKind::Lambda { body, .. } => {
-            capture_demands_own(body, capture_name, subst)
-        }
-        TypedExprKind::TypeApp { expr, .. } => {
-            capture_demands_own(expr, capture_name, subst)
-        }
+        TypedExprKind::Lambda { body, .. } => capture_demands_own(body, capture_name, subst),
+        TypedExprKind::TypeApp { expr, .. } => capture_demands_own(expr, capture_name, subst),
         // Conservative: struct fields, tuple elements, vec/recur elements
         // all treated as own-requiring when the capture appears directly
         TypedExprKind::StructLit { fields, .. } => fields.iter().any(|(_, val)| {
@@ -1013,8 +1001,7 @@ fn capture_demands_own(
         TypedExprKind::StructUpdate { base, fields } => {
             capture_demands_own(base, capture_name, subst)
                 || fields.iter().any(|(_, val)| {
-                    is_capture(val, capture_name)
-                        || capture_demands_own(val, capture_name, subst)
+                    is_capture(val, capture_name) || capture_demands_own(val, capture_name, subst)
                 })
         }
         TypedExprKind::Tuple(elements)
@@ -1028,9 +1015,7 @@ fn capture_demands_own(
                     .as_ref()
                     .is_some_and(|b| capture_demands_own(b, capture_name, subst))
         }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            capture_demands_own(expr, capture_name, subst)
-        }
+        TypedExprKind::QuestionMark { expr, .. } => capture_demands_own(expr, capture_name, subst),
     }
 }
 
@@ -1046,19 +1031,18 @@ pub(super) fn first_own_capture(
             if !params.contains(name.as_str()) {
                 if let Some(scheme) = env.lookup(name) {
                     let ty = subst.apply(&scheme.ty);
-                    if matches!(ty, Type::Own(_))
-                        && capture_demands_own(typed_body, name, subst)
-                    {
+                    if matches!(ty, Type::Own(_)) && capture_demands_own(typed_body, name, subst) {
                         return Some(name.clone());
                     }
                 }
             }
             None
         }
-        Expr::App { func, args, .. } => first_own_capture(func, params, env, subst, typed_body).or_else(|| {
-            args.iter()
-                .find_map(|a| first_own_capture(a, params, env, subst, typed_body))
-        }),
+        Expr::App { func, args, .. } => first_own_capture(func, params, env, subst, typed_body)
+            .or_else(|| {
+                args.iter()
+                    .find_map(|a| first_own_capture(a, params, env, subst, typed_body))
+            }),
         Expr::TypeApp { expr, .. } => first_own_capture(expr, params, env, subst, typed_body),
         Expr::Let {
             name,
@@ -1081,17 +1065,15 @@ pub(super) fn first_own_capture(
             value,
             body,
             ..
-        } => {
-            first_own_capture(value, params, env, subst, typed_body).or_else(|| {
-                body.as_ref().and_then(|b| {
-                    let mut inner = params.clone();
-                    for name in collect_parser_pattern_bindings(pattern) {
-                        inner.insert(name);
-                    }
-                    first_own_capture(b, &inner, env, subst, typed_body)
-                })
+        } => first_own_capture(value, params, env, subst, typed_body).or_else(|| {
+            body.as_ref().and_then(|b| {
+                let mut inner = params.clone();
+                for name in collect_parser_pattern_bindings(pattern) {
+                    inner.insert(name);
+                }
+                first_own_capture(b, &inner, env, subst, typed_body)
             })
-        }
+        }),
         Expr::Do { exprs, .. } => exprs
             .iter()
             .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
@@ -1132,12 +1114,13 @@ pub(super) fn first_own_capture(
         Expr::StructLit { fields, .. } => fields
             .iter()
             .find_map(|(_, e)| first_own_capture(e, params, env, subst, typed_body)),
-        Expr::StructUpdate { base, fields, .. } => first_own_capture(base, params, env, subst, typed_body)
-            .or_else(|| {
+        Expr::StructUpdate { base, fields, .. } => {
+            first_own_capture(base, params, env, subst, typed_body).or_else(|| {
                 fields
                     .iter()
                     .find_map(|(_, e)| first_own_capture(e, params, env, subst, typed_body))
-            }),
+            })
+        }
         Expr::Tuple { elements, .. } => elements
             .iter()
             .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
@@ -1579,7 +1562,13 @@ pub fn infer_module(
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
     root_module_path: String,
     target: krypton_parser::ast::CompileTarget,
-) -> Result<(Vec<TypedModule>, Vec<crate::module_interface::ModuleInterface>), Vec<InferError>> {
+) -> Result<
+    (
+        Vec<TypedModule>,
+        Vec<crate::module_interface::ModuleInterface>,
+    ),
+    Vec<InferError>,
+> {
     use krypton_modules::module_graph;
     use krypton_modules::stdlib_loader::StdlibLoader;
 
@@ -1660,11 +1649,10 @@ pub fn infer_module(
     }
 
     // Compute root direct deps before root_module_path is moved.
-    let mut root_dep_paths: Vec<String> =
-        crate::module_interface::collect_direct_deps(module)
-            .iter()
-            .map(|p| p.0.clone())
-            .collect();
+    let mut root_dep_paths: Vec<String> = crate::module_interface::collect_direct_deps(module)
+        .iter()
+        .map(|p| p.0.clone())
+        .collect();
     if !graph.prelude_tree_paths.contains(&root_module_path) {
         root_dep_paths.push("prelude".to_string());
     }
@@ -1732,7 +1720,12 @@ pub fn infer_module_single(
     module: &Module,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
 ) -> Result<TypedModule, Vec<InferError>> {
-    let (mut modules, _) = infer_module(module, resolver, "main".to_string(), krypton_parser::ast::CompileTarget::Jvm)?;
+    let (mut modules, _) = infer_module(
+        module,
+        resolver,
+        "main".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )?;
     Ok(modules.remove(0))
 }
 
@@ -2680,16 +2673,16 @@ impl ModuleInferenceState {
                 .iter()
                 .map(|m| (m.name.clone(), m.param_types.len()))
                 .collect();
-            let method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)> = info
-                .methods
-                .iter()
-                .map(|m| {
-                    (
-                        m.name.clone(),
-                        (m.param_types.clone(), m.return_type.clone()),
-                    )
-                })
-                .collect();
+            let method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)> =
+                info.methods
+                    .iter()
+                    .map(|m| {
+                        (
+                            m.name.clone(),
+                            (m.param_types.clone(), m.return_type.clone()),
+                        )
+                    })
+                    .collect();
             let method_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = info
                 .methods
                 .iter()
@@ -3281,10 +3274,7 @@ fn register_extern_traits(
             .map_err(|e| spanned(e, method.span))?;
 
             // Build TypeScheme for the method: forall [tv_id]. param_types -> return_type
-            let fn_type = Type::fn_consuming(
-                param_types.clone(),
-                return_type.clone(),
-            );
+            let fn_type = Type::fn_consuming(param_types.clone(), return_type.clone());
             let var_names: HashMap<TypeVarId, String> = all_tv_ids
                 .iter()
                 .zip(ext.type_params.iter())
@@ -3847,7 +3837,11 @@ fn register_impl_instances(
             Decl::DefTrait { name, .. } => Some(name.clone()),
             // Extern traits (`extern java "..." as trait Foo[a]`) are local trait definitions
             // and should be treated as such for the orphan check.
-            Decl::Extern { is_trait: true, alias: Some(name), .. } => Some(name.clone()),
+            Decl::Extern {
+                is_trait: true,
+                alias: Some(name),
+                ..
+            } => Some(name.clone()),
             _ => None,
         })
         .collect();
@@ -3898,8 +3892,7 @@ fn register_impl_instances(
             // Resolve each type argument into a concrete `Type`.
             let mut resolved_targets: Vec<Type> = Vec::with_capacity(type_args.len());
             for arg in type_args {
-                let arg_wildcards =
-                    validate_impl_wildcards(arg).map_err(|e| spanned(e, *span))?;
+                let arg_wildcards = validate_impl_wildcards(arg).map_err(|e| spanned(e, *span))?;
                 let resolved = if arg_wildcards > 0 {
                     resolve_impl_target(
                         arg,
@@ -3948,9 +3941,7 @@ fn register_impl_instances(
                                 *span,
                             ));
                         }
-                        if let Some((src, _)) =
-                            state.imports.imported_type_info.get(name)
-                        {
+                        if let Some((src, _)) = state.imports.imported_type_info.get(name) {
                             modules_checked.push(src.clone());
                         } else {
                             modules_checked.push(module_path.to_string());
@@ -4301,116 +4292,136 @@ fn infer_function_bodies<'a>(
 
         let qual_snap = state.subst.push_qual_scope();
         let scc_result: Result<(), SpannedTypeError> = (|| {
-        for &(idx, ref tv) in &pre_bound {
-            let decl = fn_decls[idx];
-            state.env.push_scope();
+            for &(idx, ref tv) in &pre_bound {
+                let decl = fn_decls[idx];
+                state.env.push_scope();
 
-            let (type_param_map, type_param_arity) =
-                build_type_param_maps(&decl.type_params, &mut state.gen);
-            saved_type_param_maps.insert(idx, type_param_map.clone());
-            let mut shared_tv_names: HashSet<String> = HashSet::new();
-            if !decl.constraints.is_empty() {
-                for constraint in &decl.constraints {
-                    if constraint.trait_name == "shared" {
-                        let tv_names = require_param_vars(constraint)?;
-                        for n in tv_names {
-                            shared_tv_names.insert(n.to_string());
-                        }
-                    }
-                }
-
-                for p in &decl.params {
-                    if let Some(TypeExpr::Own { inner, .. }) = &p.ty {
-                        if let TypeExpr::Var { name, .. } = inner.as_ref() {
-                            if shared_tv_names.contains(name) {
-                                return Err(spanned(
-                                    TypeError::QualifierBoundViolation {
-                                        type_var: name.clone(),
-                                        param_name: p.name.clone(),
-                                    },
-                                    decl.span,
-                                ));
+                let (type_param_map, type_param_arity) =
+                    build_type_param_maps(&decl.type_params, &mut state.gen);
+                saved_type_param_maps.insert(idx, type_param_map.clone());
+                let mut shared_tv_names: HashSet<String> = HashSet::new();
+                if !decl.constraints.is_empty() {
+                    for constraint in &decl.constraints {
+                        if constraint.trait_name == "shared" {
+                            let tv_names = require_param_vars(constraint)?;
+                            for n in tv_names {
+                                shared_tv_names.insert(n.to_string());
                             }
                         }
                     }
+
+                    for p in &decl.params {
+                        if let Some(TypeExpr::Own { inner, .. }) = &p.ty {
+                            if let TypeExpr::Var { name, .. } = inner.as_ref() {
+                                if shared_tv_names.contains(name) {
+                                    return Err(spanned(
+                                        TypeError::QualifierBoundViolation {
+                                            type_var: name.clone(),
+                                            param_name: p.name.clone(),
+                                        },
+                                        decl.span,
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    for constraint in &decl.constraints {
+                        if constraint.trait_name != "shared"
+                            && trait_registry
+                                .lookup_trait_by_name(&constraint.trait_name)
+                                .is_none()
+                        {
+                            return Err(spanned(
+                                TypeError::UnknownTrait {
+                                    name: constraint.trait_name.clone(),
+                                },
+                                constraint.span,
+                            ));
+                        }
+                    }
+
+                    let requirements: Vec<(TraitName, Vec<TypeVarId>)> = decl
+                        .constraints
+                        .iter()
+                        .filter(|c| c.trait_name != "shared")
+                        .map(|constraint| {
+                            let tv_names = require_param_vars(constraint)?;
+                            let tvs: Vec<TypeVarId> = tv_names
+                                .iter()
+                                .filter_map(|n| type_param_map.get(*n).copied())
+                                .collect();
+                            if tvs.len() != tv_names.len() || tvs.is_empty() {
+                                return Ok(None);
+                            }
+                            // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
+                            // Validation deferred to instance resolution phase.
+                            let tn = trait_registry
+                                .lookup_trait_by_name(&constraint.trait_name)
+                                .map(|ti| ti.trait_name())
+                                .unwrap_or_else(|| {
+                                    TraitName::new(
+                                        mod_path.to_string(),
+                                        constraint.trait_name.clone(),
+                                    )
+                                });
+                            Ok(Some((tn, tvs)))
+                        })
+                        .collect::<Result<Vec<Option<_>>, SpannedTypeError>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect();
+                    if !requirements.is_empty() {
+                        fn_constraint_requirements.insert(decl.name.clone(), requirements);
+                    }
+                }
+                if !shared_tv_names.is_empty() {
+                    // Mark shared type vars on the substitution so unify/coerce_unify
+                    // can strip Own when binding these vars.
+                    for name in &shared_tv_names {
+                        if let Some(&var_id) = type_param_map.get(name.as_str()) {
+                            state.subst.mark_shared_var(var_id);
+                        }
+                    }
+                    shared_type_vars.insert(decl.name.clone(), shared_tv_names);
                 }
 
-                for constraint in &decl.constraints {
-                    if constraint.trait_name != "shared"
-                        && trait_registry
-                            .lookup_trait_by_name(&constraint.trait_name)
-                            .is_none()
-                    {
+                let mut seen_params = HashSet::new();
+                for p in &decl.params {
+                    if !seen_params.insert(&p.name) {
                         return Err(spanned(
-                            TypeError::UnknownTrait {
-                                name: constraint.trait_name.clone(),
+                            TypeError::DuplicateParam {
+                                name: p.name.clone(),
                             },
-                            constraint.span,
+                            p.span,
                         ));
                     }
                 }
 
-                let requirements: Vec<(TraitName, Vec<TypeVarId>)> = decl
-                    .constraints
-                    .iter()
-                    .filter(|c| c.trait_name != "shared")
-                    .map(|constraint| {
-                        let tv_names = require_param_vars(constraint)?;
-                        let tvs: Vec<TypeVarId> = tv_names
-                            .iter()
-                            .filter_map(|n| type_param_map.get(*n).copied())
-                            .collect();
-                        if tvs.len() != tv_names.len() || tvs.is_empty() {
-                            return Ok(None);
-                        }
-                        // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
-                        // Validation deferred to instance resolution phase.
-                        let tn = trait_registry
-                            .lookup_trait_by_name(&constraint.trait_name)
-                            .map(|ti| ti.trait_name())
-                            .unwrap_or_else(|| {
-                                TraitName::new(
-                                    mod_path.to_string(),
-                                    constraint.trait_name.clone(),
-                                )
-                            });
-                        Ok(Some((tn, tvs)))
-                    })
-                    .collect::<Result<Vec<Option<_>>, SpannedTypeError>>()?
-                    .into_iter()
-                    .flatten()
-                    .collect();
-                if !requirements.is_empty() {
-                    fn_constraint_requirements.insert(decl.name.clone(), requirements);
-                }
-            }
-            if !shared_tv_names.is_empty() {
-                // Mark shared type vars on the substitution so unify/coerce_unify
-                // can strip Own when binding these vars.
-                for name in &shared_tv_names {
-                    if let Some(&var_id) = type_param_map.get(name.as_str()) {
-                        state.subst.mark_shared_var(var_id);
+                let mut param_types = Vec::new();
+                for p in &decl.params {
+                    let ptv = Type::Var(state.gen.fresh());
+                    if let Some(ref ty_expr) = p.ty {
+                        let annotated_ty = type_registry::resolve_type_expr(
+                            ty_expr,
+                            &type_param_map,
+                            &type_param_arity,
+                            &state.registry,
+                            ResolutionContext::UserAnnotation,
+                            None,
+                        )
+                        .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+                        .map_err(|e| spanned(e, decl.span))?;
+                        unify(&ptv, &annotated_ty, &mut state.subst)
+                            .map_err(|e| spanned(e, decl.span))?;
                     }
+                    param_types.push(ptv.clone());
+                    state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
                 }
-                shared_type_vars.insert(decl.name.clone(), shared_tv_names);
-            }
-
-            let mut seen_params = HashSet::new();
-            for p in &decl.params {
-                if !seen_params.insert(&p.name) {
-                    return Err(spanned(
-                        TypeError::DuplicateParam { name: p.name.clone() },
-                        p.span,
-                    ));
-                }
-            }
-
-            let mut param_types = Vec::new();
-            for p in &decl.params {
-                let ptv = Type::Var(state.gen.fresh());
-                if let Some(ref ty_expr) = p.ty {
-                    let annotated_ty = type_registry::resolve_type_expr(
-                        ty_expr,
+                let prev_fn_return_type = state.env.fn_return_type.take();
+                if let Some(ref ret_ty_expr) = decl.return_type {
+                    let resolved_ret = type_registry::resolve_type_expr(
+                        ret_ty_expr,
                         &type_param_map,
                         &type_param_arity,
                         &state.registry,
@@ -4419,52 +4430,39 @@ fn infer_function_bodies<'a>(
                     )
                     .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, decl.span))?;
-                    unify(&ptv, &annotated_ty, &mut state.subst)
-                        .map_err(|e| spanned(e, decl.span))?;
+                    state.env.fn_return_type = Some(resolved_ret);
+                } else {
+                    state.env.fn_return_type = Some(Type::Var(state.gen.fresh()));
                 }
-                param_types.push(ptv.clone());
-                state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
-            }
-            let prev_fn_return_type = state.env.fn_return_type.take();
-            if let Some(ref ret_ty_expr) = decl.return_type {
-                let resolved_ret = type_registry::resolve_type_expr(
-                    ret_ty_expr,
-                    &type_param_map,
-                    &type_param_arity,
-                    &state.registry,
-                    ResolutionContext::UserAnnotation,
-                    None,
-                )
-                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
-                .map_err(|e| spanned(e, decl.span))?;
-                state.env.fn_return_type = Some(resolved_ret);
-            } else {
-                state.env.fn_return_type = Some(Type::Var(state.gen.fresh()));
-            }
 
-            let body_typed = {
-                let mut ctx = InferenceContext {
-                    env: &mut state.env,
-                    subst: &mut state.subst,
-                    gen: &mut state.gen,
-                    registry: Some(&state.registry),
-                    recur_params: Some(param_types.clone()),
-                    let_own_spans: Some(&mut state.let_own_spans),
-                    lambda_own_captures: Some(&mut state.lambda_own_captures),
-                    type_param_map: &type_param_map,
-                    type_param_arity: &type_param_arity,
-                    qualified_modules: &state.qualified_modules,
-                    imported_type_info: &state.imports.imported_type_info,
-                    module_path: mod_path,
-                    shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                    self_type: None,
+                let body_typed = {
+                    // Clone the resolved return type so we can pass it as the
+                    // bidirectional `expected_type` to the body inference without
+                    // keeping an immutable borrow of state.env alongside the
+                    // mutable borrow that InferenceContext requires.
+                    let fn_ret_expected = state.env.fn_return_type.clone();
+                    let mut ctx = InferenceContext {
+                        env: &mut state.env,
+                        subst: &mut state.subst,
+                        gen: &mut state.gen,
+                        registry: Some(&state.registry),
+                        recur_params: Some(param_types.clone()),
+                        let_own_spans: Some(&mut state.let_own_spans),
+                        lambda_own_captures: Some(&mut state.lambda_own_captures),
+                        type_param_map: &type_param_map,
+                        type_param_arity: &type_param_arity,
+                        qualified_modules: &state.qualified_modules,
+                        imported_type_info: &state.imports.imported_type_info,
+                        module_path: mod_path,
+                        shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
+                        self_type: None,
+                    };
+                    ctx.infer_expr_inner(&decl.body, fn_ret_expected.as_ref())?
                 };
-                ctx.infer_expr_inner(&decl.body, None)?
-            };
-            state.env.fn_return_type = prev_fn_return_type;
-            state.env.pop_scope();
+                state.env.fn_return_type = prev_fn_return_type;
+                state.env.pop_scope();
 
-            let param_types: Vec<Type> = param_types.iter().enumerate().map(|(i, t)| {
+                let param_types: Vec<Type> = param_types.iter().enumerate().map(|(i, t)| {
                 let resolved = state.subst.apply(t);
                 debug_assert!(
                     !matches!(&resolved, Type::Own(ref inner) if matches!(inner.as_ref(), Type::Own(_))),
@@ -4474,21 +4472,20 @@ fn infer_function_bodies<'a>(
                 );
                 resolved
             }).collect();
-            let body_ty = state.subst.apply(&body_typed.ty);
+                let body_ty = state.subst.apply(&body_typed.ty);
 
-            let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
-                let annotated_ret = type_registry::resolve_type_expr(
-                    ret_ty_expr,
-                    &type_param_map,
-                    &type_param_arity,
-                    &state.registry,
-                    ResolutionContext::UserAnnotation,
-                    None,
-                )
-                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
-                .map_err(|e| spanned(e, decl.span))?;
-                coerce_unify(&body_ty, &annotated_ret, &mut state.subst)
-                    .map_err(|e| {
+                let ret_ty = if let Some(ref ret_ty_expr) = decl.return_type {
+                    let annotated_ret = type_registry::resolve_type_expr(
+                        ret_ty_expr,
+                        &type_param_map,
+                        &type_param_arity,
+                        &state.registry,
+                        ResolutionContext::UserAnnotation,
+                        None,
+                    )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+                    .map_err(|e| spanned(e, decl.span))?;
+                    coerce_unify(&body_ty, &annotated_ret, &mut state.subst).map_err(|e| {
                         if let TypeError::InfiniteType { ref var, ref ty } = e {
                             if crate::type_error::is_own_wrapper_of(*var, ty) {
                                 let var_names: Vec<(TypeVarId, String)> = type_param_map
@@ -4541,30 +4538,30 @@ fn infer_function_bodies<'a>(
                         }
                         err
                     })?;
-                state.subst.apply(&annotated_ret)
-            } else {
-                // Preserve `Own` in inferred return types — a body that produces
-                // `~T` should yield a `-> ~T` function. The previous `strip_own`
-                // here silently dropped ownership for inferred returns.
-                body_ty.clone()
-            };
+                    state.subst.apply(&annotated_ret)
+                } else {
+                    // Preserve `Own` in inferred return types — a body that produces
+                    // `~T` should yield a `-> ~T` function. The previous `strip_own`
+                    // here silently dropped ownership for inferred returns.
+                    body_ty.clone()
+                };
 
-            // Use join_types (not unify) to reconcile the inferred fn type with the pre-bound
-            // SCC type. This is not a value flow — it's two views of the same function that may
-            // differ in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
-            let fn_params: Vec<(crate::types::ParamMode, Type)> = decl
-                .params
-                .iter()
-                .zip(param_types.into_iter())
-                .map(|(p, t)| (p.mode, t))
-                .collect();
-            let fn_ty = Type::Fn(fn_params, Box::new(ret_ty.clone()));
-            crate::unify::join_types(&fn_ty, tv, &mut state.subst)
-                .map_err(|e| spanned(e, decl.span))?;
+                // Use join_types (not unify) to reconcile the inferred fn type with the pre-bound
+                // SCC type. This is not a value flow — it's two views of the same function that may
+                // differ in Own wrappers (e.g. body infers Int, recursive call bound ~Int from literals).
+                let fn_params: Vec<(crate::types::ParamMode, Type)> = decl
+                    .params
+                    .iter()
+                    .zip(param_types.into_iter())
+                    .map(|(p, t)| (p.mode, t))
+                    .collect();
+                let fn_ty = Type::Fn(fn_params, Box::new(ret_ty.clone()));
+                crate::unify::join_types(&fn_ty, tv, &mut state.subst)
+                    .map_err(|e| spanned(e, decl.span))?;
 
-            fn_bodies[idx] = Some(body_typed);
-        }
-        Ok(())
+                fn_bodies[idx] = Some(body_typed);
+            }
+            Ok(())
         })();
         match &scc_result {
             Ok(()) => state.subst.commit_qual_scope(qual_snap),
@@ -4972,6 +4969,7 @@ fn typecheck_impl_methods(
 
                 let impl_qual_snap = state.subst.push_qual_scope();
                 let body_result = {
+                    let fn_ret_expected = state.env.fn_return_type.clone();
                     let mut ctx = InferenceContext {
                         env: &mut state.env,
                         subst: &mut state.subst,
@@ -4988,7 +4986,7 @@ fn typecheck_impl_methods(
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         self_type: Some(resolved_target.clone()),
                     };
-                    ctx.infer_expr_inner(&method.body, None)
+                    ctx.infer_expr_inner(&method.body, fn_ret_expected.as_ref())
                 };
                 state.env.fn_return_type = prev_fn_return_type;
                 state.env.pop_scope();

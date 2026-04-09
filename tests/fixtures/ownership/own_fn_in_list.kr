@@ -1,7 +1,9 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
-fun test(x: ~String) -> String =
-    match Cons(() -> consume(x), Nil) {
+fun consume(buf: ~String) -> String = match buf { _ => "" }
+fun test(x: ~String) -> String {
+    let funcs: ~List[~() -> String] = Cons(() -> consume(x), Nil)
+    match funcs {
         Cons(f, _) => f(),
         Nil => "empty",
     }
+}

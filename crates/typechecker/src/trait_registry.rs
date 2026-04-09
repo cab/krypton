@@ -116,10 +116,7 @@ impl TraitRegistry {
         Ok(())
     }
 
-    pub fn register_instance(
-        &mut self,
-        info: InstanceInfo,
-    ) -> Result<(), Box<(TypeError, Span)>> {
+    pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), Box<(TypeError, Span)>> {
         // Check for overlapping (trait, type tuple) pairs via positionwise unification
         // (only same-trait instances)
         let trait_indices = self
@@ -196,11 +193,7 @@ impl TraitRegistry {
     ///
     /// Accepts the full tuple of trait type arguments. For single-parameter
     /// traits, pass a 1-element slice (equivalent to `find_instance`).
-    pub fn find_instance_for(
-        &self,
-        trait_name: &TraitName,
-        tys: &[Type],
-    ) -> Option<&InstanceInfo> {
+    pub fn find_instance_for(&self, trait_name: &TraitName, tys: &[Type]) -> Option<&InstanceInfo> {
         let mut resolution_stack = Vec::new();
         self.find_instance_inner(trait_name, tys, &mut resolution_stack)
     }
@@ -257,7 +250,8 @@ impl TraitRegistry {
                     let Some(bound_tys) = bound_tys else {
                         return false;
                     };
-                    self.find_instance_multi(&c.trait_name, &bound_tys).is_some()
+                    self.find_instance_multi(&c.trait_name, &bound_tys)
+                        .is_some()
                 });
                 if !constraints_ok {
                     continue;
@@ -294,9 +288,7 @@ impl TraitRegistry {
             inst.target_types
                 .iter()
                 .zip(tys.iter())
-                .all(|(pattern, actual)| {
-                    types_match_with_bindings(pattern, actual, &mut bindings)
-                })
+                .all(|(pattern, actual)| types_match_with_bindings(pattern, actual, &mut bindings))
         })
     }
 
@@ -381,7 +373,12 @@ impl TraitRegistry {
                                 .iter()
                                 .map(|name| {
                                     let id = inst.type_var_ids.get(name)?;
-                                    Some(bindings.get(id).cloned().unwrap_or_else(|| ctor_binding.clone()))
+                                    Some(
+                                        bindings
+                                            .get(id)
+                                            .cloned()
+                                            .unwrap_or_else(|| ctor_binding.clone()),
+                                    )
                                 })
                                 .collect();
                             let Some(bound_tys) = bound_tys else {
@@ -427,12 +424,8 @@ impl TraitRegistry {
                     let Some(bound_tys) = bound_tys else {
                         return false;
                     };
-                    self.find_instance_inner(
-                        &constraint.trait_name,
-                        &bound_tys,
-                        resolution_stack,
-                    )
-                    .is_some()
+                    self.find_instance_inner(&constraint.trait_name, &bound_tys, resolution_stack)
+                        .is_some()
                 })
             })
         });
@@ -920,10 +913,7 @@ fn instances_overlap(a: &[Type], b: &[Type]) -> bool {
     true
 }
 
-fn format_type_tuple_with_var_map(
-    types: &[Type],
-    names: &HashMap<TypeVarId, &str>,
-) -> String {
+fn format_type_tuple_with_var_map(types: &[Type], names: &HashMap<TypeVarId, &str>) -> String {
     types
         .iter()
         .map(|t| crate::types::format_type_with_var_map(t, names))
@@ -1524,7 +1514,9 @@ mod tests {
         let actual = Type::Tuple(vec![Type::Int, Type::String]);
         let mut bindings = HashMap::new();
         assert!(super::types_match_with_bindings(
-            &pattern, &actual, &mut bindings
+            &pattern,
+            &actual,
+            &mut bindings
         ));
         assert_eq!(bindings.get(&var_a), Some(&Type::Int));
     }
@@ -1535,7 +1527,9 @@ mod tests {
         let actual = Type::Tuple(vec![Type::Int, Type::Bool]);
         let mut bindings = HashMap::new();
         assert!(!super::types_match_with_bindings(
-            &pattern, &actual, &mut bindings
+            &pattern,
+            &actual,
+            &mut bindings
         ));
     }
 
@@ -1554,7 +1548,10 @@ mod tests {
                 HashMap::new(),
             ))
             .unwrap();
-        assert_eq!(registry.instances()[0].target_types, vec![Type::Int, Type::String]);
+        assert_eq!(
+            registry.instances()[0].target_types,
+            vec![Type::Int, Type::String]
+        );
     }
 
     #[test]
@@ -1599,10 +1596,7 @@ mod tests {
         // impl Convert[Array[Int], String] overlaps
         let result = registry.register_instance(instance_multi(
             "Convert",
-            vec![
-                Type::Named("Array".into(), vec![Type::Int]),
-                Type::String,
-            ],
+            vec![Type::Named("Array".into(), vec![Type::Int]), Type::String],
             HashMap::new(),
         ));
         assert!(matches!(
@@ -1640,11 +1634,7 @@ mod tests {
         let mut registry = TraitRegistry::new();
         registry.register_trait(trait_info("Convert")).unwrap();
         registry
-            .register_instance(instance_multi(
-                "Convert",
-                vec![Type::Int],
-                HashMap::new(),
-            ))
+            .register_instance(instance_multi("Convert", vec![Type::Int], HashMap::new()))
             .unwrap();
         registry
             .register_instance(instance_multi(
@@ -1677,10 +1667,7 @@ mod tests {
             .unwrap();
         let result = registry.register_instance(instance_multi(
             "Convert",
-            vec![
-                Type::Named("Array".into(), vec![Type::Int]),
-                Type::Int,
-            ],
+            vec![Type::Named("Array".into(), vec![Type::Int]), Type::Int],
             HashMap::new(),
         ));
         assert!(matches!(
@@ -1710,10 +1697,7 @@ mod tests {
         registry
             .register_instance(instance_multi(
                 "Convert",
-                vec![
-                    Type::Named("Array".into(), vec![Type::Int]),
-                    Type::String,
-                ],
+                vec![Type::Named("Array".into(), vec![Type::Int]), Type::String],
                 HashMap::new(),
             ))
             .unwrap();

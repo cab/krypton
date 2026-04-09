@@ -352,10 +352,7 @@ pub(super) fn synthesize_eq_body(
         }
     };
 
-    let fn_ty = Type::fn_consuming(
-        vec![target_type.clone(), target_type.clone()],
-        Type::Bool,
-    );
+    let fn_ty = Type::fn_consuming(vec![target_type.clone(), target_type.clone()], Type::Bool);
     (body, fn_ty)
 }
 
@@ -487,7 +484,11 @@ pub(super) fn synthesize_show_body(
                         str_concat(result, str_lit(")"))
                     };
 
-                    TypedMatchArm { pattern, guard: None, body }
+                    TypedMatchArm {
+                        pattern,
+                        guard: None,
+                        body,
+                    }
                 })
                 .collect();
 

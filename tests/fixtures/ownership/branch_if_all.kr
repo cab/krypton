@@ -1,7 +1,8 @@
 # expect: error E0101
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
-fun test(x: ~String) -> String {
+fun test(x: ~String) -> Int {
     if true { consume(x) } else { consume(x) };
-    x
+    consume(x);
+    0
 }

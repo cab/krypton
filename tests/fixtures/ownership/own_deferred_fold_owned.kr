@@ -6,4 +6,11 @@ fun fold[A, B](xs: List[A], acc: B, f: (B, A) -> B) -> B =
         Cons(h, rest) => fold(rest, f(acc, h), f),
     }
 fun test() -> ~Option[Int] =
-    fold(Cons(1, Cons(2, Cons(3, Nil))), Some(0), (acc, x) -> Some(x))
+    fold[Int, ~Option[Int]](
+        Cons(1, Cons(2, Cons(3, Nil))),
+        Some(0),
+        (acc, x) -> match acc {
+            Some(_) => Some(x),
+            None => Some(x),
+        }
+    )

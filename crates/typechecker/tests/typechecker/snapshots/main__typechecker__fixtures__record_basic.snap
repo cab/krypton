@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Point: (Int, Int) -> Point
-make_point: (Int, Int) -> ~Point
+make_point: (Int, Int) -> Point

@@ -1,4 +1,4 @@
 # expect: ok
-fun identity(x) = x
+fun identity[a](x: a) -> a = x
 
-fun test(buf: ~String) -> String = identity(buf)
+fun test(buf: ~String) -> ~String = identity(buf)

@@ -528,7 +528,13 @@ pub fn check_exhaustiveness(
         // Redundancy: check against unguarded prior rows only.
         // A guarded arm can never make a later arm unreachable.
         let any_useful = converted.iter().any(|row| {
-            is_useful(&unguarded_matrix, std::slice::from_ref(row), &types, registry, 0)
+            is_useful(
+                &unguarded_matrix,
+                std::slice::from_ref(row),
+                &types,
+                registry,
+                0,
+            )
         });
         if !any_useful && !checked_arms.contains(&arm_idx) {
             let arm_span = arm.pattern.span();

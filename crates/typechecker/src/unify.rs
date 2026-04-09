@@ -6,12 +6,12 @@
 //!   constraints where neither side has priority (e.g., recursive function
 //!   pre-binding, type annotation matching).
 //!
-//! - `coerce_unify(actual, expected)` — directional. Allows Own(T) → T
-//!   (dropping ownership) but not T → Own(T) (fabrication). Also allows
-//!   fn → ~fn (multi-use satisfies single-use), but rejects ~fn → fn with
-//!   a specialized `FnCapabilityMismatch` (E0104) diagnostic. Use at
-//!   value-flow sites: argument → parameter, value → annotation, body →
-//!   return type.
+//! - `coerce_unify(actual, expected)` — directional. Rejects both T → Own(T)
+//!   (fabrication) and Own(T) → T (silent drop) on the data path — linear-by-
+//!   default requires explicit consume. Allows fn → ~fn (multi-use satisfies
+//!   single-use), but rejects ~fn → fn with a specialized `FnCapabilityMismatch`
+//!   (E0104) diagnostic. Use at value-flow sites: argument → parameter, value
+//!   → annotation, body → return type.
 //!
 //! - `join_types(a, b)` — peer merge at branch join points (if/match arms,
 //!   list elements). Strips Own from either side to find the common type.
@@ -300,8 +300,11 @@ fn resolve_maybe_own(ty: Type, subst: &Substitution) -> Type {
     }
 }
 
-/// Directional coercion: allows Own(T) → T (drop ownership) but not T → Own(T) (fabrication).
-/// Used at value-flow sites: arg→param, value→annotation, body→return.
+/// Directional coercion used at value-flow sites (arg→param, value→annotation,
+/// body→return). Neither T → Own(T) (fabrication) nor Own(T) → T (silent drop)
+/// is permitted on the data path: linear-by-default requires an explicit consume
+/// to move from `~T` to `T`. The only preserved Own rules are `(Own, Own)`
+/// structural recursion and the function-arrow `fn → ~fn` effect-polarity rule.
 ///
 /// When expected is an unbound Var and actual is Own(T):
 /// - If the var is shared-bounded: strip Own, bind var = T
@@ -345,10 +348,7 @@ fn coerce_unify_inner(
                             }
                         }
                         if occurs_in(*b, &base, subst) {
-                            return Err(TypeError::InfiniteType {
-                                var: *b,
-                                ty: base,
-                            });
+                            return Err(TypeError::InfiniteType { var: *b, ty: base });
                         }
                         subst.insert(*b, base);
                     } else if in_constructor {
@@ -370,10 +370,7 @@ fn coerce_unify_inner(
                             }
                         }
                         if occurs_in(*b, &base, subst) {
-                            return Err(TypeError::InfiniteType {
-                                var: *b,
-                                ty: base,
-                            });
+                            return Err(TypeError::InfiniteType { var: *b, ty: base });
                         }
                         subst.insert(*b, Type::MaybeOwn(q, Box::new(base)));
                     }
@@ -444,8 +441,9 @@ fn coerce_unify_inner(
     }
 
     // Pending MaybeOwn on expected side: coerce actual against the inner type.
-    // Own(actual) is compatible with both Affine and Shared outcomes of q
-    // (coerce_unify allows ~T → T), so we must NOT confirm q here.
+    // We must NOT confirm q here: the `(Own, Own)` structural arm below or the
+    // Var-side MaybeOwn deferral earlier may still succeed for an Own actual,
+    // so committing q to Affine/Shared now would be premature.
     // Note: defer_own never wraps Fn, so ~fn rejection is unreachable here.
     if let Type::MaybeOwn(q, inner) = &expected {
         if matches!(
@@ -461,13 +459,6 @@ fn coerce_unify_inner(
         return coerce_unify_inner(a_inner, e_inner, subst, in_constructor);
     }
 
-    // Own(T) → T: drop ownership (data types only, not fn)
-    if let Type::Own(inner) = &actual {
-        if !matches!(inner.as_ref(), Type::Fn(_, _)) {
-            return coerce_unify_inner(inner, &expected, subst, in_constructor);
-        }
-    }
-
     // fn → ~fn: multi-use function satisfies single-use requirement
     if let Type::Fn(..) = &actual {
         if let Type::Own(inner) = &expected {
@@ -480,9 +471,7 @@ fn coerce_unify_inner(
     // ~fn → fn rejection: specialized closure-capability error (E0104 family).
     // A single-use closure cannot satisfy a multi-use function slot.
     if let Type::Own(actual_inner) = &actual {
-        if matches!(actual_inner.as_ref(), Type::Fn(_, _))
-            && matches!(&expected, Type::Fn(_, _))
-        {
+        if matches!(actual_inner.as_ref(), Type::Fn(_, _)) && matches!(&expected, Type::Fn(_, _)) {
             return Err(TypeError::FnCapabilityMismatch {
                 expected: expected.clone(),
                 actual: actual.clone(),
@@ -644,4 +633,3 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
     // No Own involved: regular unify
     unify(&a, &b, subst)
 }
-

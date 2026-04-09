@@ -34,9 +34,7 @@ fn resolve_function_ref_requirement_type(
 ) -> Option<Type> {
     let _ = trait_name;
     let mut bindings = HashMap::new();
-    for ((_, declared), (_, actual)) in
-        declared_param_types.iter().zip(actual_param_types.iter())
-    {
+    for ((_, declared), (_, actual)) in declared_param_types.iter().zip(actual_param_types.iter()) {
         if !match_type_with_bindings(declared, actual, &mut bindings) {
             return None;
         }
@@ -206,13 +204,14 @@ pub(super) fn check_constrained_function_refs(
 
                             let requirement_ty = strip_own(&requirement_ty);
                             if free_vars(&requirement_ty).is_empty() {
-                                let missing = if trait_registry.lookup_trait(req_trait_name).is_some() {
-                                    trait_registry
-                                        .find_instance(req_trait_name, &requirement_ty)
-                                        .is_none()
-                                } else {
-                                    true
-                                };
+                                let missing =
+                                    if trait_registry.lookup_trait(req_trait_name).is_some() {
+                                        trait_registry
+                                            .find_instance(req_trait_name, &requirement_ty)
+                                            .is_none()
+                                    } else {
+                                        true
+                                    };
                                 if missing {
                                     return Err(no_instance_error(
                                         trait_registry,
@@ -385,9 +384,7 @@ pub(super) fn validate_trait_constraints(
             if !is_declared {
                 // For diagnostics, show the first position's name (existing
                 // single-param error rendering).
-                let type_var_display = vars
-                    .first()
-                    .and_then(|v| type_var_names.get(v).cloned());
+                let type_var_display = vars.first().and_then(|v| type_var_names.get(v).cloned());
                 first_error = Some(super::spanned(
                     TypeError::MissingTraitBound {
                         fn_name: fn_name.to_string(),
@@ -464,7 +461,8 @@ fn walk_trait_method_calls(
                     // For each trait type-parameter, extract a leading type var
                     // from its resolved binding (or fall back to the param id
                     // itself, which may still be a free var in fn_type_param_vars).
-                    let mut position_vars: Vec<TypeVarId> = Vec::with_capacity(info.type_var_ids.len());
+                    let mut position_vars: Vec<TypeVarId> =
+                        Vec::with_capacity(info.type_var_ids.len());
                     let mut all_free_params = true;
                     for tv_id in &info.type_var_ids {
                         let resolved = bindings
@@ -693,9 +691,7 @@ pub(super) fn check_trait_instances(
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
                         let mut bindings = HashMap::new();
                         // Bind from params
-                        for ((_, pattern), arg) in
-                            method.param_types.iter().zip(args.iter())
-                        {
+                        for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                             collect_type_var_bindings_strict(
                                 pattern,
                                 &subst.apply(&arg.ty),
@@ -859,99 +855,98 @@ pub(super) fn check_trait_instances(
                             // Resolve each constraint's type via bind_type_vars approach
                             let fn_scheme = fn_schemes.get(name);
                             for (req_trait_name, type_vars) in requirements {
-                              // Build bindings once per constraint so we can
-                              // resolve every position and dispatch multi-param
-                              // constraints against `find_instance_for` rather
-                              // than iterating positions independently (which
-                              // would mis-dispatch a multi-param trait through
-                              // the single-param `find_instance`).
-                              let constraint_bindings: Option<HashMap<TypeVarId, Type>> =
-                                  fn_scheme.and_then(|scheme| {
-                                      if let Type::Fn(param_types, ret_ty) = &scheme.ty {
-                                          let mut bindings: HashMap<TypeVarId, Type> =
-                                              HashMap::new();
-                                          for ((_, pattern), arg) in
-                                              param_types.iter().zip(args.iter())
-                                          {
-                                              if !collect_type_var_bindings_strict(
-                                                  pattern,
-                                                  &subst.apply(&arg.ty),
-                                                  &mut bindings,
-                                              ) {
-                                                  return None;
-                                              }
-                                          }
-                                          let ret_actual = subst.apply(&func.ty);
-                                          if let Type::Fn(_, actual_ret) = &ret_actual {
-                                              let _ = collect_type_var_bindings_strict(
-                                                  ret_ty,
-                                                  actual_ret,
-                                                  &mut bindings,
-                                              );
-                                          }
-                                          Some(bindings)
-                                      } else {
-                                          None
-                                      }
-                                  });
+                                // Build bindings once per constraint so we can
+                                // resolve every position and dispatch multi-param
+                                // constraints against `find_instance_for` rather
+                                // than iterating positions independently (which
+                                // would mis-dispatch a multi-param trait through
+                                // the single-param `find_instance`).
+                                let constraint_bindings: Option<HashMap<TypeVarId, Type>> =
+                                    fn_scheme.and_then(|scheme| {
+                                        if let Type::Fn(param_types, ret_ty) = &scheme.ty {
+                                            let mut bindings: HashMap<TypeVarId, Type> =
+                                                HashMap::new();
+                                            for ((_, pattern), arg) in
+                                                param_types.iter().zip(args.iter())
+                                            {
+                                                if !collect_type_var_bindings_strict(
+                                                    pattern,
+                                                    &subst.apply(&arg.ty),
+                                                    &mut bindings,
+                                                ) {
+                                                    return None;
+                                                }
+                                            }
+                                            let ret_actual = subst.apply(&func.ty);
+                                            if let Type::Fn(_, actual_ret) = &ret_actual {
+                                                let _ = collect_type_var_bindings_strict(
+                                                    ret_ty,
+                                                    actual_ret,
+                                                    &mut bindings,
+                                                );
+                                            }
+                                            Some(bindings)
+                                        } else {
+                                            None
+                                        }
+                                    });
 
-                              let Some(bindings) = constraint_bindings else {
-                                  continue;
-                              };
+                                let Some(bindings) = constraint_bindings else {
+                                    continue;
+                                };
 
-                              // Resolve each position. If any position is
-                              // still a type var in the enclosing fn's
-                              // polymorphism the constraint is forwarded —
-                              // skip the dispatch check. If it's an
-                              // unresolved inference var (not in fn_type_vars)
-                              // report the usual no-instance error.
-                              let mut position_tys: Vec<Type> = Vec::with_capacity(type_vars.len());
-                              let mut forwarded = false;
-                              let mut resolution_failed = false;
-                              for type_var in type_vars {
-                                  let Some(ty) = bindings.get(type_var).cloned() else {
-                                      resolution_failed = true;
-                                      break;
-                                  };
-                                  let concrete = strip_own(&ty);
-                                  if let Some(v) = leading_type_var(&concrete) {
-                                      if fn_type_vars.contains(&v) {
-                                          forwarded = true;
-                                      } else {
-                                          return Err(no_instance_error(
-                                              trait_registry,
-                                              req_trait_name,
-                                              &concrete,
-                                              expr.span,
-                                              var_names,
-                                          ));
-                                      }
-                                  }
-                                  position_tys.push(concrete);
-                              }
-                              if resolution_failed || forwarded {
-                                  continue;
-                              }
+                                // Resolve each position. If any position is
+                                // still a type var in the enclosing fn's
+                                // polymorphism the constraint is forwarded —
+                                // skip the dispatch check. If it's an
+                                // unresolved inference var (not in fn_type_vars)
+                                // report the usual no-instance error.
+                                let mut position_tys: Vec<Type> =
+                                    Vec::with_capacity(type_vars.len());
+                                let mut forwarded = false;
+                                let mut resolution_failed = false;
+                                for type_var in type_vars {
+                                    let Some(ty) = bindings.get(type_var).cloned() else {
+                                        resolution_failed = true;
+                                        break;
+                                    };
+                                    let concrete = strip_own(&ty);
+                                    if let Some(v) = leading_type_var(&concrete) {
+                                        if fn_type_vars.contains(&v) {
+                                            forwarded = true;
+                                        } else {
+                                            return Err(no_instance_error(
+                                                trait_registry,
+                                                req_trait_name,
+                                                &concrete,
+                                                expr.span,
+                                                var_names,
+                                            ));
+                                        }
+                                    }
+                                    position_tys.push(concrete);
+                                }
+                                if resolution_failed || forwarded {
+                                    continue;
+                                }
 
-                              // All positions are concrete — dispatch via the
-                              // canonical arity-aware lookup.
-                              if trait_registry.lookup_trait(req_trait_name).is_none()
-                                  || trait_registry
-                                      .find_instance_for(req_trait_name, &position_tys)
-                                      .is_none()
-                              {
-                                  let display_ty = position_tys
-                                      .first()
-                                      .cloned()
-                                      .unwrap_or(Type::Unit);
-                                  return Err(no_instance_error(
-                                      trait_registry,
-                                      req_trait_name,
-                                      &display_ty,
-                                      expr.span,
-                                      var_names,
-                                  ));
-                              }
+                                // All positions are concrete — dispatch via the
+                                // canonical arity-aware lookup.
+                                if trait_registry.lookup_trait(req_trait_name).is_none()
+                                    || trait_registry
+                                        .find_instance_for(req_trait_name, &position_tys)
+                                        .is_none()
+                                {
+                                    let display_ty =
+                                        position_tys.first().cloned().unwrap_or(Type::Unit);
+                                    return Err(no_instance_error(
+                                        trait_registry,
+                                        req_trait_name,
+                                        &display_ty,
+                                        expr.span,
+                                        var_names,
+                                    ));
+                                }
                             }
                         }
                     }

@@ -3,10 +3,11 @@ type Option[a] = Some(a) | None
 
 fun consume(buf: ~String) -> Int = 42
 
-fun test(x: ~String, opt: Option[Int]) -> String {
+fun test(x: ~String, opt: Option[Int]) -> Int {
     match opt {
         Some(_) => consume(x),
         None => 0,
     };
-    x
+    consume(x);
+    0
 }

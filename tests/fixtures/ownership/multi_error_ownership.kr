@@ -1,6 +1,6 @@
 # expect: error E0101
 # expect: error E0101
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun bad1(x: ~String) -> String {
     consume(x);

@@ -1,7 +1,9 @@
 # expect: ok
-fun len(s: String) -> Int = 42
+fun len(&s: ~String) -> Int = 42
+fun consume(s: ~String) -> Int = match s { _ => 0 }
 
 fun test(buf: ~String) -> Int {
     len(buf);
-    len(buf)
+    len(buf);
+    consume(buf)
 }

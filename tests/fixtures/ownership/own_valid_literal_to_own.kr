@@ -1,6 +1,6 @@
 # expect: ok
 # Constructor passed to ~T param.
 type Box = { value: Int }
-fun consume_box(b: ~Box) -> Box = b
+fun consume_box(b: ~Box) -> Box = match b { Box { value } => Box { value = value } }
 
 fun test_ctor() -> Box = consume_box(Box { value = 1 })

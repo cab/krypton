@@ -85,8 +85,7 @@ pub(super) fn resolve_multi_param_constraints(
         let mut progressed = false;
         for entry in &entries {
             // Re-apply the current substitution to each position.
-            let resolved: Vec<Type> =
-                entry.positions.iter().map(|t| subst.apply(t)).collect();
+            let resolved: Vec<Type> = entry.positions.iter().map(|t| subst.apply(t)).collect();
             // If every position is fully concrete (no free vars), validation
             // will handle it. Skip — there's nothing to pin here.
             let any_var = resolved.iter().any(contains_type_var);
@@ -118,14 +117,14 @@ pub(super) fn resolve_multi_param_constraints(
                     //   - `contains_unprotected_free`: position has at least
                     //     one var worth trying to pin.
                     let contains_protected_free = |t: &Type| {
-                        super::free_vars(t).iter().any(|v| {
-                            protected.map(|s| s.contains(v)).unwrap_or(false)
-                        })
+                        super::free_vars(t)
+                            .iter()
+                            .any(|v| protected.map(|s| s.contains(v)).unwrap_or(false))
                     };
                     let contains_unprotected_free = |t: &Type| {
-                        super::free_vars(t).iter().any(|v| {
-                            !protected.map(|s| s.contains(v)).unwrap_or(false)
-                        })
+                        super::free_vars(t)
+                            .iter()
+                            .any(|v| !protected.map(|s| s.contains(v)).unwrap_or(false))
                     };
                     // If no position has an unprotected free var, there's
                     // nothing to pin without polluting forwarded
@@ -194,7 +193,8 @@ fn collect_entries(
     while let Some(expr) = work.pop() {
         if let TypedExprKind::App { func, args } = &expr.kind {
             if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
-                trait_name, ..
+                trait_name,
+                ..
             })) = typed_callee_resolved_ref(func)
             {
                 if let Some(info) = trait_registry.lookup_trait(trait_name) {
@@ -207,14 +207,10 @@ fn collect_entries(
                             })) => method_name.as_str(),
                             _ => unreachable!(),
                         };
-                        if let Some(method) =
-                            info.methods.iter().find(|m| m.name == method_name)
-                        {
+                        if let Some(method) = info.methods.iter().find(|m| m.name == method_name) {
                             // Collect bindings: trait_type_var_id -> Type.
                             let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
-                            for ((_, pattern), arg) in
-                                method.param_types.iter().zip(args.iter())
-                            {
+                            for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                                 collect_type_var_bindings_strict(
                                     pattern,
                                     &subst.apply(&arg.ty),

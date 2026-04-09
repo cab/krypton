@@ -83,7 +83,12 @@ fn render_module_error_with_resolver(
 ) -> String {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let errors = match infer::infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm) {
+    let errors = match infer::infer_module(
+        &module,
+        resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
         Ok(_) => panic!("expected a type error"),
         Err(errors) => errors,
     };
@@ -129,7 +134,7 @@ fn no_own_mismatch_no_help() {
 
 #[test]
 fn own_fn_capture_note_e0101() {
-    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(x: ~String) -> String = { let f = () -> consume(x); f(); f() }";
+    let src = "fun consume(buf: ~String) -> String = match buf { _ => \"\" }\nfun bad(x: ~String) -> String = { let f = () -> consume(x); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures `~` value `x`"),
@@ -149,7 +154,7 @@ fn own_fn_capture_note_e0104() {
 
 #[test]
 fn own_fn_capture_note_correct_name() {
-    let src = "fun consume(buf: ~String) -> String = buf\nfun bad(a: String, b: ~String) -> String = { let f = () -> consume(b); f(); f() }";
+    let src = "fun consume(buf: ~String) -> String = match buf { _ => \"\" }\nfun bad(a: String, b: ~String) -> String = { let f = () -> consume(b); f(); f() }";
     let output = render_module_error(src);
     assert!(
         output.contains("captures `~` value `b`"),
@@ -174,7 +179,8 @@ fn guard_only_lambda_capture_note_e0104() {
 
 #[test]
 fn own_fn_capture_note_return_site() {
-    let output = render_fixture_error("../../tests/fixtures/closures/explain_own_fn_return_site.kr");
+    let output =
+        render_fixture_error("../../tests/fixtures/closures/explain_own_fn_return_site.kr");
     assert!(
         output.contains("captures `~` value `r`"),
         "expected own capture note in:\n{output}"
@@ -439,7 +445,12 @@ fn import_ctor_expr_ok() {
     let src = "import shapes.{Circle}\nfun wrap(x) = Circle(x)\nfun main() -> Int = 0";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "importing constructors and using them in expressions should succeed: {:?}",
@@ -467,7 +478,12 @@ fn import_type_explicitly_allows_annotation() {
         "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "explicitly importing a type should allow it in annotations: {:?}",
@@ -492,7 +508,12 @@ fn parse_error_in_imported_module() {
     let src = "import bad.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let errors = match infer::infer_module(&module, &BadParseResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm) {
+    let errors = match infer::infer_module(
+        &module,
+        &BadParseResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
         Ok(_) => panic!("expected a parse error from bad module"),
         Err(errors) => errors,
     };
@@ -534,7 +555,12 @@ fn type_error_in_imported_module() {
     let src = "import badmod.{f}\nfun main() -> Int = f()";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    let errors = match infer::infer_module(&module, &BadTypeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm) {
+    let errors = match infer::infer_module(
+        &module,
+        &BadTypeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
         Ok(_) => panic!("expected a type error from badmod"),
         Err(errors) => errors,
     };
@@ -688,38 +714,27 @@ fn impl_return_type_mismatch_diagnostic() {
 fn e0108_scope_exit() {
     let output = render_fixture_error("../../tests/fixtures/linear/linear_scope_exit_leak.kr");
     insta::assert_snapshot!(output);
-    assert!(
-        output.contains("E0108"),
-        "expected E0108 in:\n{output}"
-    );
+    assert!(output.contains("E0108"), "expected E0108 in:\n{output}");
 }
 
 #[test]
 fn e0108_branch_missing() {
     let output = render_fixture_error("../../tests/fixtures/linear/linear_branch_asymmetric.kr");
     insta::assert_snapshot!(output);
-    assert!(
-        output.contains("E0108"),
-        "expected E0108 in:\n{output}"
-    );
+    assert!(output.contains("E0108"), "expected E0108 in:\n{output}");
 }
 
 #[test]
 fn e0108_recur_back() {
     let output = render_fixture_error("../../tests/fixtures/linear/linear_recur_leak.kr");
     insta::assert_snapshot!(output);
-    assert!(
-        output.contains("E0108"),
-        "expected E0108 in:\n{output}"
-    );
+    assert!(output.contains("E0108"), "expected E0108 in:\n{output}");
 }
 
 #[test]
 fn e0108_early_return_via_question() {
-    let output = render_fixture_error("../../tests/fixtures/linear/linear_early_return_question_mark.kr");
+    let output =
+        render_fixture_error("../../tests/fixtures/linear/linear_early_return_question_mark.kr");
     insta::assert_snapshot!(output);
-    assert!(
-        output.contains("E0108"),
-        "expected E0108 in:\n{output}"
-    );
+    assert!(output.contains("E0108"), "expected E0108 in:\n{output}");
 }

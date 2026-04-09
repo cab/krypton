@@ -103,8 +103,7 @@ impl<'a> InferenceContext<'a> {
                                     ));
                                 }
                                 let mut typed_args = Vec::new();
-                                for (arg_pat, (_, param_ty)) in
-                                    args.iter().zip(param_types.iter())
+                                for (arg_pat, (_, param_ty)) in args.iter().zip(param_types.iter())
                                 {
                                     let resolved_param = self.subst.apply(param_ty);
                                     typed_args.push(self.check_pattern(
@@ -203,8 +202,7 @@ impl<'a> InferenceContext<'a> {
 
                 for alt in alternatives {
                     self.env.push_scope();
-                    let typed_alt =
-                        self.check_pattern(alt, expected, span, scrutinee_is_owned)?;
+                    let typed_alt = self.check_pattern(alt, expected, span, scrutinee_is_owned)?;
                     let bindings = self.env.top_scope_bindings();
                     all_bindings.push(bindings);
                     self.env.pop_scope();
@@ -216,8 +214,7 @@ impl<'a> InferenceContext<'a> {
                     let first_names: Vec<&str> =
                         all_bindings[0].iter().map(|(n, _)| n.as_str()).collect();
                     for (i, bindings) in all_bindings.iter().enumerate().skip(1) {
-                        let names: Vec<&str> =
-                            bindings.iter().map(|(n, _)| n.as_str()).collect();
+                        let names: Vec<&str> = bindings.iter().map(|(n, _)| n.as_str()).collect();
                         if names != first_names {
                             return Err(super::spanned(
                                 TypeError::OrPatternBindingMismatch {
@@ -226,10 +223,7 @@ impl<'a> InferenceContext<'a> {
                                         .iter()
                                         .map(|s| s.to_string())
                                         .collect(),
-                                    actual_names: names
-                                        .iter()
-                                        .map(|s| s.to_string())
-                                        .collect(),
+                                    actual_names: names.iter().map(|s| s.to_string()).collect(),
                                 },
                                 span,
                             ));
@@ -237,23 +231,20 @@ impl<'a> InferenceContext<'a> {
                         // Check types match
                         for (j, (name, ty)) in bindings.iter().enumerate() {
                             let (_, expected_ty) = &all_bindings[0][j];
-                            self.unify_spanned(expected_ty, ty, span).map_err(
-                                |mut e| {
-                                    e.note = Some(format!(
-                                        "binding `{}` has different types in or-pattern alternatives",
-                                        name
-                                    ));
-                                    e
-                                },
-                            )?;
+                            self.unify_spanned(expected_ty, ty, span).map_err(|mut e| {
+                                e.note = Some(format!(
+                                    "binding `{}` has different types in or-pattern alternatives",
+                                    name
+                                ));
+                                e
+                            })?;
                         }
                     }
 
                     // Bind the shared variables in the parent scope
                     for (name, ty) in &all_bindings[0] {
                         let resolved = self.subst.apply(ty);
-                        self.env
-                            .bind(name.clone(), TypeScheme::mono(resolved));
+                        self.env.bind(name.clone(), TypeScheme::mono(resolved));
                     }
                 }
 

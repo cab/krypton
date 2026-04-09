@@ -1,5 +1,5 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun make_owned_fn(x: ~String) -> ~() -> String = () -> consume(x)
 fun test(s: ~String) -> String {
     let f = make_owned_fn(s)

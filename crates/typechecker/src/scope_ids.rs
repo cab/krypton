@@ -12,7 +12,9 @@
 //!
 //! All other `TypedExpr` nodes are left with `scope_id: None`.
 
-use crate::typed_ast::{ScopeId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern};
+use crate::typed_ast::{
+    ScopeId, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedPattern,
+};
 
 /// Allocator for ScopeIds. One allocator per typechecker run produces
 /// globally unique IDs across functions, so collisions are impossible
@@ -53,7 +55,11 @@ fn walk(expr: &mut TypedExpr, gen: &mut ScopeIdGen) {
                 walk(body, gen);
             }
         }
-        TypedExprKind::LetPattern { value, body, pattern } => {
+        TypedExprKind::LetPattern {
+            value,
+            body,
+            pattern,
+        } => {
             walk(value, gen);
             walk_pattern(pattern, gen);
             if let Some(body) = body {
@@ -87,7 +93,11 @@ fn walk(expr: &mut TypedExpr, gen: &mut ScopeIdGen) {
         TypedExprKind::Match { scrutinee, arms } => {
             walk(scrutinee, gen);
             for arm in arms.iter_mut() {
-                let TypedMatchArm { guard, body, pattern } = arm;
+                let TypedMatchArm {
+                    guard,
+                    body,
+                    pattern,
+                } = arm;
                 walk_pattern(pattern, gen);
                 if let Some(g) = guard {
                     walk(g, gen);

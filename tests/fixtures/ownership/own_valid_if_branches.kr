@@ -3,7 +3,7 @@
 # Under M39-T3 strict linearity, only one of `x`/`y` is consumed by
 # whichever branch runs — the other leaks on the other branch. This
 # pins the new behaviour (one diagnostic per leaking binding).
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun test(x: ~String, y: ~String) -> String =
     consume(if true { x } else { y })

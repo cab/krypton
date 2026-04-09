@@ -1,8 +1,8 @@
 # expect: error E0101
 type Callback = { run: ~() -> String }
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun test(x: ~String) -> String {
-    let cb = Callback { run = () -> consume(x) }
+    let cb: ~Callback = Callback { run = () -> consume(x) }
     let f = cb.run
     f()
     f()

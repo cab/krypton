@@ -1,0 +1,9 @@
+# expect: error E0001
+type Buf = MkBuf(String)
+
+fun take_bare(x: Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("x")
+    take_bare(b)
+}

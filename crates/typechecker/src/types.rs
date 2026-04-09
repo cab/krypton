@@ -237,9 +237,7 @@ impl Type {
                 args.iter().map(|a| a.remap_vars(mapping)).collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.remap_vars(mapping))),
-            Type::MaybeOwn(q, inner) => {
-                Type::MaybeOwn(*q, Box::new(inner.remap_vars(mapping)))
-            }
+            Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(inner.remap_vars(mapping))),
             Type::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| e.remap_vars(mapping)).collect())
             }
@@ -279,11 +277,7 @@ impl fmt::Display for Type {
                     match (mode, p) {
                         (ParamMode::Borrow, Type::Own(inner)) => write!(f, "&~{}", inner)?,
                         (ParamMode::Borrow, _) => {
-                            debug_assert!(
-                                false,
-                                "borrow slot must wrap an Own type, got {:?}",
-                                p
-                            );
+                            debug_assert!(false, "borrow slot must wrap an Own type, got {:?}", p);
                             write!(f, "&{}", p)?;
                         }
                         (ParamMode::Consume, _) => write!(f, "{}", p)?,
@@ -516,11 +510,7 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
                         format!("&~{}", format_type_impl(inner, names))
                     }
                     (ParamMode::Borrow, _) => {
-                        debug_assert!(
-                            false,
-                            "borrow slot must wrap an Own type, got {:?}",
-                            p
-                        );
+                        debug_assert!(false, "borrow slot must wrap an Own type, got {:?}", p);
                         format!("&{}", format_type_impl(p, names))
                     }
                     (ParamMode::Consume, _) => format_type_impl(p, names),
@@ -1486,14 +1476,8 @@ mod tests {
     #[test]
     fn canonical_name_distinct_vars_no_collision() {
         // (a) -> a  vs  (a) -> b  must differ
-        let same = Type::fn_consuming(
-            vec![Type::Var(TypeVarId(0))],
-            Type::Var(TypeVarId(0)),
-        );
-        let diff = Type::fn_consuming(
-            vec![Type::Var(TypeVarId(0))],
-            Type::Var(TypeVarId(1)),
-        );
+        let same = Type::fn_consuming(vec![Type::Var(TypeVarId(0))], Type::Var(TypeVarId(0)));
+        let diff = Type::fn_consuming(vec![Type::Var(TypeVarId(0))], Type::Var(TypeVarId(1)));
         assert_eq!(type_to_canonical_name(&same), "$Fun1$$Var0$$Var0");
         assert_eq!(type_to_canonical_name(&diff), "$Fun1$$Var0$$Var1");
         assert_ne!(type_to_canonical_name(&same), type_to_canonical_name(&diff));

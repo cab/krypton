@@ -187,8 +187,13 @@ fn infer_typed_module_with_resolver(
 ) -> TypedModule {
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let (mut modules, _) = infer::infer_module(&module, resolver, module_name.to_string(), krypton_parser::ast::CompileTarget::Jvm)
-        .unwrap_or_else(|errors| panic!("typecheck failed: {errors:?}"));
+    let (mut modules, _) = infer::infer_module(
+        &module,
+        resolver,
+        module_name.to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap_or_else(|errors| panic!("typecheck failed: {errors:?}"));
     modules.remove(0)
 }
 
@@ -252,7 +257,12 @@ fn infer_module_with_custom_resolver() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
     let (modules, _) = result.unwrap();
     let info = &modules[0];
@@ -516,7 +526,7 @@ fn infer_record_constructor() {
     EQ: Ordering
     GT: Ordering
     Point: (Int, Int) -> Point
-    p: () -> ~Point
+    p: () -> Point
     "
     );
 }
@@ -557,7 +567,7 @@ fn infer_sum_constructor() {
     GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
-    wrap: forall a. (a) -> ~Option[a]
+    wrap: forall a. (a) -> Option[a]
     "
     );
 }
@@ -598,7 +608,7 @@ fn infer_bare_variant() {
     GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
-    none: forall a. () -> ~Option[a]
+    none: forall a. () -> Option[a]
     "
     );
 }
@@ -729,7 +739,7 @@ fn infer_struct_update() {
     EQ: Ordering
     GT: Ordering
     Point: (Int, Int) -> Point
-    move_x: () -> ~Point
+    move_x: () -> Point
     "
     );
 }
@@ -1135,37 +1145,7 @@ fn infer_call_site_coercion_borrow() {
         infer_module_types(
             "fun len(s: String) -> Int = 42\nfun test(buf: ~String) -> Int = { len(buf); len(buf) }"
         ),
-        @"
-    eq: forall a. (a, a) -> Bool
-    lt: forall a. (a, a) -> Bool
-    combine: forall a. (a, a) -> a
-    sub: forall a. (a, a) -> a
-    mul: forall a. (a, a) -> a
-    div: forall a. (a, a) -> a
-    neg: forall a. (a) -> a
-    show: forall a. (a) -> String
-    hash: forall a. (a) -> Int
-    dispose: forall a. (~a) -> Unit
-    peek: forall a. (a) -> a
-    last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
-    filter: forall a. (List[a], (a) -> Bool) -> List[a]
-    fold: forall a b. (List[a], b, (b, a) -> b) -> b
-    map: forall a b. (List[a], (a) -> b) -> List[b]
-    to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
-    len: (String) -> Int
-    test: (~String) -> Int
-    "
+        @"TypeError: type mismatch: expected String, found ~String"
     );
 }
 
@@ -1175,38 +1155,7 @@ fn infer_call_site_coercion_no_collection() {
         infer_module_types(
             "type MyList = Cons(String, MyList) | Nil\nfun test(buf: ~String) -> MyList = Cons(buf, Nil)"
         ),
-        @"
-    eq: forall a. (a, a) -> Bool
-    lt: forall a. (a, a) -> Bool
-    combine: forall a. (a, a) -> a
-    sub: forall a. (a, a) -> a
-    mul: forall a. (a, a) -> a
-    div: forall a. (a, a) -> a
-    neg: forall a. (a) -> a
-    show: forall a. (a) -> String
-    hash: forall a. (a) -> Int
-    dispose: forall a. (~a) -> Unit
-    peek: forall a. (a) -> a
-    last: forall a. (List[a]) -> Option[a]
-    sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
-    filter: forall a. (List[a], (a) -> Bool) -> List[a]
-    fold: forall a b. (List[a], b, (b, a) -> b) -> b
-    map: forall a b. (List[a], (a) -> b) -> List[b]
-    to_list: forall a. (Vec[a]) -> List[a]
-    println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
-    Cons: (String, MyList) -> MyList
-    Nil: MyList
-    test: (~String) -> MyList
-    "
+        @"TypeError: type mismatch: expected String, found ~String"
     );
 }
 
@@ -1529,7 +1478,13 @@ fn infer_module_returns_all_modules() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let (modules, _) = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let (modules, _) = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap();
     // Main module + mylib
     assert!(
         modules.len() >= 2,
@@ -1565,7 +1520,13 @@ fn infer_module_provenance_on_bindings() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let (modules, _) = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let (modules, _) = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap();
     // The main module should have `add` in fn_types with provenance
     let main = &modules[0];
     assert!(
@@ -1599,7 +1560,13 @@ fn infer_module_cache_prevents_recheck() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let (modules, _) = infer::infer_module(&module, &CountingResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let (modules, _) = infer::infer_module(
+        &module,
+        &CountingResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap();
     // Only one TypedModule for mylib despite resolver being called
     let mylib_count = modules.iter().filter(|m| m.module_path == "mylib").count();
     assert_eq!(
@@ -1624,7 +1591,12 @@ fn infer_module_circular_import_detected() {
     let src = "import a.{foo}\nfun main() -> Int = foo(1)";
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &CircularResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &CircularResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_err(), "should detect circular import");
     let err = match result {
         Err(mut errors) => errors.remove(0),
@@ -1677,7 +1649,13 @@ fn infer_module_cross_module_typecheck() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let (modules, _) = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let (modules, _) = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap();
     let main = &modules[0];
     let quad_type = main
         .fn_types
@@ -1707,7 +1685,12 @@ fn infer_module_private_by_default() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_err(), "importing private fn should fail");
     let err = match result {
         Err(mut errors) => errors.remove(0),
@@ -1725,7 +1708,12 @@ fn infer_module_private_by_default() {
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
-    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result2 = infer::infer_module(
+        &module2,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result2.is_ok(),
         "importing pub fn should work: {:?}",
@@ -1751,7 +1739,12 @@ fn infer_module_bare_import_binds_qualifier() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "bare import should resolve qualified names: {:?}",
@@ -1777,7 +1770,12 @@ fn infer_module_import_alias_binds_only_alias() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_err(),
         "original import name should stay out of scope"
@@ -2014,7 +2012,12 @@ fn infer_module_missing_qualified_export_errors_clearly() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_err(), "missing qualified export should fail");
     let err = match result {
         Err(mut errors) => errors.remove(0),
@@ -2044,7 +2047,12 @@ fn infer_module_qualifier_used_as_value_errors_clearly() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_err(), "module qualifier as value should fail");
     let err = match result {
         Err(mut errors) => errors.remove(0),
@@ -2074,7 +2082,12 @@ fn infer_module_qualified_nullary_constructor_value_resolves() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "qualified nullary constructor should resolve as a value: {:?}",
@@ -2104,7 +2117,12 @@ fn infer_module_qualified_constructor_call_typechecks() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "qualified constructor call should succeed: {:?}",
@@ -2138,7 +2156,12 @@ fn infer_module_constructor_alias_resolves() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "constructor alias should resolve: {:?}",
@@ -2331,7 +2354,12 @@ fn infer_module_pub_import_reexport() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "pub import re-export should succeed: {:?}",
@@ -2372,7 +2400,12 @@ fn infer_module_pub_import_reexport_private_error() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_err(),
         "pub import of non-existent name should fail"
@@ -2406,7 +2439,12 @@ fn cross_module_deriving_show() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "cross-module deriving Show should work: {:?}",
@@ -2436,7 +2474,12 @@ fn cross_module_derived_constrained_instance_resolves_when_inner_instance_exists
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "cross-module derived constrained instance should resolve: {:?}",
@@ -2466,7 +2509,12 @@ fn cross_module_derived_constrained_instance_reports_e0301_when_inner_instance_m
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let err = match infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm) {
+    let err = match infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
         Ok(_) => panic!("expected E0301"),
         Err(mut errors) => errors.remove(0),
     };
@@ -2494,8 +2542,13 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let (modules, _) = infer::infer_module(&module, &Resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
-        .expect("typecheck should succeed");
+    let (modules, _) = infer::infer_module(
+        &module,
+        &Resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("typecheck should succeed");
     let imported = modules
         .iter()
         .find(|typed_module| typed_module.module_path == "mylib")
@@ -2522,7 +2575,12 @@ fn local_prelude_shadow_can_derive_show_without_importing_prelude_instance() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &StdlibResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &StdlibResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "local shadowed prelude type should derive Show independently: {:?}",
@@ -2600,7 +2658,12 @@ fn infer_module_private_trait() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result.is_err(), "importing private trait should fail");
     let err = match result {
         Err(mut errors) => errors.remove(0),
@@ -2618,7 +2681,12 @@ fn infer_module_private_trait() {
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
-    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result2 = infer::infer_module(
+        &module2,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result2.is_ok(),
         "wildcard import should skip private traits: {:?}",
@@ -2656,7 +2724,12 @@ fn infer_module_pub_trait_methods_accessible() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "pub trait methods should be accessible: {:?}",
@@ -2696,7 +2769,12 @@ fn infer_module_trait_private_by_default() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_ok(),
         "importing only public items should work: {:?}",
@@ -2710,7 +2788,12 @@ fn infer_module_trait_private_by_default() {
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
-    let result2 = infer::infer_module(&module2, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result2 = infer::infer_module(
+        &module2,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(result2.is_err(), "importing private trait should fail");
     let err = match result2 {
         Err(mut errors) => errors.remove(0),
@@ -2740,7 +2823,12 @@ fn infer_module_parse_error_produces_e0506() {
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
-    let result = infer::infer_module(&module, &FakeResolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm);
+    let result = infer::infer_module(
+        &module,
+        &FakeResolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    );
     assert!(
         result.is_err(),
         "import of module with parse errors should fail"

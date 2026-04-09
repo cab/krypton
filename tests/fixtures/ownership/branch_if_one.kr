@@ -1,7 +1,8 @@
 # expect: error E0102
 fun consume(buf: ~String) -> Int = 42
 
-fun test(x: ~String) -> String {
+fun test(x: ~String) -> Int {
     if true { consume(x) } else { 0 };
-    x
+    consume(x);
+    0
 }

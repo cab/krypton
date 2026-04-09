@@ -1,8 +1,8 @@
 # expect: ok
 type Wrapper = { action: ~() -> String }
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun test(x: ~String) -> String {
-    let w = Wrapper { action = () -> consume(x) }
+    let w: ~Wrapper = Wrapper { action = () -> consume(x) }
     match w {
         Wrapper { action } => action()
     }

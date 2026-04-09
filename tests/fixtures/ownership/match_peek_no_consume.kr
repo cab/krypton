@@ -1,9 +1,9 @@
 # expect: ok
 type Choice = A | B
 
-fun peek(s: String) -> Choice = A
+fun peek(&s: ~String) -> Choice = A
 
-fun consume(s: ~String) -> String = s
+fun consume(s: ~String) -> String = match s { _ => "" }
 
 fun test(val: ~String) -> String {
     match peek(val) {

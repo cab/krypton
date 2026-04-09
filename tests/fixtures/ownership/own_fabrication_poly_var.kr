@@ -1,11 +1,10 @@
 # expect: error E0101
-# Inferred ownership: `a` is inferred as ~String from consume's ~T param,
-# so using it twice (consume + borrow) is a double-use error.
-fun consume[T](x: ~T) -> T = x
-fun borrow(x: String) -> String = x
+# `consume` infers T = String for `a`; using `a` again is a double-use error.
+fun consume[T](x: ~T) -> Int = match x { _ => 0 }
+fun consume_string(x: ~String) -> Int = match x { _ => 0 }
 
-fun test(a) {
+fun test(a: ~String) -> Int {
     let x = consume(a)
-    let y = borrow(a)
+    let y = consume_string(a)
     y
 }

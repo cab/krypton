@@ -206,10 +206,12 @@ fn coerce_bare_to_own_fails() {
 }
 
 #[test]
-fn coerce_own_to_bare_ok() {
+fn coerce_own_to_bare_rejected() {
     let mut subst = Substitution::new();
-    // coerce_unify(Own(Int), Int) → OK (drop ownership)
-    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).is_ok());
+    // coerce_unify(Own(Int), Int) → rejected (no silent drop; linear-by-default
+    // requires an explicit consume, per disposable.md §"No ~T → T coercion").
+    let err = coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).unwrap_err();
+    assert!(matches!(err, TypeError::Mismatch { .. }));
 }
 
 #[test]

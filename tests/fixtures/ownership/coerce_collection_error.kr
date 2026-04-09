@@ -1,4 +1,5 @@
-# expect: ok
+# expect: error E0001
+# No implicit ~T -> T drop in constructor element positions.
 type MyList = Cons(String, MyList) | Nil
 
 fun test(buf: ~String) -> MyList = Cons(buf, Nil)

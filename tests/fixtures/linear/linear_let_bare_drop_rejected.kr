@@ -1,0 +1,9 @@
+# expect: error E0001
+type Buf = MkBuf(String)
+
+fun mk() -> ~Buf = MkBuf("x")
+
+fun main() -> Unit = {
+    let _: Buf = mk()
+    ()
+}

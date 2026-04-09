@@ -1,4 +1,5 @@
-# expect: ok
+# expect: error E0001
+# stdlib peek is shared-bound over bare values; owned values must be borrowed explicitly.
 type Choice = A | B
 fun classify(s: String) -> Choice = A
 fun test(val: ~String) -> String {

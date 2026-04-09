@@ -1,4 +1,4 @@
 # expect: ok
-fun identity(x: ~String) -> String = x
+fun identity(x: ~String) -> String = match x { _ => "" }
 
 fun passthrough(val: ~String) -> String = identity(val)

@@ -1,6 +1,6 @@
 # expect: error E0104
 fun call_many(f: () -> String) -> String = f()
 
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun bad(x: ~String) -> String = call_many(() -> consume(x))

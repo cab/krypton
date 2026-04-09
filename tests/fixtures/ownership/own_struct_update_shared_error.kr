@@ -1,4 +1,4 @@
 # expect: error E0001
 type Task = { name: String, action: ~() -> String }
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun rename(t: Task, n: String) -> Task = { t | name = n }

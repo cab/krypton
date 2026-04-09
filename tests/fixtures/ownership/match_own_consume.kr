@@ -3,7 +3,7 @@ type Choice = A | B
 
 fun classify(s: ~String) -> Choice = A
 
-fun consume(s: ~String) -> String = s
+fun consume(s: ~String) -> String = match s { _ => "" }
 
 fun test(x: ~String) -> String {
     match classify(x) {

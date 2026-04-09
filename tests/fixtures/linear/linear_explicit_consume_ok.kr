@@ -1,0 +1,10 @@
+# expect: ok
+type Buf = MkBuf(String)
+
+fun take_bare(x: Buf) -> Unit = match x { MkBuf(_) => () }
+fun consume(x: ~Buf) -> Buf = match x { MkBuf(s) => MkBuf(s) }
+
+fun main() -> Unit = {
+    let b: ~Buf = MkBuf("x")
+    take_bare(consume(b))
+}

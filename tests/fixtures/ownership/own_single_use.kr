@@ -1,4 +1,4 @@
 # expect: ok
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun good(x: ~String) -> String = consume(x)

@@ -1,5 +1,8 @@
 # expect: ok
-fun consume(buf: ~Option[Int]) -> Option[Int] = buf
+fun consume(buf: ~Option[Int]) -> Option[Int] = match buf {
+    Some(n) => Some(n),
+    None => None,
+}
 fun make() -> ~Option[Int] = Some(0)
 
 fun loop(x: ~Option[Int], n: Int) -> Option[Int] =

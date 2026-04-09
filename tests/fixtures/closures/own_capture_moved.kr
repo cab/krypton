@@ -1,5 +1,5 @@
 # expect: error E0103
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun bad(x: ~String) -> String {
     consume(x);

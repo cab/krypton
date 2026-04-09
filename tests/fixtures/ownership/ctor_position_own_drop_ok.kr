@@ -1,4 +1,6 @@
-# expect: ok
+# expect: error E0001
+# Literal constructors still synthesize bare values, but owned values are not
+# silently dropped to fit bare constructor fields.
 type MyList = Cons(Int, MyList) | Nil
 
 fun literals_in_list() -> MyList = Cons(1, Cons(2, Cons(3, Nil)))

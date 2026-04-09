@@ -46,6 +46,29 @@ impl<'a> InferenceContext<'a> {
         coerce_unify(actual, expected, self.subst).map_err(|e| super::spanned(e, span))
     }
 
+    fn add_shadowed_prelude_note(&self, err: &mut SpannedTypeError, is_ufcs: bool) {
+        if err.note.is_some() || !is_ufcs || self.shadowed_prelude_fns.is_empty() {
+            return;
+        }
+        if matches!(
+            &*err.error,
+            TypeError::Mismatch { .. }
+                | TypeError::FnCapabilityMismatch { .. }
+                | TypeError::ParamModeMismatch { .. }
+        ) {
+            let shadows: Vec<String> = self
+                .shadowed_prelude_fns
+                .iter()
+                .map(|(name, module)| format!("`{name}` from {module}"))
+                .collect();
+            err.note = Some(format!(
+                "{} {} shadowed by an explicit import - this may affect the types flowing through the method chain",
+                shadows.join(", "),
+                if shadows.len() == 1 { "is" } else { "are" },
+            ));
+        }
+    }
+
     pub fn join_types_spanned(
         &mut self,
         a: &Type,
@@ -102,6 +125,18 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
+    /// Bidirectional constructor synthesis predicate (disposable.md §"Literal
+    /// and constructor synthesis"). Constructors synthesize bare `T` unless
+    /// the expected context walks to `Own(T)`, in which case they target `~T`
+    /// directly. `MaybeOwn` on expected is ignored at synthesis time — it only
+    /// appears during deferred unification, long after this check.
+    fn expected_wants_own(&self, expected: Option<&Type>) -> bool {
+        match expected.map(|t| self.subst.apply(t)) {
+            Some(Type::Own(_)) => true,
+            _ => false,
+        }
+    }
+
     pub fn extract_fn_params(&self, ty: &Type) -> Option<Vec<Type>> {
         match ty {
             Type::Fn(params, _) => Some(params.iter().map(|(_, t)| t.clone()).collect()),
@@ -135,7 +170,7 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
-    /// Shared tail for qualified-call paths: infer args with lambda expected-type
+    /// Shared tail for qualified-call paths: infer args with parameter expected-type
     /// propagation, coerce own args, unify, and build `TypedExpr::App`.
     // TODO: consolidate with Expr::App per-arg coerce_unify logic
     fn infer_call_args_and_unify(
@@ -144,6 +179,7 @@ impl<'a> InferenceContext<'a> {
         func_ty: &Type,
         args: &[Expr],
         is_constructor: bool,
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let func_param_types = self.extract_fn_params(func_ty);
@@ -154,15 +190,11 @@ impl<'a> InferenceContext<'a> {
         let mut args_typed = Vec::new();
         let mut arg_types = Vec::new();
         for (i, a) in args.iter().enumerate() {
-            let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
-                func_param_types.as_ref().and_then(|fparams| {
-                    fparams
-                        .get(i)
-                        .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
-                })
-            } else {
-                None
-            };
+            let arg_expected_type = func_param_types.as_ref().and_then(|fparams| {
+                fparams
+                    .get(i)
+                    .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
+            });
             let a_typed = self
                 .infer_expr_inner(a, arg_expected_type.as_ref())
                 .map_err(|mut err| {
@@ -244,24 +276,23 @@ impl<'a> InferenceContext<'a> {
                 }
                 // Function type not yet resolved — defer ownership on args rather than stripping.
                 // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
-                let deferred_args: Vec<Type> =
-                    arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
+                let deferred_args: Vec<Type> = arg_types
+                    .iter()
+                    .map(|t| super::defer_own(t, self.subst))
+                    .collect();
                 let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
 
         let ty = self.subst.apply(&ret_var);
+        let wrap = is_constructor && self.expected_wants_own(expected_type);
         Ok(TypedExpr {
             kind: TypedExprKind::App {
                 func: Box::new(func_typed),
                 args: args_typed,
             },
-            ty: if is_constructor {
-                Type::Own(Box::new(ty))
-            } else {
-                ty
-            },
+            ty: if wrap { Type::Own(Box::new(ty)) } else { ty },
             span,
             resolved_ref: None,
             scope_id: None,
@@ -280,6 +311,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         func: &Expr,
         args: &[Expr],
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Option<Result<TypedExpr, SpannedTypeError>> {
         let qualified_call = match (func, args.first()) {
@@ -317,6 +349,7 @@ impl<'a> InferenceContext<'a> {
             &export_name,
             &explicit_type_args,
             args,
+            expected_type,
             span,
         ))
     }
@@ -328,6 +361,7 @@ impl<'a> InferenceContext<'a> {
         export_name: &str,
         explicit_type_args: &[TypeExpr],
         args: &[Expr],
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let Some(export) = binding.exports.get(export_name) else {
@@ -383,7 +417,14 @@ impl<'a> InferenceContext<'a> {
             scope_id: None,
         };
         let actual_args = &args[1..];
-        self.infer_call_args_and_unify(func_typed, &func_ty, actual_args, is_constructor, span)
+        self.infer_call_args_and_unify(
+            func_typed,
+            &func_ty,
+            actual_args,
+            is_constructor,
+            expected_type,
+            span,
+        )
     }
 
     /// Path 3: Qualified module call via field-access syntax — `Module.fn(args...)`.
@@ -391,6 +432,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         func: &Expr,
         args: &[Expr],
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Option<Result<TypedExpr, SpannedTypeError>> {
         let Expr::FieldAccess {
@@ -428,9 +470,12 @@ impl<'a> InferenceContext<'a> {
             export.local_name.clone()
         };
         let func_ty = export.scheme.instantiate(&mut || self.gen.fresh());
+        let wrap_nullary = is_constructor
+            && !matches!(&func_ty, Type::Fn(_, _))
+            && self.expected_wants_own(expected_type);
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(resolved_name),
-            ty: if is_constructor && !matches!(&func_ty, Type::Fn(_, _)) {
+            ty: if wrap_nullary {
                 Type::Own(Box::new(func_ty.clone()))
             } else {
                 func_ty.clone()
@@ -440,7 +485,14 @@ impl<'a> InferenceContext<'a> {
             scope_id: None,
         };
 
-        Some(self.infer_call_args_and_unify(func_typed, &func_ty, args, is_constructor, span))
+        Some(self.infer_call_args_and_unify(
+            func_typed,
+            &func_ty,
+            args,
+            is_constructor,
+            expected_type,
+            span,
+        ))
     }
 
     /// Path 4: General HM function application — infer func, infer args with
@@ -450,11 +502,37 @@ impl<'a> InferenceContext<'a> {
         func: &Expr,
         args: &[Expr],
         is_ufcs: bool,
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let func_typed = self.infer_expr_inner(func, None)?;
-        // Extract expected parameter types from the function signature
-        // so we can propagate them into lambda arguments for bidirectional checking.
+        let is_constructor = if let Expr::Var { name, .. } = func {
+            self.registry.is_some_and(|r| r.is_constructor(name))
+        } else {
+            false
+        };
+
+        // Let the expected result type steer polymorphic callee instantiation
+        // before argument inference. For `identity(buf) : ~String`, this pins
+        // `a = ~String` before the parameter expectation is propagated to
+        // `buf`. Constructors are handled by bidirectional synthesis below:
+        // their bare return type is wrapped when the expected type wants `~T`.
+        if !is_constructor {
+            if let Some(expected) = expected_type {
+                let resolved_func_ty = self.subst.apply(&func_typed.ty);
+                let unwrapped = self.unwrap_own_fn(&resolved_func_ty);
+                if let Type::Fn(_, ret_type) = &unwrapped {
+                    coerce_unify(ret_type, expected, self.subst).map_err(|e| {
+                        let mut err = super::spanned(e, span);
+                        self.add_shadowed_prelude_note(&mut err, is_ufcs);
+                        err
+                    })?;
+                }
+            }
+        }
+
+        // Extract expected parameter types from the function signature so we can
+        // propagate them into argument inference for bidirectional checking.
         let func_param_types: Option<Vec<Type>> = {
             let resolved_func_ty = self.subst.apply(&func_typed.ty);
             let unwrapped = match &resolved_func_ty {
@@ -477,17 +555,11 @@ impl<'a> InferenceContext<'a> {
         let mut args_typed = Vec::new();
         let mut arg_types = Vec::new();
         for (i, a) in args.iter().enumerate() {
-            // For lambda arguments, resolve the expected parameter type from the
-            // function signature and pass it as expected_type for bidirectional checking.
-            let arg_expected_type = if matches!(a, Expr::Lambda { .. }) {
-                func_param_types.as_ref().and_then(|fparams| {
-                    fparams
-                        .get(i)
-                        .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
-                })
-            } else {
-                None
-            };
+            let arg_expected_type = func_param_types.as_ref().and_then(|fparams| {
+                fparams
+                    .get(i)
+                    .map(|expected_arg_ty| self.subst.apply(expected_arg_ty))
+            });
             let a_typed = self
                 .infer_expr_inner(a, arg_expected_type.as_ref())
                 .map_err(|mut err| {
@@ -527,11 +599,6 @@ impl<'a> InferenceContext<'a> {
         }
 
         let ret_var = Type::Var(self.fresh());
-        let is_constructor = if let Expr::Var { name, .. } = func {
-            self.registry.is_some_and(|r| r.is_constructor(name))
-        } else {
-            false
-        };
 
         // Resolve function type and extract params + return for per-arg coerce_unify
         let resolved_func = self.subst.apply(&func_typed.ty);
@@ -583,16 +650,7 @@ impl<'a> InferenceContext<'a> {
                                     }
                                 }
                             }
-                            if err.note.is_none() && is_ufcs && !self.shadowed_prelude_fns.is_empty() {
-                                let shadows: Vec<String> = self.shadowed_prelude_fns.iter()
-                                    .map(|(name, module)| format!("`{name}` from {module}"))
-                                    .collect();
-                                err.note = Some(format!(
-                                    "{} {} shadowed by an explicit import — this may affect the types flowing through the method chain",
-                                    shadows.join(", "),
-                                    if shadows.len() == 1 { "is" } else { "are" },
-                                ));
-                            }
+                            self.add_shadowed_prelude_note(&mut err, is_ufcs);
                         }
                         if err.secondary_span.is_none() {
                             if let Some(cname) = callee_name {
@@ -619,15 +677,17 @@ impl<'a> InferenceContext<'a> {
                 }
                 // Function type not yet resolved — defer ownership on args rather than stripping.
                 // MaybeOwn preserves the possibility of ~T being needed once the callee resolves.
-                let deferred_args: Vec<Type> =
-                    arg_types.iter().map(|t| super::defer_own(t, self.subst)).collect();
+                let deferred_args: Vec<Type> = arg_types
+                    .iter()
+                    .map(|t| super::defer_own(t, self.subst))
+                    .collect();
                 let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
             }
         }
 
         let ty = self.subst.apply(&ret_var);
-        let ty = if is_constructor {
+        let ty = if is_constructor && self.expected_wants_own(expected_type) {
             Type::Own(Box::new(ty))
         } else {
             ty
@@ -666,11 +726,23 @@ impl<'a> InferenceContext<'a> {
                     _ => None,
                 }
             });
+        let expected_return: Option<Type> = expected_type.and_then(|et| {
+            let unwrapped = match et {
+                Type::Own(inner) => inner.as_ref(),
+                other => other,
+            };
+            match unwrapped {
+                Type::Fn(_, ret) => Some(ret.as_ref().clone()),
+                _ => None,
+            }
+        });
         let mut seen_params = HashSet::new();
         for p in params.iter() {
             if !seen_params.insert(&p.name) {
                 return Err(super::spanned(
-                    TypeError::DuplicateParam { name: p.name.clone() },
+                    TypeError::DuplicateParam {
+                        name: p.name.clone(),
+                    },
                     p.span,
                 ));
             }
@@ -682,8 +754,7 @@ impl<'a> InferenceContext<'a> {
             let tv = Type::Var(self.fresh());
             if let Some(expected) = expected_params {
                 if let Some((_, expected_ty)) = expected.get(i) {
-                    unify(&tv, expected_ty, self.subst)
-                        .map_err(|e| super::spanned(e, p.span))?;
+                    unify(&tv, expected_ty, self.subst).map_err(|e| super::spanned(e, p.span))?;
                 }
             }
             param_types.push(tv.clone());
@@ -693,10 +764,11 @@ impl<'a> InferenceContext<'a> {
         // Lambdas need their own return type so the `?` operator inside
         // a lambda targets the lambda's return, not the enclosing function's.
         let prev_fn_return_type = self.env.fn_return_type.take();
-        self.env.fn_return_type = Some(Type::Var(self.fresh()));
+        let fn_ret_expected = expected_return.unwrap_or_else(|| Type::Var(self.fresh()));
+        self.env.fn_return_type = Some(fn_ret_expected.clone());
         let saved_recur = self.recur_params.take();
         self.recur_params = Some(param_types.clone());
-        let body_typed = self.infer_expr_inner(body, None)?;
+        let body_typed = self.infer_expr_inner(body, Some(&fn_ret_expected))?;
         self.recur_params = saved_recur;
         self.env.fn_return_type = prev_fn_return_type;
         self.env.pop_scope();
@@ -809,38 +881,50 @@ impl<'a> InferenceContext<'a> {
         let snap = self.subst.push_qual_scope();
 
         let result: Result<(TypedExpr, Type), SpannedTypeError> = (|| {
-            let val_typed = self.infer_expr_inner(value, None)?;
-
-            // If there's a type annotation, resolve and unify. Use the annotation
-            // type for the binding so that `: Int` (no ~) drops ownership.
-            let binding_ty = if let Some(ty_expr) = ty_ann {
+            // Resolve the annotation *before* inferring the RHS so that the
+            // annotation type can steer bidirectional constructor synthesis
+            // (disposable.md §"Literal and constructor synthesis"). Without
+            // this, a `let x: List[Int] = Cons(1, Nil)` would synthesize
+            // `~List[Int]` from the constructor and then need to drop — but
+            // the `~T → T` drop coercion no longer exists.
+            let resolved_ann: Option<Type> = if let Some(ty_expr) = ty_ann {
                 if self.registry.is_some() {
-                    let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
-                    coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
-                        let mut err = super::spanned(e, span);
-                        if matches!(
-                            &*err.error,
-                            TypeError::Mismatch { .. }
-                                | TypeError::FnCapabilityMismatch { .. }
-                                | TypeError::ParamModeMismatch { .. }
-                        ) {
-                            if let Expr::Lambda { span: lspan, .. } = value {
-                                if let Some(ref captures) = self.lambda_own_captures {
-                                    if let Some(cap_name) = captures.get(lspan) {
-                                        err.note = Some(format!(
-                                            "closure is single-use because it captures `~` value `{}`",
-                                            cap_name
-                                        ));
-                                    }
+                    Some(self.resolve_type_expr_spanned(ty_expr, span)?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let val_typed = self.infer_expr_inner(value, resolved_ann.as_ref())?;
+
+            // Unify the RHS against the annotation (already resolved above).
+            // With bidirectional synthesis feeding the annotation in as expected,
+            // this coerce_unify is a no-op for constructor RHS in the common case
+            // and remains the safety net for non-constructor flows.
+            let binding_ty = if let Some(annotated_ty) = resolved_ann {
+                coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
+                    let mut err = super::spanned(e, span);
+                    if matches!(
+                        &*err.error,
+                        TypeError::Mismatch { .. }
+                            | TypeError::FnCapabilityMismatch { .. }
+                            | TypeError::ParamModeMismatch { .. }
+                    ) {
+                        if let Expr::Lambda { span: lspan, .. } = value {
+                            if let Some(ref captures) = self.lambda_own_captures {
+                                if let Some(cap_name) = captures.get(lspan) {
+                                    err.note = Some(format!(
+                                        "closure is single-use because it captures `~` value `{}`",
+                                        cap_name
+                                    ));
                                 }
                             }
                         }
-                        err
-                    })?;
-                    annotated_ty
-                } else {
-                    val_typed.ty.clone()
-                }
+                    }
+                    err
+                })?;
+                annotated_ty
             } else {
                 val_typed.ty.clone()
             };
@@ -959,6 +1043,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         target: &Expr,
         field: &str,
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         if let Expr::Var {
@@ -984,7 +1069,10 @@ impl<'a> InferenceContext<'a> {
                         export.local_name.clone()
                     };
                     let export_ty = export.scheme.instantiate(&mut || self.gen.fresh());
-                    let ty = if is_constructor && !matches!(&export_ty, Type::Fn(_, _)) {
+                    let ty = if is_constructor
+                        && !matches!(&export_ty, Type::Fn(_, _))
+                        && self.expected_wants_own(expected_type)
+                    {
                         Type::Own(Box::new(export_ty.clone()))
                     } else {
                         export_ty.clone()
@@ -1048,6 +1136,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         scrutinee: &Expr,
         arms: &[MatchArm],
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let scrutinee_typed = self.infer_expr_inner(scrutinee, None)?;
@@ -1072,7 +1161,7 @@ impl<'a> InferenceContext<'a> {
             } else {
                 None
             };
-            let body_typed = self.infer_expr_inner(&arm.body, None)?;
+            let body_typed = self.infer_expr_inner(&arm.body, expected_type)?;
             match &result_ty {
                 None => {
                     result_ty = Some(body_typed.ty.clone());
@@ -1118,18 +1207,22 @@ impl<'a> InferenceContext<'a> {
         body: Option<&Expr>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
-        let val_typed = self.infer_expr_inner(value, None)?;
-
-        // If there's a type annotation, resolve and unify. Use the annotation
-        // type for the binding so that `: Int` (no ~) drops ownership.
-        let binding_ty = if let Some(ty_expr) = ty_ann {
+        // Resolve an annotation before inferring the RHS so constructors inside
+        // the RHS can synthesize directly to the annotated form.
+        let resolved_ann: Option<Type> = if let Some(ty_expr) = ty_ann {
             if self.registry.is_some() {
-                let annotated_ty = self.resolve_type_expr_spanned(ty_expr, span)?;
-                self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, span)?;
-                annotated_ty
+                Some(self.resolve_type_expr_spanned(ty_expr, span)?)
             } else {
-                self.subst.apply(&val_typed.ty)
+                None
             }
+        } else {
+            None
+        };
+        let val_typed = self.infer_expr_inner(value, resolved_ann.as_ref())?;
+
+        let binding_ty = if let Some(annotated_ty) = resolved_ann {
+            self.coerce_unify_spanned(&val_typed.ty, &annotated_ty, span)?;
+            annotated_ty
         } else {
             self.subst.apply(&val_typed.ty)
         };
@@ -1185,6 +1278,7 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         name: &str,
         fields: &[(String, Expr)],
+        expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
         let reg = self.registry.ok_or_else(|| {
@@ -1238,7 +1332,7 @@ impl<'a> InferenceContext<'a> {
                         Some((_, expected_ty)) => {
                             let expected =
                                 super::instantiate_field_type(expected_ty, info, &fresh_args);
-                            let field_typed = self.infer_expr_inner(field_expr, None)?;
+                            let field_typed = self.infer_expr_inner(field_expr, Some(&expected))?;
                             self.coerce_unify_spanned(&field_typed.ty, &expected, span)?;
                             typed_fields.push((field_name.clone(), field_typed));
                         }
@@ -1254,13 +1348,18 @@ impl<'a> InferenceContext<'a> {
                     }
                 }
 
+                let result_ty = if self.expected_wants_own(expected_type) {
+                    Type::Own(Box::new(struct_ty))
+                } else {
+                    struct_ty
+                };
                 Ok(TypedExpr {
                     kind: TypedExprKind::StructLit {
                         name: name.to_string(),
                         fields: typed_fields,
                         resolved_type_ref,
                     },
-                    ty: Type::Own(Box::new(struct_ty)),
+                    ty: result_ty,
                     span,
                     resolved_ref: None,
                     scope_id: None,
@@ -1477,6 +1576,7 @@ impl<'a> InferenceContext<'a> {
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))
                         && self.registry.is_some_and(|r| r.is_constructor(name))
+                        && self.expected_wants_own(expected_type)
                     {
                         Type::Own(Box::new(ty))
                     } else {
@@ -1522,13 +1622,17 @@ impl<'a> InferenceContext<'a> {
             } => {
                 // Dispatch: qualified Mod.fn → qualified field access
                 //         → UFCS overload resolution → general HM application
-                if let Some(result) = self.infer_qualified_var_call(func, args, *span) {
+                if let Some(result) =
+                    self.infer_qualified_var_call(func, args, expected_type, *span)
+                {
                     return result;
                 }
-                if let Some(result) = self.infer_qualified_field_call(func, args, *span) {
+                if let Some(result) =
+                    self.infer_qualified_field_call(func, args, expected_type, *span)
+                {
                     return result;
                 }
-                self.infer_general_call(func, args, *is_ufcs, *span)
+                self.infer_general_call(func, args, *is_ufcs, expected_type, *span)
             }
 
             Expr::TypeApp {
@@ -1554,8 +1658,8 @@ impl<'a> InferenceContext<'a> {
             } => {
                 let cond_typed = self.infer_expr_inner(cond, None)?;
                 self.coerce_unify_spanned(&cond_typed.ty, &Type::Bool, *span)?;
-                let then_typed = self.infer_expr_inner(then_, None)?;
-                let else_typed = self.infer_expr_inner(else_, None)?;
+                let then_typed = self.infer_expr_inner(then_, expected_type)?;
+                let else_typed = self.infer_expr_inner(else_, expected_type)?;
                 self.join_types_spanned(&then_typed.ty, &else_typed.ty, *span)?;
                 let ty =
                     self.resolve_join_ownership(&[then_typed.ty.clone(), else_typed.ty.clone()]);
@@ -1585,8 +1689,13 @@ impl<'a> InferenceContext<'a> {
                     });
                 }
                 let mut typed_exprs = Vec::new();
-                for e in exprs {
-                    typed_exprs.push(self.infer_expr_inner(e, None)?);
+                for (idx, e) in exprs.iter().enumerate() {
+                    let expr_expected = if idx + 1 == exprs.len() {
+                        expected_type
+                    } else {
+                        None
+                    };
+                    typed_exprs.push(self.infer_expr_inner(e, expr_expected)?);
                 }
                 self.env.pop_scope();
                 let ty = typed_exprs.last().unwrap().ty.clone();
@@ -1641,7 +1750,7 @@ impl<'a> InferenceContext<'a> {
                         }
                         let params_owned: Vec<Type> = params.to_vec();
                         for (a, p) in args.iter().zip(params_owned.iter()) {
-                            let a_typed = self.infer_expr_inner(a, None)?;
+                            let a_typed = self.infer_expr_inner(a, Some(p))?;
                             self.coerce_unify_spanned(&a_typed.ty, p, *span)?;
                             typed_args.push(a_typed);
                         }
@@ -1667,7 +1776,7 @@ impl<'a> InferenceContext<'a> {
                 expr: target,
                 field,
                 span,
-            } => self.infer_field_access(target, field, *span),
+            } => self.infer_field_access(target, field, expected_type, *span),
 
             Expr::StructUpdate { base, fields, span } => {
                 let base_typed = self.infer_expr_inner(base, None)?;
@@ -1694,7 +1803,7 @@ impl<'a> InferenceContext<'a> {
                 scrutinee,
                 arms,
                 span,
-            } => self.infer_match(scrutinee, arms, *span),
+            } => self.infer_match(scrutinee, arms, expected_type, *span),
 
             Expr::Tuple { elements, span } => {
                 let mut typed_elems = Vec::new();
@@ -1719,7 +1828,9 @@ impl<'a> InferenceContext<'a> {
                 span,
             } => self.infer_let_pattern(pattern, ty_ann.as_ref(), value, body.as_deref(), *span),
 
-            Expr::StructLit { name, fields, span } => self.infer_struct_lit(name, fields, *span),
+            Expr::StructLit { name, fields, span } => {
+                self.infer_struct_lit(name, fields, expected_type, *span)
+            }
 
             Expr::List { elements, span } => {
                 // Infer as Vec[a] — [e1, e2, e3] produces Vec[elem_type]

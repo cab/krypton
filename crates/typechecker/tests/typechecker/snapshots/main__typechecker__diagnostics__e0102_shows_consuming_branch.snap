@@ -1,16 +1,16 @@
 ---
-source: crates/typechecker/tests/diagnostics_test.rs
+source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
 [E0102] Error: value may have been moved in a prior branch: `x`
-   ╭─[ ../../tests/fixtures/ownership/branch_if_one.kr:6:5 ]
+   ╭─[ ../../tests/fixtures/ownership/branch_if_one.kr:6:13 ]
    │
  5 │     if true { consume(x) } else { 0 };
    │                       ┬  
    │                       ╰── consumed here
- 6 │     x
-   │     ┬  
-   │     ╰── E0102: value may have been moved in a prior branch: `x`
+ 6 │     consume(x);
+   │             ┬  
+   │             ╰── E0102: value may have been moved in a prior branch: `x`
    │ 
    │ Help: `x` was consumed in some but not all branches of a conditional
 ───╯

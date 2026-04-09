@@ -1,6 +1,9 @@
 # expect: error E0104
 # ~List[T] param with List[T] arg
 type Box = { value: Int }
-fun consume(x: ~List[Box]) -> List[Box] = x
+fun consume(x: ~List[Box]) -> Int = match x {
+    Nil => 0,
+    Cons(_, _) => 1,
+}
 
-fun test(xs: List[Box]) -> List[Box] = consume(xs)
+fun test(xs: List[Box]) -> Int = consume(xs)

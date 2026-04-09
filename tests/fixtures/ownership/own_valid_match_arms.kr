@@ -2,7 +2,10 @@
 # All-owned match arms preserve ownership through pair-wise joining
 type Color = Red | Green | Blue
 
-fun consume(buf: ~Option[Int]) -> Option[Int] = buf
+fun consume(buf: ~Option[Int]) -> Option[Int] = match buf {
+    Some(n) => Some(n),
+    None => None,
+}
 
 fun test(c: Color) -> Option[Int] =
     consume(match c {

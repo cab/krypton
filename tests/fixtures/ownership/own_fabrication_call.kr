@@ -1,6 +1,6 @@
 # expect: error E0104
 # Bare T passed to ~T param should be rejected (ownership fabrication)
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun borrow(s: String) -> String = s
 

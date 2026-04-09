@@ -73,8 +73,13 @@ fn extract_multi(
     let (root_module, errors) = parse(root_src);
     assert!(errors.is_empty(), "root parse errors: {:?}", errors);
     let resolver = TestResolver::new(libs);
-    let (modules, _) = infer::infer_module(&root_module, &resolver, root_path.to_string(), krypton_parser::ast::CompileTarget::Jvm)
-        .expect("typecheck failed");
+    let (modules, _) = infer::infer_module(
+        &root_module,
+        &resolver,
+        root_path.to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("typecheck failed");
 
     modules
         .iter()
@@ -88,7 +93,8 @@ fn extract_multi(
                     .collect()
             } else {
                 // stdlib module — try to resolve and parse
-                let dep_strs: Vec<String> = if let Some(src) = resolver.resolve(&typed.module_path) {
+                let dep_strs: Vec<String> = if let Some(src) = resolver.resolve(&typed.module_path)
+                {
                     let (parsed, _) = parse(&src);
                     collect_direct_deps(&parsed)
                         .iter()
@@ -136,10 +142,7 @@ fn test_link_context_from_real_interfaces() {
 fn test_link_context_reexport_chain() {
     let libs = vec![
         ("inner", "pub type Point = { x: Int, y: Int }"),
-        (
-            "outer",
-            "pub import inner.{Point}\nimport inner.{Point}",
-        ),
+        ("outer", "pub import inner.{Point}\nimport inner.{Point}"),
     ];
     let all = extract_multi(
         "import outer.{Point}\npub fun origin() -> Point = Point { x = 0, y = 0 }",

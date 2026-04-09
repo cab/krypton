@@ -4,6 +4,6 @@ fun repeat(f, n: Int) -> String =
     if n == 0 { "done" }
     else { f(n); recur(f, n - 1) }
 
-fun consume(buf: ~String) -> String = buf
+fun consume(buf: ~String) -> String = match buf { _ => "" }
 
 fun test(s: ~String) -> String = repeat(x -> consume(s), 3)

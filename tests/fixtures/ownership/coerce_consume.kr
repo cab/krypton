@@ -1,5 +1,5 @@
 # expect: error E0101
-fun consume(s: ~String) -> String = s
+fun consume(s: ~String) -> String = match s { _ => "" }
 
 fun test(buf: ~String) -> String {
     consume(buf);

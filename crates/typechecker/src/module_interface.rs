@@ -4,8 +4,8 @@ use std::fmt;
 use krypton_parser::ast::{ExternTarget, Span, Visibility};
 
 use crate::typed_ast::{
-    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier,
-    TraitName, TypedModule,
+    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier, TraitName,
+    TypedModule,
 };
 use crate::types::{Type, TypeScheme, TypeVarId};
 

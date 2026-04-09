@@ -1,4 +1,5 @@
-# expect: ok
+# expect: error E0001
+# Record construction does not silently drop ownership from ~String to String.
 type Box = { value: String }
 
 fun bad(x: ~String) -> Box = Box(x)

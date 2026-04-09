@@ -78,8 +78,13 @@ fn extract_multi(root_src: &str, libs: Vec<(&str, &str)>) -> ModuleInterface {
     let dep_paths = collect_direct_deps(&root_module);
     let dep_strs: Vec<String> = dep_paths.iter().map(|p| p.0.clone()).collect();
     let resolver = TestResolver::new(libs);
-    let (modules, _) =
-        infer::infer_module(&root_module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).expect("typecheck failed");
+    let (modules, _) = infer::infer_module(
+        &root_module,
+        &resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("typecheck failed");
     extract_interface(&modules[0], &dep_strs)
 }
 

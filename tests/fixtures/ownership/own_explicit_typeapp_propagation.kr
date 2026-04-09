@@ -1,5 +1,5 @@
 # expect: ok
 # Explicit type app preserves ownership through generics
 fun identity[T](x: T) -> T = x
-fun consume(x: ~String) -> String = x
+fun consume(x: ~String) -> String = match x { _ => "" }
 fun test(x: ~String) -> String = consume(identity[~String](x))

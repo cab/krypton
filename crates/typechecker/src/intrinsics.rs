@@ -26,6 +26,5 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 var_names: HashMap::new(),
             },
         );
-
     }
 }

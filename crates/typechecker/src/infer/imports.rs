@@ -235,10 +235,12 @@ impl ModuleInferenceState {
                             .iter()
                             .find(|ts| ts.name == *parent_type)
                             .map(constructor_kind_from_summary)
-                            .unwrap_or_else(|| panic!(
-                                "ICE: constructor parent type '{}' not in exported_types",
-                                parent_type
-                            ));
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "ICE: constructor parent type '{}' not in exported_types",
+                                    parent_type
+                                )
+                            });
                         self.imports.bind_imported_constructor(
                             &mut self.env,
                             effective_name.clone(),

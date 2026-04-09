@@ -1,6 +1,8 @@
 use krypton_parser::ast::Span;
 
-use crate::types::{format_type_with_var_map, renumber_types_for_display, ParamMode, Type, TypeVarId};
+use crate::types::{
+    format_type_with_var_map, renumber_types_for_display, ParamMode, Type, TypeVarId,
+};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -846,7 +848,10 @@ impl TypeError {
                 let var_name = format_type_with_var_map(&Type::Var(*var), names);
                 let ty_name = format_type_with_var_map(ty, names);
                 if is_own_wrapper_of(*var, ty) {
-                    format!("type mismatch: expected `{}`, found `{}`", var_name, ty_name)
+                    format!(
+                        "type mismatch: expected `{}`, found `{}`",
+                        var_name, ty_name
+                    )
                 } else {
                     format!("infinite type: variable {} occurs in {}", var_name, ty_name)
                 }

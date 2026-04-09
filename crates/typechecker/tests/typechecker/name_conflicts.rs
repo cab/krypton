@@ -29,7 +29,8 @@ fn expect_error_code(src: &str, expected_code: &str) {
         .error_code()
         .to_string();
     assert_eq!(
-        actual, expected_code,
+        actual,
+        expected_code,
         "expected error code {expected_code}, got {actual} (error: {})",
         err.type_error().unwrap().error
     );

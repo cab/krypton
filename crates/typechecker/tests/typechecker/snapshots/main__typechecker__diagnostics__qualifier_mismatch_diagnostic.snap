@@ -1,13 +1,13 @@
 ---
-source: crates/typechecker/tests/diagnostics_test.rs
+source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
-[E0104] Error: ownership mismatch: expected `~String`, found `String`
-   ╭─[ ../../tests/fixtures/ownership/qualifier_dup_error.kr:4:1 ]
+[E0104] Error: cannot pass `buf` to `dup`: `dup` uses its argument multiple times, but `buf` is single-use (`~`)
+   ╭─[ ../../tests/fixtures/ownership/qualifier_dup_error.kr:4:52 ]
    │
  4 │ fun test(buf: ~String) -> (~String, ~String) = dup(buf)
-   │ ───────────────────────────┬───────────────────────────  
-   │                            ╰───────────────────────────── E0104: ownership mismatch: expected `~String`, found `String`
+   │                                                    ─┬─  
+   │                                                     ╰─── E0104: cannot pass `buf` to `dup`: `dup` uses its argument multiple times, but `buf` is single-use (`~`)
    │ 
-   │ Help: a `~` (owned) value must be passed to a parameter that requires ownership
+   │ Help: `dup` uses parameter `x` more than once, so it cannot accept `~` (owned) values. Consider cloning first, or use a function that consumes its argument at most once.
 ───╯

@@ -29,5 +29,7 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-identity: forall a. (a) -> a
-test: (~String) -> ~String
+MkBuf: (String) -> Buf
+take_bare: (Buf) -> Unit
+consume: (~Buf) -> Buf
+main: () -> Unit

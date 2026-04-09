@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::module_interface::{
-    CanonicalRef, ExportedFnSummary, ExternTypeSummary, InstanceSummary,
-    ModuleInterface, ModulePath, TraitSummary, TypeSummary,
+    CanonicalRef, ExportedFnSummary, ExternTypeSummary, InstanceSummary, ModuleInterface,
+    ModulePath, TraitSummary, TypeSummary,
 };
 use crate::typed_ast::TraitName;
 use krypton_parser::ast::Visibility;
@@ -52,13 +52,24 @@ impl ModuleIdInterner {
 // ---------------------------------------------------------------------------
 
 enum FnEntry {
-    Direct { index: usize },
-    Reexport { canonical_module: ModuleId, canonical_name: String, index: usize },
+    Direct {
+        index: usize,
+    },
+    Reexport {
+        canonical_module: ModuleId,
+        canonical_name: String,
+        index: usize,
+    },
 }
 
 enum TypeEntry {
-    Direct { index: usize },
-    Reexport { canonical_module: ModuleId, canonical_name: String },
+    Direct {
+        index: usize,
+    },
+    Reexport {
+        canonical_module: ModuleId,
+        canonical_name: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -102,10 +113,7 @@ impl LinkContext {
         let mut fn_index = HashMap::new();
         for (&mod_id, iface) in &iface_map {
             for (i, f) in iface.exported_fns.iter().enumerate() {
-                fn_index.insert(
-                    (mod_id, f.name.clone()),
-                    FnEntry::Direct { index: i },
-                );
+                fn_index.insert((mod_id, f.name.clone()), FnEntry::Direct { index: i });
             }
             for (i, f) in iface.reexported_fns.iter().enumerate() {
                 let canonical_mod = interner.intern(&f.canonical_ref.module);
@@ -124,10 +132,7 @@ impl LinkContext {
         let mut type_index = HashMap::new();
         for (&mod_id, iface) in &iface_map {
             for (i, t) in iface.exported_types.iter().enumerate() {
-                type_index.insert(
-                    (mod_id, t.name.clone()),
-                    TypeEntry::Direct { index: i },
-                );
+                type_index.insert((mod_id, t.name.clone()), TypeEntry::Direct { index: i });
             }
             for t in &iface.reexported_types {
                 let canonical_mod = interner.intern(&t.canonical_ref.module);
@@ -164,7 +169,9 @@ impl LinkContext {
         let mut extern_type_index = HashMap::new();
         for (&mod_id, iface) in &iface_map {
             for (i, et) in iface.extern_types.iter().enumerate() {
-                extern_type_index.entry(et.krypton_name.clone()).or_insert((mod_id, i));
+                extern_type_index
+                    .entry(et.krypton_name.clone())
+                    .or_insert((mod_id, i));
             }
         }
 
@@ -236,15 +243,22 @@ impl LinkContext {
     pub fn lookup_fn_summary(&self, path: &ModulePath, name: &str) -> Option<&ExportedFnSummary> {
         let id = self.interner.lookup(path)?;
         match self.fn_index.get(&(id, name.to_string()))? {
-            FnEntry::Direct { index } => {
-                self.interfaces.get(&id)?.exported_fns.get(*index)
-            }
-            FnEntry::Reexport { canonical_module, canonical_name, .. } => {
+            FnEntry::Direct { index } => self.interfaces.get(&id)?.exported_fns.get(*index),
+            FnEntry::Reexport {
+                canonical_module,
+                canonical_name,
+                ..
+            } => {
                 // Resolve to canonical module's direct entry
-                match self.fn_index.get(&(*canonical_module, canonical_name.clone()))? {
-                    FnEntry::Direct { index } => {
-                        self.interfaces.get(canonical_module)?.exported_fns.get(*index)
-                    }
+                match self
+                    .fn_index
+                    .get(&(*canonical_module, canonical_name.clone()))?
+                {
+                    FnEntry::Direct { index } => self
+                        .interfaces
+                        .get(canonical_module)?
+                        .exported_fns
+                        .get(*index),
                     _ => None,
                 }
             }
@@ -254,14 +268,20 @@ impl LinkContext {
     pub fn lookup_type_summary(&self, path: &ModulePath, name: &str) -> Option<&TypeSummary> {
         let id = self.interner.lookup(path)?;
         match self.type_index.get(&(id, name.to_string()))? {
-            TypeEntry::Direct { index } => {
-                self.interfaces.get(&id)?.exported_types.get(*index)
-            }
-            TypeEntry::Reexport { canonical_module, canonical_name } => {
-                match self.type_index.get(&(*canonical_module, canonical_name.clone()))? {
-                    TypeEntry::Direct { index } => {
-                        self.interfaces.get(canonical_module)?.exported_types.get(*index)
-                    }
+            TypeEntry::Direct { index } => self.interfaces.get(&id)?.exported_types.get(*index),
+            TypeEntry::Reexport {
+                canonical_module,
+                canonical_name,
+            } => {
+                match self
+                    .type_index
+                    .get(&(*canonical_module, canonical_name.clone()))?
+                {
+                    TypeEntry::Direct { index } => self
+                        .interfaces
+                        .get(canonical_module)?
+                        .exported_types
+                        .get(*index),
                     _ => None,
                 }
             }
@@ -271,13 +291,17 @@ impl LinkContext {
     pub fn lookup_trait(&self, path: &ModulePath, name: &str) -> Option<&TraitSummary> {
         let id = self.interner.lookup(path)?;
         let &defining_mod = self.trait_index.get(&(id, name.to_string()))?;
-        self.interfaces.get(&defining_mod)?
+        self.interfaces
+            .get(&defining_mod)?
             .exported_traits
             .iter()
             .find(|t| t.name == name)
     }
 
-    pub fn instances_for_trait(&self, trait_name: &TraitName) -> Vec<(&ModulePath, &InstanceSummary)> {
+    pub fn instances_for_trait(
+        &self,
+        trait_name: &TraitName,
+    ) -> Vec<(&ModulePath, &InstanceSummary)> {
         let Some(entries) = self.instance_index.get(trait_name) else {
             return Vec::new();
         };
@@ -294,7 +318,10 @@ impl LinkContext {
     pub fn all_instances(&self) -> impl Iterator<Item = (&ModulePath, &InstanceSummary)> {
         self.interfaces.iter().flat_map(move |(mod_id, iface)| {
             let path = self.interner.resolve(*mod_id);
-            iface.exported_instances.iter().map(move |inst| (path, inst))
+            iface
+                .exported_instances
+                .iter()
+                .map(move |inst| (path, inst))
         })
     }
 
@@ -374,11 +401,7 @@ impl<'a> ModuleLinkView<'a> {
         self.ctx.lookup_fn_summary(path, name)
     }
 
-    pub fn lookup_type_summary(
-        &self,
-        path: &ModulePath,
-        name: &str,
-    ) -> Option<&'a TypeSummary> {
+    pub fn lookup_type_summary(&self, path: &ModulePath, name: &str) -> Option<&'a TypeSummary> {
         let target_id = self.ctx.interner.lookup(path)?;
         if !self.reachable.contains(&target_id) {
             return None;
@@ -507,7 +530,11 @@ mod tests {
         }
     }
 
-    fn make_instance_summary(trait_module: &str, trait_name: &str, target: &str) -> InstanceSummary {
+    fn make_instance_summary(
+        trait_module: &str,
+        trait_name: &str,
+        target: &str,
+    ) -> InstanceSummary {
         InstanceSummary {
             key: LocalSymbolKey::Instance {
                 trait_name: trait_name.to_string(),
@@ -562,14 +589,18 @@ mod tests {
     fn test_fn_lookup_missing() {
         let iface = make_interface("mod_a");
         let ctx = LinkContext::build(vec![iface]);
-        assert!(ctx.lookup_fn_summary(&ModulePath::new("mod_a"), "nonexistent").is_none());
+        assert!(ctx
+            .lookup_fn_summary(&ModulePath::new("mod_a"), "nonexistent")
+            .is_none());
     }
 
     // 4. Type lookup
     #[test]
     fn test_type_lookup() {
         let mut iface = make_interface("mod_a");
-        iface.exported_types.push(make_type_summary("Point", Visibility::Pub));
+        iface
+            .exported_types
+            .push(make_type_summary("Point", Visibility::Pub));
         let ctx = LinkContext::build(vec![iface]);
 
         let result = ctx.lookup_type_summary(&ModulePath::new("mod_a"), "Point");
@@ -588,7 +619,9 @@ mod tests {
     #[test]
     fn test_trait_lookup() {
         let mut iface = make_interface("mod_a");
-        iface.exported_traits.push(make_trait_summary("Eq", "mod_a"));
+        iface
+            .exported_traits
+            .push(make_trait_summary("Eq", "mod_a"));
         let ctx = LinkContext::build(vec![iface]);
 
         let result = ctx.lookup_trait(&ModulePath::new("mod_a"), "Eq");
@@ -600,11 +633,17 @@ mod tests {
     #[test]
     fn test_instance_index_groups_by_trait() {
         let mut iface_a = make_interface("mod_a");
-        iface_a.exported_instances.push(make_instance_summary("core/eq", "Eq", "Int"));
+        iface_a
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "Int"));
 
         let mut iface_b = make_interface("mod_b");
-        iface_b.exported_instances.push(make_instance_summary("core/show", "Show", "Int"));
-        iface_b.exported_instances.push(make_instance_summary("core/eq", "Eq", "String"));
+        iface_b
+            .exported_instances
+            .push(make_instance_summary("core/show", "Show", "Int"));
+        iface_b
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "String"));
 
         let ctx = LinkContext::build(vec![iface_a, iface_b]);
 
@@ -621,11 +660,17 @@ mod tests {
     #[test]
     fn test_all_instances() {
         let mut iface_a = make_interface("mod_a");
-        iface_a.exported_instances.push(make_instance_summary("core/eq", "Eq", "Int"));
+        iface_a
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "Int"));
 
         let mut iface_b = make_interface("mod_b");
-        iface_b.exported_instances.push(make_instance_summary("core/show", "Show", "Int"));
-        iface_b.exported_instances.push(make_instance_summary("core/eq", "Eq", "String"));
+        iface_b
+            .exported_instances
+            .push(make_instance_summary("core/show", "Show", "Int"));
+        iface_b
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "String"));
 
         let ctx = LinkContext::build(vec![iface_a, iface_b]);
         let all: Vec<_> = ctx.all_instances().collect();
@@ -688,7 +733,9 @@ mod tests {
     #[test]
     fn test_reexport_type_resolution() {
         let mut iface_a = make_interface("mod_a");
-        iface_a.exported_types.push(make_type_summary("Point", Visibility::Pub));
+        iface_a
+            .exported_types
+            .push(make_type_summary("Point", Visibility::Pub));
 
         let mut iface_b = make_interface("mod_b");
         iface_b.direct_deps.push(ModulePath::new("mod_a"));
@@ -749,7 +796,9 @@ mod tests {
         let ctx = LinkContext::build(vec![iface_a, iface_b]);
         let view = ctx.view_for(&ModulePath::new("mod_a")).unwrap();
 
-        assert!(view.lookup_fn_summary(&ModulePath::new("mod_b"), "b_fn").is_some());
+        assert!(view
+            .lookup_fn_summary(&ModulePath::new("mod_b"), "b_fn")
+            .is_some());
     }
 
     // 14. View unreachable fn
@@ -763,7 +812,9 @@ mod tests {
         let ctx = LinkContext::build(vec![iface_a, iface_c]);
         let view = ctx.view_for(&ModulePath::new("mod_a")).unwrap();
 
-        assert!(view.lookup_fn_summary(&ModulePath::new("mod_c"), "c_fn").is_none());
+        assert!(view
+            .lookup_fn_summary(&ModulePath::new("mod_c"), "c_fn")
+            .is_none());
     }
 
     // 15. View private type hidden
@@ -773,26 +824,36 @@ mod tests {
         iface_a.direct_deps.push(ModulePath::new("mod_b"));
 
         let mut iface_b = make_interface("mod_b");
-        iface_b.exported_types.push(make_type_summary("Secret", Visibility::Private));
+        iface_b
+            .exported_types
+            .push(make_type_summary("Secret", Visibility::Private));
 
         let ctx = LinkContext::build(vec![iface_a, iface_b]);
         let view = ctx.view_for(&ModulePath::new("mod_a")).unwrap();
 
-        assert!(view.lookup_type_summary(&ModulePath::new("mod_b"), "Secret").is_none());
+        assert!(view
+            .lookup_type_summary(&ModulePath::new("mod_b"), "Secret")
+            .is_none());
     }
 
     // 16. View own module sees all (including private)
     #[test]
     fn test_view_own_module_sees_all() {
         let mut iface_a = make_interface("mod_a");
-        iface_a.exported_types.push(make_type_summary("Internal", Visibility::Private));
+        iface_a
+            .exported_types
+            .push(make_type_summary("Internal", Visibility::Private));
         iface_a.exported_fns.push(make_fn_summary("priv_fn"));
 
         let ctx = LinkContext::build(vec![iface_a]);
         let view = ctx.view_for(&ModulePath::new("mod_a")).unwrap();
 
-        assert!(view.lookup_type_summary(&ModulePath::new("mod_a"), "Internal").is_some());
-        assert!(view.lookup_fn_summary(&ModulePath::new("mod_a"), "priv_fn").is_some());
+        assert!(view
+            .lookup_type_summary(&ModulePath::new("mod_a"), "Internal")
+            .is_some());
+        assert!(view
+            .lookup_fn_summary(&ModulePath::new("mod_a"), "priv_fn")
+            .is_some());
     }
 
     // 17. View instances filtered by reachability
@@ -800,13 +861,19 @@ mod tests {
     fn test_view_instances_filtered_by_reachability() {
         let mut iface_a = make_interface("mod_a");
         iface_a.direct_deps.push(ModulePath::new("mod_b"));
-        iface_a.exported_instances.push(make_instance_summary("core/eq", "Eq", "A"));
+        iface_a
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "A"));
 
         let mut iface_b = make_interface("mod_b");
-        iface_b.exported_instances.push(make_instance_summary("core/eq", "Eq", "B"));
+        iface_b
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "B"));
 
         let mut iface_c = make_interface("mod_c");
-        iface_c.exported_instances.push(make_instance_summary("core/eq", "Eq", "C"));
+        iface_c
+            .exported_instances
+            .push(make_instance_summary("core/eq", "Eq", "C"));
 
         let ctx = LinkContext::build(vec![iface_a, iface_b, iface_c]);
         let view = ctx.view_for(&ModulePath::new("mod_a")).unwrap();
@@ -815,7 +882,10 @@ mod tests {
         let instances = view.instances_for_trait(&eq_trait);
         // Should see mod_a and mod_b instances, not mod_c
         assert_eq!(instances.len(), 2);
-        let target_types: Vec<&str> = instances.iter().map(|(_, i)| i.target_type_name.as_str()).collect();
+        let target_types: Vec<&str> = instances
+            .iter()
+            .map(|(_, i)| i.target_type_name.as_str())
+            .collect();
         assert!(target_types.contains(&"A"));
         assert!(target_types.contains(&"B"));
         assert!(!target_types.contains(&"C"));

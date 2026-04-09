@@ -1,4 +1,5 @@
-# expect: ok
+# expect: error E0001
+# shared-bound parameters do not create an implicit owned-to-bare data drop.
 fun dup[a](x: a) -> (a, a) where a: shared = (x, x)
 fun test(buf: ~String) -> Unit = {
     dup(buf)
