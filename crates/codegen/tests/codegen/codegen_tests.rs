@@ -45,8 +45,8 @@ fn run_program(source: &str) -> String {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile_module_standalone should succeed");
+    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+        .expect("compile_module_standalone should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -86,10 +86,14 @@ fn javap_output(class_file: &std::path::Path, verbose: bool) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
-fn compile_typed_modules(typed_modules: &[TypedModule], link_ctx: &krypton_typechecker::link_context::LinkContext) -> tempfile::TempDir {
+fn compile_typed_modules(
+    typed_modules: &[TypedModule],
+    link_ctx: &krypton_typechecker::link_context::LinkContext,
+) -> tempfile::TempDir {
     let (ir_modules, module_sources) =
         lower_all(typed_modules, "Test", link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", link_ctx, &module_sources).expect("compile_modules should succeed");
+    let classes = compile_modules(&ir_modules, "Test", link_ctx, &module_sources)
+        .expect("compile_modules should succeed");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let class_path = dir.path().join(format!("{name}.class"));
@@ -161,10 +165,22 @@ fn run_typed_modules_with_java_sources(
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-fn infer_typed_modules(source: &str, resolver: &dyn krypton_modules::module_resolver::ModuleResolver) -> (Vec<TypedModule>, Vec<krypton_typechecker::module_interface::ModuleInterface>) {
+fn infer_typed_modules(
+    source: &str,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+) -> (
+    Vec<TypedModule>,
+    Vec<krypton_typechecker::module_interface::ModuleInterface>,
+) {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
-    infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm).expect("type check should succeed")
+    infer_module(
+        &module,
+        resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check should succeed")
 }
 
 const NULLABLE_HOST_JAVA: &str = r#"
@@ -263,10 +279,14 @@ fun main() = {
 }
 "#;
 
-    let (typed_modules, interfaces) = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let (typed_modules, interfaces) =
+        infer_typed_modules(source, &CompositeResolver::stdlib_only());
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let output =
-        run_typed_modules_with_java_sources(&typed_modules, &[("NullableHost", NULLABLE_HOST_JAVA)], &link_ctx);
+    let output = run_typed_modules_with_java_sources(
+        &typed_modules,
+        &[("NullableHost", NULLABLE_HOST_JAVA)],
+        &link_ctx,
+    );
 
     assert_eq!(
         output,
@@ -299,8 +319,10 @@ fun main() = println(maybe_int("42"))
 
     let test_output = javap_output(&dir.path().join("Test.class"), true);
     assert!(
-        test_output.contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Lcore/option/Option;")
-            || test_output.contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Ljava/lang/Object;"),
+        test_output
+            .contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Lcore/option/Option;")
+            || test_output
+                .contains("Method nullable_lib.maybe_int:(Ljava/lang/String;)Ljava/lang/Object;"),
         "expected imported call to target nullable_lib wrapper, got:\n{test_output}"
     );
 
@@ -329,17 +351,23 @@ fun main() = {
 }
 "#;
 
-    let (typed_modules, interfaces) = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let (typed_modules, interfaces) =
+        infer_typed_modules(source, &CompositeResolver::stdlib_only());
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let dir =
-        compile_typed_modules_with_java_sources(&typed_modules, &[("NullableHost", NULLABLE_HOST_JAVA)], &link_ctx);
+    let dir = compile_typed_modules_with_java_sources(
+        &typed_modules,
+        &[("NullableHost", NULLABLE_HOST_JAVA)],
+        &link_ctx,
+    );
     let javap_out = javap_output(&dir.path().join("Test.class"), true);
 
     // All externs (nullable and non-nullable) get wrapper methods on the defining class.
     assert!(javap_out.contains("public static core.option.Option maybe_string(java.lang.String);"));
     assert!(javap_out.contains("public static core.option.Option maybe_int(java.lang.String);"));
     assert!(javap_out.contains("public static core.option.Option maybe_float(java.lang.String);"));
-    assert!(javap_out.contains("public static java.lang.String definitely_string(java.lang.String);"));
+    assert!(
+        javap_out.contains("public static java.lang.String definitely_string(java.lang.String);")
+    );
     assert!(javap_out.contains("java/lang/Long.longValue:()J"));
     assert!(javap_out.contains("java/lang/Double.doubleValue:()D"));
     assert!(javap_out.contains("Field core/option/Option$None.INSTANCE:Lcore/option/Option$None;"));
@@ -355,7 +383,8 @@ extern java "ConstrainedHost" {
 fun main() = println(render_key[String]("hi"))
 "#;
 
-    let (typed_modules, interfaces) = infer_typed_modules(source, &CompositeResolver::stdlib_only());
+    let (typed_modules, interfaces) =
+        infer_typed_modules(source, &CompositeResolver::stdlib_only());
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let output = run_typed_modules_with_java_sources(
         &typed_modules,
@@ -475,8 +504,8 @@ fn test_java_21_classfile_version() {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile_module_standalone should succeed");
+    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+        .expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
     assert_eq!(bytes[4..6], [0, 0], "minor version should be 0");
@@ -546,7 +575,8 @@ fun main() = None
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+    let classes =
+        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -749,7 +779,8 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+    let classes =
+        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -790,7 +821,8 @@ fn test_typed_module_direct() {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("codegen");
+    let classes =
+        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -840,7 +872,8 @@ fun main() = println(Some(42))
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+    let classes =
+        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -972,7 +1005,8 @@ fun main() = println(render(Wrap(42)))
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+    let classes =
+        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));

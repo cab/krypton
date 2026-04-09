@@ -133,15 +133,24 @@ fn test_fat_jar_runs_with_java_jar() {
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
     let resolver = krypton_modules::module_resolver::CompositeResolver::stdlib_only();
-    let (typed_modules, interfaces) =
-        krypton_typechecker::infer::infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Jvm)
-            .expect("type checking should succeed");
+    let (typed_modules, interfaces) = krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type checking should succeed");
 
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "FatJarTest", &link_ctx).expect("lowering should succeed");
-    let classes = krypton_codegen::emit::compile_modules(&ir_modules, "FatJarTest", &link_ctx, &module_sources)
-        .expect("codegen should succeed");
+    let classes = krypton_codegen::emit::compile_modules(
+        &ir_modules,
+        "FatJarTest",
+        &link_ctx,
+        &module_sources,
+    )
+    .expect("codegen should succeed");
 
     let jar_bytes =
         write_jar(&classes, "FatJarTest", Some(&runtime_jar)).expect("write_jar should succeed");

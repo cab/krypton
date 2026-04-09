@@ -768,23 +768,17 @@ fn roundtrip_where_clause() {
 
 #[test]
 fn roundtrip_where_multi_param_sugar() {
-    assert_surface_roundtrip(
-        "fun f[a, b](x: a) -> b where a: Convert[b] = convert(x)",
-    );
+    assert_surface_roundtrip("fun f[a, b](x: a) -> b where a: Convert[b] = convert(x)");
 }
 
 #[test]
 fn roundtrip_where_multi_param_explicit() {
-    assert_surface_roundtrip(
-        "fun f[a, b](x: a) -> b where Convert[a, b] = convert(x)",
-    );
+    assert_surface_roundtrip("fun f[a, b](x: a) -> b where Convert[a, b] = convert(x)");
 }
 
 #[test]
 fn roundtrip_where_multi_param_explicit_concrete() {
-    assert_surface_roundtrip(
-        "fun f[b](x: Int) -> b where Convert[Int, b] = convert(x)",
-    );
+    assert_surface_roundtrip("fun f[b](x: Int) -> b where Convert[Int, b] = convert(x)");
 }
 
 #[test]
@@ -969,9 +963,7 @@ fn roundtrip_trait_with_plus_superclasses() {
 
 #[test]
 fn roundtrip_fn_type_borrow_slot() {
-    assert_surface_roundtrip(
-        "fun apply(f: (&~File, Int) -> Int, x: ~File) -> Int = 0",
-    );
+    assert_surface_roundtrip("fun apply(f: (&~File, Int) -> Int, x: ~File) -> Int = 0");
 }
 
 #[test]

@@ -269,7 +269,11 @@ impl<'a> Formatter<'a> {
             };
             if let Some(subject) = subject {
                 let extra = &c.type_args[1..];
-                if let Some(Entry::Sugar { subject: prev, bounds }) = entries.last_mut() {
+                if let Some(Entry::Sugar {
+                    subject: prev,
+                    bounds,
+                }) = entries.last_mut()
+                {
                     if *prev == subject {
                         bounds.push((c.trait_name.as_str(), extra));
                         continue;

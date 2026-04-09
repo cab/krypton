@@ -7,7 +7,9 @@ use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_ir::Type;
 use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::ast::CompileTarget;
-pub use krypton_parser::repl::{classify_input, build_synthetic_source, ReplDeclarations, ReplInputKind};
+pub use krypton_parser::repl::{
+    build_synthetic_source, classify_input, ReplDeclarations, ReplInputKind,
+};
 use krypton_typechecker::types::{format_type_with_var_names, TypeScheme, TypeVarId};
 
 /// Information about a prior REPL binding (session-level, holds IR type for codegen).
@@ -77,9 +79,7 @@ impl ReplSession {
                     CompileTarget::Jvm,
                 ) {
                     Ok(_) => (show_source, true),
-                    Err(_) => {
-                        (build_synthetic_source(&kind, &decls, false), false)
-                    }
+                    Err(_) => (build_synthetic_source(&kind, &decls, false), false),
                 }
             } else {
                 (build_synthetic_source(&kind, &decls, false), false)
@@ -92,7 +92,9 @@ impl ReplSession {
         let (module, parse_errors) = krypton_parser::parser::parse(&synthetic);
         if !parse_errors.is_empty() {
             let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(
-                "<repl>", &synthetic, &parse_errors,
+                "<repl>",
+                &synthetic,
+                &parse_errors,
             );
             let mut msg = String::new();
             for d in &diags {
@@ -110,9 +112,8 @@ impl ReplSession {
             CompileTarget::Jvm,
         )
         .map_err(|errors| {
-            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                "<repl>", &synthetic, &errors,
-            );
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors("<repl>", &synthetic, &errors);
             let mut msg = String::new();
             for d in &diags {
                 msg.push_str(&AriadneRenderer.render(d, &srcs));
@@ -133,9 +134,8 @@ impl ReplSession {
 
         // Lower to IR
         let (ir_modules, module_sources) =
-            krypton_ir::lower::lower_all(&typed_modules, &class_name, &link_ctx).map_err(|e| {
-                format!("IR lowering error: {}", e)
-            })?;
+            krypton_ir::lower::lower_all(&typed_modules, &class_name, &link_ctx)
+                .map_err(|e| format!("IR lowering error: {}", e))?;
 
         // Find __eval's return type from IR
         let root_ir = &ir_modules[0];
@@ -203,7 +203,10 @@ impl ReplSession {
 
         // Commit declaration to session state and return display string
         match &kind {
-            ReplInputKind::FunDef { ref name, ref source } => {
+            ReplInputKind::FunDef {
+                ref name,
+                ref source,
+            } => {
                 let type_display = fun_def_type_display
                     .clone()
                     .unwrap_or_else(|| "?".to_string());
@@ -212,17 +215,26 @@ impl ReplSession {
                     .push((name.clone(), source.clone(), type_display.clone()));
                 Ok(format!("{}: {}", name, type_display))
             }
-            ReplInputKind::TypeDef { ref name, ref source } => {
+            ReplInputKind::TypeDef {
+                ref name,
+                ref source,
+            } => {
                 self.type_defs.retain(|(n, _)| n != name);
                 self.type_defs.push((name.clone(), source.clone()));
                 Ok(format!("type {}", name))
             }
-            ReplInputKind::TraitDef { ref name, ref source } => {
+            ReplInputKind::TraitDef {
+                ref name,
+                ref source,
+            } => {
                 self.trait_defs.retain(|(n, _)| n != name);
                 self.trait_defs.push((name.clone(), source.clone()));
                 Ok(format!("trait {}", name))
             }
-            ReplInputKind::ImplDef { ref key, ref source } => {
+            ReplInputKind::ImplDef {
+                ref key,
+                ref source,
+            } => {
                 self.impl_defs.retain(|(k, _)| k != key);
                 self.impl_defs.push((key.clone(), source.clone()));
                 Ok(format!("impl {}", key))
@@ -348,12 +360,15 @@ fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
         if var_names.len() == 1 {
             where_parts.push(format!("{}: {}", var_names[0], trait_name.local_name));
         } else {
-            where_parts.push(format!("{}[{}]", trait_name.local_name, var_names.join(", ")));
+            where_parts.push(format!(
+                "{}[{}]",
+                trait_name.local_name,
+                var_names.join(", ")
+            ));
         }
     }
     format!("{} where {}", type_part, where_parts.join(", "))
 }
-
 
 // --- JVM Process Management ---
 
@@ -365,10 +380,13 @@ struct JvmProcess {
 
 impl JvmProcess {
     fn spawn() -> Result<Self, String> {
-        let runtime_jar = find_runtime_jar()
-            .ok_or_else(|| "Cannot find krypton-runtime.jar. Build with: ./extern/jvm/gradlew :runtime:build".to_string())?;
-        let repl_jar = find_repl_jar()
-            .ok_or_else(|| "Cannot find krypton-repl.jar. Build with: ./extern/jvm/gradlew :repl:build".to_string())?;
+        let runtime_jar = find_runtime_jar().ok_or_else(|| {
+            "Cannot find krypton-runtime.jar. Build with: ./extern/jvm/gradlew :runtime:build"
+                .to_string()
+        })?;
+        let repl_jar = find_repl_jar().ok_or_else(|| {
+            "Cannot find krypton-repl.jar. Build with: ./extern/jvm/gradlew :repl:build".to_string()
+        })?;
 
         let sep = if cfg!(windows) { ";" } else { ":" };
         let classpath = format!("{}{}{}", repl_jar.display(), sep, runtime_jar.display());
@@ -424,7 +442,9 @@ impl JvmProcess {
             }
         }
 
-        self.writer.flush().map_err(|e| format!("flush error: {}", e))?;
+        self.writer
+            .flush()
+            .map_err(|e| format!("flush error: {}", e))?;
 
         // Read response
         let resp = read_byte(&mut self.reader)?;
@@ -439,7 +459,9 @@ impl JvmProcess {
 
     fn reset(&mut self) -> Result<(), String> {
         write_byte(&mut self.writer, 2)?; // CMD_RESET
-        self.writer.flush().map_err(|e| format!("flush error: {}", e))?;
+        self.writer
+            .flush()
+            .map_err(|e| format!("flush error: {}", e))?;
 
         let resp = read_byte(&mut self.reader)?;
         let _msg = read_utf(&mut self.reader)?;
@@ -453,7 +475,9 @@ impl JvmProcess {
 
     fn quit(&mut self) -> Result<(), String> {
         write_byte(&mut self.writer, 3)?; // CMD_QUIT
-        self.writer.flush().map_err(|e| format!("flush error: {}", e))?;
+        self.writer
+            .flush()
+            .map_err(|e| format!("flush error: {}", e))?;
         let _ = self.child.wait();
         Ok(())
     }

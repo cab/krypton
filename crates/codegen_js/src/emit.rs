@@ -70,19 +70,13 @@ impl InstanceRegistry {
     /// Resolve a dict JS name for GetDict/MakeDict.
     fn resolve_js_name(&self, trait_name: &TraitName, tys: &[Type]) -> Option<&str> {
         // 1. Exact singleton lookup
-        if let Some(info) = self
-            .singletons
-            .get(&(trait_name.clone(), tys.to_vec()))
-        {
+        if let Some(info) = self.singletons.get(&(trait_name.clone(), tys.to_vec())) {
             return Some(&info.js_name);
         }
         // Also try with Own stripped
         let stripped: Vec<Type> = tys.iter().map(|t| t.strip_own()).collect();
         if stripped != tys {
-            if let Some(info) = self
-                .singletons
-                .get(&(trait_name.clone(), stripped.clone()))
-            {
+            if let Some(info) = self.singletons.get(&(trait_name.clone(), stripped.clone())) {
                 return Some(&info.js_name);
             }
         }
@@ -106,18 +100,12 @@ impl InstanceRegistry {
 
     /// Find source module for a given trait+type (for imports and reachability).
     fn find_source_module(&self, trait_name: &TraitName, tys: &[Type]) -> Option<&str> {
-        if let Some(info) = self
-            .singletons
-            .get(&(trait_name.clone(), tys.to_vec()))
-        {
+        if let Some(info) = self.singletons.get(&(trait_name.clone(), tys.to_vec())) {
             return info.source_module.as_deref();
         }
         let stripped: Vec<Type> = tys.iter().map(|t| t.strip_own()).collect();
         if stripped != tys {
-            if let Some(info) = self
-                .singletons
-                .get(&(trait_name.clone(), stripped.clone()))
-            {
+            if let Some(info) = self.singletons.get(&(trait_name.clone(), stripped.clone())) {
                 return info.source_module.as_deref();
             }
         }
@@ -216,8 +204,10 @@ impl BindingAllocator {
         preferred: &str,
     ) -> String {
         if self.allocated.insert(preferred.to_string()) {
-            self.bindings
-                .insert((source_module.into(), exported_name.into()), preferred.to_string());
+            self.bindings.insert(
+                (source_module.into(), exported_name.into()),
+                preferred.to_string(),
+            );
             return preferred.to_string();
         }
         // preferred collides — mangle with module path
@@ -235,8 +225,10 @@ impl BindingAllocator {
                 counter += 1;
             }
         };
-        self.bindings
-            .insert((source_module.into(), exported_name.into()), final_name.clone());
+        self.bindings.insert(
+            (source_module.into(), exported_name.into()),
+            final_name.clone(),
+        );
         final_name
     }
 
@@ -1282,7 +1274,10 @@ impl<'a> JsEmitter<'a> {
         {
             let mut by_module: HashMap<&str, Vec<(String, String)>> = HashMap::new(); // module → [(original, binding)]
             for &(source_module, original, _) in &fn_imports {
-                let binding = self.binding_alloc.resolve(source_module, original).to_string();
+                let binding = self
+                    .binding_alloc
+                    .resolve(source_module, original)
+                    .to_string();
                 by_module
                     .entry(source_module)
                     .or_default()
@@ -2255,8 +2250,7 @@ impl<'a> JsEmitter<'a> {
                 } else {
                     // Try intrinsic inline: look up concrete type from dict var
                     let inlined = if let Some(Atom::Var(dict_var)) = args.first() {
-                        if let Some(Type::Dict { target_types, .. }) =
-                            self.var_types.get(dict_var)
+                        if let Some(Type::Dict { target_types, .. }) = self.var_types.get(dict_var)
                         {
                             // Intrinsic lookup uses the first dispatch position's
                             // head type as the key; this matches the single-arg
@@ -2999,9 +2993,7 @@ fun main() = render_key[String]("hi")
             private_names: HashSet::new(),
         };
         let link_ctx = LinkContext::build(vec![main_iface, helpers_a_iface, helpers_b_iface]);
-        let view = link_ctx
-            .view_for(&LinkModulePath::new("app/main"))
-            .unwrap();
+        let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();
 
         let registry = build_registry_for_modules(&[&module]);
         let variant_lookup = HashMap::new();

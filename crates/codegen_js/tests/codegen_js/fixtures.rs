@@ -23,20 +23,27 @@ fn compile_js_result_with_resolver(
         "fixture {fixture_name}: parse errors: {errors:?}"
     );
 
-    let (typed_modules, interfaces) =
-        infer_module(&module, resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js).unwrap_or_else(|errors| {
-            let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
-            let rendered: String = diags
-                .iter()
-                .map(|d| PlainTextRenderer.render(d, &srcs))
-                .collect();
-            panic!("fixture {fixture_name}: type check failed:\n{rendered}");
-        });
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Js,
+    )
+    .unwrap_or_else(|errors| {
+        let (diags, srcs) = lower_infer_errors(fixture_name, source, &errors);
+        let rendered: String = diags
+            .iter()
+            .map(|d| PlainTextRenderer.render(d, &srcs))
+            .collect();
+        panic!("fixture {fixture_name}: type check failed:\n{rendered}");
+    });
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: lowering failed: {e}"));
-    let js_module_sources: HashMap<String, Option<String>> =
-        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+    let js_module_sources: HashMap<String, Option<String>> = module_sources
+        .into_iter()
+        .map(|(k, v)| (k, Some(v)))
+        .collect();
     compile_modules_js(&ir_modules, "test", false, &link_ctx, &js_module_sources)
 }
 
@@ -147,7 +154,9 @@ fn local_extern_println_shadows_prelude_import_in_js_output() {
         .expect("expected root typed module");
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let view = link_ctx
-        .view_for(&krypton_typechecker::module_interface::ModulePath::new("test"))
+        .view_for(&krypton_typechecker::module_interface::ModulePath::new(
+            "test",
+        ))
         .expect("expected link view for test module");
     let lowered =
         krypton_ir::lower::lower_module(root, "test", &view).expect("lowering should succeed");
@@ -318,23 +327,31 @@ fn js_codegen_fixture(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js)
-                    .unwrap_or_else(|errors| {
-                        let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags
-                            .iter()
-                            .map(|d| PlainTextRenderer.render(d, &srcs))
-                            .collect();
-                        panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
-                    });
+                let (typed_modules, interfaces) = infer_module(
+                    &module,
+                    &resolver,
+                    "test".to_string(),
+                    krypton_parser::ast::CompileTarget::Js,
+                )
+                .unwrap_or_else(|errors| {
+                    let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
+                    let rendered: String = diags
+                        .iter()
+                        .map(|d| PlainTextRenderer.render(d, &srcs))
+                        .collect();
+                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                });
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
                 let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
                     .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
-                let js_module_sources: HashMap<String, Option<String>> =
-                    module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
-                compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources).unwrap_or_else(|e| {
-                    panic!("fixture {name}: JS codegen failed: {e}");
-                });
+                let js_module_sources: HashMap<String, Option<String>> = module_sources
+                    .into_iter()
+                    .map(|(k, v)| (k, Some(v)))
+                    .collect();
+                compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources)
+                    .unwrap_or_else(|e| {
+                        panic!("fixture {name}: JS codegen failed: {e}");
+                    });
             }
             Expectation::Error(_) | Expectation::Panic(_) => {}
         }
@@ -376,21 +393,29 @@ fn js_codegen_module(
                     errors.is_empty(),
                     "fixture {name}: expected ok but parse errors: {errors:?}"
                 );
-                let (typed_modules, interfaces) = infer_module(&module, &resolver, "test".to_string(), krypton_parser::ast::CompileTarget::Js)
-                    .unwrap_or_else(|errors| {
-                        let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
-                        let rendered: String = diags
-                            .iter()
-                            .map(|d| PlainTextRenderer.render(d, &srcs))
-                            .collect();
-                        panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
-                    });
+                let (typed_modules, interfaces) = infer_module(
+                    &module,
+                    &resolver,
+                    "test".to_string(),
+                    krypton_parser::ast::CompileTarget::Js,
+                )
+                .unwrap_or_else(|errors| {
+                    let (diags, srcs) = lower_infer_errors(&name, &fixture.source, &errors);
+                    let rendered: String = diags
+                        .iter()
+                        .map(|d| PlainTextRenderer.render(d, &srcs))
+                        .collect();
+                    panic!("fixture {name}: expected ok but typecheck failed:\n{rendered}");
+                });
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
                 let (ir_modules, module_sources) = lower_all(&typed_modules, "test", &link_ctx)
                     .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
-                let js_module_sources: HashMap<String, Option<String>> =
-                    module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
-                let _ = compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources);
+                let js_module_sources: HashMap<String, Option<String>> = module_sources
+                    .into_iter()
+                    .map(|(k, v)| (k, Some(v)))
+                    .collect();
+                let _ =
+                    compile_modules_js(&ir_modules, "test", true, &link_ctx, &js_module_sources);
             }
             Expectation::Error(_) | Expectation::Panic(_) => {}
         }

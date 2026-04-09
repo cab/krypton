@@ -70,7 +70,8 @@ pub fn analyze_suspend(modules: &[Module]) -> SuspendSummary {
     let actor_mod = &modules[actor_mod_idx];
 
     for ext in &actor_mod.extern_fns {
-        if matches!(&ext.target, ExternTarget::Js { .. }) && SUSPEND_SEEDS.contains(&ext.name.as_str())
+        if matches!(&ext.target, ExternTarget::Js { .. })
+            && SUSPEND_SEEDS.contains(&ext.name.as_str())
         {
             suspending.insert((actor_mod_idx, ext.id));
         }
@@ -102,13 +103,11 @@ pub fn analyze_suspend(modules: &[Module]) -> SuspendSummary {
                         .iter()
                         .find(|(_, fi)| fi.name() == original_name)
                     {
-                        let entry = edges
-                            .entry((mod_idx, imp.id))
-                            .or_insert_with(|| FnEdges {
-                                call_targets: Vec::new(),
-                                has_unresolved_closure_call: false,
-                                has_unresolved_trait_call: false,
-                            });
+                        let entry = edges.entry((mod_idx, imp.id)).or_insert_with(|| FnEdges {
+                            call_targets: Vec::new(),
+                            has_unresolved_closure_call: false,
+                            has_unresolved_trait_call: false,
+                        });
                         entry.call_targets.push((source_mod_idx, src_fn_id));
                     }
                 }
@@ -395,8 +394,8 @@ fn resolve_trait_method(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::{BTreeSet, HashMap};
     use krypton_typechecker::types::TypeVarGen;
+    use std::collections::{BTreeSet, HashMap};
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
         Expr::new((0, 0), ty, kind)
@@ -539,7 +538,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "my_receive".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -597,7 +599,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "middle".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -623,7 +628,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "outer".to_string(),
-            params: vec![(VarId(10), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(10),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -661,10 +669,7 @@ mod tests {
             name: "raw_send".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_send".to_string(),
-            param_types: vec![
-                Type::Named("Ref".to_string(), vec![Type::Int]),
-                Type::Int,
-            ],
+            param_types: vec![Type::Named("Ref".to_string(), vec![Type::Int]), Type::Int],
             return_type: Type::Unit,
         });
         user.fn_identities.insert(
@@ -708,8 +713,14 @@ mod tests {
         );
 
         let summary = analyze_suspend(&[actor, user]);
-        assert!(!summary.fn_suspends(1, FnId(0)), "imported raw_send should not suspend");
-        assert!(!summary.fn_suspends(1, FnId(1)), "caller of raw_send should not suspend");
+        assert!(
+            !summary.fn_suspends(1, FnId(0)),
+            "imported raw_send should not suspend"
+        );
+        assert!(
+            !summary.fn_suspends(1, FnId(1)),
+            "caller of raw_send should not suspend"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -745,7 +756,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "recv_closure".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -771,7 +785,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "caller".to_string(),
-            params: vec![(VarId(10), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(10),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -794,10 +811,7 @@ mod tests {
                                 closure: Atom::Var(VarId(11)),
                                 args: vec![Atom::Var(VarId(10))],
                             }),
-                            body: Box::new(expr(
-                                Type::Int,
-                                ExprKind::Atom(Atom::Var(VarId(12))),
-                            )),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
                         },
                     )),
                 },
@@ -811,7 +825,10 @@ mod tests {
         );
 
         let summary = analyze_suspend(&[actor, user]);
-        assert!(summary.fn_suspends(1, FnId(2)), "caller via closure should suspend");
+        assert!(
+            summary.fn_suspends(1, FnId(2)),
+            "caller via closure should suspend"
+        );
     }
 
     #[test]
@@ -823,12 +840,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(0),
             name: "apply".to_string(),
-            params: vec![
-                (
-                    VarId(0),
-                    Type::Fn(vec![Type::Unit], Box::new(Type::Int)),
-                ),
-            ],
+            params: vec![(VarId(0), Type::Fn(vec![Type::Unit], Box::new(Type::Int)))],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -890,7 +902,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "recv_loop".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -916,12 +931,23 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "main".to_string(),
-            params: vec![(VarId(10), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(10),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
                 ExprKind::LetRec {
-                    bindings: vec![(VarId(11), Type::Fn(vec![Type::Named("Mailbox".to_string(), vec![Type::Int])], Box::new(Type::Int)), FnId(1), vec![])],
+                    bindings: vec![(
+                        VarId(11),
+                        Type::Fn(
+                            vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
+                            Box::new(Type::Int),
+                        ),
+                        FnId(1),
+                        vec![],
+                    )],
                     body: Box::new(expr(
                         Type::Int,
                         ExprKind::Let {
@@ -931,10 +957,7 @@ mod tests {
                                 closure: Atom::Var(VarId(11)),
                                 args: vec![Atom::Var(VarId(10))],
                             }),
-                            body: Box::new(expr(
-                                Type::Int,
-                                ExprKind::Atom(Atom::Var(VarId(12))),
-                            )),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
                         },
                     )),
                 },
@@ -948,7 +971,10 @@ mod tests {
         );
 
         let summary = analyze_suspend(&[actor, user]);
-        assert!(summary.fn_suspends(1, FnId(2)), "caller via LetRec-bound closure should suspend");
+        assert!(
+            summary.fn_suspends(1, FnId(2)),
+            "caller via LetRec-bound closure should suspend"
+        );
     }
 
     #[test]
@@ -1026,10 +1052,7 @@ mod tests {
                                 func: FnId(1),
                                 args: vec![Atom::Var(VarId(11))],
                             }),
-                            body: Box::new(expr(
-                                Type::Int,
-                                ExprKind::Atom(Atom::Var(VarId(12))),
-                            )),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
                         },
                     )),
                 },
@@ -1043,8 +1066,14 @@ mod tests {
         );
 
         let summary = analyze_suspend(&[actor, user]);
-        assert!(summary.fn_suspends(1, FnId(1)), "fn_a should suspend (mutual recursion)");
-        assert!(summary.fn_suspends(1, FnId(2)), "fn_b should suspend (calls raw_receive)");
+        assert!(
+            summary.fn_suspends(1, FnId(1)),
+            "fn_a should suspend (mutual recursion)"
+        );
+        assert!(
+            summary.fn_suspends(1, FnId(2)),
+            "fn_b should suspend (calls raw_receive)"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1080,13 +1109,19 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "with_join".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
                 ExprKind::LetJoin {
                     name: VarId(10),
-                    params: vec![(VarId(11), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+                    params: vec![(
+                        VarId(11),
+                        Type::Named("Mailbox".to_string(), vec![Type::Int]),
+                    )],
                     join_body: Box::new(expr(
                         Type::Int,
                         ExprKind::Let {
@@ -1096,10 +1131,7 @@ mod tests {
                                 func: FnId(0),
                                 args: vec![Atom::Var(VarId(11))],
                             }),
-                            body: Box::new(expr(
-                                Type::Int,
-                                ExprKind::Atom(Atom::Var(VarId(12))),
-                            )),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
                         },
                     )),
                     body: Box::new(expr(
@@ -1163,11 +1195,17 @@ mod tests {
             id: FnId(1),
             name: "Handler$Int$handle".to_string(),
             params: vec![
-                (VarId(0), Type::Dict {
-                    trait_name: trait_name.clone(),
-                    target_types: vec![Type::Int],
-                }),
-                (VarId(1), Type::Named("Mailbox".to_string(), vec![Type::Int])),
+                (
+                    VarId(0),
+                    Type::Dict {
+                        trait_name: trait_name.clone(),
+                        target_types: vec![Type::Int],
+                    },
+                ),
+                (
+                    VarId(1),
+                    Type::Named("Mailbox".to_string(), vec![Type::Int]),
+                ),
             ],
             return_type: Type::Int,
             body: expr(
@@ -1205,7 +1243,10 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "caller".to_string(),
-            params: vec![(VarId(10), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(10),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -1236,10 +1277,7 @@ mod tests {
                                 method_name: "handle".to_string(),
                                 args: vec![Atom::Var(VarId(11)), Atom::Var(VarId(10))],
                             }),
-                            body: Box::new(expr(
-                                Type::Int,
-                                ExprKind::Atom(Atom::Var(VarId(12))),
-                            )),
+                            body: Box::new(expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(12))))),
                         },
                     )),
                 },
@@ -1274,10 +1312,13 @@ mod tests {
             id: FnId(0),
             name: "generic_call".to_string(),
             params: vec![
-                (VarId(0), Type::Dict {
-                    trait_name: trait_name.clone(),
-                    target_types: vec![Type::Var(tv)],
-                }),
+                (
+                    VarId(0),
+                    Type::Dict {
+                        trait_name: trait_name.clone(),
+                        target_types: vec![Type::Var(tv)],
+                    },
+                ),
                 (VarId(1), Type::Int),
             ],
             return_type: Type::Int,
@@ -1340,7 +1381,10 @@ mod tests {
         middle.functions.push(FnDef {
             id: FnId(1),
             name: "handle".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -1387,7 +1431,10 @@ mod tests {
         app.functions.push(FnDef {
             id: FnId(1),
             name: "main".to_string(),
-            params: vec![(VarId(0), Type::Named("Mailbox".to_string(), vec![Type::Int]))],
+            params: vec![(
+                VarId(0),
+                Type::Named("Mailbox".to_string(), vec![Type::Int]),
+            )],
             return_type: Type::Int,
             body: expr(
                 Type::Int,
@@ -1411,9 +1458,15 @@ mod tests {
 
         let summary = analyze_suspend(&[actor, middle, app]);
         // middle::handle should suspend (calls raw_receive).
-        assert!(summary.fn_suspends(1, FnId(1)), "middle::handle should suspend");
+        assert!(
+            summary.fn_suspends(1, FnId(1)),
+            "middle::handle should suspend"
+        );
         // app::handle (imported) should suspend.
-        assert!(summary.fn_suspends(2, FnId(0)), "app's imported handle should suspend");
+        assert!(
+            summary.fn_suspends(2, FnId(0)),
+            "app's imported handle should suspend"
+        );
         // app::main should suspend.
         assert!(summary.fn_suspends(2, FnId(1)), "app::main should suspend");
     }

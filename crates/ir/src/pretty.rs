@@ -292,11 +292,7 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                 target_types,
                 ..
             } => {
-                write!(
-                    self.f,
-                    "get_dict {trait_name}[{}]",
-                    fmt_types(target_types)
-                )
+                write!(self.f, "get_dict {trait_name}[{}]", fmt_types(target_types))
             }
             SimpleExprKind::MakeDict {
                 trait_name,

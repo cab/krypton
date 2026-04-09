@@ -6,8 +6,8 @@ use krypton_ir::expr::{
 use krypton_ir::lint::LintPass;
 use krypton_ir::pass::IrPass;
 use krypton_ir::{
-    CanonicalRef, FnDef, FnId, FnIdentity, InstanceDef, LocalSymbolKey, Module,
-    ModulePath, TraitDef, TraitMethodDef, TraitName, Type, VarId,
+    CanonicalRef, FnDef, FnId, FnIdentity, InstanceDef, LocalSymbolKey, Module, ModulePath,
+    TraitDef, TraitMethodDef, TraitName, Type, VarId,
 };
 use krypton_typechecker::types::TypeVarGen;
 
@@ -52,7 +52,15 @@ fn well_formed_module_passes() {
         return_type: Type::Unit,
         body: unit_atom(),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "main".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "main".to_string(),
+            },
+        )]),
+    );
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -85,7 +93,20 @@ fn well_formed_with_let_and_call() {
     };
     let module = make_simple_module(
         vec![func, main_fn],
-        HashMap::from([(FnId(0), FnIdentity::Local { name: "callee".to_string() }), (FnId(1), FnIdentity::Local { name: "main".to_string() })]),
+        HashMap::from([
+            (
+                FnId(0),
+                FnIdentity::Local {
+                    name: "callee".to_string(),
+                },
+            ),
+            (
+                FnId(1),
+                FnIdentity::Local {
+                    name: "main".to_string(),
+                },
+            ),
+        ]),
     );
     assert!(LintPass.run(module).is_ok());
 }
@@ -122,7 +143,15 @@ fn duplicate_var_id_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("duplicate VarId"),
@@ -150,7 +179,15 @@ fn join_point_used_as_value_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(err.message.contains("join point"), "got: {}", err.message);
 }
@@ -171,7 +208,15 @@ fn jump_to_non_join_point_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("not a join point"),
@@ -200,7 +245,15 @@ fn call_to_unknown_fn_id_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("unknown FnId(99)"),
@@ -232,7 +285,15 @@ fn make_closure_unknown_fn_id_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("unknown FnId(99)"),
@@ -261,7 +322,15 @@ fn letrec_unknown_fn_id_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("unknown FnId(99)"),
@@ -291,7 +360,15 @@ fn primop_type_mismatch_is_error() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     let err = LintPass.run(module).unwrap_err();
     assert!(
         err.message.contains("type mismatch"),
@@ -324,7 +401,15 @@ fn well_formed_join_point_passes() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "good".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "good".to_string(),
+            },
+        )]),
+    );
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -364,7 +449,15 @@ fn letjoin_param_varid_reusable_in_body() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "good".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "good".to_string(),
+            },
+        )]),
+    );
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -396,7 +489,15 @@ fn switch_branch_varid_reusable_across_branches() {
             },
         ),
     };
-    let module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "good".to_string() })]));
+    let module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "good".to_string(),
+            },
+        )]),
+    );
     assert!(LintPass.run(module).is_ok());
 }
 
@@ -427,7 +528,15 @@ fn getdict_unknown_trait_is_error() {
             },
         ),
     };
-    let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "bad".to_string() })]));
+    let mut module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "bad".to_string(),
+            },
+        )]),
+    );
     module.traits.push(TraitDef {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),
@@ -472,7 +581,15 @@ fn getdict_valid_trait_and_instance_passes() {
             },
         ),
     };
-    let mut module = make_simple_module(vec![func], HashMap::from([(FnId(0), FnIdentity::Local { name: "good".to_string() })]));
+    let mut module = make_simple_module(
+        vec![func],
+        HashMap::from([(
+            FnId(0),
+            FnIdentity::Local {
+                name: "good".to_string(),
+            },
+        )]),
+    );
     module.traits.push(TraitDef {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),

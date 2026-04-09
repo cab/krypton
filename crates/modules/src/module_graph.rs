@@ -172,13 +172,13 @@ impl<'a> ModuleGraphBuilder<'a> {
             });
         }
 
-        let source = self
-            .resolver
-            .resolve(path)
-            .ok_or_else(|| ModuleGraphError::UnknownModule {
-                path: path.to_string(),
-                span: import_span,
-            })?;
+        let source =
+            self.resolver
+                .resolve(path)
+                .ok_or_else(|| ModuleGraphError::UnknownModule {
+                    path: path.to_string(),
+                    span: import_span,
+                })?;
 
         let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
         if !parse_errors.is_empty() {

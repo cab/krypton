@@ -117,9 +117,9 @@ fn test_p0006_borrow_requires_owned() {
         "expected P0006 error, got: {errors:?}"
     );
     assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("borrow mode requires an owned parameter type")),
+        errors.iter().any(|e| e
+            .message
+            .contains("borrow mode requires an owned parameter type")),
         "expected helpful message, got: {errors:?}"
     );
 }
@@ -145,9 +145,9 @@ fn assert_slot_not_a_type(source: &str) {
     let (_module, errors) = parse(source);
     assert!(!errors.is_empty(), "expected a parse error for {source:?}");
     assert!(
-        errors
-            .iter()
-            .any(|e| e.message.contains("`&~T` is a parameter-slot calling convention")),
+        errors.iter().any(|e| e
+            .message
+            .contains("`&~T` is a parameter-slot calling convention")),
         "expected slot-not-a-type message for {source:?}, got: {errors:?}"
     );
 }

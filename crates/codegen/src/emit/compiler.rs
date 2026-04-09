@@ -243,8 +243,8 @@ pub(super) struct InstanceSingletonInfo {
 
 /// Info for constructing a bridge class at call sites.
 pub(super) struct ExternTraitBridgeInfo {
-    pub(super) bridge_class: u16,      // class index for the bridge class
-    pub(super) bridge_init: u16,       // method_ref for <init>(Object, Object)V
+    pub(super) bridge_class: u16, // class index for the bridge class
+    pub(super) bridge_init: u16,  // method_ref for <init>(Object, Object)V
 }
 
 /// Trait dispatch state for codegen.
@@ -278,7 +278,6 @@ impl TraitState {
             .find(|((tn, _), _)| tn == trait_name)
             .map(|(_, &slot)| slot)
     }
-
 }
 
 #[derive(Clone)]
@@ -357,7 +356,10 @@ impl<'link> Compiler<'link> {
         }
     }
 
-    pub(super) fn new(class_name: &str, link_view: &'link krypton_typechecker::link_context::ModuleLinkView<'link>) -> Result<Self, CodegenError> {
+    pub(super) fn new(
+        class_name: &str,
+        link_view: &'link krypton_typechecker::link_context::ModuleLinkView<'link>,
+    ) -> Result<Self, CodegenError> {
         let mut cp = ConstantPool::default();
 
         let this_class = cp.add_class(class_name)?;
@@ -612,10 +614,7 @@ impl<'link> Compiler<'link> {
         result_type
     }
 
-    pub(super) fn nullable_inner_type<'a>(
-        &self,
-        ty: &'a Type,
-    ) -> Result<&'a Type, CodegenError> {
+    pub(super) fn nullable_inner_type<'a>(&self, ty: &'a Type) -> Result<&'a Type, CodegenError> {
         match ty {
             Type::Named(name, args) if name == "Option" && args.len() == 1 => Ok(&args[0]),
             other => Err(CodegenError::TypeError(
@@ -625,17 +624,11 @@ impl<'link> Compiler<'link> {
         }
     }
 
-    pub(super) fn nullable_host_return_jvm(
-        &self,
-        ty: &Type,
-    ) -> Result<JvmType, CodegenError> {
+    pub(super) fn nullable_host_return_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         self.nullable_host_jvm_for_inner(self.nullable_inner_type(ty)?)
     }
 
-    pub(super) fn throws_inner_type<'a>(
-        &self,
-        ty: &'a Type,
-    ) -> Result<&'a Type, CodegenError> {
+    pub(super) fn throws_inner_type<'a>(&self, ty: &'a Type) -> Result<&'a Type, CodegenError> {
         match ty {
             Type::Named(name, args) if name == "Result" && args.len() == 2 => Ok(&args[1]),
             other => Err(CodegenError::TypeError(
@@ -746,7 +739,10 @@ impl<'link> Compiler<'link> {
             .cloned()
             .ok_or_else(|| {
                 CodegenError::TypeError(
-                    format!("missing class descriptor for singleton variant {}", class_index),
+                    format!(
+                        "missing class descriptor for singleton variant {}",
+                        class_index
+                    ),
                     None,
                 )
             })?;
@@ -1846,7 +1842,11 @@ impl<'link> Compiler<'link> {
                 Ok(expected)
             }
 
-            SimpleExprKind::GetDict { instance_ref: _, trait_name, target_types } => {
+            SimpleExprKind::GetDict {
+                instance_ref: _,
+                trait_name,
+                target_types,
+            } => {
                 let pushed_class = self
                     .traits
                     .trait_dispatch
@@ -1877,11 +1877,7 @@ impl<'link> Compiler<'link> {
                     .and_then(|instances| {
                         instances.iter().find(|inst| {
                             let mut bindings = HashMap::new();
-                            bind_type_vars_many(
-                                &inst.target_types,
-                                target_types,
-                                &mut bindings,
-                            )
+                            bind_type_vars_many(&inst.target_types, target_types, &mut bindings)
                         })
                     })
                     .cloned()
@@ -1930,10 +1926,7 @@ impl<'link> Compiler<'link> {
                     .struct_info
                     .get("Vec")
                     .ok_or_else(|| {
-                        CodegenError::TypeError(
-                            "ICE: Vec not in struct_info".to_string(),
-                            None,
-                        )
+                        CodegenError::TypeError("ICE: Vec not in struct_info".to_string(), None)
                     })?
                     .class_index;
                 let info = self
@@ -1985,7 +1978,6 @@ impl<'link> Compiler<'link> {
 
                 Ok(JvmType::StructRef(vec_class))
             }
-
         }
     }
 
@@ -2310,7 +2302,9 @@ impl<'link> Compiler<'link> {
 
                 // Push phantom return type so the dead-code frame's stack matches
                 // the merge target's expected stack.
-                let return_type = self.builder.fn_return_type
+                let return_type = self
+                    .builder
+                    .fn_return_type
                     .expect("ICE: fn_return_type must be set before body compilation");
                 self.builder.push_jvm_type(return_type);
                 let after_goto = self.builder.code.len() as u16;
@@ -2507,8 +2501,7 @@ impl<'link> Compiler<'link> {
                             let actual_type = if f.is_erased {
                                 // Use the resolved concrete type when available so
                                 // primitives (Long/Double/Int) get unboxed correctly.
-                                let concrete_ty =
-                                    resolved_ty_for_field.as_ref().unwrap_or(var_ty);
+                                let concrete_ty = resolved_ty_for_field.as_ref().unwrap_or(var_ty);
                                 self.type_to_jvm(concrete_ty)
                                     .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
                             } else {
@@ -2800,7 +2793,10 @@ impl<'link> Compiler<'link> {
             let slot = self.builder.next_local;
             let jvm_ty = JvmType::StructRef(self.builder.refs.object_class);
             self.traits.dict_locals.insert(
-                (requirement.trait_name().clone(), requirement.type_vars.clone()),
+                (
+                    requirement.trait_name().clone(),
+                    requirement.type_vars.clone(),
+                ),
                 slot,
             );
             fn_params.push((slot, jvm_ty));

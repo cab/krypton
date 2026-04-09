@@ -54,27 +54,28 @@ pub fn compile_repl_input(
             });
 
         if is_entry {
-            let classes =
-                compile_repl_module(ir_module, class_name, &view, repl_vars, store_var, show_wrapped)
-                    .map_err(|e| {
-                        if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
-                            return e.with_source(
-                                ir_module.module_path.as_str().to_string(),
-                                s.clone(),
-                            );
-                        }
-                        e
-                    })?;
+            let classes = compile_repl_module(
+                ir_module,
+                class_name,
+                &view,
+                repl_vars,
+                store_var,
+                show_wrapped,
+            )
+            .map_err(|e| {
+                if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
+                    return e.with_source(ir_module.module_path.as_str().to_string(), s.clone());
+                }
+                e
+            })?;
             all_classes.extend(classes);
         } else {
             // Non-entry modules compile normally (no main required)
             let classes =
                 compile_module_inner(ir_module, class_name, false, &view).map_err(|e| {
                     if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
-                        return e.with_source(
-                            ir_module.module_path.as_str().to_string(),
-                            s.clone(),
-                        );
+                        return e
+                            .with_source(ir_module.module_path.as_str().to_string(), s.clone());
                     }
                     e
                 })?;
@@ -112,10 +113,9 @@ fn compile_repl_module(
     result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
 
     // Phase 2: Register FunN interfaces, Vec, traits, and instances
-    compiler.lambda.preregister_fun_interfaces(
-        &mut compiler.cp,
-        &mut compiler.types.class_descriptors,
-    )?;
+    compiler
+        .lambda
+        .preregister_fun_interfaces(&mut compiler.cp, &mut compiler.types.class_descriptors)?;
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
     compiler.register_tuples_ir(ir_module)?;
@@ -160,9 +160,7 @@ fn emit_eval_wrapper(
     let eval_info = compiler
         .types
         .get_function("__eval")
-        .ok_or_else(|| {
-            CodegenError::TypeError("ICE: __eval not registered".to_string(), None)
-        })?;
+        .ok_or_else(|| CodegenError::TypeError("ICE: __eval not registered".to_string(), None))?;
     let eval_method_ref = eval_info.method_ref;
     let eval_return_type = eval_info.return_type;
 
@@ -198,24 +196,16 @@ fn emit_eval_wrapper(
             .builder
             .emit(Instruction::Invokestatic(registry_lookup));
         compiler.builder.frame.pop_type(); // pop String
-        compiler
-            .builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: var_class,
-            });
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: var_class,
+        });
 
         // Var.get() -> Object
-        compiler
-            .builder
-            .emit(Instruction::Invokevirtual(var_get));
+        compiler.builder.emit(Instruction::Invokevirtual(var_get));
         compiler.builder.frame.pop_type(); // pop Var
-        compiler
-            .builder
-            .frame
-            .push_type(VerificationType::Object {
-                cpool_index: compiler.builder.refs.object_class,
-            });
+        compiler.builder.frame.push_type(VerificationType::Object {
+            cpool_index: compiler.builder.refs.object_class,
+        });
 
         // Unbox if needed
         compiler.builder.unbox_if_needed(jvm_type);
@@ -280,7 +270,10 @@ fn emit_eval_wrapper(
 
         // Get the Tuple2 accessor method refs
         let tuple_info = compiler.types.tuple_info.get(&2).ok_or_else(|| {
-            CodegenError::TypeError("ICE: Tuple2 not registered for show_wrapped".to_string(), None)
+            CodegenError::TypeError(
+                "ICE: Tuple2 not registered for show_wrapped".to_string(),
+                None,
+            )
         })?;
         let tuple_class = tuple_info.class_index;
         let field_0_ref = tuple_info.field_refs[0]; // _0()
@@ -291,7 +284,9 @@ fn emit_eval_wrapper(
         compiler.builder.frame.push_type(VerificationType::Object {
             cpool_index: tuple_class,
         });
-        compiler.builder.emit(Instruction::Invokevirtual(field_0_ref));
+        compiler
+            .builder
+            .emit(Instruction::Invokevirtual(field_0_ref));
         compiler.builder.frame.pop_type(); // pop tuple
         compiler.builder.frame.push_type(VerificationType::Object {
             cpool_index: object_class,
@@ -311,14 +306,18 @@ fn emit_eval_wrapper(
         compiler.builder.frame.push_type(VerificationType::Object {
             cpool_index: tuple_class,
         });
-        compiler.builder.emit(Instruction::Invokevirtual(field_1_ref));
+        compiler
+            .builder
+            .emit(Instruction::Invokevirtual(field_1_ref));
         compiler.builder.frame.pop_type(); // pop tuple
         compiler.builder.frame.push_type(VerificationType::Object {
             cpool_index: object_class,
         });
         let display_slot = compiler.builder.next_local;
         compiler.builder.next_local += 1;
-        compiler.builder.emit(Instruction::Astore(display_slot as u8));
+        compiler
+            .builder
+            .emit(Instruction::Astore(display_slot as u8));
         compiler.builder.frame.pop_type();
 
         // Build Object[2] = [value, display]
@@ -373,11 +372,9 @@ fn emit_registry_store(
         "intern",
         "(Ljava/lang/String;)Lkrypton/repl/Var;",
     )?;
-    let var_set = compiler.cp.add_method_ref(
-        var_class,
-        "set",
-        "(Ljava/lang/Object;)V",
-    )?;
+    let var_set = compiler
+        .cp
+        .add_method_ref(var_class, "set", "(Ljava/lang/Object;)V")?;
 
     // Registry.intern(name)
     let name_idx = compiler.cp.add_string(var_name)?;
@@ -400,9 +397,7 @@ fn emit_registry_store(
     });
 
     // Var.set(Object)
-    compiler
-        .builder
-        .emit(Instruction::Invokevirtual(var_set));
+    compiler.builder.emit(Instruction::Invokevirtual(var_set));
     compiler.builder.frame.pop_type(); // pop value
     compiler.builder.frame.pop_type(); // pop Var
 
@@ -449,7 +444,9 @@ fn emit_result_array(
     });
     compiler.builder.emit(Instruction::Iconst_1);
     compiler.builder.frame.push_type(VerificationType::Integer);
-    compiler.builder.emit(Instruction::Aload(display_slot as u8));
+    compiler
+        .builder
+        .emit(Instruction::Aload(display_slot as u8));
     compiler.builder.frame.push_type(VerificationType::Object {
         cpool_index: object_class,
     });

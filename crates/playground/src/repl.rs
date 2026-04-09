@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use krypton_codegen_js::compile_repl_js;
 use krypton_diagnostics::Diagnostic;
 use krypton_modules::{module_resolver::ModuleResolver, stdlib_loader::StdlibLoader};
-use krypton_parser::repl::{build_synthetic_source, classify_input, ReplDeclarations, ReplInputKind};
+use krypton_parser::repl::{
+    build_synthetic_source, classify_input, ReplDeclarations, ReplInputKind,
+};
 use krypton_typechecker::types::{format_type_with_var_names, TypeScheme};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
@@ -178,8 +180,7 @@ pub fn repl_eval(session_id: u32, input: &str) -> Result<JsValue, JsValue> {
         eval_impl(session, input)
     });
     match result {
-        Ok(r) => serde_wasm_bindgen::to_value(&r)
-            .map_err(|e| JsValue::from_str(&e.to_string())),
+        Ok(r) => serde_wasm_bindgen::to_value(&r).map_err(|e| JsValue::from_str(&e.to_string())),
         Err(e) => Err(JsValue::from_str(&e)),
     }
 }
@@ -188,9 +189,9 @@ pub fn repl_eval(session_id: u32, input: &str) -> Result<JsValue, JsValue> {
 pub fn repl_commit(session_id: u32) -> Result<(), JsValue> {
     SESSIONS.with(|cell| {
         let mut sessions = cell.borrow_mut();
-        let session = sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| JsValue::from_str(&format!("Invalid REPL session ID: {}", session_id)))?;
+        let session = sessions.get_mut(&session_id).ok_or_else(|| {
+            JsValue::from_str(&format!("Invalid REPL session ID: {}", session_id))
+        })?;
 
         if let Some(update) = session.pending.take() {
             match update {
@@ -237,9 +238,9 @@ pub fn repl_commit(session_id: u32) -> Result<(), JsValue> {
 pub fn repl_reset(session_id: u32) -> Result<(), JsValue> {
     SESSIONS.with(|cell| {
         let mut sessions = cell.borrow_mut();
-        let session = sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| JsValue::from_str(&format!("Invalid REPL session ID: {}", session_id)))?;
+        let session = sessions.get_mut(&session_id).ok_or_else(|| {
+            JsValue::from_str(&format!("Invalid REPL session ID: {}", session_id))
+        })?;
         session.bindings.clear();
         session.fun_defs.clear();
         session.type_defs.clear();
@@ -380,9 +381,7 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
             };
             (Some(name.clone()), display, pending)
         }
-        ReplInputKind::BareExpr { .. } => {
-            (None, String::new(), PendingUpdate::None)
-        }
+        ReplInputKind::BareExpr { .. } => (None, String::new(), PendingUpdate::None),
         ReplInputKind::FunDef { name, source } => {
             let type_display = fun_def_type_display
                 .clone()
@@ -443,8 +442,10 @@ fn eval_impl(session: &mut WasmReplSession, input: &str) -> Result<ReplEvalResul
         .collect();
 
     // JS codegen with REPL wrapper
-    let js_module_sources: HashMap<String, Option<String>> =
-        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+    let js_module_sources: HashMap<String, Option<String>> = module_sources
+        .into_iter()
+        .map(|(k, v)| (k, Some(v)))
+        .collect();
     let js_files = compile_repl_js(
         &ir_modules,
         &module_name,
@@ -515,7 +516,11 @@ fn format_scheme_for_repl(scheme: &TypeScheme) -> String {
         if var_names.len() == 1 {
             where_parts.push(format!("{}: {}", var_names[0], trait_name.local_name));
         } else {
-            where_parts.push(format!("{}[{}]", trait_name.local_name, var_names.join(", ")));
+            where_parts.push(format!(
+                "{}[{}]",
+                trait_name.local_name,
+                var_names.join(", ")
+            ));
         }
     }
     format!("{} where {}", type_part, where_parts.join(", "))
@@ -654,7 +659,10 @@ mod tests {
         });
         let result = result.unwrap();
         assert!(result.success, "eval failed: {:?}", result.diagnostics);
-        assert!(result.include_runtime, "runtime should be included after failed first eval");
+        assert!(
+            result.include_runtime,
+            "runtime should be included after failed first eval"
+        );
         assert!(!result.runtime_files.is_empty());
 
         repl_destroy(id);

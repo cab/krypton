@@ -90,7 +90,6 @@ impl Module {
             .map(|(&id, fi)| (id, fi.name().to_string()))
             .collect()
     }
-
 }
 
 impl Type {
@@ -101,15 +100,11 @@ impl Type {
             Type::Named(name, args) => {
                 Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
             }
-            Type::Tuple(elems) => {
-                Type::Tuple(elems.iter().map(|e| e.strip_own()).collect())
-            }
-            Type::Fn(params, ret) => {
-                Type::Fn(
-                    params.iter().map(|p| p.strip_own()).collect(),
-                    Box::new(ret.strip_own()),
-                )
-            }
+            Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| e.strip_own()).collect()),
+            Type::Fn(params, ret) => Type::Fn(
+                params.iter().map(|p| p.strip_own()).collect(),
+                Box::new(ret.strip_own()),
+            ),
             other => other.clone(),
         }
     }
@@ -173,7 +168,10 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
-            Type::Dict { trait_name, target_types } => {
+            Type::Dict {
+                trait_name,
+                target_types,
+            } => {
                 write!(f, "Dict[{}", trait_name)?;
                 for t in target_types {
                     write!(f, ", {}", t)?;
@@ -328,7 +326,10 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
                 let parts: Vec<String> = elems.iter().map(|e| inner(e, var_map)).collect();
                 format!("$Tuple${}", parts.join("$"))
             }
-            Type::Dict { trait_name, target_types } => {
+            Type::Dict {
+                trait_name,
+                target_types,
+            } => {
                 let parts: Vec<String> = target_types.iter().map(|t| inner(t, var_map)).collect();
                 format!("$Dict${}${}", trait_name, parts.join("$"))
             }
@@ -539,7 +540,6 @@ pub struct Module {
     /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
     /// rather than side metadata.
     pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
-
 }
 
 #[derive(Debug, Clone, PartialEq)]

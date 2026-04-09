@@ -117,7 +117,11 @@ impl<'link> Compiler<'link> {
             .traits
             .instance_singletons
             .get(&singleton_key)
-            .or_else(|| head_key.as_ref().and_then(|k| self.traits.instance_singletons.get(k)))
+            .or_else(|| {
+                head_key
+                    .as_ref()
+                    .and_then(|k| self.traits.instance_singletons.get(k))
+            })
         {
             self.builder
                 .emit(Instruction::Getstatic(singleton.instance_field_ref));

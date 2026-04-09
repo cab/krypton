@@ -193,14 +193,14 @@ pub(super) fn generate_extern_trait_bridge_class(
         let init_desc = cp.add_utf8("(Ljava/lang/Object;Ljava/lang/Object;)V")?;
 
         let code = vec![
-            Instruction::Aload_0,                          // this
-            Instruction::Invokespecial(object_init),       // super()
-            Instruction::Aload_0,                          // this
-            Instruction::Aload_1,                          // value
-            Instruction::Putfield(value_field_ref),        // this.value = value
-            Instruction::Aload_0,                          // this
-            Instruction::Aload_2,                          // dict
-            Instruction::Putfield(dict_field_ref),         // this.dict = dict
+            Instruction::Aload_0,                    // this
+            Instruction::Invokespecial(object_init), // super()
+            Instruction::Aload_0,                    // this
+            Instruction::Aload_1,                    // value
+            Instruction::Putfield(value_field_ref),  // this.value = value
+            Instruction::Aload_0,                    // this
+            Instruction::Aload_2,                    // dict
+            Instruction::Putfield(dict_field_ref),   // this.dict = dict
             Instruction::Return,
         ];
 
@@ -224,12 +224,10 @@ pub(super) fn generate_extern_trait_bridge_class(
     let long_valueof = cp.add_method_ref(long_box_class, "valueOf", "(J)Ljava/lang/Long;")?;
     let long_unbox = cp.add_method_ref(long_box_class, "longValue", "()J")?;
     let double_box_class = cp.add_class("java/lang/Double")?;
-    let double_valueof =
-        cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
+    let double_valueof = cp.add_method_ref(double_box_class, "valueOf", "(D)Ljava/lang/Double;")?;
     let double_unbox = cp.add_method_ref(double_box_class, "doubleValue", "()D")?;
     let bool_box_class = cp.add_class("java/lang/Boolean")?;
-    let bool_valueof =
-        cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
+    let bool_valueof = cp.add_method_ref(bool_box_class, "valueOf", "(Z)Ljava/lang/Boolean;")?;
     let bool_unbox = cp.add_method_ref(bool_box_class, "booleanValue", "()Z")?;
 
     // Bridge methods: each Java interface method delegates to the Krypton trait dict

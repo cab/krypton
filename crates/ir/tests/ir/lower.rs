@@ -62,8 +62,13 @@ fn ir_lower(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.clone(), krypton_parser::ast::CompileTarget::Jvm)
-        .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &resolver,
+        name.clone(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);
     let view = link_ctx
@@ -100,8 +105,13 @@ fn ir_link(
         "fixture {name}: parse errors: {errors:?}"
     );
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, stem.clone(), krypton_parser::ast::CompileTarget::Jvm)
-        .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &resolver,
+        stem.clone(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap_or_else(|e| panic!("fixture {name}: typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);
     let mut output = String::new();
@@ -113,9 +123,7 @@ fn ir_link(
         };
         let view = link_ctx
             .view_for(&ModulePath::new(&typed.module_path))
-            .unwrap_or_else(|| {
-                panic!("fixture {name}: no LinkContext view for module {mod_name}")
-            });
+            .unwrap_or_else(|| panic!("fixture {name}: no LinkContext view for module {mod_name}"));
         let ir_module = lower_module(typed, &mod_name, &view).unwrap_or_else(|e| {
             panic!("fixture {name}: IR lowering failed for module {i} ({mod_name}): {e}")
         });
@@ -144,8 +152,13 @@ fun main() = {
     let (module, errors) = parse(source);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
 
-    let (typed_modules, interfaces) = infer_module(&module, &resolver, name.to_string(), krypton_parser::ast::CompileTarget::Jvm)
-        .unwrap_or_else(|e| panic!("typecheck failed: {e:?}"));
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &resolver,
+        name.to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .unwrap_or_else(|e| panic!("typecheck failed: {e:?}"));
 
     let link_ctx = LinkContext::build(interfaces);
     let view = link_ctx
@@ -158,7 +171,10 @@ fun main() = {
         .fn_identities
         .values()
         .any(|fi| fi.name() == "None");
-    assert!(!has_none, "fn_identities should not contain nullary constructor 'None'");
+    assert!(
+        !has_none,
+        "fn_identities should not contain nullary constructor 'None'"
+    );
 
     let has_main = ir_module
         .fn_identities

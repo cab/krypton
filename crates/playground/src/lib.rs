@@ -113,7 +113,8 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
     };
 
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-    let (ir_modules, module_sources) = match lower_all(&typed_modules, ROOT_MODULE_NAME, &link_ctx) {
+    let (ir_modules, module_sources) = match lower_all(&typed_modules, ROOT_MODULE_NAME, &link_ctx)
+    {
         Ok(result) => result,
         Err(err) => {
             return CompileToJsResult::failure(vec![krypton_diagnostics::Diagnostic {
@@ -129,9 +130,17 @@ pub fn compile_to_js_result(source: &str) -> CompileToJsResult {
             }]);
         }
     };
-    let js_module_sources: HashMap<String, Option<String>> =
-        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
-    let js_files = match compile_modules_js(&ir_modules, ROOT_MODULE_NAME, false, &link_ctx, &js_module_sources) {
+    let js_module_sources: HashMap<String, Option<String>> = module_sources
+        .into_iter()
+        .map(|(k, v)| (k, Some(v)))
+        .collect();
+    let js_files = match compile_modules_js(
+        &ir_modules,
+        ROOT_MODULE_NAME,
+        false,
+        &link_ctx,
+        &js_module_sources,
+    ) {
         Ok(files) => files,
         Err(err) => {
             let (diags, _srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(

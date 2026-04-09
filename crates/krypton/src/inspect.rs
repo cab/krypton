@@ -101,10 +101,7 @@ impl<'a> TypedFormatter<'a> {
         if let Some(scope_id) = expr.scope_id {
             if let Some(bindings) = self.auto_close.scope_exits.get(&scope_id) {
                 for binding in bindings {
-                    self.push_indent_comment(&format!(
-                        "close({}) [scope exit]",
-                        binding.name
-                    ));
+                    self.push_indent_comment(&format!("close({}) [scope exit]", binding.name));
                 }
             }
         }
@@ -316,7 +313,6 @@ impl<'a> TypedFormatter<'a> {
     }
 
     fn fmt_stmt(&mut self, expr: &TypedExpr) {
-
         match &expr.kind {
             TypedExprKind::Let {
                 name,

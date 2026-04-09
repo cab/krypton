@@ -319,7 +319,12 @@ fn main() {
                     phases.push(("lower", t.elapsed()));
 
                     let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(&ir_modules, &class_name, &link_ctx, &module_sources) {
+                    match krypton_codegen::emit::compile_modules(
+                        &ir_modules,
+                        &class_name,
+                        &link_ctx,
+                        &module_sources,
+                    ) {
                         Ok(classes) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(classes = classes.len(), "codegen complete");
@@ -376,11 +381,20 @@ fn main() {
                                 process::exit(1);
                             });
                     let js_module_sources: std::collections::HashMap<String, Option<String>> =
-                        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+                        module_sources
+                            .into_iter()
+                            .map(|(k, v)| (k, Some(v)))
+                            .collect();
                     phases.push(("lower", t.elapsed()));
 
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&ir_modules, stem, true, &link_ctx, &js_module_sources) {
+                    match krypton_codegen_js::compile_modules_js(
+                        &ir_modules,
+                        stem,
+                        true,
+                        &link_ctx,
+                        &js_module_sources,
+                    ) {
                         Ok(files) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(files = files.len(), "JS codegen complete");
@@ -505,7 +519,12 @@ fn main() {
                     phases.push(("lower", t.elapsed()));
 
                     let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(&ir_modules, &class_name, &link_ctx, &module_sources) {
+                    match krypton_codegen::emit::compile_modules(
+                        &ir_modules,
+                        &class_name,
+                        &link_ctx,
+                        &module_sources,
+                    ) {
                         Ok(classes) => {
                             phases.push(("codegen", t.elapsed()));
                             info!(classes = classes.len(), "codegen complete");
@@ -566,11 +585,20 @@ fn main() {
                                 process::exit(1);
                             });
                     let js_module_sources: std::collections::HashMap<String, Option<String>> =
-                        module_sources.into_iter().map(|(k, v)| (k, Some(v))).collect();
+                        module_sources
+                            .into_iter()
+                            .map(|(k, v)| (k, Some(v)))
+                            .collect();
                     phases.push(("lower", t.elapsed()));
 
                     let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(&ir_modules, stem, true, &link_ctx, &js_module_sources) {
+                    match krypton_codegen_js::compile_modules_js(
+                        &ir_modules,
+                        stem,
+                        true,
+                        &link_ctx,
+                        &js_module_sources,
+                    ) {
                         Ok(files) => {
                             let debug_js = std::env::var_os("KRYPTON_DEBUG_JS").is_some();
                             phases.push(("codegen", t.elapsed()));
@@ -765,7 +793,10 @@ fn main() {
                         &typed.module_path,
                     ))
                     .unwrap_or_else(|| {
-                        panic!("ICE: no LinkContext view for module '{}'", typed.module_path)
+                        panic!(
+                            "ICE: no LinkContext view for module '{}'",
+                            typed.module_path
+                        )
                     });
                 let t = Instant::now();
                 match krypton_ir::lower::lower_module(typed, &mod_name, &view) {

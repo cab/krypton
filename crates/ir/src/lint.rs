@@ -402,11 +402,11 @@ fn concrete_type_name(ty: &Type) -> Option<String> {
             }
         }
         Type::Own(inner) => concrete_type_name(inner).map(|n| format!("Own<{n}>")),
-        Type::Dict { trait_name, target_types } => {
-            let parts: Vec<String> = target_types
-                .iter()
-                .filter_map(concrete_type_name)
-                .collect();
+        Type::Dict {
+            trait_name,
+            target_types,
+        } => {
+            let parts: Vec<String> = target_types.iter().filter_map(concrete_type_name).collect();
             if parts.len() == target_types.len() {
                 Some(format!("Dict[{trait_name}, {}]", parts.join(", ")))
             } else {

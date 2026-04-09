@@ -368,7 +368,9 @@ impl<'link> Compiler<'link> {
         module_path: &str,
     ) -> Result<(), CodegenError> {
         for (path, ext) in self.link_view.all_extern_types() {
-            if path.as_str() == module_path { continue; }
+            if path.as_str() == module_path {
+                continue;
+            }
             let jvm_class = match &ext.target {
                 krypton_parser::ast::ExternTarget::Java => ext.host_module.replace('.', "/"),
                 krypton_parser::ast::ExternTarget::Js => continue,
@@ -403,8 +405,12 @@ impl<'link> Compiler<'link> {
         // Two-pass: pre-register class indices, then process fields.
         let mut to_process: Vec<(krypton_ir::StructDef, String)> = Vec::new();
         for (path, ts) in self.link_view.all_exported_types() {
-            if path.as_str() == module_path { continue; }
-            let TypeSummaryKind::Record { fields } = &ts.kind else { continue; };
+            if path.as_str() == module_path {
+                continue;
+            }
+            let TypeSummaryKind::Record { fields } = &ts.kind else {
+                continue;
+            };
             if self.types.struct_info.contains_key(&ts.name) {
                 continue;
             }
@@ -422,7 +428,8 @@ impl<'link> Compiler<'link> {
                     accessor_refs: HashMap::new(),
                 },
             );
-            let ir_fields: Vec<(String, krypton_ir::Type)> = fields.iter()
+            let ir_fields: Vec<(String, krypton_ir::Type)> = fields
+                .iter()
                 .map(|(name, ty)| (name.clone(), krypton_ir::Type::from(ty.clone())))
                 .collect();
             to_process.push((
@@ -451,8 +458,12 @@ impl<'link> Compiler<'link> {
         // List) can be resolved during variant field processing.
         let mut to_process: Vec<(krypton_ir::SumTypeDef, String)> = Vec::new();
         for (path, ts) in self.link_view.all_exported_types() {
-            if path.as_str() == module_path { continue; }
-            let TypeSummaryKind::Sum { variants } = &ts.kind else { continue; };
+            if path.as_str() == module_path {
+                continue;
+            }
+            let TypeSummaryKind::Sum { variants } = &ts.kind else {
+                continue;
+            };
             if self.types.sum_type_info.contains_key(&ts.name) {
                 continue;
             }
@@ -469,11 +480,17 @@ impl<'link> Compiler<'link> {
                     variants: HashMap::new(),
                 },
             );
-            let ir_variants: Vec<krypton_ir::VariantDef> = variants.iter().enumerate()
+            let ir_variants: Vec<krypton_ir::VariantDef> = variants
+                .iter()
+                .enumerate()
                 .map(|(tag, v)| krypton_ir::VariantDef {
                     name: v.name.clone(),
                     tag: tag as u32,
-                    fields: v.fields.iter().map(|ty| krypton_ir::Type::from(ty.clone())).collect(),
+                    fields: v
+                        .fields
+                        .iter()
+                        .map(|ty| krypton_ir::Type::from(ty.clone()))
+                        .collect(),
                 })
                 .collect();
             to_process.push((
@@ -801,7 +818,9 @@ impl<'link> Compiler<'link> {
             }
             let instance_class_name = format!(
                 "{}/{}$${}",
-                ir_module.module_path.as_str(), inst.trait_name.local_name, inst.target_type_name
+                ir_module.module_path.as_str(),
+                inst.trait_name.local_name,
+                inst.target_type_name
             );
             // The trait interface class uses the qualified trait name
             let q_trait = inst.trait_name.jvm_qualified();
@@ -1096,15 +1115,20 @@ impl<'link> Compiler<'link> {
             let wrapper_desc = self
                 .types
                 .build_descriptor(&wrapper_param_types, wrapper_return_type);
-            let wrapper_ref = self.cp.add_method_ref(this_class, &ext.name, &wrapper_desc)?;
-            self.types.functions.entry(ext.name.clone()).or_insert_with(|| {
-                vec![FunctionInfo {
-                    method_ref: wrapper_ref,
-                    param_types: wrapper_param_types,
-                    return_type: wrapper_return_type,
-                    is_void: false,
-                }]
-            });
+            let wrapper_ref = self
+                .cp
+                .add_method_ref(this_class, &ext.name, &wrapper_desc)?;
+            self.types
+                .functions
+                .entry(ext.name.clone())
+                .or_insert_with(|| {
+                    vec![FunctionInfo {
+                        method_ref: wrapper_ref,
+                        param_types: wrapper_param_types,
+                        return_type: wrapper_return_type,
+                        is_void: false,
+                    }]
+                });
         }
 
         // Register raw extern method refs (pointing to the actual Java host class).
@@ -1120,7 +1144,8 @@ impl<'link> Compiler<'link> {
             };
 
             // Store extern class index for constructor codegen
-            self.raw_extern_classes.insert(ext.name.clone(), extern_class);
+            self.raw_extern_classes
+                .insert(ext.name.clone(), extern_class);
 
             let skip_first = ext.call_kind == krypton_ir::ExternCallKind::Instance;
 
@@ -1154,7 +1179,11 @@ impl<'link> Compiler<'link> {
                 .cloned()
                 .unwrap_or_default();
             for dr in &dict_requirements {
-                if !self.traits.extern_trait_bridges.contains_key(&dr.trait_name) {
+                if !self
+                    .traits
+                    .extern_trait_bridges
+                    .contains_key(&dr.trait_name)
+                {
                     let object_class = self.builder.refs.object_class;
                     param_jvm_types.push(JvmType::StructRef(object_class));
                     param_desc.push_str("Ljava/lang/Object;");
@@ -1182,9 +1211,9 @@ impl<'link> Compiler<'link> {
                     let (return_type, ret_desc, is_void) =
                         extern_return_info(self, &ext.return_type, ext.nullable, ext.throws)?;
                     let descriptor = format!("{param_desc}{ret_desc}");
-                    let method_ref = self
-                        .cp
-                        .add_method_ref(extern_class, &ext.name, &descriptor)?;
+                    let method_ref =
+                        self.cp
+                            .add_method_ref(extern_class, &ext.name, &descriptor)?;
                     let info = FunctionInfo {
                         method_ref,
                         param_types: param_jvm_types,
@@ -1260,12 +1289,19 @@ impl<'link> Compiler<'link> {
 
         // Build variant_tags, sum_type_params, and variant_field_types from link view
         for (path, ts) in self.link_view.all_exported_types() {
-            if path.as_str() == ir_module.module_path.as_str() { continue; }
-            let krypton_typechecker::module_interface::TypeSummaryKind::Sum { variants } = &ts.kind else { continue; };
+            if path.as_str() == ir_module.module_path.as_str() {
+                continue;
+            }
+            let krypton_typechecker::module_interface::TypeSummaryKind::Sum { variants } = &ts.kind
+            else {
+                continue;
+            };
             let mut tag_map = std::collections::HashMap::new();
             for (tag, variant) in variants.iter().enumerate() {
                 tag_map.insert(tag as u32, variant.name.clone());
-                let ir_fields: Vec<krypton_ir::Type> = variant.fields.iter()
+                let ir_fields: Vec<krypton_ir::Type> = variant
+                    .fields
+                    .iter()
                     .map(|ty| krypton_ir::Type::from(ty.clone()))
                     .collect();
                 self.variant_field_types
@@ -1371,7 +1407,10 @@ impl<'link> Compiler<'link> {
                 // new BridgeClass; dup; aload value; aload dict; invokespecial <init>
                 self.builder.emit_new_dup(bridge_class);
                 self.builder.emit_load(*slot, *jvm_ty);
-                self.builder.emit_load(dict_slot, JvmType::StructRef(self.builder.refs.object_class));
+                self.builder.emit_load(
+                    dict_slot,
+                    JvmType::StructRef(self.builder.refs.object_class),
+                );
                 // Frame: [... Uninitialized Uninitialized value dict]
                 // invokespecial pops: dict, value, dup'd Uninitialized, new Uninitialized
                 // then pushes: initialized Object ref
@@ -1390,7 +1429,11 @@ impl<'link> Compiler<'link> {
         // These are dicts for where-clause constraints on traits that don't have
         // extern trait bridges (e.g., Eq, Hash on map operations).
         for (dict_idx, dr) in dict_requirements.iter().enumerate() {
-            if !self.traits.extern_trait_bridges.contains_key(&dr.trait_name) {
+            if !self
+                .traits
+                .extern_trait_bridges
+                .contains_key(&dr.trait_name)
+            {
                 let (dict_slot, dict_jvm) = param_slots[dict_idx];
                 self.builder.emit_load(dict_slot, dict_jvm);
             }
@@ -1414,7 +1457,8 @@ impl<'link> Compiler<'link> {
                 for jvm_ty in raw_info.param_types.iter().rev() {
                     self.builder.pop_jvm_type(*jvm_ty);
                 }
-                self.builder.emit(Instruction::Invokestatic(raw_info.method_ref));
+                self.builder
+                    .emit(Instruction::Invokestatic(raw_info.method_ref));
                 if raw_info.is_void {
                     Ok(None)
                 } else {
@@ -1431,7 +1475,8 @@ impl<'link> Compiler<'link> {
                 // Pop self (objectref) — first param in ext.param_types
                 let self_jvm = extern_type_to_jvm(self, &ext.param_types[0])?;
                 self.builder.pop_jvm_type(self_jvm);
-                self.builder.emit(Instruction::Invokevirtual(raw_info.method_ref));
+                self.builder
+                    .emit(Instruction::Invokevirtual(raw_info.method_ref));
                 if raw_info.is_void {
                     Ok(None)
                 } else {
@@ -1440,7 +1485,9 @@ impl<'link> Compiler<'link> {
                 }
             }
             krypton_ir::ExternCallKind::Constructor => {
-                let extern_class = *self.raw_extern_classes.get(&ext.name)
+                let extern_class = *self
+                    .raw_extern_classes
+                    .get(&ext.name)
                     .expect("ICE: no extern class for constructor");
                 self.builder.emit_new_dup(extern_class);
                 self.emit_extern_call_params(ext, param_slots, dict_count)?;
@@ -1449,7 +1496,8 @@ impl<'link> Compiler<'link> {
                 }
                 self.builder.frame.pop_type(); // pop dup'd Uninitialized
                 self.builder.frame.pop_type(); // pop new Uninitialized
-                self.builder.emit(Instruction::Invokespecial(raw_info.method_ref));
+                self.builder
+                    .emit(Instruction::Invokespecial(raw_info.method_ref));
                 let result = JvmType::StructRef(extern_class);
                 self.builder.push_jvm_type(result);
                 Ok(Some(result))
@@ -1675,7 +1723,9 @@ impl<'link> Compiler<'link> {
         self.builder.frame.record_frame(handler);
 
         // Store exception, get message into a local
-        let exc_slot = self.builder.alloc_anonymous_local(JvmType::StructRef(exception_class));
+        let exc_slot = self
+            .builder
+            .alloc_anonymous_local(JvmType::StructRef(exception_class));
         self.builder.emit(Instruction::Astore(exc_slot as u8));
         self.builder.frame.pop_type();
 
@@ -1683,11 +1733,9 @@ impl<'link> Compiler<'link> {
         self.builder.frame.push_type(VerificationType::Object {
             cpool_index: exception_class,
         });
-        let get_message = self.cp.add_method_ref(
-            exception_class,
-            "getMessage",
-            "()Ljava/lang/String;",
-        )?;
+        let get_message =
+            self.cp
+                .add_method_ref(exception_class, "getMessage", "()Ljava/lang/String;")?;
         self.builder.emit(Instruction::Invokevirtual(get_message));
         self.builder.frame.pop_type(); // pop exception
         let string_jvm = JvmType::StructRef(self.builder.refs.string_class);

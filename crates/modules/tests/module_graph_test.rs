@@ -38,7 +38,8 @@ fn graph_single_import() {
         "pub fun add(x: Int, y: Int) -> Int = x + y",
     )]);
     let root = parse("import mylib.{add}\nfun main() -> Int = add(1, 2)");
-    let graph = build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let graph =
+        build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
 
     // Should contain prelude tree + mylib
     let user_modules: Vec<&str> = graph
@@ -58,7 +59,8 @@ fn graph_transitive_imports() {
         ("c", "pub fun baz() -> Int = 42"),
     ]);
     let root = parse("import a.{bar}\nfun main() -> Int = bar()");
-    let graph = build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let graph =
+        build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
 
     let user_modules: Vec<&str> = graph
         .modules
@@ -78,7 +80,8 @@ fn graph_diamond_dedup() {
         ("d", "pub fun x() -> Int = 1"),
     ]);
     let root = parse("import b.{fb}\nimport c.{fc}\nfun main() -> Int = fb() + fc()");
-    let graph = build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let graph =
+        build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
 
     let user_modules: Vec<&str> = graph
         .modules
@@ -133,7 +136,8 @@ fn graph_unknown_module() {
 fn graph_bare_import() {
     let resolver = MapResolver::new(vec![("foo", "pub fun bar() -> Int = 1")]);
     let root = parse("import foo\nfun main() -> Int = 1");
-    let graph = build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let graph =
+        build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
 
     let user_modules: Vec<&str> = graph
         .modules
@@ -148,7 +152,8 @@ fn graph_bare_import() {
 fn graph_prelude_included() {
     let resolver = MapResolver::new(vec![]);
     let root = parse("fun main() -> Int = 42");
-    let graph = build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
+    let graph =
+        build_module_graph(&root, &resolver, krypton_parser::ast::CompileTarget::Jvm).unwrap();
 
     let paths: Vec<&str> = graph.modules.iter().map(|m| m.path.as_str()).collect();
     assert!(paths.contains(&"prelude"), "prelude should be in graph");

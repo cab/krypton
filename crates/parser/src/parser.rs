@@ -55,8 +55,7 @@ fn to_span(s: LexSpan) -> Span {
 const BORROW_REQUIRES_OWNED: &str =
     "borrow mode requires an owned parameter type: write '&name: ~T'";
 
-const SLOT_NOT_A_TYPE: &str =
-    "`&~T` is a parameter-slot calling convention, not a type";
+const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
 
 fn is_uppercase(s: &str) -> bool {
     s.starts_with(|c: char| c.is_uppercase())
@@ -577,9 +576,7 @@ where
                 span: to_span(e.span()),
             })
             .validate(|p, e, emitter| {
-                if p.mode == ParamMode::Borrow
-                    && !matches!(p.ty, Some(TypeExpr::Own { .. }))
-                {
+                if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
                     emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
                 }
                 p
@@ -1042,9 +1039,12 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn platform_attr_parser<'tokens, 'src: 'tokens, I>(
-) -> impl Parser<'tokens, I, Option<Vec<CompileTarget>>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>>
-       + Clone
+fn platform_attr_parser<'tokens, 'src: 'tokens, I>() -> impl Parser<
+    'tokens,
+    I,
+    Option<Vec<CompileTarget>>,
+    extra::Err<Rich<'tokens, Token<'src>, LexSpan>>,
+> + Clone
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
@@ -1096,9 +1096,7 @@ where
             span: to_span(e.span()),
         })
         .validate(|p, e, emitter| {
-            if p.mode == ParamMode::Borrow
-                && !matches!(p.ty, Some(TypeExpr::Own { .. }))
-            {
+            if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
                 emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
             }
             p
@@ -1162,7 +1160,13 @@ where
                 .or(expr.clone()),
         )
         .map_with(
-            |(((((((platform, visibility), name), type_params), params), return_type), constraints), body),
+            |(
+                (
+                    (((((platform, visibility), name), type_params), params), return_type),
+                    constraints,
+                ),
+                body,
+            ),
              e| {
                 Decl::DefFn(FnDecl {
                     platform,
@@ -1235,50 +1239,49 @@ where
         .then_ignore(symbol(Token::Assign))
         .then(record_kind.or(sum_kind))
         .then(deriving)
-        .map_with(|(((((platform, visibility), name), type_params), kind), deriving), e| {
-            Decl::DefType(TypeDecl {
-                platform,
-                name,
-                visibility,
-                type_params,
-                kind,
-                deriving,
-                span: to_span(e.span()),
-            })
-        });
+        .map_with(
+            |(((((platform, visibility), name), type_params), kind), deriving), e| {
+                Decl::DefType(TypeDecl {
+                    platform,
+                    name,
+                    visibility,
+                    type_params,
+                    kind,
+                    deriving,
+                    span: to_span(e.span()),
+                })
+            },
+        );
 
     // --- Trait declaration ---
     // trait Name[tvar] { methods } or trait Name[tvar] where tvar: Super { methods }
-    let trait_method_param = symbol(Token::Amp)
-        .or_not()
-        .then(select! {
-            Token::Ident(s) => s.to_string(),
-            Token::Self_ => "self".to_string(),
-        })
-        .then_ignore(
-            symbol(Token::Colon).labelled(
+    let trait_method_param =
+        symbol(Token::Amp)
+            .or_not()
+            .then(select! {
+                Token::Ident(s) => s.to_string(),
+                Token::Self_ => "self".to_string(),
+            })
+            .then_ignore(symbol(Token::Colon).labelled(
                 "type annotation — trait method parameters require types, e.g. (x: a, y: a)",
-            ),
-        )
-        .then(ty.clone())
-        .map_with(|((amp, name), ty_ann), e| Param {
-            name,
-            ty: Some(ty_ann),
-            mode: if amp.is_some() {
-                ParamMode::Borrow
-            } else {
-                ParamMode::Consume
-            },
-            span: to_span(e.span()),
-        })
-        .validate(|p, e, emitter| {
-            if p.mode == ParamMode::Borrow
-                && !matches!(p.ty, Some(TypeExpr::Own { .. }))
-            {
-                emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
-            }
-            p
-        });
+            ))
+            .then(ty.clone())
+            .map_with(|((amp, name), ty_ann), e| Param {
+                name,
+                ty: Some(ty_ann),
+                mode: if amp.is_some() {
+                    ParamMode::Borrow
+                } else {
+                    ParamMode::Consume
+                },
+                span: to_span(e.span()),
+            })
+            .validate(|p, e, emitter| {
+                if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
+                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+                }
+                p
+            });
 
     let trait_method = symbol(Token::Pub)
         .map_with(|_, e| Some(to_span(e.span())))
@@ -1339,19 +1342,21 @@ where
         )
         .map_with(|names, e| (names, to_span(e.span())));
 
-    let trait_superclasses = where_clause_parser()
-        .then(old_superclass_syntax.or_not());
+    let trait_superclasses = where_clause_parser().then(old_superclass_syntax.or_not());
 
     let trait_decl = platform_attr
         .clone()
         .then(vis.clone())
         .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
-        .then(type_param.clone()
-            .separated_by(symbol(Token::Comma))
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)))
+        .then(
+            type_param
+                .clone()
+                .separated_by(symbol(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LBracket), closing_symbol(Token::RBracket)),
+        )
         .then(trait_superclasses)
         .then(
             trait_method
@@ -1362,7 +1367,11 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, visibility), name), type_params), (where_constraints, old_syntax)), method_pairs), e| {
+            |(
+                ((((platform, visibility), name), type_params), (where_constraints, old_syntax)),
+                method_pairs,
+            ),
+             e| {
                 let mut methods = Vec::with_capacity(method_pairs.len());
                 let mut warnings = Vec::new();
                 for (method, warning) in method_pairs {
@@ -1463,7 +1472,8 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, type_params), trait_name), type_args), type_constraints), methods), e| {
+            |(((((platform, type_params), trait_name), type_args), type_constraints), methods),
+             e| {
                 Decl::DefImpl {
                     platform,
                     trait_name,
@@ -1547,8 +1557,8 @@ where
         Token::Ident(s) => s.to_string(),
         Token::Self_ => "self".to_string(),
     }
-        .then_ignore(symbol(Token::Colon))
-        .then(ty.clone());
+    .then_ignore(symbol(Token::Colon))
+    .then(ty.clone());
 
     let extern_params = extern_param
         .separated_by(symbol(Token::Comma))
@@ -1601,7 +1611,16 @@ where
         .then(extern_where_clause)
         .map_with(
             |(
-                ((((((nullable, throws, instance, constructor), pub_opt), name), method_type_params), params), return_type),
+                (
+                    (
+                        (
+                            (((nullable, throws, instance, constructor), pub_opt), name),
+                            method_type_params,
+                        ),
+                        params,
+                    ),
+                    return_type,
+                ),
                 where_clauses,
             ),
              e| ExternMethod {
@@ -1642,13 +1661,14 @@ where
                 .ignore_then(select! { Token::Ident(s) => s.to_string() })
                 .then(extern_type_params.clone())
                 .map(|(name, params)| (true, false, name, params))
-            .or(
-                // as [pub] Name[params] (existing extern type)
-                symbol(Token::Pub).or_not()
-                    .then(select! { Token::Ident(s) => s.to_string() })
-                    .then(extern_type_params)
-                    .map(|((pub_opt, name), params)| (false, pub_opt.is_some(), name, params))
-            )
+                .or(
+                    // as [pub] Name[params] (existing extern type)
+                    symbol(Token::Pub)
+                        .or_not()
+                        .then(select! { Token::Ident(s) => s.to_string() })
+                        .then(extern_type_params)
+                        .map(|((pub_opt, name), params)| (false, pub_opt.is_some(), name, params)),
+                ),
         )
         .or_not();
 
@@ -1665,30 +1685,32 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
-        .map_with(|((((platform, target), module_path), as_clause), methods), e| {
-            let (is_trait, alias, alias_visibility, type_params) = match as_clause {
-                Some((is_trait, is_pub, name, params)) => {
-                    let vis = if !is_trait && is_pub {
-                        Visibility::Pub
-                    } else {
-                        Visibility::Private
-                    };
-                    (is_trait, Some(name), Some(vis), params)
+        .map_with(
+            |((((platform, target), module_path), as_clause), methods), e| {
+                let (is_trait, alias, alias_visibility, type_params) = match as_clause {
+                    Some((is_trait, is_pub, name, params)) => {
+                        let vis = if !is_trait && is_pub {
+                            Visibility::Pub
+                        } else {
+                            Visibility::Private
+                        };
+                        (is_trait, Some(name), Some(vis), params)
+                    }
+                    None => (false, None, None, vec![]),
+                };
+                Decl::Extern {
+                    platform,
+                    target,
+                    module_path,
+                    alias,
+                    alias_visibility,
+                    is_trait,
+                    type_params,
+                    methods,
+                    span: to_span(e.span()),
                 }
-                None => (false, None, None, vec![]),
-            };
-            Decl::Extern {
-                platform,
-                target,
-                module_path,
-                alias,
-                alias_visibility,
-                is_trait,
-                type_params,
-                methods,
-                span: to_span(e.span()),
-            }
-        });
+            },
+        );
 
     // --- Combined ---
     // pub_import_decl must come before fun_decl since both start with `pub`

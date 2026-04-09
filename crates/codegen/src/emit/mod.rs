@@ -149,14 +149,18 @@ pub fn compile_modules(
         let view = link_ctx
             .view_for(&ModulePath::new(ir_module.module_path.as_str()))
             .unwrap_or_else(|| {
-                panic!("ICE: no LinkContext view for module '{}'", ir_module.module_path)
+                panic!(
+                    "ICE: no LinkContext view for module '{}'",
+                    ir_module.module_path
+                )
             });
-        let classes = compile_module_inner(ir_module, class_name, is_entry, &view).map_err(|e| {
-            if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
-                return e.with_source(ir_module.module_path.as_str().to_string(), s.clone());
-            }
-            e
-        })?;
+        let classes =
+            compile_module_inner(ir_module, class_name, is_entry, &view).map_err(|e| {
+                if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
+                    return e.with_source(ir_module.module_path.as_str().to_string(), s.clone());
+                }
+                e
+            })?;
         all_classes.extend(classes);
     }
 
@@ -191,10 +195,9 @@ fn compile_module_inner(
     result_classes.extend(compiler.register_sum_types_ir(ir_module)?);
 
     // Phase 2: Register FunN interfaces, Vec, tuples, traits, and instances
-    compiler.lambda.preregister_fun_interfaces(
-        &mut compiler.cp,
-        &mut compiler.types.class_descriptors,
-    )?;
+    compiler
+        .lambda
+        .preregister_fun_interfaces(&mut compiler.cp, &mut compiler.types.class_descriptors)?;
     compiler.register_fun_interfaces_ir(ir_module)?;
     compiler.register_vec()?;
     compiler.register_tuples_ir(ir_module)?;
@@ -243,7 +246,9 @@ fn build_instance_class_map(
         }
         let class_name = format!(
             "{}/{}$${}",
-            ir_module.module_path.as_str(), inst.trait_name.local_name, inst.target_type_name
+            ir_module.module_path.as_str(),
+            inst.trait_name.local_name,
+            inst.target_type_name
         );
         let requirements: Vec<DictRequirement> = inst
             .sub_dict_requirements
@@ -265,7 +270,9 @@ fn build_instance_class_map(
 
     // Imported instances from link view
     for (path, inst) in link_view.all_instances() {
-        if path.as_str() == ir_module.module_path.as_str() { continue; }
+        if path.as_str() == ir_module.module_path.as_str() {
+            continue;
+        }
         if inst.is_intrinsic {
             continue;
         }
@@ -277,14 +284,12 @@ fn build_instance_class_map(
         }
         let class_name = format!(
             "{}/{}$${}",
-            path.as_str(), inst.trait_name.local_name, inst.target_type_name
+            path.as_str(),
+            inst.trait_name.local_name,
+            inst.target_type_name
         );
-        let target_types: Vec<krypton_ir::Type> = inst
-            .target_types
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect();
+        let target_types: Vec<krypton_ir::Type> =
+            inst.target_types.iter().cloned().map(Into::into).collect();
         let requirements: Vec<DictRequirement> = inst
             .constraints
             .iter()

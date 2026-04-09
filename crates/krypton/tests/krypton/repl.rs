@@ -54,10 +54,7 @@ fn test_eval_bare_int() {
 fn test_eval_bare_expr() {
     let (stdout, stderr, success) = run_repl_with_input("1 + 2\n");
     assert!(success, "REPL should exit cleanly. stderr: {stderr}");
-    assert!(
-        stdout.contains("3"),
-        "Should evaluate 1 + 2 = 3: {stdout}"
-    );
+    assert!(stdout.contains("3"), "Should evaluate 1 + 2 = 3: {stdout}");
 }
 
 #[test]
@@ -72,13 +69,9 @@ fn test_let_binding_and_use() {
 
 #[test]
 fn test_fun_def_and_call() {
-    let (stdout, stderr, success) =
-        run_repl_with_input("fun inc(x: Int) -> Int = x + 1\ninc(5)\n");
+    let (stdout, stderr, success) = run_repl_with_input("fun inc(x: Int) -> Int = x + 1\ninc(5)\n");
     assert!(success, "REPL should exit cleanly. stderr: {stderr}");
-    assert!(
-        stdout.contains("6"),
-        "Should evaluate inc(5) = 6: {stdout}"
-    );
+    assert!(stdout.contains("6"), "Should evaluate inc(5) = 6: {stdout}");
 }
 
 #[test]
@@ -91,14 +84,8 @@ fn test_quit_exits_cleanly() {
 fn test_help_output() {
     let (stdout, _, success) = run_repl_with_input(":help\n");
     assert!(success);
-    assert!(
-        stdout.contains(":quit"),
-        "Help should list :quit: {stdout}"
-    );
-    assert!(
-        stdout.contains(":help"),
-        "Help should list :help: {stdout}"
-    );
+    assert!(stdout.contains(":quit"), "Help should list :quit: {stdout}");
+    assert!(stdout.contains(":help"), "Help should list :help: {stdout}");
     assert!(
         stdout.contains(":reset"),
         "Help should list :reset: {stdout}"

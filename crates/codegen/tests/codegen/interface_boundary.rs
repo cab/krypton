@@ -16,11 +16,7 @@ fn codegen_does_not_import_typed_module() {
     );
 }
 
-fn collect_violations(
-    dir: &std::path::Path,
-    base: &std::path::Path,
-    violations: &mut Vec<String>,
-) {
+fn collect_violations(dir: &std::path::Path, base: &std::path::Path, violations: &mut Vec<String>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,

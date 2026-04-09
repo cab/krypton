@@ -78,7 +78,9 @@ mod tests {
         let qualified_sum_type_names = std::collections::HashSet::new();
         let registry = crate::emit::build_registry_for_modules(&[module]);
         let link_ctx = test_link_ctx(module.module_path.as_str());
-        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
+        let view = link_ctx
+            .view_for(&LinkModulePath::new(module.module_path.as_str()))
+            .unwrap();
         let mut emitter = crate::emit::JsEmitter::new(
             module,
             false,
@@ -129,7 +131,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "add".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "add".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(js.contains("export function add("), "should export add fn");
@@ -306,7 +313,12 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "filter".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "filter".to_string(),
+            },
+        );
         module.imported_fns.push(ImportedFnDef {
             id: FnId(1),
             name: "list_filter".to_string(),
@@ -315,7 +327,12 @@ mod tests {
             param_types: vec![],
             return_type: Type::Unit,
         });
-        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "list_filter".to_string() });
+        module.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "list_filter".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -383,7 +400,12 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "combine".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "combine".to_string(),
+            },
+        );
         module.imported_fns.push(ImportedFnDef {
             id: FnId(0), // same FnId — IR lowerer reuses it
             name: "combine".to_string(),
@@ -409,7 +431,9 @@ mod tests {
         let registry = crate::emit::build_registry_for_modules(&[&module]);
         let suspend = crate::suspend::SuspendSummary::empty();
         let link_ctx = test_link_ctx(module.module_path.as_str());
-        let view = link_ctx.view_for(&LinkModulePath::new(module.module_path.as_str())).unwrap();
+        let view = link_ctx
+            .view_for(&LinkModulePath::new(module.module_path.as_str()))
+            .unwrap();
         let mut emitter = crate::emit::JsEmitter::new(
             &module,
             false,
@@ -441,7 +465,12 @@ mod tests {
             return_type: Type::Int,
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "answer".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "answer".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -463,7 +492,12 @@ mod tests {
                 ExprKind::Atom(Atom::Lit(Literal::String("hello".to_string()))),
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "greeting".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "greeting".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -482,7 +516,12 @@ mod tests {
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "yes".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "yes".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -501,7 +540,12 @@ mod tests {
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "noop".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "noop".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -578,7 +622,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -607,7 +656,12 @@ mod tests {
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
         });
-        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
+        module.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "Eq$$Point$$eq".to_string(),
+            },
+        );
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_types: vec![Type::Named("Point".to_string(), vec![])],
@@ -659,7 +713,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -709,7 +768,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -723,7 +787,12 @@ mod tests {
         use krypton_ir::{FnId, Type, VarId};
         let mut module = make_module("test");
         let panic_fn = FnId(99);
-        module.fn_identities.insert(panic_fn, FnIdentity::Local { name: "panic".to_string() });
+        module.fn_identities.insert(
+            panic_fn,
+            FnIdentity::Local {
+                name: "panic".to_string(),
+            },
+        );
         let msg = VarId(0);
         let r = VarId(1);
         module.functions.push(FnDef {
@@ -744,7 +813,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -774,7 +848,12 @@ mod tests {
                 krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
             ),
         });
-        module.fn_identities.insert(FnId(1), FnIdentity::Local { name: "Eq$$Point$$eq".to_string() });
+        module.fn_identities.insert(
+            FnId(1),
+            FnIdentity::Local {
+                name: "Eq$$Point$$eq".to_string(),
+            },
+        );
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_types: vec![Type::Named("Point".to_string(), vec![])],
@@ -831,9 +910,12 @@ mod tests {
                 ))),
             ),
         });
-        module
-            .fn_identities
-            .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
+        module.fn_identities.insert(
+            FnId(2),
+            FnIdentity::Local {
+                name: "Show$$Option$$show".to_string(),
+            },
+        );
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
             target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
@@ -895,7 +977,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -921,7 +1008,12 @@ mod tests {
                 krypton_ir::ExprKind::Atom(krypton_ir::Atom::Lit(krypton_ir::Literal::Bool(true))),
             ),
         });
-        module.fn_identities.insert(FnId(2), FnIdentity::Local { name: "Eq$$Pair$$eq".to_string() });
+        module.fn_identities.insert(
+            FnId(2),
+            FnIdentity::Local {
+                name: "Eq$$Pair$$eq".to_string(),
+            },
+        );
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Eq"),
             target_types: vec![Type::Tuple(vec![Type::Var(tv), Type::Var(tv)])],
@@ -958,7 +1050,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let panic = std::panic::catch_unwind(|| emit_module(&module))
             .expect_err("mismatched repeated type vars should ICE");
@@ -993,9 +1090,12 @@ mod tests {
                 ))),
             ),
         });
-        module
-            .fn_identities
-            .insert(FnId(2), FnIdentity::Local { name: "Show$$Option$$show".to_string() });
+        module.fn_identities.insert(
+            FnId(2),
+            FnIdentity::Local {
+                name: "Show$$Option$$show".to_string(),
+            },
+        );
         module.instances.push(InstanceDef {
             trait_name: make_trait_name("Show"),
             target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
@@ -1032,7 +1132,12 @@ mod tests {
                 },
             ),
         });
-        module.fn_identities.insert(FnId(0), FnIdentity::Local { name: "test_fn".to_string() });
+        module.fn_identities.insert(
+            FnId(0),
+            FnIdentity::Local {
+                name: "test_fn".to_string(),
+            },
+        );
 
         let js = emit_module(&module);
         assert!(
@@ -1212,7 +1317,10 @@ mod tests {
         // app/main should suspend (calls imported receive)
         assert!(suspend.fn_suspends(1, FnId(2)), "main should suspend");
         // app/non_suspending should not
-        assert!(!suspend.fn_suspends(1, FnId(1)), "non_suspending should not suspend");
+        assert!(
+            !suspend.fn_suspends(1, FnId(1)),
+            "non_suspending should not suspend"
+        );
 
         // Emit app module
         let app = &modules[1];
@@ -1379,8 +1487,14 @@ mod tests {
         let modules = vec![actor_mod, app_mod];
         let suspend = crate::suspend::analyze_suspend(&modules);
 
-        assert!(suspend.fn_suspends(1, FnId(1)), "suspending_fn should suspend");
-        assert!(suspend.fn_suspends(1, FnId(2)), "wrapper should suspend (closure calls suspending fn)");
+        assert!(
+            suspend.fn_suspends(1, FnId(1)),
+            "suspending_fn should suspend"
+        );
+        assert!(
+            suspend.fn_suspends(1, FnId(2)),
+            "wrapper should suspend (closure calls suspending fn)"
+        );
 
         let app = &modules[1];
         let js = emit_module_with_suspend(app, 1, &suspend);
