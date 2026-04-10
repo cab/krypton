@@ -496,7 +496,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 if let Some(param_ty) = fn_param_types.get(i) {
                     // Borrow-mode params (`&~T`) do not transfer ownership to
                     // the function; the caller still owns the value. Skip them.
-                    if param.mode == ParamMode::Borrow {
+                    if matches!(param.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
                         continue;
                     }
                     // Self-skip: inside an `impl Disposable[T] { fun dispose(...) }`,

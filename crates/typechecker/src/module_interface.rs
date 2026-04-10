@@ -702,6 +702,9 @@ pub fn display_interface(iface: &ModuleInterface) -> String {
                         (crate::types::ParamMode::Borrow, Type::Own(inner)) => {
                             format!("&~{inner}")
                         }
+                        (crate::types::ParamMode::ObservationalBorrow, _) => {
+                            format!("&{p}")
+                        }
                         _ => format!("{p}"),
                     })
                     .collect::<Vec<_>>()

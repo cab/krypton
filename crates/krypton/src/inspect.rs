@@ -33,6 +33,9 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
                     (krypton_typechecker::types::ParamMode::Borrow, Type::Own(inner)) => {
                         format!("&~{}", type_to_source(inner, var_names))
                     }
+                    (krypton_typechecker::types::ParamMode::ObservationalBorrow, _) => {
+                        format!("&{}", type_to_source(p, var_names))
+                    }
                     _ => type_to_source(p, var_names),
                 })
                 .collect();
@@ -154,7 +157,7 @@ impl<'a> TypedFormatter<'a> {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            if param.mode == krypton_typechecker::types::ParamMode::Borrow {
+            if matches!(param.mode, krypton_typechecker::types::ParamMode::Borrow | krypton_typechecker::types::ParamMode::ObservationalBorrow) {
                 self.buf.push('&');
             }
             self.buf.push_str(&param.name);
@@ -206,7 +209,7 @@ impl<'a> TypedFormatter<'a> {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            if param.mode == krypton_typechecker::types::ParamMode::Borrow {
+            if matches!(param.mode, krypton_typechecker::types::ParamMode::Borrow | krypton_typechecker::types::ParamMode::ObservationalBorrow) {
                 self.buf.push('&');
             }
             self.buf.push_str(&param.name);
@@ -792,7 +795,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
                 .iter()
                 .map(|p| {
                     let inner = fmt_type_expr_source(&p.ty);
-                    if p.mode == ParamMode::Borrow {
+                    if matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
                         format!("&{}", inner)
                     } else {
                         inner

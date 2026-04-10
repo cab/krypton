@@ -280,6 +280,7 @@ impl fmt::Display for Type {
                             debug_assert!(false, "borrow slot must wrap an Own type, got {:?}", p);
                             write!(f, "&{}", p)?;
                         }
+                        (ParamMode::ObservationalBorrow, _) => write!(f, "&{}", p)?,
                         (ParamMode::Consume, _) => write!(f, "{}", p)?,
                     }
                 }
@@ -511,6 +512,9 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
                     }
                     (ParamMode::Borrow, _) => {
                         debug_assert!(false, "borrow slot must wrap an Own type, got {:?}", p);
+                        format!("&{}", format_type_impl(p, names))
+                    }
+                    (ParamMode::ObservationalBorrow, _) => {
                         format!("&{}", format_type_impl(p, names))
                     }
                     (ParamMode::Consume, _) => format_type_impl(p, names),

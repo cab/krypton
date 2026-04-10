@@ -11,6 +11,7 @@ fn mode_label(m: ParamMode) -> &'static str {
     match m {
         ParamMode::Consume => "consume (`~T`)",
         ParamMode::Borrow => "borrow (`&~T`)",
+        ParamMode::ObservationalBorrow => "observational borrow (`&T`)",
     }
 }
 

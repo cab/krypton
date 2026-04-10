@@ -108,20 +108,10 @@ fn test_pub_opaque_on_type_still_works() {
 }
 
 #[test]
-fn test_p0006_borrow_requires_owned() {
+fn test_observational_borrow_no_error() {
     let source = "fun read(&r: File) -> Int = 0";
     let (_module, errors) = parse(source);
-    assert!(!errors.is_empty(), "expected at least one error");
-    assert!(
-        errors.iter().any(|e| e.code == ErrorCode::P0006),
-        "expected P0006 error, got: {errors:?}"
-    );
-    assert!(
-        errors.iter().any(|e| e
-            .message
-            .contains("borrow mode requires an owned parameter type")),
-        "expected helpful message, got: {errors:?}"
-    );
+    assert!(errors.is_empty(), "expected no errors for observational borrow, got: {errors:?}");
 }
 
 #[test]

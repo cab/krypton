@@ -132,6 +132,7 @@ pub struct FnDecl {
 pub enum ParamMode {
     Consume,
     Borrow,
+    ObservationalBorrow,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

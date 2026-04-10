@@ -983,6 +983,61 @@ fn fn_type_borrow_slot_ast_shape() {
 }
 
 #[test]
+fn roundtrip_observational_borrow_param() {
+    let src = r#"fun show(&s: String) -> String = """#;
+    assert_surface_roundtrip(src);
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.params[0].mode, ParamMode::ObservationalBorrow);
+}
+
+#[test]
+fn roundtrip_observational_borrow_multi() {
+    let src = "fun eq(&x: Int, &y: Int) -> Bool = true";
+    assert_surface_roundtrip(src);
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.params[0].mode, ParamMode::ObservationalBorrow);
+    assert_eq!(f.params[1].mode, ParamMode::ObservationalBorrow);
+}
+
+#[test]
+fn borrow_param_still_borrow() {
+    let src = "fun read(&r: ~File) -> Int = 0";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.params[0].mode, ParamMode::Borrow);
+}
+
+#[test]
+fn fn_type_observational_borrow_slot() {
+    let src = "fun apply(f: (&String) -> Int) -> Int = 0";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    let Some(TypeExpr::Fn { params, .. }) = &f.params[0].ty else {
+        panic!("expected Fn type");
+    };
+    assert_eq!(params[0].mode, ParamMode::ObservationalBorrow);
+}
+
+#[test]
+fn fn_type_observational_borrow_roundtrip() {
+    assert_surface_roundtrip("fun apply(f: (&String) -> Int) -> Int = 0");
+}
+
+#[test]
 fn roundtrip_fn_type_all_consume() {
     assert_surface_roundtrip("fun apply(f: (Int, String) -> Bool) -> Bool = true");
 }

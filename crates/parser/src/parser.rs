@@ -52,9 +52,6 @@ fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
 }
 
-const BORROW_REQUIRES_OWNED: &str =
-    "borrow mode requires an owned parameter type: write '&name: ~T'";
-
 const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
 
 fn is_uppercase(s: &str) -> bool {
@@ -102,24 +99,22 @@ where
                 span: to_span(e.span()),
             });
 
-        // Function-type parameter slot: optional `&` then a type. Borrow mode
-        // is permitted only when the inner type is `~T`.
+        // Function-type parameter slot: optional `&` then a type.
+        // `&~T` → Borrow, `&T` → ObservationalBorrow, no `&` → Consume.
         let fn_type_slot = symbol(Token::Amp)
             .or_not()
             .then(ty.clone())
             .map(|(amp, ty)| FnTypeParam {
                 mode: if amp.is_some() {
-                    ParamMode::Borrow
+                    if matches!(ty, TypeExpr::Own { .. }) {
+                        ParamMode::Borrow
+                    } else {
+                        ParamMode::ObservationalBorrow
+                    }
                 } else {
                     ParamMode::Consume
                 },
                 ty,
-            })
-            .validate(|p, e, emitter| {
-                if p.mode == ParamMode::Borrow && !matches!(p.ty, TypeExpr::Own { .. }) {
-                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
-                }
-                p
             });
 
         // Parenthesized: tuple type or fn type or grouping
@@ -134,7 +129,7 @@ where
             .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .then(symbol(Token::Arrow).ignore_then(ty.clone()).or_not())
             .validate(|(params, ret), e, emitter| {
-                if ret.is_none() && params.iter().any(|p| p.mode == ParamMode::Borrow) {
+                if ret.is_none() && params.iter().any(|p| matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow)) {
                     emitter.emit(Rich::custom(e.span(), SLOT_NOT_A_TYPE.to_string()));
                 }
                 (params, ret)
@@ -565,21 +560,22 @@ where
             .or_not()
             .then(select! { Token::Ident(s) => s.to_string() })
             .then(symbol(Token::Colon).ignore_then(ty.clone()).or_not())
-            .map_with(|((amp, name), ty_ann), e| Param {
-                name,
-                ty: ty_ann,
-                mode: if amp.is_some() {
-                    ParamMode::Borrow
+            .map_with(|((amp, name), ty_ann), e| {
+                let mode = if amp.is_some() {
+                    if matches!(ty_ann, Some(TypeExpr::Own { .. })) {
+                        ParamMode::Borrow
+                    } else {
+                        ParamMode::ObservationalBorrow
+                    }
                 } else {
                     ParamMode::Consume
-                },
-                span: to_span(e.span()),
-            })
-            .validate(|p, e, emitter| {
-                if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
-                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+                };
+                Param {
+                    name,
+                    ty: ty_ann,
+                    mode,
+                    span: to_span(e.span()),
                 }
-                p
             });
 
         // Zero-arg lambda: () -> body
@@ -1080,26 +1076,28 @@ where
     let where_clause = where_clause_parser();
 
     // --- Param: [&]name or [&]name: Type ---
-    // A leading `&` opts the parameter into borrow mode and requires `~T`.
+    // A leading `&` opts the parameter into borrow mode.
+    // `&name: ~T` → Borrow, `&name: T` → ObservationalBorrow, no `&` → Consume.
     let param = symbol(Token::Amp)
         .or_not()
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(symbol(Token::Colon).ignore_then(ty.clone()).or_not())
-        .map_with(|((amp, name), ty_ann), e| Param {
-            name,
-            ty: ty_ann,
-            mode: if amp.is_some() {
-                ParamMode::Borrow
+        .map_with(|((amp, name), ty_ann), e| {
+            let mode = if amp.is_some() {
+                if matches!(ty_ann, Some(TypeExpr::Own { .. })) {
+                    ParamMode::Borrow
+                } else {
+                    ParamMode::ObservationalBorrow
+                }
             } else {
                 ParamMode::Consume
-            },
-            span: to_span(e.span()),
-        })
-        .validate(|p, e, emitter| {
-            if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
-                emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+            };
+            Param {
+                name,
+                ty: ty_ann,
+                mode,
+                span: to_span(e.span()),
             }
-            p
         });
 
     // --- Type params: [a, f[_], g[_, _]] ---
@@ -1266,21 +1264,22 @@ where
                 "type annotation — trait method parameters require types, e.g. (x: a, y: a)",
             ))
             .then(ty.clone())
-            .map_with(|((amp, name), ty_ann), e| Param {
-                name,
-                ty: Some(ty_ann),
-                mode: if amp.is_some() {
-                    ParamMode::Borrow
+            .map_with(|((amp, name), ty_ann), e| {
+                let mode = if amp.is_some() {
+                    if matches!(ty_ann, TypeExpr::Own { .. }) {
+                        ParamMode::Borrow
+                    } else {
+                        ParamMode::ObservationalBorrow
+                    }
                 } else {
                     ParamMode::Consume
-                },
-                span: to_span(e.span()),
-            })
-            .validate(|p, e, emitter| {
-                if p.mode == ParamMode::Borrow && !matches!(p.ty, Some(TypeExpr::Own { .. })) {
-                    emitter.emit(Rich::custom(e.span(), BORROW_REQUIRES_OWNED.to_string()));
+                };
+                Param {
+                    name,
+                    ty: Some(ty_ann),
+                    mode,
+                    span: to_span(e.span()),
                 }
-                p
             });
 
     let trait_method = symbol(Token::Pub)
@@ -1751,9 +1750,7 @@ where
 
 fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
     match e.reason() {
-        chumsky::error::RichReason::Custom(msg)
-            if msg == BORROW_REQUIRES_OWNED || msg == SLOT_NOT_A_TYPE =>
-        {
+        chumsky::error::RichReason::Custom(msg) if msg == SLOT_NOT_A_TYPE => {
             return ErrorCode::P0006;
         }
         chumsky::error::RichReason::ExpectedFound { expected, found } => {

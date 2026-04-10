@@ -176,7 +176,7 @@ impl<'a> Formatter<'a> {
     }
 
     fn fmt_param(&mut self, p: &Param) {
-        if p.mode == ParamMode::Borrow {
+        if matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
             self.buf.push('&');
         }
         self.buf.push_str(&p.name);
@@ -213,7 +213,7 @@ impl<'a> Formatter<'a> {
                     if i > 0 {
                         self.buf.push_str(", ");
                     }
-                    if p.mode == ParamMode::Borrow {
+                    if matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
                         self.buf.push('&');
                     }
                     self.fmt_type_expr(&p.ty);
