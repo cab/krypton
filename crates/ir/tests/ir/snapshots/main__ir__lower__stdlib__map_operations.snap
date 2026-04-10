@@ -5,28 +5,28 @@ expression: ir_module.to_string()
 module stdlib__map_operations
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/map/empty as empty() -> Map[b9, c9]
-import core/map/put as put(Map[f9, g9], f9, g9) -> Map[f9, g9]
-import core/map/delete as delete(Map[c10, d10], c10) -> Map[c10, d10]
-import core/map/contains as contains(Map[k10, l10], k10) -> Bool
-import core/map/size as size(Map[g13, h13]) -> Int
-declare contains: (Map[k10, l10], k10) -> Bool
-declare delete: (Map[c10, d10], c10) -> Map[c10, d10]
-declare empty: () -> Map[b9, c9]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[j9, k9], j9, k9) -> Map[j9, k9]
+import core/map/delete as delete(Map[f10, g10], f10) -> Map[f10, g10]
+import core/map/contains as contains(Map[j10, k10], j10) -> Bool
+import core/map/size as size(Map[e13, f13]) -> Int
+declare contains: (Map[j10, k10], j10) -> Bool
+declare delete: (Map[f10, g10], f10) -> Map[f10, g10]
+declare empty: () -> Map[a9, b9]
 declare println: (h) -> Unit
-declare put: (Map[f9, g9], f9, g9) -> Map[f9, g9]
-declare size: (Map[g13, h13]) -> Int
+declare put: (Map[j9, k9], j9, k9) -> Map[j9, k9]
+declare size: (Map[e13, f13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

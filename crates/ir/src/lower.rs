@@ -7136,6 +7136,7 @@ fn resolve_type_expr_simple(
         TypeExpr::Own { inner, .. } => {
             Type::Own(Box::new(resolve_type_expr_simple(inner, type_param_map)))
         }
+        TypeExpr::Shape { inner, .. } => resolve_type_expr_simple(inner, type_param_map),
         TypeExpr::Tuple { elements, .. } => {
             let elem_types: Vec<Type> = elements
                 .iter()

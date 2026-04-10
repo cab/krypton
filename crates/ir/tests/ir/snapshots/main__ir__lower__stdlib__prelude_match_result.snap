@@ -5,18 +5,18 @@ expression: ir_module.to_string()
 module stdlib__prelude_match_result
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn handle(v0: Result[p8, Int]) -> Int =
+fn handle(v0: Result[o8, Int]) -> Int =
   switch v0 {
     0 (v1: Int) ->
       v1
@@ -25,6 +25,6 @@ fn handle(v0: Result[p8, Int]) -> Int =
   }
 
 fn main() -> Int =
-  let v3: ~Result[u8, Int] = construct Result::Ok#0(10)
+  let v3: Result[t8, Int] = construct Result::Ok#0(10)
   let v4: Int = call handle(v3)
   v4

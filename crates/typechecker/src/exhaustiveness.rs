@@ -256,6 +256,9 @@ fn substitute_type_params(
         Type::Own(inner) => Type::Own(Box::new(substitute_type_params(
             inner, param_vars, type_args,
         ))),
+        Type::Shape(inner) => Type::Shape(Box::new(substitute_type_params(
+            inner, param_vars, type_args,
+        ))),
         Type::MaybeOwn(q, inner) => Type::MaybeOwn(
             *q,
             Box::new(substitute_type_params(inner, param_vars, type_args)),

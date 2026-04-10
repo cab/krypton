@@ -411,6 +411,10 @@ fn zero_spans_type_expr(ty: &TypeExpr) -> TypeExpr {
             inner: Box::new(zero_spans_type_expr(inner)),
             span: (0, 0),
         },
+        TypeExpr::Shape { inner, .. } => TypeExpr::Shape {
+            inner: Box::new(zero_spans_type_expr(inner)),
+            span: (0, 0),
+        },
         TypeExpr::Tuple { elements, .. } => TypeExpr::Tuple {
             elements: elements.iter().map(zero_spans_type_expr).collect(),
             span: (0, 0),

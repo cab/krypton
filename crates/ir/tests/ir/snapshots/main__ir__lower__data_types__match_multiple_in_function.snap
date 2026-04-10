@@ -6,12 +6,12 @@ module data_types__match_multiple_in_function
 
 type Option[a] = Some#0(a) | None#1
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -34,7 +34,7 @@ fn main() -> Unit =
           let v19: Unit = call println(v18, v15)
           v19
         in
-        let v16: ~Option[Int] = construct Option::Some#0(4)
+        let v16: Option[Int] = construct Option::Some#0(4)
         switch v16 {
           0 (v17: Int) ->
             jump v20(v17)
@@ -42,7 +42,7 @@ fn main() -> Unit =
             jump v20(0)
         }
       in
-      let v11: ~Option[Int] = construct Option::Some#0(3)
+      let v11: Option[Int] = construct Option::Some#0(3)
       switch v11 {
         0 (v12: Int) ->
           jump v21(v12)
@@ -50,7 +50,7 @@ fn main() -> Unit =
           jump v21(0)
       }
     in
-    let v6: ~Option[Int] = construct Option::Some#0(2)
+    let v6: Option[Int] = construct Option::Some#0(2)
     switch v6 {
       0 (v7: Int) ->
         jump v22(v7)
@@ -58,7 +58,7 @@ fn main() -> Unit =
         jump v22(0)
     }
   in
-  let v1: ~Option[Int] = construct Option::Some#0(1)
+  let v1: Option[Int] = construct Option::Some#0(1)
   switch v1 {
     0 (v2: Int) ->
       jump v23(v2)

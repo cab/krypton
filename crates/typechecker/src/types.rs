@@ -71,6 +71,10 @@ pub enum Type {
     /// e.g., `f[a]` when `f` is a higher-kinded type variable.
     App(Box<Type>, Vec<Type>),
     Own(Box<Type>),
+    /// Ownership-polymorphic wrapper: `shape T` resolves to `~T` if `T` (after
+    /// substitution) transitively contains `Own`; otherwise resolves to plain `T`.
+    /// Evaluation is deferred until substitution resolves the inner type.
+    Shape(Box<Type>),
     /// Deferred ownership: either `~T` or `T` depending on qualifier resolution.
     /// Created when `~T` meets an unbound type variable in a bare (non-constructor) position.
     /// Resolved by `Substitution::apply` once the qualifier state is decided.
@@ -165,6 +169,96 @@ pub fn decompose_fn_for_app(
     Some((ctor, remaining))
 }
 
+/// Check if a type syntactically contains `Own` anywhere (no registry lookup).
+fn type_contains_own_syntactic(ty: &Type) -> bool {
+    match ty {
+        Type::Own(_) => true,
+        Type::Named(_, args) => args.iter().any(type_contains_own_syntactic),
+        Type::Tuple(elems) => elems.iter().any(type_contains_own_syntactic),
+        Type::Fn(params, ret) => {
+            params
+                .iter()
+                .any(|(_, p)| type_contains_own_syntactic(p))
+                || type_contains_own_syntactic(ret)
+        }
+        Type::App(ctor, args) => {
+            type_contains_own_syntactic(ctor) || args.iter().any(type_contains_own_syntactic)
+        }
+        _ => false,
+    }
+}
+
+/// Check if a type still contains unresolved type variables.
+fn contains_unresolved_var(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Shape(inner) => contains_unresolved_var(inner),
+        Type::Own(inner) => contains_unresolved_var(inner),
+        Type::MaybeOwn(_, inner) => contains_unresolved_var(inner),
+        Type::Named(_, args) | Type::App(_, args) => args.iter().any(contains_unresolved_var),
+        Type::Tuple(elems) => elems.iter().any(contains_unresolved_var),
+        Type::Fn(params, ret) => {
+            params.iter().any(|(_, p)| contains_unresolved_var(p)) || contains_unresolved_var(ret)
+        }
+        _ => false,
+    }
+}
+
+/// Check if a type is a compound type (Named with args, Tuple, Fn).
+fn is_compound(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Named(_, args) if !args.is_empty()
+    ) || matches!(ty, Type::Tuple(_) | Type::Fn(_, _))
+}
+
+/// Bottom-up lifting for compound type arguments that contain Own.
+/// Walks into `Named(name, args)` and wraps each compound arg that contains Own.
+fn lift_compounds(ty: Type) -> Type {
+    match ty {
+        Type::Named(name, args) => {
+            let new_args: Vec<Type> = args
+                .into_iter()
+                .map(|a| {
+                    let lifted = lift_compounds(a);
+                    if is_compound(&lifted) && type_contains_own_syntactic(&lifted) {
+                        match lifted {
+                            Type::Own(_) => lifted,
+                            _ => Type::Own(Box::new(lifted)),
+                        }
+                    } else {
+                        lifted
+                    }
+                })
+                .collect();
+            Type::Named(name, new_args)
+        }
+        Type::Tuple(elems) => {
+            Type::Tuple(elems.into_iter().map(lift_compounds).collect())
+        }
+        other => other,
+    }
+}
+
+/// Evaluate `shape T`: if `T` (after substitution) contains `Own` transitively,
+/// wrap in `~T`; otherwise return plain `T`. Compound type arguments are
+/// individually lifted bottom-up before the outer check.
+/// If `T` still contains unresolved type variables, keep the `Shape` wrapper.
+fn evaluate_shape(ty: Type) -> Type {
+    if contains_unresolved_var(&ty) {
+        return Type::Shape(Box::new(ty));
+    }
+    let lifted = lift_compounds(ty);
+    if type_contains_own_syntactic(&lifted) {
+        match lifted {
+            Type::Own(_) => lifted,
+            _ => Type::Own(Box::new(lifted)),
+        }
+    } else {
+        lifted
+    }
+}
+
 impl Type {
     /// Re-letter type variables to sequential a, b, c, ... based on first-appearance order.
     /// Preserves identity: same original var → same new letter throughout.
@@ -202,6 +296,7 @@ impl Type {
                     .collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.renumber_inner(mapping, next_id))),
+            Type::Shape(inner) => Type::Shape(Box::new(inner.renumber_inner(mapping, next_id))),
             Type::MaybeOwn(q, inner) => {
                 Type::MaybeOwn(*q, Box::new(inner.renumber_inner(mapping, next_id)))
             }
@@ -237,6 +332,7 @@ impl Type {
                 args.iter().map(|a| a.remap_vars(mapping)).collect(),
             ),
             Type::Own(inner) => Type::Own(Box::new(inner.remap_vars(mapping))),
+            Type::Shape(inner) => Type::Shape(Box::new(inner.remap_vars(mapping))),
             Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(inner.remap_vars(mapping))),
             Type::Tuple(elems) => {
                 Type::Tuple(elems.iter().map(|e| e.remap_vars(mapping)).collect())
@@ -316,6 +412,7 @@ impl fmt::Display for Type {
                 Ok(())
             }
             Type::Own(inner) => write!(f, "~{}", inner),
+            Type::Shape(inner) => write!(f, "shape {}", inner),
             Type::MaybeOwn(_, inner) => write!(f, "{}", inner),
             Type::Tuple(elems) => {
                 write!(f, "(")?;
@@ -540,6 +637,7 @@ fn format_type_impl<L: VarNameLookup + ?Sized>(ty: &Type, names: &L) -> String {
             }
         }
         Type::Own(inner) => format!("~{}", format_type_impl(inner, names)),
+        Type::Shape(inner) => format!("shape {}", format_type_impl(inner, names)),
         Type::MaybeOwn(_, inner) => format_type_impl(inner, names),
         Type::Tuple(elems) => {
             let es: Vec<String> = elems.iter().map(|e| format_type_impl(e, names)).collect();
@@ -593,6 +691,7 @@ fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSe
             }
         }
         Type::Own(inner) => free_vars_ordered_into(inner, out, seen),
+        Type::Shape(inner) => free_vars_ordered_into(inner, out, seen),
         Type::MaybeOwn(_, inner) => free_vars_ordered_into(inner, out, seen),
         _ => {}
     }
@@ -780,6 +879,10 @@ impl Substitution {
                     Type::Own(_) => resolved_inner, // collapse Own(Own(T))
                     _ => Type::Own(Box::new(resolved_inner)),
                 }
+            }
+            Type::Shape(inner) => {
+                let resolved_inner = self.apply_inner(inner, visiting, chain);
+                evaluate_shape(resolved_inner)
             }
             Type::MaybeOwn(q, inner) => {
                 let resolved_q = self.resolve_qual(*q);
@@ -1317,6 +1420,7 @@ impl Type {
     pub fn strip_own(&self) -> Type {
         match self {
             Type::Own(inner) => inner.strip_own(),
+            Type::Shape(inner) => inner.strip_own(),
             Type::MaybeOwn(_, inner) => inner.strip_own(),
             Type::Named(name, args) => {
                 Type::Named(name.clone(), args.iter().map(|a| a.strip_own()).collect())
@@ -1330,6 +1434,7 @@ impl Type {
         match self {
             Type::MaybeOwn(_, _) => true,
             Type::Own(inner) => inner.contains_maybe_own(),
+            Type::Shape(inner) => inner.contains_maybe_own(),
             Type::Fn(params, ret) => {
                 params.iter().any(|(_, p)| p.contains_maybe_own()) || ret.contains_maybe_own()
             }
@@ -1346,7 +1451,7 @@ impl Type {
 /// Returns the outermost constructor as a unique identifier.
 pub fn head_type_name(ty: &Type) -> String {
     match ty {
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => head_type_name(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => head_type_name(inner),
         Type::Named(name, _) => name.clone(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -1396,7 +1501,9 @@ fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> S
                 .collect();
             format!("$Tuple{}${}", elems.len(), elem_strs.join("$"))
         }
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => canonical_name_inner(inner, var_map),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            canonical_name_inner(inner, var_map)
+        }
         Type::Var(id) => {
             let next = var_map.len();
             let idx = *var_map.entry(*id).or_insert(next);

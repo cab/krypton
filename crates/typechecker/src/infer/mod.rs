@@ -314,9 +314,10 @@ pub(super) fn match_type_with_bindings(
         | (Type::String, Type::String)
         | (Type::Unit, Type::Unit) => true,
         (Type::Own(lhs), Type::Own(rhs)) => match_type_with_bindings(lhs, rhs, bindings),
-        (Type::MaybeOwn(_, inner), other) | (other, Type::MaybeOwn(_, inner)) => {
-            match_type_with_bindings(inner, other, bindings)
-        }
+        (Type::MaybeOwn(_, inner), other)
+        | (other, Type::MaybeOwn(_, inner))
+        | (Type::Shape(inner), other)
+        | (other, Type::Shape(inner)) => match_type_with_bindings(inner, other, bindings),
         (Type::Fn(lhs_params, lhs_ret), Type::Fn(rhs_params, rhs_ret)) => {
             lhs_params.len() == rhs_params.len()
                 && lhs_params
@@ -360,7 +361,9 @@ fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
                 free_vars_into(a, out);
             }
         }
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => free_vars_into(inner, out),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            free_vars_into(inner, out)
+        }
         Type::Tuple(elems) => {
             for e in elems {
                 free_vars_into(e, out);
@@ -402,7 +405,8 @@ fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut 
             }
             collect_type_expr_var_names(ret, out);
         }
-        krypton_parser::ast::TypeExpr::Own { inner, .. } => {
+        krypton_parser::ast::TypeExpr::Own { inner, .. }
+        | krypton_parser::ast::TypeExpr::Shape { inner, .. } => {
             collect_type_expr_var_names(inner, out);
         }
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
@@ -477,7 +481,8 @@ fn contains_wildcard(texpr: &krypton_parser::ast::TypeExpr) -> bool {
         krypton_parser::ast::TypeExpr::Fn { params, ret, .. } => {
             params.iter().any(|p| contains_wildcard(&p.ty)) || contains_wildcard(ret)
         }
-        krypton_parser::ast::TypeExpr::Own { inner, .. } => contains_wildcard(inner),
+        krypton_parser::ast::TypeExpr::Own { inner, .. }
+        | krypton_parser::ast::TypeExpr::Shape { inner, .. } => contains_wildcard(inner),
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
             elements.iter().any(contains_wildcard)
         }
@@ -495,7 +500,8 @@ fn wildcard_span(texpr: &krypton_parser::ast::TypeExpr) -> Option<krypton_parser
             .iter()
             .find_map(|p| wildcard_span(&p.ty))
             .or_else(|| wildcard_span(ret)),
-        krypton_parser::ast::TypeExpr::Own { inner, .. } => wildcard_span(inner),
+        krypton_parser::ast::TypeExpr::Own { inner, .. }
+        | krypton_parser::ast::TypeExpr::Shape { inner, .. } => wildcard_span(inner),
         krypton_parser::ast::TypeExpr::Tuple { elements, .. } => {
             elements.iter().find_map(wildcard_span)
         }
@@ -769,6 +775,7 @@ fn remap_type_vars(ty: &Type, remap: &HashMap<TypeVarId, TypeVarId>) -> Type {
             Type::Tuple(elems.iter().map(|e| remap_type_vars(e, remap)).collect())
         }
         Type::Own(inner) => Type::Own(Box::new(remap_type_vars(inner, remap))),
+        Type::Shape(inner) => Type::Shape(Box::new(remap_type_vars(inner, remap))),
         Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(remap_type_vars(inner, remap))),
         _ => ty.clone(),
     }
@@ -779,7 +786,9 @@ pub(super) fn is_concrete_non_function(ty: &Type, subst: &Substitution) -> bool 
     let walked = subst.apply(ty);
     match &walked {
         Type::Var(_) | Type::Fn(_, _) => false,
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => is_concrete_non_function(inner, subst),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            is_concrete_non_function(inner, subst)
+        }
         _ => true,
     }
 }
@@ -949,7 +958,7 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
                     let demands = if let Some(params) = fn_params {
                         if let Some((_, pty)) = params.get(i) {
                             let resolved = subst.apply(pty);
-                            matches!(resolved, Type::Own(_) | Type::Var(_) | Type::MaybeOwn(_, _))
+                            matches!(resolved, Type::Own(_) | Type::Var(_) | Type::Shape(_) | Type::MaybeOwn(_, _))
                         } else {
                             true // conservative: can't determine param type
                         }
@@ -1177,6 +1186,9 @@ fn substitute_type_var(ty: &Type, var_id: TypeVarId, replacement: &Type) -> Type
             crate::types::normalize_app(new_ctor, new_args)
         }
         Type::Own(inner) => Type::Own(Box::new(substitute_type_var(inner, var_id, replacement))),
+        Type::Shape(inner) => {
+            Type::Shape(Box::new(substitute_type_var(inner, var_id, replacement)))
+        }
         Type::MaybeOwn(q, inner) => Type::MaybeOwn(
             *q,
             Box::new(substitute_type_var(inner, var_id, replacement)),
@@ -1195,7 +1207,9 @@ pub(super) fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
     match ty {
         Type::Var(v) => Some(*v),
         Type::App(ctor, _) => leading_type_var(ctor),
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => leading_type_var(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            leading_type_var(inner)
+        }
         _ => None,
     }
 }

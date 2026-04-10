@@ -71,17 +71,26 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
             occurs_in(var, ctor, subst) || args.iter().any(|a| occurs_in(var, a, subst))
         }
         Type::Own(inner) => occurs_in(var, inner, subst),
+        Type::Shape(inner) => occurs_in(var, inner, subst),
         Type::MaybeOwn(_, inner) => occurs_in(var, inner, subst),
         Type::Tuple(elems) => elems.iter().any(|e| occurs_in(var, e, subst)),
         _ => false,
     }
 }
 
+/// Eagerly evaluate a `Shape` wrapper if its inner type is fully resolved.
+fn resolve_shape(ty: Type, subst: &Substitution) -> Type {
+    match ty {
+        Type::Shape(inner) => subst.apply(&inner),
+        other => other,
+    }
+}
+
 /// Unify two types, mutating the substitution in place.
 #[tracing::instrument(level = "trace", skip(subst))]
 pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
-    let t1 = walk(t1, subst);
-    let t2 = walk(t2, subst);
+    let t1 = resolve_shape(walk(t1, subst), subst);
+    let t2 = resolve_shape(walk(t2, subst), subst);
 
     match (&t1, &t2) {
         // Same type variables
@@ -161,6 +170,13 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
 
         // Own types
         (Type::Own(a), Type::Own(b)) => unify(a, b, subst),
+
+        // Shape: both sides are unresolved shapes — unify inners
+        (Type::Shape(a), Type::Shape(b)) => unify(a, b, subst),
+        // Shape vs concrete: unify the Shape inner with the other side
+        (Type::Shape(inner), other) | (other, Type::Shape(inner)) => {
+            unify(inner, other, subst)
+        }
 
         // MaybeOwn structural cases
         (Type::MaybeOwn(q1, inner1), Type::MaybeOwn(q2, inner2)) => {
@@ -287,8 +303,8 @@ fn coerce_unify_inner(
     subst: &mut Substitution,
     in_constructor: bool,
 ) -> Result<(), TypeError> {
-    let actual = walk(actual, subst);
-    let expected = walk(expected, subst);
+    let actual = resolve_shape(walk(actual, subst), subst);
+    let expected = resolve_shape(walk(expected, subst), subst);
 
     // Same type variables — identity
     if let (Type::Var(a), Type::Var(b)) = (&actual, &expected) {
@@ -503,8 +519,8 @@ fn coerce_unify_inner(
 ///   join(Own(T), Own(T)) = unify inner, both Own → result can be Own
 ///   join(Own(T), T) = strip Own, unify → result is T
 pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
-    let a = walk(a, subst);
-    let b = walk(b, subst);
+    let a = resolve_shape(walk(a, subst), subst);
+    let b = resolve_shape(walk(b, subst), subst);
 
     // Both Own: join inner types
     if let (Type::Own(a_inner), Type::Own(b_inner)) = (&a, &b) {

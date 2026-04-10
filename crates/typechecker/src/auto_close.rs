@@ -99,6 +99,9 @@ fn classify_owned(
         Type::MaybeOwn(_, _) => {
             panic!("ICE: Type::Own(Type::MaybeOwn(..)) reached auto_close — possible compiler bug")
         }
+        Type::Shape(_) => {
+            panic!("ICE: Type::Own(Type::Shape(..)) reached auto_close — should be resolved")
+        }
         Type::FnHole => {
             panic!("ICE: Type::Own(Type::FnHole) reached auto_close — sentinel must be normalized")
         }

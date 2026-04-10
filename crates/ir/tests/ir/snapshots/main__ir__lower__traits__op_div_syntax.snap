@@ -7,12 +7,12 @@ module traits__op_div_syntax
 struct Vec2 { x: Int, y: Int }
 instance core/div.Div[Vec2] { div=Div$$Vec2$$div }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -21,8 +21,8 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v0: ~Vec2 = construct Vec2(6, 8)
-  let v1: ~Vec2 = construct Vec2(2, 4)
+  let v0: Vec2 = construct Vec2(6, 8)
+  let v1: Vec2 = construct Vec2(2, 4)
   let_join v12(v10: Int) =
     let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
     let v11: Unit = call println(v2, v10)
@@ -36,12 +36,12 @@ fn main() -> Unit =
   let v6: Vec2 = trait_call core/div.Div.div(v5, v0, v1)
   jump v9(v6)
 
-fn Div$$Vec2$$div(v13: Vec2, v14: Vec2) -> ~Vec2 =
+fn Div$$Vec2$$div(v13: Vec2, v14: Vec2) -> Vec2 =
   let v15: Int = project v13.0
   let v16: Int = project v14.0
   let v17: Int = div_int(v15, v16)
   let v18: Int = project v13.1
   let v19: Int = project v14.1
   let v20: Int = div_int(v18, v19)
-  let v21: ~Vec2 = construct Vec2(v17, v20)
+  let v21: Vec2 = construct Vec2(v17, v20)
   v21

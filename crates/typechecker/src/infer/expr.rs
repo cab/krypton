@@ -165,7 +165,9 @@ impl<'a> InferenceContext<'a> {
     pub(super) fn resolved_type_ref_for_type(&self, ty: &Type) -> Option<ResolvedTypeRef> {
         match ty {
             Type::Named(name, _) => self.resolved_type_ref_for_name(name),
-            Type::Own(inner) | Type::MaybeOwn(_, inner) => self.resolved_type_ref_for_type(inner),
+            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+                self.resolved_type_ref_for_type(inner)
+            }
             _ => None,
         }
     }
@@ -1089,10 +1091,10 @@ impl<'a> InferenceContext<'a> {
         }
         let target_typed = self.infer_expr_inner(target, None)?;
         let resolved = self.subst.apply(&target_typed.ty);
-        let base_is_owned = matches!(&resolved, Type::Own(_) | Type::MaybeOwn(_, _));
-        // Unwrap Own/MaybeOwn wrapper — field access works on the inner type
+        let base_is_owned = matches!(&resolved, Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _));
+        // Unwrap Own/MaybeOwn/Shape wrapper — field access works on the inner type
         let inner_resolved = match &resolved {
-            Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref(),
+            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => inner.as_ref(),
             other => other,
         };
         let field_ty = self.resolve_field_access(inner_resolved, field, span)?;
@@ -1141,10 +1143,13 @@ impl<'a> InferenceContext<'a> {
     ) -> Result<TypedExpr, SpannedTypeError> {
         let scrutinee_typed = self.infer_expr_inner(scrutinee, None)?;
         let scrutinee_ty = self.subst.apply(&scrutinee_typed.ty);
-        let scrutinee_is_owned = matches!(&scrutinee_ty, Type::Own(_) | Type::MaybeOwn(_, _));
-        // Unwrap Own/MaybeOwn wrapper — match works on the inner type
+        let scrutinee_is_owned =
+            matches!(&scrutinee_ty, Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _));
+        // Unwrap Own/MaybeOwn/Shape wrapper — match works on the inner type
         let match_ty = match &scrutinee_ty {
-            Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref().clone(),
+            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+                inner.as_ref().clone()
+            }
             other => other.clone(),
         };
         let mut result_ty: Option<Type> = None;
@@ -1781,9 +1786,11 @@ impl<'a> InferenceContext<'a> {
             Expr::StructUpdate { base, fields, span } => {
                 let base_typed = self.infer_expr_inner(base, None)?;
                 let resolved = self.subst.apply(&base_typed.ty);
-                // Unwrap Own/MaybeOwn wrapper — struct update works on the inner type
+                // Unwrap Own/MaybeOwn/Shape wrapper — struct update works on the inner type
                 let inner_resolved = match &resolved {
-                    Type::Own(inner) | Type::MaybeOwn(_, inner) => inner.as_ref().clone(),
+                    Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+                        inner.as_ref().clone()
+                    }
                     other => other.clone(),
                 };
                 let typed_fields = self.resolve_struct_update(&inner_resolved, fields, *span)?;

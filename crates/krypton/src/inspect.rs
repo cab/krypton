@@ -63,6 +63,9 @@ fn type_to_source(ty: &Type, var_names: Option<&[String]>) -> String {
             format!("({})", es.join(", "))
         }
         Type::FnHole => "_".to_string(),
+        Type::Shape(_) => {
+            unreachable!("ICE: Shape leaked past resolution into inspect")
+        }
         Type::MaybeOwn(_, _) => {
             unreachable!("ICE: MaybeOwn leaked past qualifier resolution into inspect")
         }
@@ -805,6 +808,7 @@ fn fmt_type_expr_source(ty: &TypeExpr) -> String {
             format!("({}) -> {}", ps.join(", "), fmt_type_expr_source(ret))
         }
         TypeExpr::Own { inner, .. } => format!("~{}", fmt_type_expr_source(inner)),
+        TypeExpr::Shape { inner, .. } => format!("shape {}", fmt_type_expr_source(inner)),
         TypeExpr::Tuple { elements, .. } => {
             let es: Vec<String> = elements.iter().map(fmt_type_expr_source).collect();
             format!("({})", es.join(", "))
@@ -820,7 +824,9 @@ fn type_expr_base_name(ty: &TypeExpr) -> &str {
         | TypeExpr::Var { name, .. }
         | TypeExpr::App { name, .. }
         | TypeExpr::Qualified { name, .. } => name,
-        TypeExpr::Own { inner, .. } => type_expr_base_name(inner),
+        TypeExpr::Own { inner, .. } | TypeExpr::Shape { inner, .. } => {
+            type_expr_base_name(inner)
+        }
         _ => "",
     }
 }

@@ -1,0 +1,3 @@
+# expect: ok
+fun empty_vec[a]() -> shape Vec[a] = []
+fun use_it() -> Vec[String] = empty_vec[String]()

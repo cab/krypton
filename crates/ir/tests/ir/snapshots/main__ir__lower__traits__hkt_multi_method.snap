@@ -5,15 +5,15 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[l8] { fmap(l8[m8], (m8) -> n8): l8[n8] }
+trait Functor[k8] { fmap(k8[l8], (l8) -> m8): k8[m8] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -21,7 +21,7 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
 fn main() -> Int =
-  let v0: ~Box[Int] = construct Box::Box#0(42)
+  let v0: Box[Int] = construct Box::Box#0(42)
   let v4: (Int) -> Int = make_closure(lambda$26, [])
   let v5: Dict[traits__hkt_multi_method.Functor, Box] = get_dict traits__hkt_multi_method.Functor[Box]
   let v1: Box[Int] = trait_call traits__hkt_multi_method.Functor.fmap(v5, v0, v4)
@@ -30,11 +30,11 @@ fn main() -> Int =
       v6
   }
 
-fn Functor$$Box$$fmap(v7: Box[e9], v8: (e9) -> g9) -> ~Box[g9] =
+fn Functor$$Box$$fmap(v7: Box[c9], v8: (c9) -> e9) -> Box[e9] =
   switch v7 {
-    0 (v9: e9) ->
-      let v10: g9 = call_closure v8(v9)
-      let v11: ~Box[g9] = construct Box::Box#0(v10)
+    0 (v9: c9) ->
+      let v10: e9 = call_closure v8(v9)
+      let v11: Box[e9] = construct Box::Box#0(v10)
       v11
   }
 

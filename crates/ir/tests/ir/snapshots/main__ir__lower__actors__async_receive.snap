@@ -5,29 +5,29 @@ expression: ir_module.to_string()
 module actors__async_receive
 
 type Msg = Ping#0(Int, Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(g10) -> Unit
+extern java "krypton.runtime.KryptonIO" println(f10) -> Unit
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/actor/spawn as spawn((Mailbox[a9]) -> Unit) -> Ref[a9]
-import core/actor/send as send(Ref[d9], d9) -> Unit
-import core/actor/receive as receive(Mailbox[m9]) -> m9
-import core/actor/actor_ref as actor_ref(Mailbox[u9]) -> Ref[u9]
-import core/actor/mailbox as mailbox() -> Mailbox[f10]
-declare actor_ref: (Mailbox[u9]) -> Ref[u9]
-declare mailbox: () -> Mailbox[f10]
-declare println: (g10) -> Unit
-declare receive: (Mailbox[m9]) -> m9
-declare send: (Ref[d9], d9) -> Unit
-declare spawn: ((Mailbox[a9]) -> Unit) -> Ref[a9]
+import core/actor/spawn as spawn((Mailbox[z8]) -> Unit) -> Ref[z8]
+import core/actor/send as send(Ref[c9], c9) -> Unit
+import core/actor/receive as receive(Mailbox[l9]) -> l9
+import core/actor/actor_ref as actor_ref(Mailbox[v9]) -> Ref[v9]
+import core/actor/mailbox as mailbox() -> Mailbox[e10]
+declare actor_ref: (Mailbox[v9]) -> Ref[v9]
+declare mailbox: () -> Mailbox[e10]
+declare println: (f10) -> Unit
+declare receive: (Mailbox[l9]) -> l9
+declare send: (Ref[c9], c9) -> Unit
+declare spawn: ((Mailbox[z8]) -> Unit) -> Ref[z8]
 
 fn echo(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)
@@ -42,7 +42,7 @@ fn main() -> Unit =
   let v5: Ref[Msg] = call spawn(v6)
   let v7: Mailbox[Int] = call mailbox()
   let v8: Ref[Int] = call actor_ref(v7)
-  let v9: ~Msg = construct Msg::Ping#0(42, v8)
+  let v9: Msg = construct Msg::Ping#0(42, v8)
   let v10: Unit = call send(v5, v9)
   let v11: Int = call receive(v7)
   let v12: Unit = call println(v11)

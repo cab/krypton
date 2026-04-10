@@ -19,7 +19,7 @@ fn mode_label(m: ParamMode) -> &'static str {
 /// e.g. `a` vs `~a`. This is not a genuine recursive type — it's an ownership mismatch.
 pub(crate) fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
     match ty {
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => {
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
             matches!(inner.as_ref(), Type::Var(v) if *v == var)
         }
         _ => false,

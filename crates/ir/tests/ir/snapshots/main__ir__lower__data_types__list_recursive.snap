@@ -6,23 +6,23 @@ module data_types__list_recursive
 
 type List[a] = Cons#0(a, List[a]) | Nil#1
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn length(v0: List[p8]) -> Int =
+fn length(v0: List[o8]) -> Int =
   switch v0 {
     1 ->
       0
-    0 (v1: a, v2: List[p8]) ->
+    0 (v1: a, v2: List[o8]) ->
       let v3: Int = call length(v2)
       let v4: Int = add_int(1, v3)
       v4

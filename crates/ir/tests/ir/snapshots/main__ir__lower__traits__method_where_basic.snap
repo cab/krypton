@@ -4,17 +4,17 @@ expression: ir_module.to_string()
 ---
 module traits__method_where_basic
 
-trait Default[k8] { default(): k8 }
-trait R[l8] { lol(l8[m8]): l8[m8] }
+trait Default[j8] { default(): j8 }
+trait R[k8] { lol(k8[l8]): k8[l8] }
 instance traits__method_where_basic.Default[Int] { default=Default$$Int$$default }
 instance traits__method_where_basic.R[List] { lol=R$$List$$lol }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -23,7 +23,7 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v2: ~List[s8] = construct List::Nil#1()
+  let v2: List[r8] = construct List::Nil#1()
   let v3: Dict[traits__method_where_basic.R, List] = get_dict traits__method_where_basic.R[List]
   let v4: Dict[traits__method_where_basic.Default, Int] = get_dict traits__method_where_basic.Default[Int]
   let v5: List[Int] = trait_call traits__method_where_basic.R.lol(v3, v4, v2)
@@ -35,7 +35,7 @@ fn main() -> Unit =
 fn Default$$Int$$default() -> Int =
   0
 
-fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, w8], v8: List[w8]) -> ~List[w8] =
-  let v9: w8 = trait_call traits__method_where_basic.Default.default(v7)
-  let v10: ~List[w8] = construct List::Cons#0(v9, v8)
+fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, v8], v8: List[v8]) -> List[v8] =
+  let v9: v8 = trait_call traits__method_where_basic.Default.default(v7)
+  let v10: List[v8] = construct List::Cons#0(v9, v8)
   v10

@@ -5,18 +5,18 @@ expression: ir_module.to_string()
 module json__from_json_map
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/map/get as get(Map[o9, a10], o9) -> Option[a10]
+import core/map/get as get(Map[n9, z9], n9) -> Option[z9]
 import core/json/JNum as JNum(Float) -> Json
 import core/json/JObj as JObj(Map[String, Json]) -> Json
 import core/json/JBool as JBool(Bool) -> Json
@@ -24,18 +24,18 @@ import core/json/JStr as JStr(String) -> Json
 import core/json/JArr as JArr(List[Json]) -> Json
 import core/map/from_list as from_list(List[(z12, a13)]) -> Map[z12, a13]
 declare from_list: (List[(z12, a13)]) -> Map[z12, a13]
-declare get: (Map[o9, a10], o9) -> Option[a10]
+declare get: (Map[n9, z9], n9) -> Option[z9]
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v1: ~Json = construct Json::JNum#2(42.0)
-  let v2: (String, ~Json) = tuple("x", v1)
-  let v3: ~List[(String, ~Json)] = construct List::Nil#1()
-  let v4: ~List[(String, ~Json)] = construct List::Cons#0(v2, v3)
+  let v1: Json = construct Json::JNum#2(42.0)
+  let v2: (String, Json) = tuple("x", v1)
+  let v3: List[(String, Json)] = construct List::Nil#1()
+  let v4: List[(String, Json)] = construct List::Cons#0(v2, v3)
   let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v6: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
-  let v7: Map[String, ~Json] = call from_list(v5, v6, v4)
-  let v0: ~Json = construct Json::JObj#5(v7)
+  let v7: Map[String, Json] = call from_list(v5, v6, v4)
+  let v0: Json = construct Json::JObj#5(v7)
   let v9: Dict[core/json.FromJson, Int] = get_dict core/json.FromJson[Int]
   let v10: Dict[core/json.FromJson, Map[String, Int]] = make_dict core/json.FromJson[Map[String, Int]](v9)
   let v8: Result[String, Map[String, Int]] = trait_call core/json.FromJson.from_json(v10, v0)

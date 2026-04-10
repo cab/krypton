@@ -7,12 +7,12 @@ module traits__println_show_derived
 type MyOption[a] = MySome#0(a) | MyNone#1
 instance core/show.Show[MyOption] { show=Show$$MyOption$$show }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
@@ -21,15 +21,15 @@ import core/io/println as println(h) -> Unit
 declare println: (h) -> Unit
 
 fn main() -> Unit =
-  let v2: ~MyOption[Int] = construct MyOption::MySome#0(1)
+  let v2: MyOption[Int] = construct MyOption::MySome#0(1)
   let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v1: Dict[core/show.Show, MyOption[Int]] = make_dict core/show.Show[MyOption[Int]](v0)
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[core/show.Show, a8], v5: MyOption[a8]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, z7], v5: MyOption[z7]) -> String =
   switch v5 {
-    0 (v6: a8) ->
+    0 (v6: z7) ->
       let v7: String = trait_call core/show.Show.show(v4, v6)
       let v8: String = concat_string("MySome(", v7)
       let v9: String = concat_string(v8, ")")

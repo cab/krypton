@@ -5,28 +5,28 @@ expression: ir_module.to_string()
 module stdlib__map_collections
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/map/empty as empty() -> Map[b9, c9]
-import core/map/put as put(Map[f9, g9], f9, g9) -> Map[f9, g9]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[j9, k9], j9, k9) -> Map[j9, k9]
 import core/map/from_list as from_list(List[(z12, a13)]) -> Map[z12, a13]
-import core/map/size as size(Map[g13, h13]) -> Int
-import core/map/merge as merge(Map[n13, o13], Map[n13, o13]) -> Map[n13, o13]
-declare empty: () -> Map[b9, c9]
+import core/map/size as size(Map[e13, f13]) -> Int
+import core/map/merge as merge(Map[p13, q13], Map[p13, q13]) -> Map[p13, q13]
+declare empty: () -> Map[a9, b9]
 declare from_list: (List[(z12, a13)]) -> Map[z12, a13]
-declare merge: (Map[n13, o13], Map[n13, o13]) -> Map[n13, o13]
+declare merge: (Map[p13, q13], Map[p13, q13]) -> Map[p13, q13]
 declare println: (h) -> Unit
-declare put: (Map[f9, g9], f9, g9) -> Map[f9, g9]
-declare size: (Map[g13, h13]) -> Int
+declare put: (Map[j9, k9], j9, k9) -> Map[j9, k9]
+declare size: (Map[e13, f13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
@@ -49,10 +49,10 @@ fn main() -> Unit =
   let v18: (String, Int) = tuple("x", 10)
   let v19: (String, Int) = tuple("y", 20)
   let v20: (String, Int) = tuple("z", 30)
-  let v21: ~List[(String, Int)] = construct List::Nil#1()
-  let v22: ~List[(String, Int)] = construct List::Cons#0(v20, v21)
-  let v23: ~List[(String, Int)] = construct List::Cons#0(v19, v22)
-  let v24: ~List[(String, Int)] = construct List::Cons#0(v18, v23)
+  let v21: List[(String, Int)] = construct List::Nil#1()
+  let v22: List[(String, Int)] = construct List::Cons#0(v20, v21)
+  let v23: List[(String, Int)] = construct List::Cons#0(v19, v22)
+  let v24: List[(String, Int)] = construct List::Cons#0(v18, v23)
   let v25: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v26: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v17: Map[String, Int] = call from_list(v25, v26, v24)

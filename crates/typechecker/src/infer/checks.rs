@@ -81,10 +81,10 @@ pub(super) fn collect_type_var_bindings_strict(
                 true
             }
         },
-        (Type::Own(p), _) | (Type::MaybeOwn(_, p), _) => {
+        (Type::Own(p), _) | (Type::Shape(p), _) | (Type::MaybeOwn(_, p), _) => {
             collect_type_var_bindings_strict(p, actual, bindings)
         }
-        (_, Type::Own(a)) | (_, Type::MaybeOwn(_, a)) => {
+        (_, Type::Own(a)) | (_, Type::Shape(a)) | (_, Type::MaybeOwn(_, a)) => {
             collect_type_var_bindings_strict(pattern, a, bindings)
         }
         (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {

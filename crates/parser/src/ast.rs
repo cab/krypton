@@ -385,6 +385,10 @@ pub enum TypeExpr {
         inner: Box<TypeExpr>,
         span: Span,
     },
+    Shape {
+        inner: Box<TypeExpr>,
+        span: Span,
+    },
     Tuple {
         elements: Vec<TypeExpr>,
         span: Span,
@@ -403,6 +407,7 @@ impl TypeExpr {
             | TypeExpr::App { span, .. }
             | TypeExpr::Fn { span, .. }
             | TypeExpr::Own { span, .. }
+            | TypeExpr::Shape { span, .. }
             | TypeExpr::Tuple { span, .. }
             | TypeExpr::Wildcard { span } => *span,
         }

@@ -1,0 +1,2 @@
+# expect: error P0001
+fun foo[a](x: lift a) -> a = x

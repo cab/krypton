@@ -6,12 +6,12 @@ module data_types__or_pattern_second_alt
 
 type T = A#0(Int) | B#1(Int) | C#2
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -30,15 +30,15 @@ fn value(v0: T) -> Int =
   }
 
 fn main() -> Unit =
-  let v3: ~T = construct T::A#0(10)
+  let v3: T = construct T::A#0(10)
   let v4: Int = call value(v3)
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: Unit = call println(v5, v4)
-  let v7: ~T = construct T::B#1(20)
+  let v7: T = construct T::B#1(20)
   let v8: Int = call value(v7)
   let v9: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v10: Unit = call println(v9, v8)
-  let v12: ~T = construct T::C#2()
+  let v12: T = construct T::C#2()
   let v13: Int = call value(v12)
   let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v14: Unit = call println(v11, v13)

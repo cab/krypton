@@ -99,6 +99,31 @@ where
                 span: to_span(e.span()),
             });
 
+        // shape Type → Shape
+        let shape_type = symbol(Token::Shape)
+            .ignore_then(ty.clone())
+            .map_with(|inner, e| TypeExpr::Shape {
+                inner: Box::new(inner),
+                span: to_span(e.span()),
+            });
+
+        // lift Type → error: suggest `shape` instead
+        let lift_type = symbol(Token::Lift)
+            .ignore_then(ty.clone())
+            .map_with(|inner, e| {
+                let _ = inner;
+                TypeExpr::Wildcard {
+                    span: to_span(e.span()),
+                }
+            })
+            .validate(|t, e, emitter| {
+                emitter.emit(Rich::custom(
+                    e.span(),
+                    "`lift` is not a valid type operator; use `shape` instead".to_string(),
+                ));
+                t
+            });
+
         // Function-type parameter slot: optional `&` then a type.
         // `&~T` → Borrow, `&T` → ObservationalBorrow, no `&` → Consume.
         let fn_type_slot = symbol(Token::Amp)
@@ -195,9 +220,11 @@ where
                 None => base,
             });
 
-        // Base types — own, paren/fn, wildcard don't accept [args]
+        // Base types — own, shape, paren/fn, wildcard don't accept [args]
         choice((
             own_type,
+            shape_type,
+            lift_type,
             paren_type,
             wildcard_type,
             named_with_app,
@@ -1227,12 +1254,24 @@ where
 
     let type_vis = type_visibility_parser();
 
+    // Reject `lifts` on non-extern type declarations
+    let lifts_reject = symbol(Token::Lifts)
+        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .validate(|_, e, emitter| {
+            emitter.emit(Rich::custom(
+                e.span(),
+                "`lifts` is only valid on `extern` type declarations".to_string(),
+            ));
+        })
+        .or_not();
+
     let type_decl = platform_attr
         .clone()
         .then(type_vis)
         .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(type_decl_params.clone())
+        .then_ignore(lifts_reject)
         .then_ignore(symbol(Token::Assign))
         .then(record_kind.or(sum_kind))
         .then(deriving)

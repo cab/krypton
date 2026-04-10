@@ -5,27 +5,27 @@ expression: ir_module.to_string()
 module stdlib__map_immutable
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/map/empty as empty() -> Map[b9, c9]
-import core/map/put as put(Map[f9, g9], f9, g9) -> Map[f9, g9]
-import core/map/contains as contains(Map[k10, l10], k10) -> Bool
-declare contains: (Map[k10, l10], k10) -> Bool
-declare empty: () -> Map[b9, c9]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[j9, k9], j9, k9) -> Map[j9, k9]
+import core/map/contains as contains(Map[j10, k10], j10) -> Bool
+declare contains: (Map[j10, k10], j10) -> Bool
+declare empty: () -> Map[a9, b9]
 declare println: (h) -> Unit
-declare put: (Map[f9, g9], f9, g9) -> Map[f9, g9]
+declare put: (Map[j9, k9], j9, k9) -> Map[j9, k9]
 
 fn main() -> Unit =
-  let v0: Map[y10, z10] = call empty()
+  let v0: Map[x10, y10] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

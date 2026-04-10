@@ -341,7 +341,9 @@ fn contains_type_var(ty: &Type) -> bool {
         Type::Named(_, args) => args.iter().any(contains_type_var),
         Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
         Type::Tuple(elems) => elems.iter().any(contains_type_var),
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => contains_type_var(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            contains_type_var(inner)
+        }
         Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => false,
     }
 }

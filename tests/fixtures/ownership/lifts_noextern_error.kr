@@ -1,0 +1,2 @@
+# expect: error P0001
+type Wrapper[a] lifts a = { value: a }

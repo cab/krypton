@@ -4,16 +4,16 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_nonoverlap
 
-trait Convert[k8] { convert(k8): String }
+trait Convert[j8] { convert(j8): String }
 instance traits__trait_fn_type_nonoverlap.Convert[$Fun1$$Var0$Int] { convert=Convert$$$Fun1$$Var0$Int$$convert }
 instance traits__trait_fn_type_nonoverlap.Convert[$Fun1$$Var0$Bool] { convert=Convert$$$Fun1$$Var0$Bool$$convert }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v11: Unit = call println(v7, v10)
   v11
 
-fn Convert$$$Fun1$$Var0$Int$$convert(v12: (l8) -> Int) -> String =
+fn Convert$$$Fun1$$Var0$Int$$convert(v12: (k8) -> Int) -> String =
   "to-int"
 
-fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (m8) -> Bool) -> String =
+fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (l8) -> Bool) -> String =
   "to-bool"

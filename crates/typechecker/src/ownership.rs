@@ -14,6 +14,7 @@ type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
 fn type_contains_own(ty: &Type) -> bool {
     match ty {
         Type::Own(_) => true,
+        Type::Shape(inner) => type_contains_own(inner),
         Type::Fn(params, ret) => {
             params.iter().any(|(_, p)| type_contains_own(p)) || type_contains_own(ret)
         }
@@ -41,6 +42,7 @@ fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
 fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
     match ty {
         Type::Own(_) => true,
+        Type::Shape(inner) => type_is_affine(inner, registry),
         Type::Named(name, args) => {
             has_own_field(name, registry) || args.iter().any(|a| type_is_affine(a, registry))
         }

@@ -6,22 +6,22 @@ module disposable__disposable_question_mark
 
 type Handle = MkHandle#0(String)
 instance core/disposable.Disposable[Handle] { dispose=Disposable$$Handle$$dispose }
-extern java "krypton.runtime.KryptonIO" println(a8) -> Unit
+extern java "krypton.runtime.KryptonIO" println(z7) -> Unit
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (a8) -> Unit
+declare println: (z7) -> Unit
 
 fn fallible() -> Result[String, Int] =
-  let v0: ~Result[String, Int] = construct Result::Err#1("fail")
+  let v0: Result[String, Int] = construct Result::Err#1("fail")
   v0
 
 fn work() -> Result[String, Int] =
@@ -31,7 +31,7 @@ fn work() -> Result[String, Int] =
   let v3: ~Handle = construct Handle::MkHandle#0("test")
   let v4: Unit = call println("opened")
   let_join v12(v5: Int) =
-    let v11: ~Result[String, Int] = construct Result::Ok#0(v5)
+    let v11: Result[String, Int] = construct Result::Ok#0(v5)
     let v13: Dict[core/disposable.Disposable, Handle] = get_dict core/disposable.Disposable[Handle]
     auto_close[Handle](v3, dict=v13, null=true)
     v11

@@ -5,32 +5,32 @@ expression: ir_module.to_string()
 module stdlib__map_option_values
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/map/empty as empty() -> Map[b9, c9]
-import core/map/put as put(Map[f9, g9], f9, g9) -> Map[f9, g9]
-import core/map/get as get(Map[o9, a10], o9) -> Option[a10]
-declare empty: () -> Map[b9, c9]
-declare get: (Map[o9, a10], o9) -> Option[a10]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[j9, k9], j9, k9) -> Map[j9, k9]
+import core/map/get as get(Map[n9, z9], n9) -> Option[z9]
+declare empty: () -> Map[a9, b9]
+declare get: (Map[n9, z9], n9) -> Option[z9]
 declare println: (h) -> Unit
-declare put: (Map[f9, g9], f9, g9) -> Map[f9, g9]
+declare put: (Map[j9, k9], j9, k9) -> Map[j9, k9]
 
 fn main() -> Unit =
   let v1: Map[String, Option[Int]] = call empty()
-  let v2: ~Option[Int] = construct Option::Some#0(42)
+  let v2: Option[Int] = construct Option::Some#0(42)
   let v3: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v4: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v5: Map[String, Option[Int]] = call put(v3, v4, v1, "some", v2)
-  let v6: ~Option[Int] = construct Option::None#1()
+  let v6: Option[Int] = construct Option::None#1()
   let v7: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v8: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v0: Map[String, Option[Int]] = call put(v7, v8, v5, "none", v6)

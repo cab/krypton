@@ -9,12 +9,12 @@ struct B { y: Int }
 instance core/eq.Eq[A] { eq=Eq$$A$$eq }
 instance core/eq.Eq[B] { eq=Eq$$B$$eq }
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -22,7 +22,7 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
-fn same(v0: Dict[core/eq.Eq, l8], v1: l8, v2: l8) -> Bool =
+fn same(v0: Dict[core/eq.Eq, k8], v1: k8, v2: k8) -> Bool =
   let v3: Bool = trait_call core/eq.Eq.eq(v0, v1, v2)
   v3
 
@@ -32,13 +32,13 @@ fn main() -> Unit =
     let v14: Unit = call println(v4, v13)
     v14
   in
-  let v5: ~A = construct A(1)
-  let v6: ~A = construct A(1)
+  let v5: A = construct A(1)
+  let v6: A = construct A(1)
   let v7: Dict[core/eq.Eq, A] = get_dict core/eq.Eq[A]
   let v8: Bool = call same(v7, v5, v6)
   if v8 {
-    let v10: ~B = construct B(2)
-    let v11: ~B = construct B(2)
+    let v10: B = construct B(2)
+    let v11: B = construct B(2)
     let v9: Dict[core/eq.Eq, B] = get_dict core/eq.Eq[B]
     let v12: Bool = call same(v9, v10, v11)
     jump v15(v12)

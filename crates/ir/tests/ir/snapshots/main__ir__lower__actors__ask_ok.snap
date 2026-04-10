@@ -5,27 +5,27 @@ expression: ir_module.to_string()
 module actors__ask_ok
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(f11) -> Unit
+extern java "krypton.runtime.KryptonIO" println(e11) -> Unit
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/actor/spawn as spawn((Mailbox[a9]) -> Unit) -> Ref[a9]
-import core/actor/send as send(Ref[d9], d9) -> Unit
-import core/actor/receive as receive(Mailbox[m9]) -> m9
-import core/actor/ask as ask(Ref[q10], (Ref[e11]) -> q10, Int) -> Result[Timeout, e11]
-declare ask: (Ref[q10], (Ref[e11]) -> q10, Int) -> Result[Timeout, e11]
-declare println: (f11) -> Unit
-declare receive: (Mailbox[m9]) -> m9
-declare send: (Ref[d9], d9) -> Unit
-declare spawn: ((Mailbox[a9]) -> Unit) -> Ref[a9]
+import core/actor/spawn as spawn((Mailbox[z8]) -> Unit) -> Ref[z8]
+import core/actor/send as send(Ref[c9], c9) -> Unit
+import core/actor/receive as receive(Mailbox[l9]) -> l9
+import core/actor/ask as ask(Ref[p10], (Ref[d11]) -> p10, Int) -> Result[Timeout, d11]
+declare ask: (Ref[p10], (Ref[d11]) -> p10, Int) -> Result[Timeout, d11]
+declare println: (e11) -> Unit
+declare receive: (Mailbox[l9]) -> l9
+declare send: (Ref[c9], c9) -> Unit
+declare spawn: ((Mailbox[z8]) -> Unit) -> Ref[z8]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

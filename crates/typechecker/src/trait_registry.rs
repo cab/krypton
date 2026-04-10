@@ -758,10 +758,11 @@ fn types_match_with_bindings(
         // own T matches T for instance lookup
         (Type::Own(inner), other) => types_match_with_bindings(inner, other, bindings),
         (other, Type::Own(inner)) => types_match_with_bindings(other, inner, bindings),
-        // MaybeOwn treated same as Own for trait matching (transparent)
-        (Type::MaybeOwn(_, inner), other) | (other, Type::MaybeOwn(_, inner)) => {
-            types_match_with_bindings(inner, other, bindings)
-        }
+        // MaybeOwn/Shape treated same as Own for trait matching (transparent)
+        (Type::MaybeOwn(_, inner), other)
+        | (other, Type::MaybeOwn(_, inner))
+        | (Type::Shape(inner), other)
+        | (other, Type::Shape(inner)) => types_match_with_bindings(inner, other, bindings),
         // App reduces to Named for matching purposes
         (Type::App(ctor, args1), Type::Named(n, args2)) => {
             if let Type::Named(cn, ca) = ctor.as_ref() {
@@ -838,7 +839,9 @@ fn split_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
             args.push(*ret.clone());
             Some((CtorId::Fn(params.len()), args))
         }
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => split_type_constructor(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            split_type_constructor(inner)
+        }
         _ => None,
     }
 }
@@ -856,7 +859,9 @@ fn split_instance_type_constructor(ty: &Type) -> Option<(CtorId, Vec<Type>)> {
             ctor_args.extend(args.iter().cloned());
             Some((ctor_id, ctor_args))
         }
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => split_instance_type_constructor(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            split_instance_type_constructor(inner)
+        }
         _ => None,
     }
 }
@@ -937,7 +942,9 @@ fn contains_type_var(ty: &Type) -> bool {
         Type::Named(_, args) => args.iter().any(contains_type_var),
         Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
         Type::Tuple(elems) => elems.iter().any(contains_type_var),
-        Type::Own(inner) | Type::MaybeOwn(_, inner) => contains_type_var(inner),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            contains_type_var(inner)
+        }
         Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => false,
     }
 }
@@ -982,6 +989,7 @@ fn freshen_inner(
                 .collect(),
         ),
         Type::Own(inner) => Type::Own(Box::new(freshen_inner(inner, var_map, gen))),
+        Type::Shape(inner) => Type::Shape(Box::new(freshen_inner(inner, var_map, gen))),
         Type::MaybeOwn(q, inner) => {
             Type::MaybeOwn(*q, Box::new(freshen_inner(inner, var_map, gen)))
         }

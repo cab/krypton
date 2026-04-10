@@ -6,12 +6,12 @@ module data_types__or_pattern_binding
 
 type Wrapper[a] = Some#0(a) | Wrap#1(a)
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -19,20 +19,20 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 declare println: (h) -> Unit
 
-fn extract(v0: Wrapper[p8]) -> p8 =
+fn extract(v0: Wrapper[o8]) -> o8 =
   switch v0 {
-    0 (v1: p8) ->
+    0 (v1: o8) ->
       v1
-    1 (v2: p8) ->
+    1 (v2: o8) ->
       v2
   }
 
 fn main() -> Unit =
-  let v3: ~Wrapper[Int] = construct Wrapper::Some#0(3)
+  let v3: Wrapper[Int] = construct Wrapper::Some#0(3)
   let v4: Int = call extract(v3)
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: Unit = call println(v5, v4)
-  let v8: ~Wrapper[Int] = construct Wrapper::Wrap#1(5)
+  let v8: Wrapper[Int] = construct Wrapper::Wrap#1(5)
   let v9: Int = call extract(v8)
   let v7: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v10: Unit = call println(v7, v9)

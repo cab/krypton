@@ -5,34 +5,40 @@ expression: ir_module.to_string()
 module ownership__own_fold_closure_ok
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn fold(v0: List[r8], v1: t8, v2: (t8, r8) -> t8) -> t8 =
+fn fold(v0: List[q8], v1: s8, v2: (s8, q8) -> s8) -> s8 =
   switch v0 {
     1 ->
       v1
-    0 (v3: r8, v4: List[r8]) ->
-      let v5: t8 = call_closure v2(v1, v3)
-      let v6: t8 = call fold(v4, v5, v2)
+    0 (v3: q8, v4: List[q8]) ->
+      let v5: s8 = call_closure v2(v1, v3)
+      let v6: s8 = call fold(v4, v5, v2)
       v6
   }
 
 fn test() -> ~Option[Int] =
-  let v7: ~List[Int] = construct List::Nil#1()
-  let v8: ~List[Int] = construct List::Cons#0(1, v7)
+  let v7: List[Int] = construct List::Nil#1()
+  let v8: List[Int] = construct List::Cons#0(1, v7)
   let v9: ~Option[Int] = construct Option::Some#0(0)
-  let v13: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$24, [])
-  let v14: ~Option[Int] = call fold(v8, v9, v13)
-  v14
+  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$24, [])
+  let v16: ~Option[Int] = call fold(v8, v9, v15)
+  v16
 
 fn lambda$24(v10: ~Option[Int], v11: Int) -> ~Option[Int] =
-  let v12: ~Option[Int] = construct Option::Some#0(v11)
-  v12
+  switch v10 {
+    0 (v12: d) ->
+      let v13: ~Option[Int] = construct Option::Some#0(v11)
+      v13
+    1 ->
+      let v14: ~Option[Int] = construct Option::Some#0(v11)
+      v14
+  }

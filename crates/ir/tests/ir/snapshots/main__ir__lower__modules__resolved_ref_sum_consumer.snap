@@ -5,12 +5,12 @@ expression: ir_module.to_string()
 module modules__resolved_ref_sum_consumer
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
@@ -29,7 +29,7 @@ fn render(v0: Packet) -> Int =
   }
 
 fn main() -> Unit =
-  let v4: ~Packet = construct Packet::Keep#0(8)
+  let v4: Packet = construct Packet::Keep#0(8)
   let v5: Int = call render(v4)
   let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: Unit = call println(v3, v5)

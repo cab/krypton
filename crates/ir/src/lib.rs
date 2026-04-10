@@ -57,6 +57,7 @@ impl From<krypton_typechecker::types::Type> for Type {
                 args.into_iter().map(Into::into).collect(),
             ),
             TcType::Own(inner) => Type::Own(Box::new((*inner).into())),
+            TcType::Shape(inner) => (*inner).into(),
             TcType::MaybeOwn(_, _) => {
                 unreachable!("ICE: MaybeOwn leaked past qualifier resolution into IR lowering")
             }

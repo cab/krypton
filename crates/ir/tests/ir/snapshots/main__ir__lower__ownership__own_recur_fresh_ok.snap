@@ -5,39 +5,46 @@ expression: ir_module.to_string()
 module ownership__own_recur_fresh_ok
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn consume(v0: ~Option[Int]) -> Option[Int] =
-  v0
+  switch v0 {
+    0 (v1: Int) ->
+      let v2: Option[Int] = construct Option::Some#0(v1)
+      v2
+    1 ->
+      let v3: Option[Int] = construct Option::None#1()
+      v3
+  }
 
 fn make() -> ~Option[Int] =
-  let v1: ~Option[Int] = construct Option::Some#0(0)
-  v1
+  let v4: ~Option[Int] = construct Option::Some#0(0)
+  v4
 
-fn loop(v2: ~Option[Int], v3: Int) -> Option[Int] =
-  let_join [recur] v4(v5: ~Option[Int], v6: Int) =
-    let_join v14(v9: Bool) =
-      if v9 {
-        let v10: Option[Int] = call consume(v5)
-        v10
+fn loop(v5: ~Option[Int], v6: Int) -> Option[Int] =
+  let_join [recur] v7(v8: ~Option[Int], v9: Int) =
+    let_join v17(v12: Bool) =
+      if v12 {
+        let v13: Option[Int] = call consume(v8)
+        v13
       } else {
-        let v11: Option[Int] = call consume(v5)
-        let v12: ~Option[Int] = call make()
-        let v13: Int = sub_int(v6, 1)
-        jump v4(v12, v13)
+        let v14: Option[Int] = call consume(v8)
+        let v15: ~Option[Int] = call make()
+        let v16: Int = sub_int(v9, 1)
+        jump v7(v15, v16)
       }
     in
-    let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
-    let v8: Bool = trait_call core/eq.Eq.eq(v7, v6, 0)
-    jump v14(v8)
+    let v10: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v11: Bool = trait_call core/eq.Eq.eq(v10, v9, 0)
+    jump v17(v11)
   in
-  jump v4(v2, v3)
+  jump v7(v5, v6)

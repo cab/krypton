@@ -225,6 +225,10 @@ impl<'a> Formatter<'a> {
                 self.buf.push('~');
                 self.fmt_type_expr(inner);
             }
+            TypeExpr::Shape { inner, .. } => {
+                self.buf.push_str("shape ");
+                self.fmt_type_expr(inner);
+            }
             TypeExpr::Tuple { elements, .. } => {
                 self.buf.push('(');
                 for (i, e) in elements.iter().enumerate() {

@@ -327,6 +327,14 @@ pub fn resolve_type_expr(
             context,
             self_type,
         )?))),
+        TypeExpr::Shape { inner, .. } => Ok(Type::Shape(Box::new(resolve_type_expr(
+            inner,
+            type_param_map,
+            type_param_arity,
+            registry,
+            context,
+            self_type,
+        )?))),
         TypeExpr::Tuple { elements, .. } => {
             let mut elem_types = Vec::new();
             for e in elements {
@@ -651,6 +659,7 @@ fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
         ),
         Type::Tuple(elems) => Type::Tuple(elems.iter().map(|e| remap_vars(e, mapping)).collect()),
         Type::Own(inner) => Type::Own(Box::new(remap_vars(inner, mapping))),
+        Type::Shape(inner) => Type::Shape(Box::new(remap_vars(inner, mapping))),
         Type::MaybeOwn(q, inner) => Type::MaybeOwn(*q, Box::new(remap_vars(inner, mapping))),
         Type::App(base, args) => Type::App(
             Box::new(remap_vars(base, mapping)),
