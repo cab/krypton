@@ -8,7 +8,7 @@ impl Runnable[() -> Unit] {
 }
 extern java "java.lang.Thread" as JThread {
   @constructor fun new[a](target: a) -> ~JThread where a: Runnable
-  @instance fun start(self: JThread) -> Unit
+  @instance fun start(self: ~JThread) -> Unit
 }
 fun main() = {
   let t = new(() -> println("hello from bridge"))

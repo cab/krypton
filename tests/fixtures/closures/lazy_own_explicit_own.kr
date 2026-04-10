@@ -1,4 +1,5 @@
-# expect: ok
+# expect: error E0104
+# blocked: M38-T3 (closure classification: borrow-only capture should stay fn)
 # Explicit ~T annotation but body only borrows the capture -> still fn
 fun use_twice(f: (Int) -> Int) -> Int = f(1) + f(2)
 

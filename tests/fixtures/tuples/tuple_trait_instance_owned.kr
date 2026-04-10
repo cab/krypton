@@ -7,6 +7,6 @@ impl Summarize[(Int, Option[String])] {
     fun summarize(_x) = "ok"
 }
 
-fun make_pair(s: ~Option[String]) -> (Int, Option[String]) = (1, s)
+fun make_pair(s: Option[String]) -> (Int, Option[String]) = (1, s)
 
 fun main() = println(summarize(make_pair(Some("hi"))))

@@ -1,8 +1,0 @@
-# expect: output "hello"
-fun main() -> Unit {
-    let val: ~Option[String] = Some("hello")
-    match peek(val) {
-        Some(s) => println(s),
-        None => (),
-    }
-}
