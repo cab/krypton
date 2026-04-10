@@ -1,3 +1,0 @@
-# expect: ok
-fun dup[a](x: a) -> (a, a) = (x, x)
-fun test_shared[a[_], z](xs: a[z]) -> (a[z], a[z]) where z: shared = dup(xs)

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
     Decl, Expr, ExternMethod, ExternTarget, Module, Pattern, Span, TypeConstraint, TypeDecl,
-    TypeDeclKind, TypeExpr, TypeParam, Visibility,
+    TypeDeclKind, TypeParam, Visibility,
 };
 
 use crate::scc;
@@ -1447,9 +1447,6 @@ fn process_extern_methods(
         let mut requirements = Vec::new();
         if !method.where_clauses.is_empty() {
             for constraint in &method.where_clauses {
-                if constraint.trait_name == "shared" {
-                    continue;
-                }
                 let tv_names = require_param_vars(constraint)?;
                 let type_vars: Vec<TypeVarId> = tv_names
                     .iter()
@@ -1992,13 +1989,12 @@ impl ImportContext {
 }
 
 /// Result of `infer_function_bodies`: fn decls, schemes, typed bodies,
-/// constraint requirements, and shared type vars per fn.
+/// constraint requirements.
 type InferFunctionBodiesResult<'a> = (
     Vec<&'a krypton_parser::ast::FnDecl>,
     Vec<Option<TypeScheme>>,
     Vec<Option<TypedExpr>>,
     HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
-    HashMap<String, HashSet<String>>,
 );
 
 /// Result of `process_traits_and_deriving`: trait registry, exported defs,
@@ -2404,7 +2400,6 @@ impl ModuleInferenceState {
         extern_bindings: Vec<ExternBindingInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
         interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
-        shared_type_vars: &HashMap<String, HashSet<String>>,
     ) -> Result<TypedModule, Vec<SpannedTypeError>> {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
@@ -2714,7 +2709,6 @@ impl ModuleInferenceState {
             &self.registry,
             &self.let_own_spans,
             &self.lambda_own_captures,
-            shared_type_vars,
             &self.imports.imported_fn_qualifiers,
         );
         let has_ownership_errors = !ownership_errors.is_empty();
@@ -3536,9 +3530,6 @@ fn register_local_traits(
                 // Resolve method-level where constraints
                 let mut method_constraints: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
                 for constraint in &method.constraints {
-                    if constraint.trait_name == "shared" {
-                        continue;
-                    }
                     let tv_names = require_param_vars(constraint)?;
                     let tvs: Vec<TypeVarId> = tv_names
                         .iter()
@@ -4026,10 +4017,9 @@ fn register_impl_instances(
             let target_display_name = joined_display.clone();
 
             for constraint in type_constraints {
-                if constraint.trait_name != "shared"
-                    && trait_registry
-                        .lookup_trait_by_name(&constraint.trait_name)
-                        .is_none()
+                if trait_registry
+                    .lookup_trait_by_name(&constraint.trait_name)
+                    .is_none()
                 {
                     return Err(spanned(
                         TypeError::UnknownTrait {
@@ -4222,7 +4212,7 @@ fn check_trait_name_conflicts(
 }
 
 /// Phase: SCC-based function body inference.
-/// Returns (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements, shared_type_vars).
+/// Returns (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements).
 ///
 /// Extracted from `infer_module_inner` so that earlier phase locals are deallocated
 /// before the deep `infer_expr_inner` recursion.
@@ -4274,7 +4264,6 @@ fn infer_function_bodies<'a>(
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
     let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
         HashMap::new();
-    let mut shared_type_vars: HashMap<String, HashSet<String>> = HashMap::new();
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
 
     for component in &sccs {
@@ -4299,38 +4288,11 @@ fn infer_function_bodies<'a>(
                 let (type_param_map, type_param_arity) =
                     build_type_param_maps(&decl.type_params, &mut state.gen);
                 saved_type_param_maps.insert(idx, type_param_map.clone());
-                let mut shared_tv_names: HashSet<String> = HashSet::new();
                 if !decl.constraints.is_empty() {
                     for constraint in &decl.constraints {
-                        if constraint.trait_name == "shared" {
-                            let tv_names = require_param_vars(constraint)?;
-                            for n in tv_names {
-                                shared_tv_names.insert(n.to_string());
-                            }
-                        }
-                    }
-
-                    for p in &decl.params {
-                        if let Some(TypeExpr::Own { inner, .. }) = &p.ty {
-                            if let TypeExpr::Var { name, .. } = inner.as_ref() {
-                                if shared_tv_names.contains(name) {
-                                    return Err(spanned(
-                                        TypeError::QualifierBoundViolation {
-                                            type_var: name.clone(),
-                                            param_name: p.name.clone(),
-                                        },
-                                        decl.span,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-
-                    for constraint in &decl.constraints {
-                        if constraint.trait_name != "shared"
-                            && trait_registry
-                                .lookup_trait_by_name(&constraint.trait_name)
-                                .is_none()
+                        if trait_registry
+                            .lookup_trait_by_name(&constraint.trait_name)
+                            .is_none()
                         {
                             return Err(spanned(
                                 TypeError::UnknownTrait {
@@ -4344,7 +4306,6 @@ fn infer_function_bodies<'a>(
                     let requirements: Vec<(TraitName, Vec<TypeVarId>)> = decl
                         .constraints
                         .iter()
-                        .filter(|c| c.trait_name != "shared")
                         .map(|constraint| {
                             let tv_names = require_param_vars(constraint)?;
                             let tvs: Vec<TypeVarId> = tv_names
@@ -4374,16 +4335,6 @@ fn infer_function_bodies<'a>(
                     if !requirements.is_empty() {
                         fn_constraint_requirements.insert(decl.name.clone(), requirements);
                     }
-                }
-                if !shared_tv_names.is_empty() {
-                    // Mark shared type vars on the substitution so unify/coerce_unify
-                    // can strip Own when binding these vars.
-                    for name in &shared_tv_names {
-                        if let Some(&var_id) = type_param_map.get(name.as_str()) {
-                            state.subst.mark_shared_var(var_id);
-                        }
-                    }
-                    shared_type_vars.insert(decl.name.clone(), shared_tv_names);
                 }
 
                 let mut seen_params = HashSet::new();
@@ -4738,7 +4689,6 @@ fn infer_function_bodies<'a>(
         result_schemes,
         fn_bodies,
         fn_constraint_requirements,
-        shared_type_vars,
     ))
 }
 
@@ -4864,9 +4814,6 @@ fn typecheck_impl_methods(
                 // Resolve method-level where constraints
                 let mut method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
                 for constraint in &method.constraints {
-                    if constraint.trait_name == "shared" {
-                        continue;
-                    }
                     let tv_names = require_param_vars(constraint)?;
                     let tvs: Vec<TypeVarId> = tv_names
                         .iter()
@@ -5152,7 +5099,7 @@ pub(crate) fn infer_module_inner(
     .map_err(|e| vec![e])?;
 
     // Phase: SCC-based function inference
-    let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements, shared_type_vars) =
+    let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements) =
         infer_function_bodies(
             &mut state,
             module,
@@ -5198,6 +5145,5 @@ pub(crate) fn infer_module_inner(
         extern_bindings,
         constructor_schemes,
         interface_cache,
-        &shared_type_vars,
     )
 }

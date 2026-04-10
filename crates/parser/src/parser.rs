@@ -922,7 +922,6 @@ where
     // Accepts `shared` as a bare bound name (no brackets).
     let bound_name = select! {
         Token::Ident(s) => s.to_string(),
-        Token::Shared => "shared".to_string(),
     };
     let bound = bound_name.then(
         ty.clone()

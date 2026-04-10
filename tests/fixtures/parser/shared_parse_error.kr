@@ -1,0 +1,5 @@
+# expect: ok
+fun test() -> Int = {
+    let shared = 42
+    shared
+}

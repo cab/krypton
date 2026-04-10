@@ -1,2 +1,2 @@
 # core/peek — non-consuming identity for own values
-pub fun peek[a](x: a) -> a where a: shared = x
+pub fun peek[a](x: a) -> a = x

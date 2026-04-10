@@ -18,5 +18,5 @@ extern js "../extern/js/io.mjs" {
     pub fun write_file(path: String, content: String) -> Result[String, Unit]
 }
 
-pub fun println[a](x: a) -> Unit where a: Show + shared = raw_println(show(x))
-pub fun print[a](x: a) -> Unit where a: Show + shared = raw_print(show(x))
+pub fun println[a](x: a) -> Unit where a: Show = raw_println(show(x))
+pub fun print[a](x: a) -> Unit where a: Show = raw_print(show(x))

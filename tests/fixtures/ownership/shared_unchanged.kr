@@ -1,4 +1,3 @@
 # expect: error E0001
-# Unbounded duplication infers a shared parameter; owned input is not dropped to fit it.
 fun dup[a](x: a) -> (a, a) = (x, x)
 fun test(buf: ~String) -> (String, String) = dup(buf)

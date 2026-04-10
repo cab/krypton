@@ -1,5 +1,5 @@
 # expect: ok
-# Captured Own(Int) used only in shared position (binary op) → fn, not ~fn
+# Captured Own(Int) used only in non-consuming position (binary op) → fn, not ~fn
 fun use_twice(f: (Int) -> Int) -> Int = f(1) + f(2)
 
 fun test() -> Int {

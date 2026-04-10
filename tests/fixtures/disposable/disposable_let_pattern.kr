@@ -1,5 +1,5 @@
 # expect: error E0104
-# blocked: M39-T7 (constructor returns bare T, not ~T; return type needs update)
+# blocked: tuple expected-type propagation (elements inferred without Own hint)
 extern java "krypton.runtime.KryptonIO" {
     fun println[a](x: a) -> Unit
 }

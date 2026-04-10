@@ -46,7 +46,6 @@ pub enum Token<'src> {
     Opaque,
     Use,
     As,
-    Shared,
     // Operators & punctuation
     Plus,
     Minus,
@@ -117,7 +116,6 @@ impl fmt::Display for Token<'_> {
             Token::Opaque => write!(f, "opaque"),
             Token::Use => write!(f, "use"),
             Token::As => write!(f, "as"),
-            Token::Shared => write!(f, "shared"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
@@ -222,7 +220,6 @@ pub fn lexer<'src>(
             "deriving" => Token::Deriving,
             "extern" => Token::Extern,
             "as" => Token::As,
-            "shared" => Token::Shared,
             "do" => Token::Do,
             "self" => Token::Self_,
             "tuple" => Token::Tuple,

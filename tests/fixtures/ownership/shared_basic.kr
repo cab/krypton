@@ -1,2 +1,0 @@
-# expect: ok
-fun inspect[a](x: a, y: a) -> a where a: shared = x

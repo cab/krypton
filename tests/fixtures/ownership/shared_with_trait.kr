@@ -1,2 +1,0 @@
-# expect: ok
-fun f[a](x: a) -> String where a: Show + shared = show(x)

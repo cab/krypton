@@ -1,6 +1,5 @@
 # expect: error E0001
-# shared-bound parameters do not create an implicit owned-to-bare data drop.
-fun identity[a](x: a) -> a where a: shared = x
+fun identity[a](x: a) -> a = x
 fun use_it(buf: ~String) -> Unit = {
     identity(buf)
     println(buf)

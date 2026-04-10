@@ -12,8 +12,6 @@ pub enum ParamQualifier {
     RequiresU,
     /// Used at most once — accepts both affine and unlimited values.
     Polymorphic,
-    /// Declared `shared` — accepts affine args without consuming them.
-    Shared,
 }
 
 /// Module-qualified name: always carries the defining module's path and the bare local name.

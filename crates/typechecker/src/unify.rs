@@ -77,38 +77,6 @@ fn occurs_in(var: TypeVarId, ty: &Type, subst: &Substitution) -> bool {
     }
 }
 
-/// Prepare a type for binding to a shared-bounded var in `unify`.
-/// - MaybeOwn(q, T): force q = Shared, return T (defer_own artifact)
-/// - Own(T): error — structural ownership can't be silently stripped
-/// - other: return unchanged
-fn prepare_rhs_for_shared_binding(
-    var: TypeVarId,
-    rhs: &Type,
-    subst: &mut Substitution,
-) -> Result<Type, TypeError> {
-    match rhs {
-        Type::MaybeOwn(q, inner) => {
-            let root = subst.resolve_qual(*q);
-            if matches!(
-                subst.get_qualifier(*q),
-                Some(QualifierState::Pending) | None
-            ) {
-                subst.force_shared(root)?;
-            }
-            Ok(*inner.clone())
-        }
-        Type::Own(_) => {
-            // Structural Own meeting a shared var is a type mismatch.
-            // This preserves Option[~String] vs Option[String] distinction.
-            Err(TypeError::Mismatch {
-                expected: Type::Var(var),
-                actual: rhs.clone(),
-            })
-        }
-        _ => Ok(rhs.clone()),
-    }
-}
-
 /// Unify two types, mutating the substitution in place.
 #[tracing::instrument(level = "trace", skip(subst))]
 pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
@@ -119,29 +87,25 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // Same type variables
         (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
 
-        // Bind type variable — with shared + MaybeOwn/Own awareness
+        // Bind type variable
         (Type::Var(a), _) => {
-            let rhs = if subst.is_shared_var(*a) {
-                prepare_rhs_for_shared_binding(*a, &t2, subst)?
-            } else {
-                t2.clone()
-            };
-            if occurs_in(*a, &rhs, subst) {
-                return Err(TypeError::InfiniteType { var: *a, ty: rhs });
+            if occurs_in(*a, &t2, subst) {
+                return Err(TypeError::InfiniteType {
+                    var: *a,
+                    ty: t2.clone(),
+                });
             }
-            subst.insert(*a, rhs);
+            subst.insert(*a, t2.clone());
             Ok(())
         }
         (_, Type::Var(b)) => {
-            let rhs = if subst.is_shared_var(*b) {
-                prepare_rhs_for_shared_binding(*b, &t1, subst)?
-            } else {
-                t1.clone()
-            };
-            if occurs_in(*b, &rhs, subst) {
-                return Err(TypeError::InfiniteType { var: *b, ty: rhs });
+            if occurs_in(*b, &t1, subst) {
+                return Err(TypeError::InfiniteType {
+                    var: *b,
+                    ty: t1.clone(),
+                });
             }
-            subst.insert(*b, rhs);
+            subst.insert(*b, t1.clone());
             Ok(())
         }
 
@@ -307,7 +271,6 @@ fn resolve_maybe_own(ty: Type, subst: &Substitution) -> Type {
 /// structural recursion and the function-arrow `fn → ~fn` effect-polarity rule.
 ///
 /// When expected is an unbound Var and actual is Own(T):
-/// - If the var is shared-bounded: strip Own, bind var = T
 /// - If in_constructor position: absorb Own directly, bind var = ~T
 /// - Otherwise: defer via MaybeOwn(fresh_q, T)
 pub fn coerce_unify(
@@ -334,24 +297,12 @@ fn coerce_unify_inner(
         }
     }
 
-    // Var on expected side: handle Own/MaybeOwn binding with shared/constructor awareness.
+    // Var on expected side: handle Own/MaybeOwn binding with constructor awareness.
     if let Type::Var(b) = &expected {
         if subst.get(*b).is_none() {
             match &actual {
                 Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
-                    if subst.is_shared_var(*b) {
-                        // shared bound: strip Own, bind bare type T (not ~T)
-                        let base = *inner.clone();
-                        if let Type::Var(s) = &base {
-                            if s == b {
-                                return Ok(());
-                            }
-                        }
-                        if occurs_in(*b, &base, subst) {
-                            return Err(TypeError::InfiniteType { var: *b, ty: base });
-                        }
-                        subst.insert(*b, base);
-                    } else if in_constructor {
+                    if in_constructor {
                         // Inside constructor: absorb ~T directly (no MaybeOwn)
                         if occurs_in(*b, &actual, subst) {
                             return Err(TypeError::InfiniteType {

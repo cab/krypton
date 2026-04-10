@@ -695,8 +695,6 @@ pub struct Substitution {
     next_qual: u32,
     /// Current qualifier scope nesting depth.
     current_scope_depth: u32,
-    /// Type variables bound by a `shared` constraint — prevents Own binding.
-    shared_type_vars: HashSet<TypeVarId>,
 }
 
 impl Default for Substitution {
@@ -714,7 +712,6 @@ impl Substitution {
             qualifier_scope_depth: HashMap::new(),
             next_qual: 0,
             current_scope_depth: 0,
-            shared_type_vars: HashSet::new(),
         }
     }
 
@@ -844,8 +841,6 @@ impl Substitution {
         qualifier_aliases.extend(self.qualifier_aliases.iter());
         let mut qualifier_scope_depth = other.qualifier_scope_depth.clone();
         qualifier_scope_depth.extend(self.qualifier_scope_depth.iter());
-        let mut shared_type_vars = other.shared_type_vars.clone();
-        shared_type_vars.extend(self.shared_type_vars.iter());
         Substitution {
             map: result_map,
             qualifiers,
@@ -853,7 +848,6 @@ impl Substitution {
             qualifier_scope_depth,
             next_qual: self.next_qual.max(other.next_qual),
             current_scope_depth: self.current_scope_depth.max(other.current_scope_depth),
-            shared_type_vars,
         }
     }
 
@@ -1028,15 +1022,6 @@ impl Substitution {
         self.current_scope_depth
     }
 
-    /// Mark a type variable as shared-bounded.
-    pub fn mark_shared_var(&mut self, var: TypeVarId) {
-        self.shared_type_vars.insert(var);
-    }
-
-    /// Check if a type variable has a shared bound.
-    pub fn is_shared_var(&self, var: TypeVarId) -> bool {
-        self.shared_type_vars.contains(&var)
-    }
 }
 
 /// Span of a function definition, optionally in a different source module.

@@ -245,7 +245,6 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
     fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitName>)],
-    shared_type_vars: &HashMap<String, HashSet<String>>,
 ) -> HashMap<String, Vec<(ParamQualifier, String)>> {
     let type_map: HashMap<&str, &TypeScheme> =
         fn_types.iter().map(|(n, s, _)| (n.as_str(), s)).collect();
@@ -265,15 +264,6 @@ fn compute_fn_qualifiers(
 
         let quantified: HashSet<_> = scheme.vars.iter().copied().collect();
 
-        let var_id_to_name: HashMap<_, _> = decl
-            .type_params
-            .iter()
-            .zip(scheme.vars.iter())
-            .map(|(tp, &id)| (id, tp.name.clone()))
-            .collect();
-
-        let fn_shared = shared_type_vars.get(&decl.name);
-
         let mut qualifiers = Vec::new();
 
         for (i, (_, param_ty)) in param_types.iter().enumerate() {
@@ -291,17 +281,7 @@ fn compute_fn_qualifiers(
             let found_vars = collect_quantified_vars(inner, &quantified);
 
             if !found_vars.is_empty() {
-                let is_shared = found_vars.iter().any(|id| {
-                    fn_shared.is_some_and(|shared_set| {
-                        var_id_to_name
-                            .get(id)
-                            .is_some_and(|name| shared_set.contains(name))
-                    })
-                });
-
-                if is_shared {
-                    qualifiers.push((ParamQualifier::Shared, param_name));
-                } else if let Some(param) = decl.params.get(i) {
+                if let Some(param) = decl.params.get(i) {
                     let bound = HashSet::new();
                     let uses = count_max_uses(&decl.body, &param.name, &bound);
                     if uses > 1 {
@@ -545,7 +525,6 @@ pub fn check_ownership(
     registry: &TypeRegistry,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,
-    shared_type_vars: &HashMap<String, HashSet<String>>,
     imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
 ) -> (OwnershipResult, Vec<SpannedTypeError>) {
     // MaybeOwn must be fully resolved before ownership checking.
@@ -598,7 +577,7 @@ pub fn check_ownership(
     }
 
     // Compute qualifier requirements per function (stays on surface AST)
-    let mut fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types, shared_type_vars);
+    let mut fn_qualifiers = compute_fn_qualifiers(&fn_decls, fn_types);
     for (name, quals) in imported_fn_qualifiers {
         fn_qualifiers
             .entry(name.clone())
@@ -636,8 +615,7 @@ pub fn check_ownership(
 /// Two parallel maps track call-site requirements:
 /// - `fn_param_info`: syntactic — does a parameter carry the `~` qualifier?
 /// - `fn_qualifiers`: semantic — computed by `compute_fn_qualifiers` from use-count
-///   analysis on the surface AST (which preserves type parameter names needed for
-///   the `shared` constraint check). A param is `Unlimited` if it may be called
+///   analysis on the surface AST. A param is `Unlimited` if it may be called
 ///   multiple times with the same argument.
 ///
 /// `owned` is the live set of bindings subject to move tracking (grows via let-binding).
@@ -849,7 +827,7 @@ impl<'a> OwnershipChecker<'a> {
                             if let Some(quals) = callee_qualifiers {
                                 if let Some((qualifier, param_name)) = quals.get(i) {
                                     match qualifier {
-                                        ParamQualifier::RequiresU | ParamQualifier::Shared => {
+                                        ParamQualifier::RequiresU => {
                                             let callee_name = callee_var_name(func)
                                                 .unwrap_or("<anonymous>")
                                                 .to_string();

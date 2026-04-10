@@ -1,5 +1,5 @@
 # expect: error E0001
-# stdlib peek is shared-bound over bare values; owned values must be borrowed explicitly.
+# peek is a bare identity; owned values passed to it are consumed.
 fun test(val: ~String) -> String {
     peek(val);
     val

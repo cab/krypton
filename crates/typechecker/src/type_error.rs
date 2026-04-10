@@ -62,7 +62,6 @@ pub enum TypeErrorCode {
     E0507, // Kind mismatch (type applied with wrong number of type args)
     E0508, // Unknown qualified export
     E0105, // Disposable branch leak (consumed in some branches but not all)
-    E0106, // Qualifier bound violation (shared + ~T)
     E0012, // Reserved name
     E0509, // Duplicate import name (same name from different modules)
     E0510, // Unknown export (name does not exist in module)
@@ -287,10 +286,6 @@ pub enum TypeError {
     ReservedName {
         name: String,
     },
-    QualifierBoundViolation {
-        type_var: String,
-        param_name: String,
-    },
     DuplicateImport {
         name: String,
         modules: Vec<String>,
@@ -477,7 +472,6 @@ impl TypeError {
             TypeError::ModuleParseError { .. } => TypeErrorCode::E0506,
             TypeError::KindMismatch { .. } => TypeErrorCode::E0507,
             TypeError::DisposableBranchLeak { .. } => TypeErrorCode::E0105,
-            TypeError::QualifierBoundViolation { .. } => TypeErrorCode::E0106,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::DuplicateImport { .. } => TypeErrorCode::E0509,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
@@ -721,9 +715,6 @@ impl TypeError {
             }
             TypeError::ReservedName { name } => {
                 Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
-            }
-            TypeError::QualifierBoundViolation { .. } => {
-                Some("remove the `~` from the parameter type, or remove the `shared` bound".to_string())
             }
             TypeError::DuplicateImport { name, modules } => {
                 Some(format!("rename one import with an alias: `import {}.{{{} as alias}}`", modules[1], name))
@@ -1271,16 +1262,6 @@ impl fmt::Display for TypeError {
                     f,
                     "`{}` is a reserved compiler name and cannot be used",
                     name
-                )
-            }
-            TypeError::QualifierBoundViolation {
-                type_var,
-                param_name,
-            } => {
-                write!(
-                    f,
-                    "qualifier bound violation: type variable `{}` is constrained to `shared` but parameter `{}` uses `~{}`",
-                    type_var, param_name, type_var
                 )
             }
             TypeError::DuplicateImport { name, modules } => {

@@ -1,4 +1,3 @@
 # expect: error E0001
-# shared-bound parameters do not create an implicit owned-to-bare data drop
-fun inspect[a](x: a) -> a where a: shared = x
+fun inspect[a](x: a) -> a = x
 fun test(s: ~String) -> String = inspect(s)

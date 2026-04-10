@@ -1,2 +1,0 @@
-# expect: ok
-fun map_shared[a[_], z](xs: a[z], ys: a[z]) -> a[z] where z: shared = xs

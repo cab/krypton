@@ -1,3 +1,0 @@
-# expect: ok
-type Box[a] = Box(a)
-fun inspect_box[z](xs: Box[z], ys: Box[z]) -> Box[z] where z: shared = xs
