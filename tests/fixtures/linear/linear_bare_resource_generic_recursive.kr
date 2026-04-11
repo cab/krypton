@@ -1,0 +1,14 @@
+# expect: error E0109
+# Recursive generic container instantiated on a `lifts: always` type.
+# Without a visited-set guard the substitution walker would loop forever
+# on `Tree[a] = { left: Tree[a], value: a }`; the fixture exercises that
+# termination path and asserts E0109 still fires at the consume-mode
+# parameter spelling.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs" as pub Sock lifts always {}
+
+type Tree[a] = Leaf | Node(Tree[a], a)
+
+fun walk(t: Tree[Sock]) -> Int = 1
+
+fun main() -> Unit = ()

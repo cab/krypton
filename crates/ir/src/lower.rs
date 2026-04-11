@@ -633,6 +633,12 @@ struct LowerCtx {
     callable_ids: HashMap<QualifiedName, FnId>,
     /// Resolved type ref → ordered fields with resolved types
     struct_fields: HashMap<ResolvedTypeRef, Vec<(String, Type)>>,
+    /// Resolved type ref → ordered declared type-parameter vars. Paired with
+    /// `struct_fields`: each entry's `TypeVarId`s are the vars the field types
+    /// reference. Used to substitute actual type arguments into field types
+    /// when lowering uses at a concrete type (record construction, struct
+    /// update, struct-pattern projection).
+    struct_type_params: HashMap<ResolvedTypeRef, Vec<TypeVarId>>,
     /// Resolved variant ref → (tag, field_types)
     sum_variants: HashMap<ResolvedVariantRef, (u32, Vec<Type>)>,
     /// Cached type_params for private types (avoids double build_type_param_map)
@@ -839,10 +845,38 @@ impl LowerCtx {
                 break;
             }
         }
+        let resource_ty_tc: Type = self
+            .var_types
+            .get(&id)
+            .cloned()
+            .map(|t| match t {
+                Type::Own(inner) => (*inner).clone(),
+                other => other,
+            })
+            .unwrap_or_else(|| Type::Named(type_name.to_string(), vec![]));
         self.fn_block_scoped_closes.push(FinallyClose {
             resource_var: id,
             type_name: type_name.to_string(),
+            resource_ty: resource_ty_tc.into(),
         });
+    }
+
+    /// Reconstruct the full resource type for a `Disposable` dict lookup.
+    ///
+    /// `AutoCloseBinding` carries only the resource's head type name (e.g.
+    /// `"Box"`), which is insufficient for parameterized instances like
+    /// `Disposable[Box[a]] where a: Disposable`: matching against such an
+    /// instance requires the full `Box[Resource]`, not a bare `Box`. We
+    /// therefore look up the variable's recorded type in `var_types` and
+    /// strip the outer `Own` wrapper, falling back to the head-only form
+    /// only if the variable has no recorded type (should not happen for a
+    /// tracked resource binding).
+    fn resource_dict_ty(&self, var: VarId, head_name: &str) -> Type {
+        match self.var_types.get(&var) {
+            Some(Type::Own(inner)) => (**inner).clone(),
+            Some(other) => other.clone(),
+            None => Type::Named(head_name.to_string(), vec![]),
+        }
     }
 
     /// Return the disposable type name if `ty` is `~T` and `T` has a
@@ -913,7 +947,7 @@ impl LowerCtx {
                 // control flow that introduces it was dead). Skip.
                 continue;
             };
-            let dict_ty = Type::Named(type_name.clone(), vec![]);
+            let dict_ty = self.resource_dict_ty(var_id, type_name);
             let (dict_bindings, dict_atom) =
                 self.resolve_dict(&trait_name, std::slice::from_ref(&dict_ty))?;
             resolved.push(ResolvedClose {
@@ -973,7 +1007,7 @@ impl LowerCtx {
         old_var: VarId,
         body: Expr,
     ) -> Result<Expr, LowerError> {
-        let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+        let dict_ty = self.resource_dict_ty(old_var, &binding.type_name);
         let trait_name = TraitName::core_disposable();
         let (dict_bindings, dict_atom) =
             self.resolve_dict(&trait_name, std::slice::from_ref(&dict_ty))?;
@@ -1008,7 +1042,7 @@ impl LowerCtx {
                     binding.name
                 ))
             })?;
-            let dict_ty = Type::Named(binding.type_name.clone(), vec![]);
+            let dict_ty = self.resource_dict_ty(binding_var, &binding.type_name);
             let (dict_bindings, dict_atom) =
                 self.resolve_dict(&trait_name, std::slice::from_ref(&dict_ty))?;
             resolved.push(ResolvedClose {
@@ -1209,6 +1243,48 @@ impl LowerCtx {
                 Ok(expr)
             }
         }
+    }
+
+    /// Return the struct's fields with their declared field types substituted
+    /// at the given concrete type (`scrut_ty`, which may be `Own(Named(..))`).
+    ///
+    /// `struct_fields` stores field types parameterized by the struct's
+    /// declared type-parameter vars (allocated fresh by the IR lowering
+    /// context for private types, or taken from the typechecker for exported
+    /// types). A use-site like `match b: ~Box[Resource] { Box { value } => … }`
+    /// projects `value` at `~Resource`, not the unsubstituted `~a` stored in
+    /// `struct_fields`. Without this substitution, downstream dict lookups
+    /// that recurse into the field type (e.g. `Disposable[a]` for the
+    /// projected binding) would fail to resolve against concrete instances.
+    fn substituted_struct_fields(
+        &self,
+        type_ref: &ResolvedTypeRef,
+        scrut_ty: &Type,
+    ) -> Result<Vec<(String, Type)>, LowerError> {
+        let fields = self
+            .struct_fields
+            .get(type_ref)
+            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
+            .clone();
+        let params = match self.struct_type_params.get(type_ref) {
+            Some(p) if !p.is_empty() => p.clone(),
+            _ => return Ok(fields),
+        };
+        let args: Vec<Type> = match scrut_ty.strip_own() {
+            Type::Named(_, args) => args,
+            _ => return Ok(fields),
+        };
+        if args.len() != params.len() {
+            return Ok(fields);
+        }
+        let mut subst = krypton_typechecker::types::Substitution::new();
+        for (&id, ty) in params.iter().zip(args.iter()) {
+            subst.insert(id, ty.clone());
+        }
+        Ok(fields
+            .into_iter()
+            .map(|(n, ty)| (n, subst.apply(&ty)))
+            .collect())
     }
 
     fn field_index(
@@ -3495,11 +3571,15 @@ impl LowerCtx {
             .or_else(|| self.fallback_type_ref(struct_name))
             .ok_or_else(|| LowerError::UnresolvedStruct(struct_name.to_string()))?;
 
-        let canonical_fields = self
-            .struct_fields
-            .get(&type_ref)
-            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
-            .clone();
+        let scrut_ty = match &scrut {
+            Atom::Var(v) => self
+                .var_types
+                .get(v)
+                .cloned()
+                .unwrap_or_else(|| Type::Named(struct_name.to_string(), vec![])),
+            _ => Type::Named(struct_name.to_string(), vec![]),
+        };
+        let canonical_fields = self.substituted_struct_fields(&type_ref, &scrut_ty)?;
 
         // Project each field
         let mut proj_vars = Vec::new();
@@ -4812,11 +4892,7 @@ impl LowerCtx {
             LowerError::InternalError(format!("StructUpdate on non-named type: {:?}", base.ty))
         })?;
 
-        let canonical_fields = self
-            .struct_fields
-            .get(&type_ref)
-            .ok_or_else(|| LowerError::UnresolvedStruct(type_ref.qualified_name.to_string()))?
-            .clone();
+        let canonical_fields = self.substituted_struct_fields(&type_ref, &base.ty)?;
 
         let result_ty = result_ty.clone();
         let update_names: Vec<String> = updates.iter().map(|(n, _)| n.clone()).collect();
@@ -6053,6 +6129,7 @@ pub fn lower_module(
         fn_ids: HashMap::new(),
         callable_ids: HashMap::new(),
         struct_fields: HashMap::new(),
+        struct_type_params: HashMap::new(),
         sum_variants: HashMap::new(),
         private_type_params: HashMap::new(),
         fn_constraints,
@@ -6168,7 +6245,9 @@ pub fn lower_module(
             qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
         };
         if let ExportedTypeKind::Record { fields } = &info.kind {
-            ctx.struct_fields.insert(type_ref, fields.clone());
+            ctx.struct_fields.insert(type_ref.clone(), fields.clone());
+            ctx.struct_type_params
+                .insert(type_ref, info.type_param_vars.clone());
         }
     }
     // Fallback: private structs not in exported_type_infos
@@ -6184,7 +6263,7 @@ pub fn lower_module(
                 .map(|name| type_param_map[name])
                 .collect();
             ctx.private_type_params
-                .insert(decl.name.clone(), ordered_params);
+                .insert(decl.name.clone(), ordered_params.clone());
             let fields: Vec<(String, Type)> = decl
                 .fields
                 .iter()
@@ -6193,7 +6272,8 @@ pub fn lower_module(
                     (fname.clone(), ty)
                 })
                 .collect();
-            ctx.struct_fields.insert(type_ref, fields);
+            ctx.struct_fields.insert(type_ref.clone(), fields);
+            ctx.struct_type_params.insert(type_ref, ordered_params);
         }
     }
 

@@ -1,0 +1,12 @@
+# expect: error E0109
+# `Box[a] = { value: a }` is not itself resource-carrying in the abstract,
+# but instantiated on a `lifts: always` extern it becomes affine — so a
+# consume-mode parameter `b: Box[Sock]` must be spelled `~Box[Sock]`.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs" as pub Sock lifts always {}
+
+type Box[a] = { value: a }
+
+fun f(b: Box[Sock]) -> Int = 1
+
+fun main() -> Unit = ()

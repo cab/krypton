@@ -1,0 +1,14 @@
+# expect: ok
+# Companion of linear_bare_resource_generic_field. `Box[a] = { value: a }`
+# has a plain (unwrapped) field, so the user must annotate ownership at
+# every nested position when instantiating on a `lifts: always` type: the
+# outer `~Box` discharges the container, and `~Sock` discharges the arg
+# that ends up at the `value` slot after substitution.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs" as pub Sock lifts always {}
+
+type Box[a] = { value: a }
+
+fun f(&b: ~Box[~Sock]) -> Int = 1
+
+fun main() -> Unit = ()

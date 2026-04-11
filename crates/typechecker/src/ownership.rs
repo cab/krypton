@@ -25,6 +25,14 @@ fn type_contains_own(ty: &Type) -> bool {
 }
 
 /// Check if a named type has any field that contains `own`.
+///
+/// Legacy non-substitution-aware classifier: used only by the leftover unit
+/// tests that exercise the historical boolean behaviour. Production callers
+/// go through `type_is_affine` / `type_has_affine_field_after_subst`, which
+/// substitute type arguments into field types before classifying so that
+/// generic containers like `Box[a] = { value: a }` are correctly flagged as
+/// resource-carrying when instantiated on a `lifts: always` type.
+#[cfg(test)]
 fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
     if let Some(info) = registry.lookup_type(type_name) {
         if let Some(ref lifts) = info.lifts {
@@ -39,6 +47,53 @@ fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
     } else {
         false
     }
+}
+
+/// Substitution-aware version of `has_own_field`. Instantiates each declared
+/// field type by substituting the struct/sum's type parameters with the
+/// provided actual type arguments, then recurses into them via
+/// `type_is_affine_rec` to determine whether the *instantiated* type
+/// contains any owned positions. This is what catches things like
+/// `Box[a] = { value: a }` applied to a `lifts: always` extern — without
+/// substitution, the check would walk `a` in isolation and miss the
+/// affinity inherited from the actual argument.
+fn type_has_affine_field_after_subst(
+    type_name: &str,
+    args: &[Type],
+    registry: &TypeRegistry,
+    visited: &mut HashSet<String>,
+) -> bool {
+    let Some(info) = registry.lookup_type(type_name) else {
+        return false;
+    };
+    if let Some(ref lifts) = info.lifts {
+        return matches!(lifts, Lifts::Always);
+    }
+    if !visited.insert(type_name.to_string()) {
+        return false;
+    }
+    let mut subst = crate::types::Substitution::new();
+    for (&var, ty) in info.type_param_vars.iter().zip(args.iter()) {
+        // Skip identity bindings to avoid a self-referential cycle in
+        // `Substitution::apply` when the walker runs on a still-abstract
+        // type like `Box[a] = { value: a }` at `Box[Var(a)]`.
+        if matches!(ty, Type::Var(id) if *id == var) {
+            continue;
+        }
+        subst.insert(var, ty.clone());
+    }
+    let any_affine = match &info.kind {
+        TypeKind::Record { fields } => fields
+            .iter()
+            .any(|(_, ty)| type_is_affine_rec(&subst.apply(ty), registry, visited)),
+        TypeKind::Sum { variants } => variants.iter().any(|v| {
+            v.fields
+                .iter()
+                .any(|ty| type_is_affine_rec(&subst.apply(ty), registry, visited))
+        }),
+    };
+    visited.remove(type_name);
+    any_affine
 }
 
 /// Compute the correct fully-wrapped spelling for a type that is affine but
@@ -200,30 +255,39 @@ fn descend_inside_wrapper(
 
 /// Check if a resolved type is affine (contains own or is a struct/sum with own fields).
 pub(crate) fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
+    let mut visited = HashSet::new();
+    type_is_affine_rec(ty, registry, &mut visited)
+}
+
+fn type_is_affine_rec(
+    ty: &Type,
+    registry: &TypeRegistry,
+    visited: &mut HashSet<String>,
+) -> bool {
     match ty {
         Type::Own(_) => true,
-        Type::Shape(inner) => type_is_affine(inner, registry),
+        Type::Shape(inner) => type_is_affine_rec(inner, registry, visited),
         Type::Named(name, args) => {
             if let Some(info) = registry.lookup_type(name) {
                 match &info.lifts {
                     Some(Lifts::Always) => return true,
                     Some(Lifts::Never) => return false,
                     Some(Lifts::Params(param_names)) => {
-                        return info
-                            .type_params
-                            .iter()
-                            .zip(args.iter())
-                            .any(|(p, a)| param_names.contains(p) && type_is_affine(a, registry));
+                        return info.type_params.iter().zip(args.iter()).any(|(p, a)| {
+                            param_names.contains(p) && type_is_affine_rec(a, registry, visited)
+                        });
                     }
                     None => {}
                 }
             }
-            has_own_field(name, registry) || args.iter().any(|a| type_is_affine(a, registry))
+            type_has_affine_field_after_subst(name, args, registry, visited)
+                || args.iter().any(|a| type_is_affine_rec(a, registry, visited))
         }
         Type::App(ctor, args) => {
-            type_is_affine(ctor, registry) || args.iter().any(|a| type_is_affine(a, registry))
+            type_is_affine_rec(ctor, registry, visited)
+                || args.iter().any(|a| type_is_affine_rec(a, registry, visited))
         }
-        Type::Tuple(elems) => elems.iter().any(|e| type_is_affine(e, registry)),
+        Type::Tuple(elems) => elems.iter().any(|e| type_is_affine_rec(e, registry, visited)),
         Type::Fn(_, _) => false,
         _ => false,
     }

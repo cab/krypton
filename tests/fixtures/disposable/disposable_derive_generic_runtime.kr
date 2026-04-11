@@ -1,0 +1,19 @@
+# expect: output "made\nclosed"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Resource = { id: Int }
+impl Disposable[Resource] {
+    fun dispose(r: ~Resource) -> Unit = match r {
+        Resource { id } => println("closed"),
+    }
+}
+
+type Box[a] = { value: ~a } deriving (Disposable)
+
+fun main() -> Unit = {
+    let r: ~Resource = Resource { id = 7 }
+    let b: ~Box[Resource] = Box { value = r }
+    println("made")
+}

@@ -3084,9 +3084,11 @@ impl<'link> Compiler<'link> {
             // Inner try: protect close() call so double-panic is suppressed
             let inner_try_start = self.builder.current_offset();
 
-            // Load dict for Disposable[type_name]
-            let resource_type = krypton_ir::Type::Named(fc.type_name.clone(), vec![]);
-            self.emit_dict_argument_for_type(&disposable_trait, &resource_type, iface_class)?;
+            // Load dict for Disposable[resource_ty]. `resource_ty` carries
+            // the full type (e.g. `Box[Resource]`) so parameterized instance
+            // lookup can match against it; falling back to a bare `Named`
+            // would drop the type arguments.
+            self.emit_dict_argument_for_type(&disposable_trait, &fc.resource_ty, iface_class)?;
 
             // Load and box the resource value
             self.builder.emit(Instruction::Aload(resource_slot as u8));

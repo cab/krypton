@@ -455,10 +455,17 @@ pub struct FnId(pub u32);
 pub struct VarId(pub u32);
 
 /// A resource binding that requires cleanup at function exit.
+///
+/// `resource_ty` carries the full resource type (e.g. `Box[Resource]`) so
+/// the finally handler can resolve parameterized `Disposable` instances
+/// correctly. `type_name` is the head name kept separately because codegen
+/// uses it for exception-table class lookups that still identify a resource
+/// by its struct name alone.
 #[derive(Debug, Clone)]
 pub struct FinallyClose {
     pub resource_var: VarId,
     pub type_name: String,
+    pub resource_ty: Type,
 }
 
 // ---------------------------------------------------------------------------

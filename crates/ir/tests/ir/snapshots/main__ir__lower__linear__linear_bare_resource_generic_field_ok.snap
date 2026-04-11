@@ -2,12 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module disposable__disposable_derive_generic
+module linear__linear_bare_resource_generic_field_ok
 
-struct Resource { id: Int }
-struct Box[a] { value: ~a }
-instance core/disposable.Disposable[Resource] { dispose=Disposable$$Resource$$dispose }
-instance core/disposable.Disposable[Box] { dispose=Disposable$$Box$$dispose }
+struct Box[a] { value: a }
+extern type java "net.Sock" Sock
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
@@ -21,11 +19,8 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn Disposable$$Resource$$dispose(v0: ~Resource) -> Unit =
-  let v1: Int = project v0.0
-  ()
+fn f(v0: ~Box[~Sock]) -> Int =
+  1
 
-fn Disposable$$Box$$dispose(v2: Dict[core/disposable.Disposable, z7], v3: ~Box[z7]) -> Unit =
-  let v4: ~z7 = project v3.0
-  let v5: Unit = trait_call core/disposable.Disposable.dispose(v2, v4)
+fn main() -> Unit =
   ()
