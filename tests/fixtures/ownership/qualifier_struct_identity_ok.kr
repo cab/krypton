@@ -3,4 +3,4 @@ type Buffer = { data: ~String }
 
 fun identity(x) = x
 
-fun test(b: Buffer) -> Buffer = identity(b)
+fun test(b: ~Buffer) -> ~Buffer = identity(b)

@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 Buffer: (~String) -> Buffer
 identity: forall a. (a) -> a
-test: (Buffer) -> Buffer
+test: (~Buffer) -> ~Buffer

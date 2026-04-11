@@ -1,5 +1,6 @@
-# expect: ok
-# Shared let-pattern should coerce ~T fields to T, allowing multiple uses
+# expect: error E0109
+# Pre-M39-T6 a shared let-pattern coerced `~T` fields to `T`. M39-T6
+# rejects the bare parameter spelling at the annotation site.
 type Box = { value: ~String }
 fun test(b: Box) -> (String, String) {
     let Box { value } = b

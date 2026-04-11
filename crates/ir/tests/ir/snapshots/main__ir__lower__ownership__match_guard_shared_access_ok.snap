@@ -19,20 +19,20 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn len(v0: String) -> Int =
   1
 
-fn test(v1: Option[~String], v2: Int) -> Int =
-  let v8: Bool = eq_int(v2, 0)
-  if v8 {
-    let_join v7(v6: Bool) =
-      if v6 {
+fn test(v1: Int) -> Int =
+  let v7: Bool = eq_int(v1, 0)
+  if v7 {
+    let_join v6(v5: Bool) =
+      if v5 {
         10
       } else {
         0
       }
     in
-    let v3: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-    let v4: Int = call len("hello")
-    let v5: Bool = trait_call core/ord.Ord.lt(v3, 0, v4)
-    jump v7(v5)
+    let v2: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v3: Int = call len("hello")
+    let v4: Bool = trait_call core/ord.Ord.lt(v2, 0, v3)
+    jump v6(v4)
   } else {
     0
   }

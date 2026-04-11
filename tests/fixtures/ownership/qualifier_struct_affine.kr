@@ -3,4 +3,4 @@ type Buffer = { data: ~String }
 
 fun dup(x) = (x, x)
 
-fun test(b: Buffer) -> (Buffer, Buffer) = dup(b)
+fun test(b: ~Buffer) -> (~Buffer, ~Buffer) = dup(b)

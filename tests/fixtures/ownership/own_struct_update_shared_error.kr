@@ -1,4 +1,7 @@
-# expect: error E0001
+# expect: error E0109
+# Pre-M39-T6 a struct-update on a bare resource-carrying type was
+# rejected by the ownership path. M39-T6 rejects the bare spelling at
+# the annotation site first.
 type Task = { name: String, action: ~() -> String }
 fun consume(buf: ~String) -> String = match buf { _ => "" }
 fun rename(t: Task, n: String) -> Task = { t | name = n }

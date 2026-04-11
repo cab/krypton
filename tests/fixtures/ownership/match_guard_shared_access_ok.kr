@@ -1,7 +1,7 @@
 # expect: ok
 fun len(s: String) -> Int = 1
 
-fun test(x: Option[~String], tag: Int) -> Int = match tag {
+fun test(tag: Int) -> Int = match tag {
     0 if len("hello") > 0 => 10,
     _ => 0,
 }

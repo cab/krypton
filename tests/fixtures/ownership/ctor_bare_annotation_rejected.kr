@@ -1,0 +1,14 @@
+# expect: error E0109
+# M39-T6: a bare annotation on a resource-carrying type at a value
+# position (here the `let c: Conn = ...` binding site) is rejected with
+# E0109 — the user must spell `~Conn` to acknowledge ownership transfer.
+
+extern java "net.Socket" as pub Socket lifts always {}
+extern js "net.mjs"     as pub Socket lifts always {}
+
+type Conn = { sock: ~Socket, name: String }
+
+fun mk(s: ~Socket) -> ~Conn = {
+  let c: Conn = Conn { sock = s, name = "foo" }
+  c
+}

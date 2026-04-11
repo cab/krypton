@@ -1,5 +1,6 @@
-# expect: error E0001
-# Let-destructuring a struct with ~fn field should error
+# expect: error E0109
+# Pre-M39-T6 this tested let-destructuring a struct with a `~fn` field.
+# M39-T6 rejects the bare spelling at the annotation site first.
 type Callback = { run: ~() -> String }
 fun test(cb: Callback) -> String {
     let Callback { run } = cb

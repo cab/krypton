@@ -21,6 +21,6 @@ import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn identity(v0: k8) -> k8 =
   v0
 
-fn test(v1: Buffer) -> Buffer =
-  let v2: Buffer = call identity(v1)
+fn test(v1: ~Buffer) -> ~Buffer =
+  let v2: ~Buffer = call identity(v1)
   v2
