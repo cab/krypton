@@ -1,0 +1,31 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module shape_impl__shape_impl_mono_owned
+
+type Handle = MkHandle#0
+trait Identity[j8] { identify(j8): j8 }
+instance core/disposable.Disposable[Handle] { dispose=Disposable$$Handle$$dispose }
+instance shape_impl__shape_impl_mono_owned.Identity[Vec$Handle] { identify=Identity$$Vec$Handle$$identify }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+
+fn Disposable$$Handle$$dispose(v0: ~Handle) -> Unit =
+  switch v0 {
+    0 ->
+      ()
+  }
+
+fn Identity$$Vec$Handle$$identify(v1: ~Vec[~Handle]) -> ~Vec[~Handle] =
+  v1

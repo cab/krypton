@@ -112,6 +112,8 @@ pub enum TypeErrorCode {
     E0611, // Function-type parameter mode mismatch (consume vs borrow)
     E0612, // Trait impl method parameter mode does not match trait requirement
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
+    E0319, // Shape-polymorphic impl body failed to typecheck for one value form
+    E0320, // Too many `shape` parameters in a single trait method (cap is 2)
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -478,6 +480,24 @@ pub enum TypeError {
         name: String,
         context: BorrowMisuseContext,
     },
+    /// A trait method signature mentions more than two `shape` parameters.
+    /// The impl dual-check is 2^N in the number of shape variables; v0.1
+    /// caps N at 2 to bound the cost. Rejected at trait registration.
+    TooManyShapeParameters {
+        trait_name: String,
+        method_name: String,
+        count: usize,
+    },
+    /// A shape-polymorphic impl body typechecked for one legal value form
+    /// of a `shape` parameter but not the other. The failing form is
+    /// captured in `failing_form` (e.g. "a = ~T (owned)") and the nested
+    /// error is the root cause from that fork.
+    ShapeImplDualCheckFailure {
+        trait_name: String,
+        method_name: String,
+        failing_form: String,
+        inner: Box<TypeError>,
+    },
 }
 
 /// How a borrowed binding was misused. Drives the diagnostic wording.
@@ -583,6 +603,8 @@ impl TypeError {
             TypeError::BareUseOfResourceType { .. } => TypeErrorCode::E0109,
             TypeError::DerivingConflictsWithImpl { .. } => TypeErrorCode::E0309,
             TypeError::BorrowedBindingMisuse { .. } => TypeErrorCode::E0111,
+            TypeError::TooManyShapeParameters { .. } => TypeErrorCode::E0320,
+            TypeError::ShapeImplDualCheckFailure { .. } => TypeErrorCode::E0319,
         }
     }
 
@@ -934,6 +956,12 @@ impl TypeError {
                     "remove the `deriving ({trait_name})` clause or delete the hand-written `impl {trait_name}` block"
                 ))
             }
+            TypeError::TooManyShapeParameters { count, .. } => Some(format!(
+                "v0.1 caps `shape` parameters at 2 per method (cost is 2^N typechecks); this signature uses {count}"
+            )),
+            TypeError::ShapeImplDualCheckFailure { failing_form, inner, .. } => Some(format!(
+                "the impl body must typecheck for both plain and owned instantiations of the `shape` parameter; the fork with {failing_form} failed: {inner}"
+            )),
             TypeError::BorrowedBindingMisuse { context, .. } => Some(match context {
                 BorrowMisuseContext::ConsumedOrReturned => {
                     "borrowed bindings may only be reborrowed into `&` slots; rebind the owner at the caller to consume it".to_string()
@@ -1668,6 +1696,23 @@ impl fmt::Display for TypeError {
                     BorrowMisuseContext::CapturedByClosure => "cannot be captured by a closure",
                 };
                 write!(f, "`{name}` is a borrowed binding and {action}")
+            }
+            TypeError::TooManyShapeParameters { trait_name, method_name, count } => {
+                write!(
+                    f,
+                    "trait `{trait_name}` method `{method_name}` has {count} `shape` parameters; the v0.1 cap is 2"
+                )
+            }
+            TypeError::ShapeImplDualCheckFailure {
+                trait_name,
+                method_name,
+                failing_form,
+                inner,
+            } => {
+                write!(
+                    f,
+                    "impl of trait `{trait_name}` method `{method_name}` failed to typecheck for {failing_form}: {inner}"
+                )
             }
         }
     }

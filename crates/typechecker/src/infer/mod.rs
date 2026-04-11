@@ -3584,6 +3584,37 @@ fn register_local_traits(
                     Type::Var(state.gen.fresh())
                 };
 
+                // v0.1 cap: at most 2 `shape` variables per trait method.
+                // Enforced at trait registration so every impl path sees
+                // a well-formed method.
+                {
+                    let mut shape_vars: Vec<TypeVarId> = Vec::new();
+                    let mut seen: std::collections::HashSet<TypeVarId> =
+                        std::collections::HashSet::new();
+                    for pt in &param_types {
+                        for v in crate::types::collect_shape_vars(pt) {
+                            if seen.insert(v) {
+                                shape_vars.push(v);
+                            }
+                        }
+                    }
+                    for v in crate::types::collect_shape_vars(&return_type) {
+                        if seen.insert(v) {
+                            shape_vars.push(v);
+                        }
+                    }
+                    if shape_vars.len() > 2 {
+                        return Err(spanned(
+                            TypeError::TooManyShapeParameters {
+                                trait_name: name.clone(),
+                                method_name: method.name.clone(),
+                                count: shape_vars.len(),
+                            },
+                            method.span,
+                        ));
+                    }
+                }
+
                 let fn_ty = Type::Fn(
                     param_modes
                         .iter()
@@ -4906,267 +4937,210 @@ fn typecheck_impl_methods(
                     .find(|m| m.name == method.name)
                     .unwrap();
 
-                // Freshen any trait type vars other than the primary one (`tv_id`)
-                // before substitution. For multi-parameter traits the method types
-                // reference additional trait type vars (e.g. `b` in
-                // `trait Convert[a, b] { fun convert(x: a) -> b }`); these must be
-                // freshened per-impl so that unifications from one impl do not
-                // leak into the shared substitution and pollute the next impl.
-                let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
-                for (_, pt) in &trait_method.param_types {
-                    for v in free_vars(pt) {
-                        if v != tv_id {
+                // Shape-polymorphic dual-check: when a trait method signature
+                // mentions `shape a`, the impl body must typecheck for every
+                // legal value form of `a` (plain and owned). Collect the shape
+                // variables — both the trait primary (`tv_id`) and any
+                // secondary trait / method vars that appear inside a `Shape(_)`
+                // wrapper — so we can enumerate forks below.
+                let shape_vars: Vec<TypeVarId> = {
+                    let mut out: Vec<TypeVarId> = Vec::new();
+                    let mut seen: HashSet<TypeVarId> = HashSet::new();
+                    for (_, pt) in &trait_method.param_types {
+                        for v in crate::types::collect_shape_vars(pt) {
+                            if seen.insert(v) {
+                                out.push(v);
+                            }
+                        }
+                    }
+                    for v in crate::types::collect_shape_vars(&trait_method.return_type) {
+                        if seen.insert(v) {
+                            out.push(v);
+                        }
+                    }
+                    out
+                };
+
+                // For each shape variable, determine its candidate bindings.
+                // tv_id defaults to `resolved_target` when concrete; otherwise
+                // the trait primary is free and we fork on (plain, owned).
+                // Non-tv_id shape vars (secondary trait vars or method vars
+                // appearing in shape positions) always fork on (plain, owned).
+                #[derive(Clone)]
+                enum ShapeCandidate {
+                    Concrete(Type),
+                    Plain,
+                    Owned,
+                }
+                let resolved_target_is_concrete = free_vars(&resolved_target).is_empty();
+                let mut per_var_candidates: Vec<(TypeVarId, Vec<ShapeCandidate>)> = Vec::new();
+                for &sv in &shape_vars {
+                    if sv == tv_id && resolved_target_is_concrete {
+                        per_var_candidates
+                            .push((sv, vec![ShapeCandidate::Concrete(resolved_target.clone())]));
+                    } else {
+                        per_var_candidates
+                            .push((sv, vec![ShapeCandidate::Plain, ShapeCandidate::Owned]));
+                    }
+                }
+
+                // Cartesian product over shape var candidate sets. Empty shape
+                // vars means a single fork with no overrides; all shape vars
+                // concrete mono gives a single fork too — both reuse the
+                // existing single-check code path.
+                let mut combos: Vec<Vec<(TypeVarId, ShapeCandidate)>> = vec![vec![]];
+                for (sv, cands) in &per_var_candidates {
+                    let mut next: Vec<Vec<(TypeVarId, ShapeCandidate)>> =
+                        Vec::with_capacity(combos.len() * cands.len());
+                    for c in cands {
+                        for existing in &combos {
+                            let mut row = existing.clone();
+                            row.push((*sv, c.clone()));
+                            next.push(row);
+                        }
+                    }
+                    combos = next;
+                }
+                debug_assert!(combos.len() <= 4, "shape cap is 2 → at most 4 forks");
+
+                // Track the committed fork's typed output so the post-loop
+                // bookkeeping can push it into `instance_methods`. The first
+                // successful fork wins; later forks must also pass (their
+                // typed ASTs are discarded).
+                let mut committed: Option<ForkCommit> = None;
+                let mut dual_check_failure: Option<(String, SpannedTypeError)> = None;
+                let is_multi_fork = combos.len() > 1;
+
+                for combo in &combos {
+                    // Per-fork freshening + shape-var overrides. Each fork
+                    // allocates its own fresh vars so the subst map grows
+                    // monotonically but fork reasoning stays independent.
+                    let mut fork_overrides: HashMap<TypeVarId, Type> = HashMap::new();
+                    let mut form_label_parts: Vec<String> = Vec::new();
+                    let shape_var_names = &trait_info.type_var_names;
+                    for (sv, cand) in combo {
+                        let replacement = match cand {
+                            ShapeCandidate::Concrete(t) => t.clone(),
+                            ShapeCandidate::Plain => Type::Var(state.gen.fresh()),
+                            ShapeCandidate::Owned => {
+                                Type::Own(Box::new(Type::Var(state.gen.fresh())))
+                            }
+                        };
+                        let name = trait_info
+                            .type_var_ids
+                            .iter()
+                            .position(|id| id == sv)
+                            .and_then(|idx| shape_var_names.get(idx).cloned())
+                            .unwrap_or_else(|| format!("{}", sv));
+                        let form = match cand {
+                            ShapeCandidate::Concrete(t) => format!("{} = {}", name, t),
+                            ShapeCandidate::Plain => format!("{} = T (plain)", name),
+                            ShapeCandidate::Owned => format!("{} = ~T (owned)", name),
+                        };
+                        form_label_parts.push(form);
+                        fork_overrides.insert(*sv, replacement);
+                    }
+                    // Always ensure tv_id is substituted; mono cases put it
+                    // into fork_overrides directly, generic non-shape cases
+                    // fall through to `resolved_target`.
+                    fork_overrides
+                        .entry(tv_id)
+                        .or_insert_with(|| resolved_target.clone());
+                    let form_label = if form_label_parts.is_empty() {
+                        String::new()
+                    } else {
+                        form_label_parts.join(", ")
+                    };
+
+                    // Freshen trait's secondary/method vars that are NOT shape
+                    // vars (those are handled above via fork_overrides).
+                    let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
+                    for (_, pt) in &trait_method.param_types {
+                        for v in free_vars(pt) {
+                            if v != tv_id && !fork_overrides.contains_key(&v) {
+                                extra_subst
+                                    .entry(v)
+                                    .or_insert_with(|| Type::Var(state.gen.fresh()));
+                            }
+                        }
+                    }
+                    for v in free_vars(&trait_method.return_type) {
+                        if v != tv_id && !fork_overrides.contains_key(&v) {
                             extra_subst
                                 .entry(v)
                                 .or_insert_with(|| Type::Var(state.gen.fresh()));
                         }
                     }
-                }
-                for v in free_vars(&trait_method.return_type) {
-                    if v != tv_id {
-                        extra_subst
-                            .entry(v)
-                            .or_insert_with(|| Type::Var(state.gen.fresh()));
-                    }
-                }
-                let freshen_extras = |ty: &Type| -> Type {
-                    let mut out = ty.clone();
-                    for (old_id, new_ty) in &extra_subst {
-                        out = substitute_type_var(&out, *old_id, new_ty);
-                    }
-                    out
-                };
+                    let fork_apply = |ty: &Type| -> Type {
+                        let mut out = ty.clone();
+                        for (old_id, new_ty) in &extra_subst {
+                            out = substitute_type_var(&out, *old_id, new_ty);
+                        }
+                        for (old_id, new_ty) in &fork_overrides {
+                            out = substitute_type_var(&out, *old_id, new_ty);
+                        }
+                        out
+                    };
 
-                // Keep modes from the trait method so we can enforce exact match
-                // before dropping them for the type-level unification loop below.
-                let concrete_param_types_with_modes: Vec<(ParamMode, Type)> = trait_method
-                    .param_types
-                    .iter()
-                    .map(|(m, t)| {
-                        (
-                            *m,
-                            substitute_type_var(&freshen_extras(t), tv_id, &resolved_target),
-                        )
-                    })
-                    .collect();
-                let concrete_param_types: Vec<Type> = concrete_param_types_with_modes
-                    .iter()
-                    .map(|(_, t)| t.clone())
-                    .collect();
-                let _concrete_ret_type = substitute_type_var(
-                    &freshen_extras(&trait_method.return_type),
-                    tv_id,
-                    &resolved_target,
-                );
-
-                let mut impl_method_tpm: HashMap<String, TypeVarId> = instance.type_var_ids.clone();
-                let mut impl_method_tpa = HashMap::new();
-                for tv_param in &method.type_params {
-                    if !impl_method_tpm.contains_key(&tv_param.name) {
-                        impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());
-                        impl_method_tpa.insert(tv_param.name.clone(), tv_param.arity);
-                    }
-                }
-
-                // Resolve method-level where constraints
-                let mut method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
-                for constraint in &method.constraints {
-                    let tv_names = require_param_vars(constraint)?;
-                    let tvs: Vec<TypeVarId> = tv_names
-                        .iter()
-                        .filter_map(|n| impl_method_tpm.get(*n).copied())
-                        .collect();
-                    if tvs.len() == tv_names.len() && !tvs.is_empty() {
-                        // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
-                        // Validation deferred to instance resolution phase.
-                        let tn = trait_registry
-                            .lookup_trait_by_name(&constraint.trait_name)
-                            .map(|ti| ti.trait_name())
-                            .unwrap_or_else(|| {
-                                TraitName::new(
-                                    module_path.to_string(),
-                                    constraint.trait_name.clone(),
-                                )
-                            });
-                        method_constraint_pairs.push((tn, tvs));
-                    }
-                }
-
-                if method.params.len() != concrete_param_types.len() {
-                    return Err(spanned(
-                        TypeError::WrongArity {
-                            expected: concrete_param_types.len(),
-                            actual: method.params.len(),
-                        },
+                    match check_fork(
+                        state,
+                        module_path,
+                        trait_registry,
+                        trait_name,
+                        method,
+                        trait_method,
+                        instance,
+                        &resolved_target,
+                        all_intrinsic,
                         *span,
-                    ));
-                }
-
-                // Trait impl methods must match the trait's declared parameter
-                // modes exactly. Instance lookup strips `~` for coherence, but
-                // witness checking does not erase capability information:
-                // consume / `&~T` / `&T` are distinct capabilities and do not
-                // coerce.
-                for (i, (p, (trait_mode, _))) in method
-                    .params
-                    .iter()
-                    .zip(concrete_param_types_with_modes.iter())
-                    .enumerate()
-                {
-                    if p.mode != *trait_mode {
-                        return Err(spanned(
-                            TypeError::ImplMethodModeMismatch {
-                                trait_name: trait_name.clone(),
-                                method_name: method.name.clone(),
-                                param_index: i,
-                                param_name: p.name.clone(),
-                                expected_mode: *trait_mode,
-                                actual_mode: p.mode,
-                            },
-                            p.span,
-                        ));
-                    }
-                }
-
-                for (i, p) in method.params.iter().enumerate() {
-                    if let Some(ref ty_expr) = p.ty {
-                        if i < concrete_param_types.len() {
-                            let annotated_ty = type_registry::resolve_type_expr(
-                                ty_expr,
-                                &impl_method_tpm,
-                                &impl_method_tpa,
-                                &state.registry,
-                                ResolutionContext::UserAnnotation,
-                                Some(&resolved_target),
-                            )
-                            .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
-                            .map_err(|e| spanned(e, p.span))?;
-                            unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
-                                .map_err(|e| spanned_with_names(e, p.span, &impl_method_tpm))?;
+                        &fork_apply,
+                    ) {
+                        Ok(result) => {
+                            if committed.is_none() {
+                                committed = Some(result);
+                            }
+                        }
+                        Err(err_with_label) => {
+                            if dual_check_failure.is_none() {
+                                dual_check_failure = Some((form_label, err_with_label));
+                            }
                         }
                     }
                 }
-                if let Some(ref ret_ty_expr) = method.return_type {
-                    let concrete_ret = substitute_type_var(
-                        &freshen_extras(&trait_method.return_type),
-                        tv_id,
-                        &resolved_target,
-                    );
-                    let annotated_ret = type_registry::resolve_type_expr(
-                        ret_ty_expr,
-                        &impl_method_tpm,
-                        &impl_method_tpa,
-                        &state.registry,
-                        ResolutionContext::UserAnnotation,
-                        Some(&resolved_target),
-                    )
-                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
-                    .map_err(|e| spanned(e, method.span))?;
-                    unify(&concrete_ret, &annotated_ret, &mut state.subst).map_err(|e| {
-                        let error = match e {
-                            TypeError::WrongArity { .. } => TypeError::Mismatch {
-                                expected: concrete_ret.clone(),
-                                actual: annotated_ret.clone(),
+
+                if let Some((failing_form, inner_err)) = dual_check_failure {
+                    if is_multi_fork {
+                        return Err(spanned(
+                            TypeError::ShapeImplDualCheckFailure {
+                                trait_name: trait_name.clone(),
+                                method_name: method.name.clone(),
+                                failing_form,
+                                inner: inner_err.error,
                             },
-                            other => other,
-                        };
-                        spanned_with_names(error, method.span, &impl_method_tpm)
-                    })?;
+                            method.span,
+                        ));
+                    } else {
+                        return Err(inner_err);
+                    }
                 }
 
                 if all_intrinsic {
                     continue;
                 }
 
-                state.env.push_scope();
-                let mut param_types_inferred = Vec::new();
-                for (i, p) in method.params.iter().enumerate() {
-                    let ptv = Type::Var(state.gen.fresh());
-                    if i < concrete_param_types.len() {
-                        unify(&ptv, &concrete_param_types[i], &mut state.subst)
-                            .map_err(|e| spanned(e, *span))?;
-                    }
-                    param_types_inferred.push(ptv.clone());
-                    state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
-                }
-                let prev_fn_return_type = state.env.fn_return_type.take();
-                let concrete_ret_type = substitute_type_var(
-                    &freshen_extras(&trait_method.return_type),
-                    tv_id,
-                    &resolved_target,
+                let ForkCommit {
+                    body_typed,
+                    method_constraint_pairs,
+                    fn_ty,
+                } = committed.expect(
+                    "check_fork returned no error and no commit (empty combos?)",
                 );
-                state.env.fn_return_type = Some(concrete_ret_type);
-
-                let impl_qual_snap = state.subst.push_qual_scope();
-                let body_result = {
-                    let fn_ret_expected = state.env.fn_return_type.clone();
-                    let mut ctx = InferenceContext {
-                        env: &mut state.env,
-                        subst: &mut state.subst,
-                        gen: &mut state.gen,
-                        registry: Some(&state.registry),
-                        recur_params: Some(param_types_inferred.clone()),
-                        let_own_spans: Some(&mut state.let_own_spans),
-                        lambda_own_captures: Some(&mut state.lambda_own_captures),
-                        type_param_map: &impl_method_tpm,
-                        type_param_arity: &impl_method_tpa,
-                        qualified_modules: &state.qualified_modules,
-                        imported_type_info: &state.imports.imported_type_info,
-                        module_path,
-                        shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
-                        self_type: Some(resolved_target.clone()),
-                    };
-                    ctx.infer_expr_inner(&method.body, fn_ret_expected.as_ref())
-                };
-                state.env.fn_return_type = prev_fn_return_type;
-                state.env.pop_scope();
-                match &body_result {
-                    Ok(_) => state.subst.commit_qual_scope(impl_qual_snap),
-                    Err(_) => state.subst.rollback_qual_scope(impl_qual_snap),
-                }
-                let body_typed = body_result?;
-
-                let mut body_typed = body_typed;
-                typed_ast::apply_subst(&mut body_typed, &state.subst);
-
-                let final_param_types: Vec<Type> = param_types_inferred
-                    .iter()
-                    .map(|t| state.subst.apply(t))
-                    .collect();
-                let final_ret_type = state.subst.apply(&body_typed.ty);
-
-                let expected_ret_type = state.subst.apply(&substitute_type_var(
-                    &freshen_extras(&trait_method.return_type),
-                    tv_id,
-                    &resolved_target,
-                ));
-                coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst).map_err(
-                    |_| {
-                        spanned_with_names(
-                            TypeError::Mismatch {
-                                expected: expected_ret_type.clone(),
-                                actual: final_ret_type.clone(),
-                            },
-                            method.span,
-                            &impl_method_tpm,
-                        )
-                    },
-                )?;
-
-                let fn_params: Vec<(crate::types::ParamMode, Type)> = method
-                    .params
-                    .iter()
-                    .zip(final_param_types.into_iter())
-                    .map(|(p, t)| (p.mode, t))
-                    .collect();
-                let fn_ty = Type::Fn(fn_params, Box::new(final_ret_type));
                 let scheme = TypeScheme {
                     vars: vec![],
                     constraints: Vec::new(),
                     ty: fn_ty,
                     var_names: HashMap::new(),
                 };
-
                 instance_methods.push(typed_ast::InstanceMethod {
                     name: method.name.clone(),
                     params: method
@@ -5205,6 +5179,264 @@ fn typecheck_impl_methods(
     }
 
     Ok(instance_defs)
+}
+
+/// Result of a successful impl-method body fork check.
+///
+/// Produced by `check_fork` and consumed by `typecheck_impl_methods` after
+/// the dual-check loop selects a canonical commit fork (the first
+/// successful fork). Downstream IR lowering sees only the committed form.
+struct ForkCommit {
+    body_typed: crate::typed_ast::TypedExpr,
+    method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)>,
+    fn_ty: Type,
+}
+
+/// Run one fork of impl-method body checking under a fork-specific type
+/// substitution. Captures the original `typecheck_impl_methods` body-check
+/// logic so it can be invoked per-fork during shape-polymorphic
+/// dual-checking.
+///
+/// `fork_apply` materializes concrete types from the trait method signature
+/// under the fork's shape-variable bindings. For mono impls a single fork
+/// with the primary trait var bound to `resolved_target` reproduces the
+/// original single-check behavior.
+#[allow(clippy::too_many_arguments)]
+fn check_fork<F>(
+    state: &mut ModuleInferenceState,
+    module_path: &str,
+    trait_registry: &TraitRegistry,
+    trait_name: &str,
+    method: &krypton_parser::ast::FnDecl,
+    trait_method: &TraitMethod,
+    instance: &InstanceInfo,
+    resolved_target: &Type,
+    all_intrinsic: bool,
+    impl_span: Span,
+    fork_apply: &F,
+) -> Result<ForkCommit, SpannedTypeError>
+where
+    F: Fn(&Type) -> Type,
+{
+    // Apply the fork-specific substitution, then normalize `Shape` wrappers
+    // through `subst.apply` so that shape-over-concrete resolves to the
+    // correct ownership form before structural unification. Without this,
+    // `shape Vec[~Handle]` would reach the unifier as `Shape(Vec[~Handle])`
+    // and fail to match an annotation written as `~Vec[~Handle]`.
+    let concrete_param_types_with_modes: Vec<(ParamMode, Type)> = trait_method
+        .param_types
+        .iter()
+        .map(|(m, t)| (*m, state.subst.apply(&fork_apply(t))))
+        .collect();
+    let concrete_param_types: Vec<Type> = concrete_param_types_with_modes
+        .iter()
+        .map(|(_, t)| t.clone())
+        .collect();
+
+    let mut impl_method_tpm: HashMap<String, TypeVarId> = instance.type_var_ids.clone();
+    let mut impl_method_tpa = HashMap::new();
+    for tv_param in &method.type_params {
+        if !impl_method_tpm.contains_key(&tv_param.name) {
+            impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());
+            impl_method_tpa.insert(tv_param.name.clone(), tv_param.arity);
+        }
+    }
+
+    let mut method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)> = Vec::new();
+    for constraint in &method.constraints {
+        let tv_names = require_param_vars(constraint)?;
+        let tvs: Vec<TypeVarId> = tv_names
+            .iter()
+            .filter_map(|n| impl_method_tpm.get(*n).copied())
+            .collect();
+        if tvs.len() == tv_names.len() && !tvs.is_empty() {
+            let tn = trait_registry
+                .lookup_trait_by_name(&constraint.trait_name)
+                .map(|ti| ti.trait_name())
+                .unwrap_or_else(|| {
+                    TraitName::new(module_path.to_string(), constraint.trait_name.clone())
+                });
+            method_constraint_pairs.push((tn, tvs));
+        }
+    }
+
+    if method.params.len() != concrete_param_types.len() {
+        return Err(spanned(
+            TypeError::WrongArity {
+                expected: concrete_param_types.len(),
+                actual: method.params.len(),
+            },
+            impl_span,
+        ));
+    }
+
+    for (i, (p, (trait_mode, _))) in method
+        .params
+        .iter()
+        .zip(concrete_param_types_with_modes.iter())
+        .enumerate()
+    {
+        if p.mode != *trait_mode {
+            return Err(spanned(
+                TypeError::ImplMethodModeMismatch {
+                    trait_name: trait_name.to_string(),
+                    method_name: method.name.clone(),
+                    param_index: i,
+                    param_name: p.name.clone(),
+                    expected_mode: *trait_mode,
+                    actual_mode: p.mode,
+                },
+                p.span,
+            ));
+        }
+    }
+
+    for (i, p) in method.params.iter().enumerate() {
+        if let Some(ref ty_expr) = p.ty {
+            if i < concrete_param_types.len() {
+                let annotated_ty = type_registry::resolve_type_expr(
+                    ty_expr,
+                    &impl_method_tpm,
+                    &impl_method_tpa,
+                    &state.registry,
+                    ResolutionContext::UserAnnotation,
+                    Some(resolved_target),
+                )
+                .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+                .map_err(|e| spanned(e, p.span))?;
+                unify(&annotated_ty, &concrete_param_types[i], &mut state.subst)
+                    .map_err(|e| spanned_with_names(e, p.span, &impl_method_tpm))?;
+            }
+        }
+    }
+    if let Some(ref ret_ty_expr) = method.return_type {
+        let concrete_ret = state.subst.apply(&fork_apply(&trait_method.return_type));
+        let annotated_ret = type_registry::resolve_type_expr(
+            ret_ty_expr,
+            &impl_method_tpm,
+            &impl_method_tpa,
+            &state.registry,
+            ResolutionContext::UserAnnotation,
+            Some(resolved_target),
+        )
+        .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+        .map_err(|e| spanned(e, method.span))?;
+        unify(&concrete_ret, &annotated_ret, &mut state.subst).map_err(|e| {
+            let error = match e {
+                TypeError::WrongArity { .. } => TypeError::Mismatch {
+                    expected: concrete_ret.clone(),
+                    actual: annotated_ret.clone(),
+                },
+                other => other,
+            };
+            spanned_with_names(error, method.span, &impl_method_tpm)
+        })?;
+    }
+
+    if all_intrinsic {
+        // No body to check; the caller's `all_intrinsic` branch skips the
+        // committed fork entirely, so the returned commit is never read.
+        return Ok(ForkCommit {
+            body_typed: crate::typed_ast::TypedExpr {
+                kind: crate::typed_ast::TypedExprKind::Do(Vec::new()),
+                ty: Type::Unit,
+                span: method.span,
+                resolved_ref: None,
+                scope_id: None,
+            },
+            method_constraint_pairs,
+            fn_ty: Type::Unit,
+        });
+    }
+
+    state.env.push_scope();
+    let let_own_spans_snap = state.let_own_spans.clone();
+    let lambda_own_captures_snap = state.lambda_own_captures.clone();
+    let mut param_types_inferred = Vec::new();
+    for (i, p) in method.params.iter().enumerate() {
+        let ptv = Type::Var(state.gen.fresh());
+        if i < concrete_param_types.len() {
+            if let Err(e) = unify(&ptv, &concrete_param_types[i], &mut state.subst) {
+                state.env.pop_scope();
+                state.let_own_spans = let_own_spans_snap;
+                state.lambda_own_captures = lambda_own_captures_snap;
+                return Err(spanned(e, impl_span));
+            }
+        }
+        param_types_inferred.push(ptv.clone());
+        state.env.bind(p.name.clone(), TypeScheme::mono(ptv));
+    }
+    let prev_fn_return_type = state.env.fn_return_type.take();
+    let concrete_ret_type = state.subst.apply(&fork_apply(&trait_method.return_type));
+    state.env.fn_return_type = Some(concrete_ret_type);
+
+    let impl_qual_snap = state.subst.push_qual_scope();
+    let body_result = {
+        let fn_ret_expected = state.env.fn_return_type.clone();
+        let mut ctx = InferenceContext {
+            env: &mut state.env,
+            subst: &mut state.subst,
+            gen: &mut state.gen,
+            registry: Some(&state.registry),
+            recur_params: Some(param_types_inferred.clone()),
+            let_own_spans: Some(&mut state.let_own_spans),
+            lambda_own_captures: Some(&mut state.lambda_own_captures),
+            type_param_map: &impl_method_tpm,
+            type_param_arity: &impl_method_tpa,
+            qualified_modules: &state.qualified_modules,
+            imported_type_info: &state.imports.imported_type_info,
+            module_path,
+            shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
+            self_type: Some(resolved_target.clone()),
+        };
+        ctx.infer_expr_inner(&method.body, fn_ret_expected.as_ref())
+    };
+    state.env.fn_return_type = prev_fn_return_type;
+    state.env.pop_scope();
+    match &body_result {
+        Ok(_) => state.subst.commit_qual_scope(impl_qual_snap),
+        Err(_) => {
+            state.subst.rollback_qual_scope(impl_qual_snap);
+            state.let_own_spans = let_own_spans_snap;
+            state.lambda_own_captures = lambda_own_captures_snap;
+        }
+    }
+    let mut body_typed = body_result?;
+    typed_ast::apply_subst(&mut body_typed, &state.subst);
+
+    let final_param_types: Vec<Type> = param_types_inferred
+        .iter()
+        .map(|t| state.subst.apply(t))
+        .collect();
+    let final_ret_type = state.subst.apply(&body_typed.ty);
+
+    let expected_ret_type = state.subst.apply(&fork_apply(&trait_method.return_type));
+    coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst).map_err(|_| {
+        spanned_with_names(
+            TypeError::Mismatch {
+                expected: expected_ret_type.clone(),
+                actual: final_ret_type.clone(),
+            },
+            method.span,
+            &impl_method_tpm,
+        )
+    })?;
+
+    let fn_params: Vec<(crate::types::ParamMode, Type)> = method
+        .params
+        .iter()
+        .zip(final_param_types.clone())
+        .map(|(p, t)| (p.mode, t))
+        .collect();
+    let fn_ty = Type::Fn(fn_params, Box::new(final_ret_type.clone()));
+
+    let _ = final_param_types;
+    let _ = final_ret_type;
+    Ok(ForkCommit {
+        body_typed,
+        method_constraint_pairs,
+        fn_ty,
+    })
 }
 
 /// Internal per-module inference with pre-resolved module cache.

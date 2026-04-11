@@ -1,0 +1,19 @@
+# expect: ok
+# AC #2: an impl whose target syntactically carries `Own` is dual-check
+# resolved to its owned form. `shape Vec[~Handle]` lifts the inner owned
+# argument, so the impl body sees `~Vec[~Handle]`.
+type Handle = MkHandle
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = match h {
+        MkHandle => (),
+    }
+}
+
+trait Identity[a] {
+    fun identify(x: shape a) -> shape a
+}
+
+impl Identity[Vec[~Handle]] {
+    fun identify(x: ~Vec[~Handle]) -> ~Vec[~Handle] = x
+}

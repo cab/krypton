@@ -667,6 +667,47 @@ fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
     out
 }
 
+/// Collect all type variables that appear inside a `Type::Shape(_)` wrapper,
+/// in left-to-right encounter order, deduplicated across the whole type.
+///
+/// Used to identify the shape variables of a trait method signature so the
+/// impl body can be dual-checked against every legal value form of each
+/// shape parameter (see `typecheck_impl_methods`).
+pub fn collect_shape_vars(ty: &Type) -> Vec<TypeVarId> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    collect_shape_vars_into(ty, &mut out, &mut seen);
+    out
+}
+
+fn collect_shape_vars_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+    match ty {
+        Type::Shape(inner) => {
+            free_vars_ordered_into(inner, out, seen);
+        }
+        Type::Fn(params, ret) => {
+            for (_, p) in params {
+                collect_shape_vars_into(p, out, seen);
+            }
+            collect_shape_vars_into(ret, out, seen);
+        }
+        Type::Named(_, args) | Type::App(_, args) => {
+            for a in args {
+                collect_shape_vars_into(a, out, seen);
+            }
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                collect_shape_vars_into(e, out, seen);
+            }
+        }
+        Type::Own(inner) | Type::MaybeOwn(_, inner) => {
+            collect_shape_vars_into(inner, out, seen);
+        }
+        _ => {}
+    }
+}
+
 fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
     match ty {
         Type::Var(id) => {

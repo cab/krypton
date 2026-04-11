@@ -1,0 +1,9 @@
+# expect: ok
+# AC #1: `impl Combiner[Int]` with `shape a` checked under `a = Int`.
+trait Combiner[a] {
+    fun combine(x: shape a, y: shape a) -> shape a
+}
+
+impl Combiner[Int] {
+    fun combine(x: Int, y: Int) -> Int = x + y
+}

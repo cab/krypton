@@ -1,0 +1,12 @@
+# expect: error E0319
+# Generic impl where the body uses `+` (valid only for plain `Int`).
+# The plain fork may or may not pass depending on inference; the owned
+# fork must fail because owned values do not support `+`. The diagnostic
+# names the failing form.
+trait Sum[a] {
+    fun combine(x: shape a, y: shape a) -> shape a
+}
+
+impl Sum[a] {
+    fun combine(x: shape a, y: shape a) -> shape a = x + y
+}

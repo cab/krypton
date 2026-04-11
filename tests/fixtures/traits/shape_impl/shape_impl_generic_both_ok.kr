@@ -1,0 +1,11 @@
+# expect: ok
+# Generic impl whose body typechecks under both plain and owned
+# assignments of the shape variable. Identity-like pass-through only
+# forwards the value, so both forks succeed.
+trait Identity[a] {
+    fun identify(x: shape a) -> shape a
+}
+
+impl Identity[a] {
+    fun identify(x: shape a) -> shape a = x
+}
