@@ -1,0 +1,11 @@
+# expect: error E0109
+# A generic container holding a resource-carrying type argument is
+# affine; its param-position use must be `~Box[~Buf]`.
+extern java "net.Buf" as pub Buf lifts always {}
+extern js "net.mjs"   as pub Buf lifts always {}
+
+type Box[a] = { value: ~a }
+
+fun f(b: Box[Buf]) -> Int = 1
+
+fun main() -> Unit = ()

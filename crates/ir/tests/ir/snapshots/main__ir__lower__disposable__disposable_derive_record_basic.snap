@@ -1,0 +1,54 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module disposable__disposable_derive_record_basic
+
+struct Socket { fd: Int }
+struct Logger { id: Int }
+struct Conn { socket: ~Socket, logger: ~Logger }
+instance core/disposable.Disposable[Socket] { dispose=Disposable$$Socket$$dispose }
+instance core/disposable.Disposable[Logger] { dispose=Disposable$$Logger$$dispose }
+instance core/disposable.Disposable[Conn] { dispose=Disposable$$Conn$$dispose }
+extern java "krypton.runtime.KryptonIO" println(z7) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (z7) -> Unit
+
+fn main() -> Unit =
+  let v0: ~Socket = construct Socket(1)
+  let v1: Unit = call println("open_a")
+  let v2: ~Logger = construct Logger(2)
+  let v3: Unit = call println("open_b")
+  let v4: ~Conn = construct Conn(v0, v2)
+  let v5: Dict[core/disposable.Disposable, Conn] = get_dict core/disposable.Disposable[Conn]
+  auto_close[Conn](v4, dict=v5, null=true)
+  ()
+
+fn Disposable$$Socket$$dispose(v6: ~Socket) -> Unit =
+  let v7: Int = project v6.0
+  let v8: Unit = call println("close_a")
+  v8
+
+fn Disposable$$Logger$$dispose(v9: ~Logger) -> Unit =
+  let v10: Int = project v9.0
+  let v11: Unit = call println("close_b")
+  v11
+
+fn Disposable$$Conn$$dispose(v12: ~Conn) -> Unit =
+  let v13: ~Socket = project v12.0
+  let v14: ~Logger = project v12.1
+  let v16: Dict[core/disposable.Disposable, Logger] = get_dict core/disposable.Disposable[Logger]
+  let v15: Unit = trait_call core/disposable.Disposable.dispose(v16, v14)
+  let v18: Dict[core/disposable.Disposable, Socket] = get_dict core/disposable.Disposable[Socket]
+  let v17: Unit = trait_call core/disposable.Disposable.dispose(v18, v13)
+  ()

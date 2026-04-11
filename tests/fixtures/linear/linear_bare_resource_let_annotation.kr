@@ -1,0 +1,11 @@
+# expect: error E0109
+# A bare resource-carrying type on a `let` annotation is illegal.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs"   as pub Sock lifts always {}
+
+type Conn = { sock: ~Sock }
+
+fun main(s: ~Sock) -> Unit = {
+    let c: Conn = Conn { sock = s }
+    dispose(c)
+}

@@ -1,0 +1,10 @@
+# expect: error E0309
+# `deriving (Disposable)` plus a hand-written `impl Disposable[Conn]` is
+# ambiguous: the user must remove one.
+type Conn = { id: Int } deriving (Disposable)
+
+impl Disposable[Conn] {
+    fun dispose(c: ~Conn) -> Unit = ()
+}
+
+fun main() -> Unit = ()

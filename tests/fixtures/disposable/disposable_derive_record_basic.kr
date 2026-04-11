@@ -1,0 +1,29 @@
+# expect: output "open_a\nopen_b\nclose_b\nclose_a"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type Socket = { fd: Int }
+type Logger = { id: Int }
+
+impl Disposable[Socket] {
+    fun dispose(s: ~Socket) -> Unit = match s {
+        Socket { fd } => println("close_a"),
+    }
+}
+
+impl Disposable[Logger] {
+    fun dispose(l: ~Logger) -> Unit = match l {
+        Logger { id } => println("close_b"),
+    }
+}
+
+type Conn = { socket: ~Socket, logger: ~Logger } deriving (Disposable)
+
+fun main() -> Unit = {
+    let s: ~Socket = Socket { fd = 1 }
+    println("open_a")
+    let l: ~Logger = Logger { id = 2 }
+    println("open_b")
+    let c: ~Conn = Conn { socket = s, logger = l }
+}

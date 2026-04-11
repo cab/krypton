@@ -1,0 +1,48 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module disposable__disposable_derive_sum
+
+type Resource = MkResource#0(Int)
+type Thing = Plain#0(Int) | Held#1(~Resource)
+instance core/disposable.Disposable[Resource] { dispose=Disposable$$Resource$$dispose }
+instance core/disposable.Disposable[Thing] { dispose=Disposable$$Thing$$dispose }
+extern java "krypton.runtime.KryptonIO" println(z7) -> Unit
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+declare println: (z7) -> Unit
+
+fn main() -> Unit =
+  let v0: ~Resource = construct Resource::MkResource#0(7)
+  let v1: ~Thing = construct Thing::Held#1(v0)
+  let v2: Unit = call println("made")
+  let v3: Dict[core/disposable.Disposable, Thing] = get_dict core/disposable.Disposable[Thing]
+  auto_close[Thing](v1, dict=v3, null=true)
+  v2
+
+fn Disposable$$Resource$$dispose(v4: ~Resource) -> Unit =
+  switch v4 {
+    0 (v5: Int) ->
+      let v6: Unit = call println("closed")
+      v6
+  }
+
+fn Disposable$$Thing$$dispose(v7: ~Thing) -> Unit =
+  switch v7 {
+    0 (v8: Int) ->
+      ()
+    1 (v9: ~Resource) ->
+      let v11: Dict[core/disposable.Disposable, Resource] = get_dict core/disposable.Disposable[Resource]
+      let v10: Unit = trait_call core/disposable.Disposable.dispose(v11, v9)
+      ()
+  }

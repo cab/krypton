@@ -1,0 +1,13 @@
+# expect: ok
+# Deriving Disposable on a generic container emits an impl with a
+# `Disposable[a]` where-clause. This fixture typechecks; the runtime
+# exercise is covered by the non-generic fixtures.
+type Resource = { id: Int }
+
+impl Disposable[Resource] {
+    fun dispose(r: ~Resource) -> Unit = match r {
+        Resource { id } => (),
+    }
+}
+
+type Box[a] = { value: ~a } deriving (Disposable)

@@ -1,0 +1,9 @@
+# expect: error E0304
+# `Buf` has an owned field but no `impl Disposable[Buf]`, so deriving
+# `Disposable` on a record carrying `~Buf` must fail: the derived body
+# would need to call `dispose` on the inner value, but no instance exists.
+type Buf = { id: Int }
+
+type Wrap = { inner: ~Buf } deriving (Disposable)
+
+fun main() -> Unit = ()

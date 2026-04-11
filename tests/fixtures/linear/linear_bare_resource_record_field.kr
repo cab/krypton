@@ -1,0 +1,7 @@
+# expect: error E0109
+# A record field carrying a resource-carrying type must be `~Conn`.
+type Conn = { id: ~Int }
+
+type Wrap = { inner: Conn }
+
+fun main() -> Unit = ()

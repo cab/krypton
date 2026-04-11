@@ -1,0 +1,8 @@
+# expect: error E0109
+# Return type in a value position must be `~Socket`.
+extern java "net.Socket" as pub Socket lifts always {}
+extern js "net.mjs"     as pub Socket lifts always {}
+
+fun make(s: ~Socket) -> Socket = s
+
+fun main() -> Unit = ()
