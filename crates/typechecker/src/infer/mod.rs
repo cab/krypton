@@ -121,6 +121,46 @@ mod imports;
 mod pattern;
 mod resolve_multi;
 
+/// If a `coerce_unify` error was produced at a call site where the
+/// callee's slot was declared as a bare type variable (`a`, not `shape a`)
+/// but the argument resolved to an owned type, rewrite the error into a
+/// targeted `BareTypeVarResourceArg` diagnostic.
+///
+/// Shared by the direct-call and expression-callee retarget paths in
+/// `infer/expr.rs`, which differ only in how they obtain the raw
+/// (unsubstituted) parameter type.
+pub(super) fn retarget_bare_var_owned_arg(
+    err: &mut SpannedTypeError,
+    raw_param_ty: Option<&Type>,
+    arg_ty: &Type,
+    subst: &Substitution,
+    callee_name: Option<&str>,
+    param_index: usize,
+) {
+    if !matches!(
+        &*err.error,
+        TypeError::Mismatch { .. }
+            | TypeError::OwnershipMismatch { .. }
+            | TypeError::QualifierConflict { .. }
+    ) {
+        return;
+    }
+    let Some(raw) = raw_param_ty else { return };
+    if !matches!(raw, Type::Var(_)) {
+        return;
+    }
+    let resolved_arg = subst.apply(arg_ty);
+    if !matches!(resolved_arg, Type::Own(_)) {
+        return;
+    }
+    err.error = Box::new(TypeError::BareTypeVarResourceArg {
+        callee_name: callee_name.map(|s| s.to_string()),
+        param_index,
+        param_ty: raw.clone(),
+        arg_ty: resolved_arg,
+    });
+}
+
 #[derive(Clone)]
 pub(super) struct QualifiedExport {
     pub(super) local_name: String,
@@ -3584,7 +3624,12 @@ fn register_local_traits(
                     Type::Var(state.gen.fresh())
                 };
 
-                // v0.1 cap: at most 2 `shape` variables per trait method.
+                // Shape-var cap: at most 6 `shape` variables per trait
+                // method. The cap exists to protect the compiler from
+                // wedging on cartesian-product enumeration (2^N forks per
+                // method body); 6 → 64 forks. `shape` is a def-site
+                // polymorphism mechanism and real use cases past N=2 are
+                // unknown, so 6 is a sanity bound, not a user restriction.
                 // Enforced at trait registration so every impl path sees
                 // a well-formed method.
                 {
@@ -3603,7 +3648,7 @@ fn register_local_traits(
                             shape_vars.push(v);
                         }
                     }
-                    if shape_vars.len() > 2 {
+                    if shape_vars.len() > 6 {
                         return Err(spanned(
                             TypeError::TooManyShapeParameters {
                                 trait_name: name.clone(),
@@ -5001,15 +5046,25 @@ fn typecheck_impl_methods(
                     }
                     combos = next;
                 }
-                debug_assert!(combos.len() <= 4, "shape cap is 2 → at most 4 forks");
+                debug_assert!(combos.len() <= 64, "shape cap is 6 → at most 64 forks");
 
                 // Track the committed fork's typed output so the post-loop
                 // bookkeeping can push it into `instance_methods`. The first
-                // successful fork wins; later forks must also pass (their
-                // typed ASTs are discarded).
+                // successful fork wins; later forks are validation-only —
+                // their typed ASTs are discarded and any ownership metadata
+                // they wrote to `state.let_own_spans` / `state.lambda_own_captures`
+                // is rolled back so the committed fork's metadata is not
+                // unioned with later forks. After the loop, the committed
+                // fork's captured metadata is restored.
                 let mut committed: Option<ForkCommit> = None;
+                let mut committed_metadata: Option<(
+                    HashSet<Span>,
+                    HashMap<Span, String>,
+                )> = None;
                 let mut dual_check_failure: Option<(String, SpannedTypeError)> = None;
                 let is_multi_fork = combos.len() > 1;
+                let pre_loop_let_own_spans = state.let_own_spans.clone();
+                let pre_loop_lambda_own_captures = state.lambda_own_captures.clone();
 
                 for combo in &combos {
                     // Per-fork freshening + shape-var overrides. Each fork
@@ -5082,7 +5137,7 @@ fn typecheck_impl_methods(
                         out
                     };
 
-                    match check_fork(
+                    let fork_result = check_fork(
                         state,
                         module_path,
                         trait_registry,
@@ -5094,10 +5149,22 @@ fn typecheck_impl_methods(
                         all_intrinsic,
                         *span,
                         &fork_apply,
-                    ) {
+                    );
+                    match fork_result {
                         Ok(result) => {
-                            if committed.is_none() {
-                                committed = Some(result);
+                            if committed.is_none() && !all_intrinsic {
+                                committed = Some(
+                                    result.expect(
+                                        "non-intrinsic check_fork must yield Some(ForkCommit)",
+                                    ),
+                                );
+                                // Capture the committed fork's post-inference
+                                // metadata so we can restore it after all
+                                // validation forks finish.
+                                committed_metadata = Some((
+                                    state.let_own_spans.clone(),
+                                    state.lambda_own_captures.clone(),
+                                ));
                             }
                         }
                         Err(err_with_label) => {
@@ -5106,6 +5173,19 @@ fn typecheck_impl_methods(
                             }
                         }
                     }
+                    // Roll back to pre-loop metadata so the next fork runs
+                    // against a clean slate and later forks cannot leak
+                    // per-span metadata into the committed fork's AST.
+                    state.let_own_spans = pre_loop_let_own_spans.clone();
+                    state.lambda_own_captures = pre_loop_lambda_own_captures.clone();
+                }
+
+                // Restore the committed fork's metadata so downstream
+                // ownership checking reads exactly what the committed fork
+                // observed.
+                if let Some((spans, caps)) = committed_metadata {
+                    state.let_own_spans = spans;
+                    state.lambda_own_captures = caps;
                 }
 
                 if let Some((failing_form, inner_err)) = dual_check_failure {
@@ -5133,7 +5213,7 @@ fn typecheck_impl_methods(
                     method_constraint_pairs,
                     fn_ty,
                 } = committed.expect(
-                    "check_fork returned no error and no commit (empty combos?)",
+                    "check_fork returned no error and no commit for non-intrinsic impl",
                 );
                 let scheme = TypeScheme {
                     vars: vec![],
@@ -5186,6 +5266,12 @@ fn typecheck_impl_methods(
 /// Produced by `check_fork` and consumed by `typecheck_impl_methods` after
 /// the dual-check loop selects a canonical commit fork (the first
 /// successful fork). Downstream IR lowering sees only the committed form.
+///
+/// First-fork commit is sound because `shape` is runtime-erased:
+/// monomorphization does not per-shape specialize, so the committed typed
+/// AST only needs to be well-typed for one instantiation. Later forks are
+/// validation-only — they prove that the *other* instantiations also
+/// typecheck, but their typed ASTs are discarded.
 struct ForkCommit {
     body_typed: crate::typed_ast::TypedExpr,
     method_constraint_pairs: Vec<(TraitName, Vec<TypeVarId>)>,
@@ -5214,7 +5300,7 @@ fn check_fork<F>(
     all_intrinsic: bool,
     impl_span: Span,
     fork_apply: &F,
-) -> Result<ForkCommit, SpannedTypeError>
+) -> Result<Option<ForkCommit>, SpannedTypeError>
 where
     F: Fn(&Type) -> Type,
 {
@@ -5334,32 +5420,19 @@ where
     }
 
     if all_intrinsic {
-        // No body to check; the caller's `all_intrinsic` branch skips the
-        // committed fork entirely, so the returned commit is never read.
-        return Ok(ForkCommit {
-            body_typed: crate::typed_ast::TypedExpr {
-                kind: crate::typed_ast::TypedExprKind::Do(Vec::new()),
-                ty: Type::Unit,
-                span: method.span,
-                resolved_ref: None,
-                scope_id: None,
-            },
-            method_constraint_pairs,
-            fn_ty: Type::Unit,
-        });
+        // No body to check; signal via `None` so the caller can skip
+        // committed-fork bookkeeping without an out-of-band sentinel.
+        let _ = method_constraint_pairs;
+        return Ok(None);
     }
 
     state.env.push_scope();
-    let let_own_spans_snap = state.let_own_spans.clone();
-    let lambda_own_captures_snap = state.lambda_own_captures.clone();
     let mut param_types_inferred = Vec::new();
     for (i, p) in method.params.iter().enumerate() {
         let ptv = Type::Var(state.gen.fresh());
         if i < concrete_param_types.len() {
             if let Err(e) = unify(&ptv, &concrete_param_types[i], &mut state.subst) {
                 state.env.pop_scope();
-                state.let_own_spans = let_own_spans_snap;
-                state.lambda_own_captures = lambda_own_captures_snap;
                 return Err(spanned(e, impl_span));
             }
         }
@@ -5397,8 +5470,6 @@ where
         Ok(_) => state.subst.commit_qual_scope(impl_qual_snap),
         Err(_) => {
             state.subst.rollback_qual_scope(impl_qual_snap);
-            state.let_own_spans = let_own_spans_snap;
-            state.lambda_own_captures = lambda_own_captures_snap;
         }
     }
     let mut body_typed = body_result?;
@@ -5432,11 +5503,11 @@ where
 
     let _ = final_param_types;
     let _ = final_ret_type;
-    Ok(ForkCommit {
+    Ok(Some(ForkCommit {
         body_typed,
         method_constraint_pairs,
         fn_ty,
-    })
+    }))
 }
 
 /// Internal per-module inference with pre-resolved module cache.

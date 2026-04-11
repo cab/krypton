@@ -1,6 +1,6 @@
 # expect: error E0320
-# A trait method with 3 distinct `shape` type variables is rejected at
-# trait registration in v0.1 (cap is 2 shape vars, cost is 2^N).
-trait Triple[a, b, c] {
-    fun zip(x: shape a, y: shape b, z: shape c) -> shape a
+# A trait method with 7 distinct `shape` type variables exceeds the
+# compiler's enumeration budget (cap is 6 shape vars, 64 forks).
+trait Septuple[a, b, c, d, e, f, g] {
+    fun zip(p1: shape a, p2: shape b, p3: shape c, p4: shape d, p5: shape e, p6: shape f, p7: shape g) -> shape a
 }

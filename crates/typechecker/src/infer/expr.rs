@@ -282,26 +282,14 @@ impl<'a> InferenceContext<'a> {
                         .cloned();
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
-                        if matches!(
-                            &*err.error,
-                            TypeError::Mismatch { .. }
-                                | TypeError::OwnershipMismatch { .. }
-                                | TypeError::QualifierConflict { .. }
-                        ) {
-                            if let Some(ref raw) = raw_param_ty {
-                                if matches!(raw, Type::Var(_)) {
-                                    let resolved_arg = self.subst.apply(arg_ty);
-                                    if matches!(resolved_arg, Type::Own(_)) {
-                                        err.error = Box::new(TypeError::BareTypeVarResourceArg {
-                                            callee_name: callee_name.map(|s| s.to_string()),
-                                            param_index: i,
-                                            param_ty: raw.clone(),
-                                            arg_ty: resolved_arg,
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                        super::retarget_bare_var_owned_arg(
+                            &mut err,
+                            raw_param_ty.as_ref(),
+                            arg_ty,
+                            self.subst,
+                            callee_name,
+                            i,
+                        );
                         if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {
                                 let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
@@ -693,28 +681,14 @@ impl<'a> InferenceContext<'a> {
                 {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
-                        // Bare-`a` / owned-arg retarget — see notes on
-                        // `BareTypeVarResourceArg` in type_error.rs.
-                        if matches!(
-                            &*err.error,
-                            TypeError::Mismatch { .. }
-                                | TypeError::OwnershipMismatch { .. }
-                                | TypeError::QualifierConflict { .. }
-                        ) {
-                            if let Some(raw) = raw_params.as_ref().and_then(|ps| ps.get(i)) {
-                                if matches!(raw, Type::Var(_)) {
-                                    let resolved_arg = self.subst.apply(arg_ty);
-                                    if matches!(resolved_arg, Type::Own(_)) {
-                                        err.error = Box::new(TypeError::BareTypeVarResourceArg {
-                                            callee_name: callee_name.map(|s| s.to_string()),
-                                            param_index: i,
-                                            param_ty: raw.clone(),
-                                            arg_ty: resolved_arg,
-                                        });
-                                    }
-                                }
-                            }
-                        }
+                        super::retarget_bare_var_owned_arg(
+                            &mut err,
+                            raw_params.as_ref().and_then(|ps| ps.get(i)),
+                            arg_ty,
+                            self.subst,
+                            callee_name,
+                            i,
+                        );
                         // Add ownership-specific notes
                         if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {

@@ -972,7 +972,7 @@ impl TypeError {
                 ))
             }
             TypeError::TooManyShapeParameters { count, .. } => Some(format!(
-                "v0.1 caps `shape` parameters at 2 per method (cost is 2^N typechecks); this signature uses {count}"
+                "shape parameter count exceeds compiler's enumeration budget (max 6); this signature uses {count}; if you have a real use case, please file an issue"
             )),
             TypeError::ShapeImplDualCheckFailure { failing_form, inner, .. } => Some(format!(
                 "the impl body must typecheck for both plain and owned instantiations of the `shape` parameter; the fork with {failing_form} failed: {inner}"

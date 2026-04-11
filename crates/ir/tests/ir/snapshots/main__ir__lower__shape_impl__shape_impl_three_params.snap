@@ -1,0 +1,22 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module shape_impl__shape_impl_three_params
+
+trait Zip3[j8] { pick_first(j8, k8, l8): j8 }
+instance shape_impl__shape_impl_three_params.Zip3[$Var0$$$Var0$$$Var0] { pick_first=Zip3$$$Var0$$$Var0$$$Var0$$pick_first }
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+fn Zip3$$$Var0$$$Var0$$$Var0$$pick_first(v0: p8, v1: q8, v2: r8) -> p8 =
+  v0

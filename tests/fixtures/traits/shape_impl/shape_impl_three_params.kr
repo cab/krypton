@@ -1,0 +1,12 @@
+# expect: ok
+# A trait method with three distinct `shape` vars exercises the dual-check
+# cartesian product at N=3 (8 forks). The body is a pass-through picking
+# the first argument, which is well-typed under every combination of
+# plain/owned assignments.
+trait Zip3[a, b, c] {
+    fun pick_first(x: shape a, y: shape b, z: shape c) -> shape a
+}
+
+impl Zip3[a, b, c] {
+    fun pick_first(x: shape a, y: shape b, z: shape c) -> shape a = x
+}
