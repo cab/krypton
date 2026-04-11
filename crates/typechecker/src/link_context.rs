@@ -510,6 +510,7 @@ mod tests {
             kind: TypeSummaryKind::Record {
                 fields: vec![("x".to_string(), Type::Int)],
             },
+            lifts: None,
             visibility: vis,
         }
     }
@@ -685,6 +686,7 @@ mod tests {
             krypton_name: "Blob".to_string(),
             host_module: "ffi.mjs".to_string(),
             target: ExternTarget::Js,
+            lifts: None,
         });
         let ctx = LinkContext::build(vec![iface]);
 

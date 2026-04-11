@@ -1,0 +1,2 @@
+# expect: error
+type Foo lifts always = { x: Int }

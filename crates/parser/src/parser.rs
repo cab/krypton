@@ -1256,7 +1256,16 @@ where
 
     // Reject `lifts` on non-extern type declarations
     let lifts_reject = symbol(Token::Lifts)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+        .ignore_then(
+            // Match parenthesized form: (ident | ident | ...)
+            select! { Token::Ident(s) => s.to_string() }
+                .separated_by(symbol(Token::Pipe))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LParen), symbol(Token::RParen))
+                .ignored()
+                .or(select! { Token::Ident(s) => s.to_string() }.ignored()),
+        )
         .validate(|_, e, emitter| {
             emitter.emit(Rich::custom(
                 e.span(),
@@ -1709,12 +1718,34 @@ where
         )
         .or_not();
 
+    // Parse `lifts` clause: `lifts always`, `lifts never`, `lifts (k | v)`, `lifts k`
+    let lifts_clause = symbol(Token::Lifts)
+        .ignore_then(
+            // lifts (ident | ident | ...)
+            select! { Token::Ident(s) => s.to_string() }
+                .separated_by(symbol(Token::Pipe))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(symbol(Token::LParen), symbol(Token::RParen))
+                .map(Lifts::Params)
+                .or(
+                    // lifts always / lifts never / lifts ident
+                    select! { Token::Ident(s) => s.to_string() }.map(|s| match s.as_str() {
+                        "always" => Lifts::Always,
+                        "never" => Lifts::Never,
+                        _ => Lifts::Params(vec![s]),
+                    }),
+                ),
+        )
+        .or_not();
+
     let extern_decl = platform_attr
         .clone()
         .then_ignore(symbol(Token::Extern))
         .then(extern_target)
         .then(select! { Token::String(s) => s.to_string() })
         .then(extern_as_clause)
+        .then(lifts_clause)
         .then(
             extern_method
                 .separated_by(stmt_sep().or_not())
@@ -1723,7 +1754,7 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |((((platform, target), module_path), as_clause), methods), e| {
+            |(((((platform, target), module_path), as_clause), lifts), methods), e| {
                 let (is_trait, alias, alias_visibility, type_params) = match as_clause {
                     Some((is_trait, is_pub, name, params)) => {
                         let vis = if !is_trait && is_pub {
@@ -1743,6 +1774,7 @@ where
                     alias_visibility,
                     is_trait,
                     type_params,
+                    lifts,
                     methods,
                     span: to_span(e.span()),
                 }

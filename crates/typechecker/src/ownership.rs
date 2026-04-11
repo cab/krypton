@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, Expr, FnDecl, Module, Span, TypeExpr};
+use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, Span, TypeExpr};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern};
@@ -27,6 +27,9 @@ fn type_contains_own(ty: &Type) -> bool {
 /// Check if a named type has any field that contains `own`.
 fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
     if let Some(info) = registry.lookup_type(type_name) {
+        if let Some(ref lifts) = info.lifts {
+            return matches!(lifts, Lifts::Always);
+        }
         match &info.kind {
             TypeKind::Record { fields } => fields.iter().any(|(_, ty)| type_contains_own(ty)),
             TypeKind::Sum { variants } => variants
@@ -44,6 +47,20 @@ fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
         Type::Own(_) => true,
         Type::Shape(inner) => type_is_affine(inner, registry),
         Type::Named(name, args) => {
+            if let Some(info) = registry.lookup_type(name) {
+                match &info.lifts {
+                    Some(Lifts::Always) => return true,
+                    Some(Lifts::Never) => return false,
+                    Some(Lifts::Params(param_names)) => {
+                        return info
+                            .type_params
+                            .iter()
+                            .zip(args.iter())
+                            .any(|(p, a)| param_names.contains(p) && type_is_affine(a, registry));
+                    }
+                    None => {}
+                }
+            }
             has_own_field(name, registry) || args.iter().any(|a| type_is_affine(a, registry))
         }
         Type::App(ctor, args) => {
@@ -1266,4 +1283,96 @@ fn check_fn(
     };
     checker.check_expr(&typed_fn.body)?;
     Ok(checker.moves)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::type_registry::{TypeInfo, TypeKind, TypeRegistry};
+    use crate::types::TypeVarGen;
+
+    fn make_registry_with_lifts(
+        name: &str,
+        type_params: Vec<&str>,
+        lifts: Option<Lifts>,
+    ) -> TypeRegistry {
+        let mut registry = TypeRegistry::new();
+        let mut gen = TypeVarGen::new();
+        registry.register_builtins(&mut gen);
+        let type_param_vars: Vec<_> = type_params.iter().map(|_| gen.fresh()).collect();
+        registry
+            .register_type(TypeInfo {
+                name: name.to_string(),
+                type_params: type_params.iter().map(|s| s.to_string()).collect(),
+                type_param_vars,
+                kind: TypeKind::Record { fields: vec![] },
+                lifts,
+                is_prelude: false,
+            })
+            .unwrap();
+        registry
+    }
+
+    #[test]
+    fn has_own_field_lifts_always() {
+        let registry = make_registry_with_lifts("Socket", vec![], Some(Lifts::Always));
+        assert!(has_own_field("Socket", &registry));
+    }
+
+    #[test]
+    fn has_own_field_lifts_never() {
+        let registry = make_registry_with_lifts("ForeignString", vec![], Some(Lifts::Never));
+        assert!(!has_own_field("ForeignString", &registry));
+    }
+
+    #[test]
+    fn has_own_field_lifts_params() {
+        let registry =
+            make_registry_with_lifts("ForeignMap", vec!["k", "v"], Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])));
+        assert!(!has_own_field("ForeignMap", &registry));
+    }
+
+    #[test]
+    fn type_is_affine_lifts_always() {
+        let registry = make_registry_with_lifts("Socket", vec![], Some(Lifts::Always));
+        let ty = Type::Named("Socket".to_string(), vec![]);
+        assert!(type_is_affine(&ty, &registry));
+    }
+
+    #[test]
+    fn type_is_affine_lifts_never() {
+        let registry = make_registry_with_lifts("ForeignString", vec![], Some(Lifts::Never));
+        let ty = Type::Named("ForeignString".to_string(), vec![]);
+        assert!(!type_is_affine(&ty, &registry));
+    }
+
+    #[test]
+    fn type_is_affine_lifts_params_with_own_arg() {
+        let registry = make_registry_with_lifts(
+            "ForeignMap",
+            vec!["k", "v"],
+            Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])),
+        );
+        // ForeignMap[Int, ~Socket] — v is own → affine
+        let ty = Type::Named(
+            "ForeignMap".to_string(),
+            vec![Type::Int, Type::Own(Box::new(Type::Named("Socket".to_string(), vec![])))],
+        );
+        assert!(type_is_affine(&ty, &registry));
+    }
+
+    #[test]
+    fn type_is_affine_lifts_params_without_own_arg() {
+        let registry = make_registry_with_lifts(
+            "ForeignMap",
+            vec!["k", "v"],
+            Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])),
+        );
+        // ForeignMap[Int, String] — neither arg is own → not affine
+        let ty = Type::Named(
+            "ForeignMap".to_string(),
+            vec![Type::Int, Type::String],
+        );
+        assert!(!type_is_affine(&ty, &registry));
+    }
 }

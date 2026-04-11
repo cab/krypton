@@ -52,6 +52,7 @@ pub enum Decl {
         alias_visibility: Option<Visibility>,
         is_trait: bool,
         type_params: Vec<String>,
+        lifts: Option<Lifts>,
         methods: Vec<ExternMethod>,
         span: Span,
     },
@@ -83,6 +84,13 @@ pub struct ExternMethod {
     pub return_type: TypeExpr,
     pub where_clauses: Vec<TypeConstraint>,
     pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum Lifts {
+    Always,
+    Never,
+    Params(Vec<String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

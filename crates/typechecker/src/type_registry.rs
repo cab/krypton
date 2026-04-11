@@ -11,6 +11,7 @@ pub struct TypeInfo {
     pub type_params: Vec<String>,
     pub type_param_vars: Vec<TypeVarId>,
     pub kind: TypeKind,
+    pub lifts: Option<krypton_parser::ast::Lifts>,
     pub is_prelude: bool,
 }
 
@@ -69,6 +70,7 @@ impl TypeRegistry {
                 type_params: vec![],
                 type_param_vars: vec![],
                 kind: TypeKind::Record { fields: vec![] },
+                lifts: None,
                 is_prelude: true,
             });
         }
@@ -79,6 +81,7 @@ impl TypeRegistry {
             type_params: vec!["a".to_string()],
             type_param_vars: vec![gen.fresh()],
             kind: TypeKind::Record { fields: vec![] },
+            lifts: None,
             is_prelude: true,
         });
         // All builtins are user-visible in annotations
@@ -530,6 +533,7 @@ pub fn process_type_decl(
         type_params: decl.type_params.clone(),
         type_param_vars: quantified_vars.clone(),
         kind,
+        lifts: None,
         is_prelude: false,
     })?;
 
@@ -630,6 +634,7 @@ pub fn register_type_from_export(
         type_params: info.type_params.clone(),
         type_param_vars: fresh_vars,
         kind,
+        lifts: info.lifts.clone(),
         is_prelude: false,
     })?;
 

@@ -94,6 +94,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             alias_visibility,
             is_trait,
             type_params,
+            lifts,
             methods,
             ..
         } => Decl::Extern {
@@ -104,6 +105,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             alias_visibility: *alias_visibility,
             is_trait: *is_trait,
             type_params: type_params.clone(),
+            lifts: lifts.clone(),
             methods: methods
                 .iter()
                 .map(|m| ExternMethod {

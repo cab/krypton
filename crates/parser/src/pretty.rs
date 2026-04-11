@@ -573,6 +573,7 @@ impl<'a> Formatter<'a> {
             alias_visibility,
             is_trait,
             type_params,
+            lifts,
             methods,
             ..
         } = decl
@@ -599,6 +600,17 @@ impl<'a> Formatter<'a> {
                 self.buf.push('[');
                 self.buf.push_str(&type_params.join(", "));
                 self.buf.push(']');
+            }
+        }
+        if let Some(l) = lifts {
+            match l {
+                Lifts::Always => self.buf.push_str(" lifts always"),
+                Lifts::Never => self.buf.push_str(" lifts never"),
+                Lifts::Params(params) => {
+                    self.buf.push_str(" lifts (");
+                    self.buf.push_str(&params.join(" | "));
+                    self.buf.push(')');
+                }
             }
         }
         self.buf.push_str(" {");

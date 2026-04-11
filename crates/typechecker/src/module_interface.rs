@@ -154,6 +154,7 @@ pub struct TypeSummary {
     pub type_params: Vec<String>,
     pub type_param_vars: Vec<TypeVarId>,
     pub kind: TypeSummaryKind,
+    pub lifts: Option<krypton_parser::ast::Lifts>,
     pub visibility: Visibility,
 }
 
@@ -232,6 +233,7 @@ pub struct ExternTypeSummary {
     pub krypton_name: String,
     pub host_module: String,
     pub target: ExternTarget,
+    pub lifts: Option<krypton_parser::ast::Lifts>,
 }
 
 // ---------------------------------------------------------------------------
@@ -446,6 +448,7 @@ fn extract_exported_types(typed: &TypedModule) -> Vec<TypeSummary> {
                 type_params: info.type_params.clone(),
                 type_param_vars: info.type_param_vars.clone(),
                 kind,
+                lifts: info.lifts.clone(),
                 visibility: vis,
             })
         })
@@ -543,6 +546,7 @@ fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
             krypton_name: et.krypton_name.clone(),
             host_module: et.host_module.clone(),
             target: et.target.clone(),
+            lifts: et.lifts.clone(),
         })
         .collect()
 }
@@ -775,6 +779,7 @@ pub fn type_summary_to_export_info(ts: &TypeSummary, source_module: &str) -> Exp
         type_params: ts.type_params.clone(),
         type_param_vars: ts.type_param_vars.clone(),
         kind,
+        lifts: ts.lifts.clone(),
     }
 }
 

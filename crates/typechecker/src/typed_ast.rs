@@ -456,6 +456,7 @@ pub struct ExternTypeInfo {
     pub krypton_name: String,
     pub host_module: String,
     pub target: krypton_parser::ast::ExternTarget,
+    pub lifts: Option<krypton_parser::ast::Lifts>,
 }
 
 #[derive(Debug, Clone)]
@@ -483,6 +484,7 @@ pub struct ExportedTypeInfo {
     /// Original TypeVarIds corresponding to type_params (1:1 mapping).
     pub type_param_vars: Vec<TypeVarId>,
     pub kind: ExportedTypeKind,
+    pub lifts: Option<krypton_parser::ast::Lifts>,
 }
 
 #[derive(Clone, Debug)]

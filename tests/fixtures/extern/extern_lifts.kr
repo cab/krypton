@@ -1,0 +1,5 @@
+# expect: ok
+
+extern java "native.Socket" as pub Socket lifts always {}
+extern java "native.ForeignString" as pub ForeignString lifts never {}
+extern java "native.ForeignMap" as pub ForeignMap[k, v] lifts (k | v) {}

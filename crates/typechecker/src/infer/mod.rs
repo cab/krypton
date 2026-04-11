@@ -2127,6 +2127,7 @@ impl ModuleInferenceState {
                 alias,
                 is_trait,
                 type_params,
+                lifts,
                 methods,
                 span,
                 ..
@@ -2169,6 +2170,7 @@ impl ModuleInferenceState {
                                 type_params: type_params.clone(),
                                 type_param_vars: vars.clone(),
                                 kind: crate::type_registry::TypeKind::Record { fields: vec![] },
+                                lifts: lifts.clone(),
                                 is_prelude: false,
                             })
                             .map_err(|e| spanned(e, *span))?;
@@ -2179,6 +2181,7 @@ impl ModuleInferenceState {
                         krypton_name: name.clone(),
                         host_module: module_path.clone(),
                         target: target.clone(),
+                        lifts: lifts.clone(),
                     });
 
                     // Build type_param_map for method resolution
@@ -2872,6 +2875,7 @@ impl ModuleInferenceState {
                             type_params: td.type_params.clone(),
                             type_param_vars: type_info.type_param_vars.clone(),
                             kind,
+                            lifts: type_info.lifts.clone(),
                         },
                     );
                 }
@@ -2900,6 +2904,7 @@ impl ModuleInferenceState {
                             type_params: type_info.type_params.clone(),
                             type_param_vars: type_info.type_param_vars.clone(),
                             kind: typed_ast::ExportedTypeKind::Opaque,
+                            lifts: type_info.lifts.clone(),
                         },
                     );
                 }

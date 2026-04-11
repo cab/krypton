@@ -1,5 +1,5 @@
 ---
-source: crates/parser/tests/parser_test.rs
+source: crates/parser/tests/parser/parser_tests.rs
 expression: module
 ---
 decls:
@@ -11,6 +11,7 @@ decls:
       alias_visibility: ~
       is_trait: false
       type_params: []
+      lifts: ~
       methods:
         - nullable: false
           throws: false

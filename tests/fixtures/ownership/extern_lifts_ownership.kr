@@ -1,0 +1,26 @@
+# expect: ok
+
+extern java "native.Socket" as pub Socket lifts always {}
+extern js "native.mjs" as pub Socket lifts always {}
+
+extern java "native.ForeignString" as pub ForeignString lifts never {}
+extern js "native.mjs" as pub ForeignString lifts never {}
+
+extern java "native.ForeignMap" as pub ForeignMap[k, v] lifts (k | v) {}
+extern js "native.mjs" as pub ForeignMap[k, v] lifts (k | v) {}
+
+extern java "native.Socket" {
+    fun close_socket(s: ~Socket) -> Unit
+    fun close_map[k, v](m: ~ForeignMap[k, v]) -> Unit
+}
+
+extern js "native.mjs" {
+    fun close_socket(s: ~Socket) -> Unit
+    fun close_map[k, v](m: ~ForeignMap[k, v]) -> Unit
+}
+
+fun use_socket(s: ~Socket) -> Unit = close_socket(s)
+
+fun use_map_with_resource(m: ~ForeignMap[Int, ~Socket]) -> Unit = close_map(m)
+
+fun use_map_plain(m: ForeignMap[Int, String]) -> Unit = ()
