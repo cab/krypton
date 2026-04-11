@@ -2372,6 +2372,7 @@ impl ModuleInferenceState {
                                     resolved_ty,
                                     &self.registry,
                                     ast_ty.span(),
+                                    crate::type_error::BareResourceContext::RecordField,
                                 )?;
                             }
                         }
@@ -2389,6 +2390,7 @@ impl ModuleInferenceState {
                                         resolved_ty,
                                         &self.registry,
                                         ast_ty.span(),
+                                        crate::type_error::BareResourceContext::VariantPayload,
                                     )?;
                                 }
                             }
@@ -4497,6 +4499,7 @@ fn infer_function_bodies<'a>(
                                 &annotated_ty,
                                 &state.registry,
                                 ty_expr.span(),
+                                crate::type_error::BareResourceContext::ParamConsume,
                             )?;
                         }
                         unify(&ptv, &annotated_ty, &mut state.subst)
@@ -4522,6 +4525,7 @@ fn infer_function_bodies<'a>(
                         &resolved_ret,
                         &state.registry,
                         ret_ty_expr.span(),
+                        crate::type_error::BareResourceContext::Return,
                     )?;
                     state.env.fn_return_type = Some(resolved_ret);
                 } else {

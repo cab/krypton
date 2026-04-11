@@ -26,6 +26,17 @@ pub(crate) fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
     }
 }
 
+/// Annotation site where a bare resource-carrying type was rejected (E0109).
+/// Drives context-specific wording in the diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BareResourceContext {
+    Return,
+    ParamConsume,
+    RecordField,
+    VariantPayload,
+    LetBinding,
+}
+
 /// Error codes for type errors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeErrorCode {
@@ -448,6 +459,7 @@ pub enum TypeError {
     BareUseOfResourceType {
         type_name: String,
         suggested_spelling: String,
+        context: BareResourceContext,
     },
     /// A `deriving` clause for a trait collides with a hand-written `impl`
     /// of the same trait for the same type. The deriving machinery always
@@ -874,10 +886,24 @@ impl TypeError {
             TypeError::CannotBorrowTemporary { .. } => {
                 Some("bind the expression to a variable with `let` first, then pass the variable".to_string())
             }
-            TypeError::BareUseOfResourceType { type_name, suggested_spelling } => {
-                Some(format!(
-                    "spell `~{type_name}`, borrow via `&x: ~{type_name}`, or change the field/parameter/return type. Suggested: `{suggested_spelling}`"
-                ))
+            TypeError::BareUseOfResourceType { suggested_spelling, context, .. } => {
+                Some(match context {
+                    BareResourceContext::ParamConsume => format!(
+                        "take ownership by writing `{suggested_spelling}`, or borrow with `&` if the callee should not consume the value"
+                    ),
+                    BareResourceContext::Return => format!(
+                        "write `{suggested_spelling}` to transfer ownership to the caller"
+                    ),
+                    BareResourceContext::RecordField => format!(
+                        "write `{suggested_spelling}` so the record owns the resource"
+                    ),
+                    BareResourceContext::VariantPayload => format!(
+                        "write `{suggested_spelling}` so the variant owns the resource"
+                    ),
+                    BareResourceContext::LetBinding => format!(
+                        "write `{suggested_spelling}` — let-bindings consume the value"
+                    ),
+                })
             }
             TypeError::DerivingConflictsWithImpl { trait_name, .. } => {
                 Some(format!(
@@ -1577,10 +1603,17 @@ impl fmt::Display for TypeError {
                     "cannot borrow a temporary expression; bind it to a variable with `let` first"
                 )
             }
-            TypeError::BareUseOfResourceType { type_name, .. } => {
+            TypeError::BareUseOfResourceType { type_name, suggested_spelling, context } => {
+                let site = match context {
+                    BareResourceContext::Return => "return type",
+                    BareResourceContext::ParamConsume => "parameter type",
+                    BareResourceContext::RecordField => "field type",
+                    BareResourceContext::VariantPayload => "variant payload type",
+                    BareResourceContext::LetBinding => "let-binding type",
+                };
                 write!(
                     f,
-                    "bare use of resource-carrying type `{type_name}`: value-position annotations must use `~{type_name}`"
+                    "{site} `{type_name}` owns a resource and must be written `{suggested_spelling}`"
                 )
             }
             TypeError::DerivingConflictsWithImpl { trait_name, type_name } => {

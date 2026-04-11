@@ -745,3 +745,101 @@ fn e0108_early_return_via_question() {
     insta::assert_snapshot!(output);
     assert!(output.contains("E0108"), "expected E0108 in:\n{output}");
 }
+
+const E0109_EXTERN_RR: &str = r#"
+extern java "net.Socket" as pub RR lifts always {}
+extern js   "net.mjs"    as pub RR lifts always {}
+"#;
+
+#[test]
+fn e0109_return_type_wording() {
+    let src = format!("{E0109_EXTERN_RR}\nfun make(s: ~RR) -> RR = s\n");
+    let output = render_module_error(&src);
+    assert!(output.contains("E0109"), "expected E0109 in:\n{output}");
+    assert!(
+        output.contains("return type `RR` owns a resource and must be written `~RR`"),
+        "expected return-type wording in:\n{output}"
+    );
+    assert!(
+        output.contains("transfer ownership to the caller"),
+        "expected return-specific help in:\n{output}"
+    );
+    assert!(
+        !output.contains("borrow"),
+        "return context must not suggest borrowing in:\n{output}"
+    );
+    assert!(
+        !output.contains("Suggested:"),
+        "help must not carry a trailing `Suggested:` in:\n{output}"
+    );
+    assert!(
+        !output.contains("value-position"),
+        "message must not leak `value-position` jargon in:\n{output}"
+    );
+}
+
+#[test]
+fn e0109_param_consume_wording_offers_borrow() {
+    let src = format!("{E0109_EXTERN_RR}\nfun take(s: RR) -> Unit = ()\n");
+    let output = render_module_error(&src);
+    assert!(output.contains("E0109"), "expected E0109 in:\n{output}");
+    assert!(
+        output.contains("parameter type `RR` owns a resource and must be written `~RR`"),
+        "expected parameter-type wording in:\n{output}"
+    );
+    assert!(
+        output.contains("take ownership") && output.contains("borrow with `&`"),
+        "expected param-specific help (ownership + borrow alternative) in:\n{output}"
+    );
+}
+
+#[test]
+fn e0109_record_field_wording() {
+    let src = format!("{E0109_EXTERN_RR}\ntype Conn = {{ sock: RR }}\n");
+    let output = render_module_error(&src);
+    assert!(output.contains("E0109"), "expected E0109 in:\n{output}");
+    assert!(
+        output.contains("field type `RR` owns a resource and must be written `~RR`"),
+        "expected field-type wording in:\n{output}"
+    );
+    assert!(
+        output.contains("so the record owns the resource"),
+        "expected record-specific help in:\n{output}"
+    );
+    assert!(
+        !output.contains("borrow"),
+        "field context must not suggest borrowing in:\n{output}"
+    );
+}
+
+#[test]
+fn e0109_variant_payload_wording() {
+    let src = format!("{E0109_EXTERN_RR}\ntype Maybe = Some(RR) | None\n");
+    let output = render_module_error(&src);
+    assert!(output.contains("E0109"), "expected E0109 in:\n{output}");
+    assert!(
+        output.contains("variant payload type `RR` owns a resource and must be written `~RR`"),
+        "expected variant-payload wording in:\n{output}"
+    );
+    assert!(
+        output.contains("so the variant owns the resource"),
+        "expected variant-specific help in:\n{output}"
+    );
+}
+
+#[test]
+fn e0109_let_binding_wording() {
+    let src = format!(
+        "{E0109_EXTERN_RR}\nfun mk() -> ~RR = RR {{}}\nfun go() -> Unit = {{\n  let s: RR = mk()\n  ()\n}}\n"
+    );
+    let output = render_module_error(&src);
+    assert!(output.contains("E0109"), "expected E0109 in:\n{output}");
+    assert!(
+        output.contains("let-binding type `RR` owns a resource and must be written `~RR`"),
+        "expected let-binding wording in:\n{output}"
+    );
+    assert!(
+        output.contains("let-bindings consume the value"),
+        "expected let-specific help in:\n{output}"
+    );
+}

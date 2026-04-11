@@ -19,7 +19,9 @@
 
 use std::collections::HashSet;
 
-pub use crate::type_error::{SecondaryLabel, SpannedTypeError, TypeError, TypeErrorCode};
+pub use crate::type_error::{
+    BareResourceContext, SecondaryLabel, SpannedTypeError, TypeError, TypeErrorCode,
+};
 use crate::types;
 use crate::types::{QualifierState, Substitution, Type, TypeVarId};
 

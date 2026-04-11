@@ -933,6 +933,7 @@ impl<'a> InferenceContext<'a> {
                         &ann,
                         registry,
                         ty_expr.span(),
+                        crate::type_error::BareResourceContext::LetBinding,
                     )?;
                     Some(ann)
                 } else {
@@ -1271,6 +1272,7 @@ impl<'a> InferenceContext<'a> {
                     &ann,
                     registry,
                     ty_expr.span(),
+                    crate::type_error::BareResourceContext::LetBinding,
                 )?;
                 Some(ann)
             } else {

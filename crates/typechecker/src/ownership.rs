@@ -5,7 +5,7 @@ use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, ParamMode, Span};
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern};
 use crate::types::{Type, TypeScheme, TypeVarId};
-use crate::unify::{SecondaryLabel, SpannedTypeError, TypeError};
+use crate::unify::{BareResourceContext, SecondaryLabel, SpannedTypeError, TypeError};
 
 /// (consumed, partially_consumed) maps recorded for one branch of an if/match.
 type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
@@ -157,6 +157,7 @@ pub(crate) fn check_no_bare_resource_use(
     ty: &Type,
     registry: &TypeRegistry,
     span: krypton_parser::ast::Span,
+    context: BareResourceContext,
 ) -> Result<(), SpannedTypeError> {
     // If the top is `Own(T)`, the user correctly wrote `~T` at this
     // position. Don't fire for the immediate inner Named/App (the `~` has
@@ -165,12 +166,12 @@ pub(crate) fn check_no_bare_resource_use(
     // arguments (e.g. `~Box[Buf]`) still get reported at the inner
     // position where they live.
     if let Type::Own(inner) = ty {
-        return descend_inside_wrapper(inner, registry, span);
+        return descend_inside_wrapper(inner, registry, span, context);
     }
     // `Shape T` is the ownership-polymorphic wrapper and resolves to `~T`
     // or `T` at a later substitution step. Treat it as already wrapped.
     if let Type::Shape(inner) = ty {
-        return descend_inside_wrapper(inner, registry, span);
+        return descend_inside_wrapper(inner, registry, span, context);
     }
 
     match ty {
@@ -180,6 +181,7 @@ pub(crate) fn check_no_bare_resource_use(
                     error: Box::new(TypeError::BareUseOfResourceType {
                         type_name: format!("{}", ty),
                         suggested_spelling: suggest_owned_spelling(ty, registry),
+                        context,
                     }),
                     span,
                     note: None,
@@ -189,7 +191,7 @@ pub(crate) fn check_no_bare_resource_use(
                 });
             }
             for a in args {
-                check_no_bare_resource_use(a, registry, span)?;
+                check_no_bare_resource_use(a, registry, span, context)?;
             }
         }
         Type::App(ctor, args) => {
@@ -198,9 +200,9 @@ pub(crate) fn check_no_bare_resource_use(
             // result, and the generic parameter position is part of the
             // callee's contract. Skip the affine check at this node and
             // recurse into components.
-            check_no_bare_resource_use(ctor, registry, span)?;
+            check_no_bare_resource_use(ctor, registry, span, context)?;
             for a in args {
-                check_no_bare_resource_use(a, registry, span)?;
+                check_no_bare_resource_use(a, registry, span, context)?;
             }
         }
         // Structural containers: never themselves a "bare resource" — a
@@ -208,14 +210,14 @@ pub(crate) fn check_no_bare_resource_use(
         // Recurse into components at fresh value positions.
         Type::Tuple(elems) => {
             for e in elems {
-                check_no_bare_resource_use(e, registry, span)?;
+                check_no_bare_resource_use(e, registry, span, context)?;
             }
         }
         Type::Fn(params, ret) => {
             for (_, p) in params {
-                check_no_bare_resource_use(p, registry, span)?;
+                check_no_bare_resource_use(p, registry, span, context)?;
             }
-            check_no_bare_resource_use(ret, registry, span)?;
+            check_no_bare_resource_use(ret, registry, span, context)?;
         }
         _ => {}
     }
@@ -229,23 +231,24 @@ fn descend_inside_wrapper(
     ty: &Type,
     registry: &TypeRegistry,
     span: krypton_parser::ast::Span,
+    context: BareResourceContext,
 ) -> Result<(), SpannedTypeError> {
     match ty {
         Type::Named(_, args) => {
             for a in args {
-                check_no_bare_resource_use(a, registry, span)?;
+                check_no_bare_resource_use(a, registry, span, context)?;
             }
         }
         Type::App(ctor, args) => {
-            check_no_bare_resource_use(ctor, registry, span)?;
+            check_no_bare_resource_use(ctor, registry, span, context)?;
             for a in args {
-                check_no_bare_resource_use(a, registry, span)?;
+                check_no_bare_resource_use(a, registry, span, context)?;
             }
         }
         Type::Own(inner) | Type::Shape(inner) => {
-            descend_inside_wrapper(inner, registry, span)?;
+            descend_inside_wrapper(inner, registry, span, context)?;
         }
-        _ => check_no_bare_resource_use(ty, registry, span)?,
+        _ => check_no_bare_resource_use(ty, registry, span, context)?,
     }
     Ok(())
 }
