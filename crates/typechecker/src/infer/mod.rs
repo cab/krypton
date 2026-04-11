@@ -3329,6 +3329,14 @@ fn register_extern_traits(
                 .map(|(_, t)| t.clone())
                 .collect();
 
+            // Extern trait methods are currently mode-erased to `Consume`:
+            // the parser's `ExternMethod` has no per-param mode field, so
+            // every extern trait parameter lands in the trait registry as
+            // `ParamMode::Consume`. The witness-side exact-mode check in
+            // `typecheck_impl_methods` therefore enforces `Consume` on every
+            // Krypton-side impl of an extern trait, which matches the only
+            // shape a user can currently declare. Widening extern method
+            // modes is a follow-up.
             let param_types_with_modes: Vec<(crate::types::ParamMode, Type)> = param_types
                 .iter()
                 .cloned()
@@ -4816,10 +4824,21 @@ fn typecheck_impl_methods(
                     out
                 };
 
-                let concrete_param_types: Vec<Type> = trait_method
+                // Keep modes from the trait method so we can enforce exact match
+                // before dropping them for the type-level unification loop below.
+                let concrete_param_types_with_modes: Vec<(ParamMode, Type)> = trait_method
                     .param_types
                     .iter()
-                    .map(|(_, t)| substitute_type_var(&freshen_extras(t), tv_id, &resolved_target))
+                    .map(|(m, t)| {
+                        (
+                            *m,
+                            substitute_type_var(&freshen_extras(t), tv_id, &resolved_target),
+                        )
+                    })
+                    .collect();
+                let concrete_param_types: Vec<Type> = concrete_param_types_with_modes
+                    .iter()
+                    .map(|(_, t)| t.clone())
                     .collect();
                 let _concrete_ret_type = substitute_type_var(
                     &freshen_extras(&trait_method.return_type),
@@ -4868,6 +4887,32 @@ fn typecheck_impl_methods(
                         },
                         *span,
                     ));
+                }
+
+                // Trait impl methods must match the trait's declared parameter
+                // modes exactly. Instance lookup strips `~` for coherence, but
+                // witness checking does not erase capability information:
+                // consume / `&~T` / `&T` are distinct capabilities and do not
+                // coerce.
+                for (i, (p, (trait_mode, _))) in method
+                    .params
+                    .iter()
+                    .zip(concrete_param_types_with_modes.iter())
+                    .enumerate()
+                {
+                    if p.mode != *trait_mode {
+                        return Err(spanned(
+                            TypeError::ImplMethodModeMismatch {
+                                trait_name: trait_name.clone(),
+                                method_name: method.name.clone(),
+                                param_index: i,
+                                param_name: p.name.clone(),
+                                expected_mode: *trait_mode,
+                                actual_mode: p.mode,
+                            },
+                            p.span,
+                        ));
+                    }
                 }
 
                 for (i, p) in method.params.iter().enumerate() {

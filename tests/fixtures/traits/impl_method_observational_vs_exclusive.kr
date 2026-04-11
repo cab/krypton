@@ -1,0 +1,12 @@
+# expect: error E0612
+type File = { fd: Int }
+
+trait MyShow[a] {
+  fun show(&this: a) -> String
+}
+
+impl MyShow[File] {
+  fun show(&this: ~File) -> String = "file"
+}
+
+fun main() -> Unit = ()

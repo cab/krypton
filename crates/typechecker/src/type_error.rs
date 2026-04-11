@@ -97,6 +97,7 @@ pub enum TypeErrorCode {
     E0110, // Cannot borrow a temporary expression
     E0610, // Duplicate parameter name
     E0611, // Function-type parameter mode mismatch (consume vs borrow)
+    E0612, // Trait impl method parameter mode does not match trait requirement
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
 }
 
@@ -425,6 +426,18 @@ pub enum TypeError {
     CannotBorrowTemporary {
         span: Span,
     },
+    /// An impl method's parameter mode does not match the mode declared
+    /// by the trait method it witnesses. Capability mismatch (consume
+    /// vs exclusive borrow vs observational borrow) — these do not
+    /// coerce.
+    ImplMethodModeMismatch {
+        trait_name: String,
+        method_name: String,
+        param_index: usize,
+        param_name: String,
+        expected_mode: ParamMode,
+        actual_mode: ParamMode,
+    },
 }
 
 impl TypeError {
@@ -509,6 +522,7 @@ impl TypeError {
             TypeError::QualifierConflict { .. } => TypeErrorCode::E0104,
             TypeError::FnCapabilityMismatch { .. } => TypeErrorCode::E0104,
             TypeError::ParamModeMismatch { .. } => TypeErrorCode::E0611,
+            TypeError::ImplMethodModeMismatch { .. } => TypeErrorCode::E0612,
             TypeError::LinearValueNotConsumed { .. } => TypeErrorCode::E0108,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
             TypeError::CannotBorrowTemporary { .. } => TypeErrorCode::E0110,
@@ -533,6 +547,12 @@ impl TypeError {
                 let (exp, act) = (mode_label(*expected_mode), mode_label(*actual_mode));
                 Some(format!(
                     "consume (`~T`) and borrow (`&~T`) are distinct slot capabilities — expected {exp} slot does not adapt from {act} slot, and vice versa"
+                ))
+            }
+            TypeError::ImplMethodModeMismatch { expected_mode, actual_mode, .. } => {
+                let (exp, act) = (mode_label(*expected_mode), mode_label(*actual_mode));
+                Some(format!(
+                    "consume (`~T`), exclusive borrow (`&~T`), and observational borrow (`&T`) are distinct capabilities and do not coerce — trait requires {exp} slot but impl provides {act} slot"
                 ))
             }
             TypeError::DuplicateType { name } => {
@@ -1095,6 +1115,25 @@ impl fmt::Display for TypeError {
                     mode_label(*actual_mode),
                     renamed[0],
                     renamed[1]
+                )
+            }
+            TypeError::ImplMethodModeMismatch {
+                trait_name,
+                method_name,
+                param_index,
+                param_name,
+                expected_mode,
+                actual_mode,
+            } => {
+                write!(
+                    f,
+                    "trait `{}` method `{}` parameter `{}` (index {}) must be a {} slot to match the trait, but this impl declares it as a {} slot",
+                    trait_name,
+                    method_name,
+                    param_name,
+                    param_index,
+                    mode_label(*expected_mode),
+                    mode_label(*actual_mode),
                 )
             }
             TypeError::UnsupportedExpr { description } => {

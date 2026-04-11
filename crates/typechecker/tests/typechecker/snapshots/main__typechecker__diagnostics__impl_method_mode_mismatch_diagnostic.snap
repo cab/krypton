@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0612] Error: trait `Reader` method `read` parameter `this` (index 0) must be a borrow (`&~T`) slot to match the trait, but this impl declares it as a consume (`~T`) slot
+   ╭─[ test.kr:3:30 ]
+   │
+ 3 │ impl Reader[File] { fun read(this: ~File) -> Int = 0 }
+   │                              ─────┬─────  
+   │                                   ╰─────── E0612: trait `Reader` method `read` parameter `this` (index 0) must be a borrow (`&~T`) slot to match the trait, but this impl declares it as a consume (`~T`) slot
+   │ 
+   │ Help: consume (`~T`), exclusive borrow (`&~T`), and observational borrow (`&T`) are distinct capabilities and do not coerce — trait requires borrow (`&~T`) slot but impl provides consume (`~T`) slot
+───╯

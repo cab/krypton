@@ -1,0 +1,12 @@
+# expect: error E0612
+type File = { fd: Int }
+
+trait Named[a] {
+  fun name(&this: a) -> String
+}
+
+impl Named[File] {
+  fun name(this: File) -> String = "file"
+}
+
+fun main() -> Unit = ()

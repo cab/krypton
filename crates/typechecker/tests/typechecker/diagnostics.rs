@@ -681,6 +681,27 @@ fn e0301_span_points_to_call_not_block() {
 }
 
 #[test]
+fn impl_method_mode_mismatch_diagnostic() {
+    let src = "type File = { fd: Int }\n\
+               trait Reader[a] { fun read(&this: ~a) -> Int }\n\
+               impl Reader[File] { fun read(this: ~File) -> Int = 0 }";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    assert!(
+        output.contains("E0612"),
+        "expected E0612 in error, got:\n{output}"
+    );
+    assert!(
+        output.contains("parameter `this`"),
+        "expected parameter name in error, got:\n{output}"
+    );
+    assert!(
+        output.contains("borrow (`&~T`)") && output.contains("consume (`~T`)"),
+        "expected both mode labels in error, got:\n{output}"
+    );
+}
+
+#[test]
 fn impl_return_type_mismatch_diagnostic() {
     let src = "trait Convert[a] { fun convert(x: a) -> String }\nimpl Convert[Int] { fun convert(x: Int) -> Int = x }";
     let output = parse_and_infer_module_error(src);

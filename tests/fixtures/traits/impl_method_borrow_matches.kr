@@ -1,0 +1,13 @@
+# expect: ok
+type File = { fd: Int }
+type Bytes = { data: Int }
+
+trait Reader[a] {
+  fun read(&this: ~a) -> Bytes
+}
+
+impl Reader[File] {
+  fun read(&this: ~File) -> Bytes = Bytes { data = 0 }
+}
+
+fun main() -> Unit = ()

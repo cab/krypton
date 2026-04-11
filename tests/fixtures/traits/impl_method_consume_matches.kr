@@ -1,0 +1,14 @@
+# expect: ok
+type File = { fd: Int }
+
+trait Consumer[a] {
+  fun consume(this: ~a) -> Unit
+}
+
+impl Consumer[File] {
+  fun consume(this: ~File) -> Unit = match this {
+    File { fd: _ } => ()
+  }
+}
+
+fun main() -> Unit = ()

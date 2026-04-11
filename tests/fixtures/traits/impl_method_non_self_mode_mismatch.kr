@@ -1,0 +1,12 @@
+# expect: error E0612
+type File = { fd: Int }
+
+trait Copier[a] {
+  fun copy_into(&this: ~a, &dst: ~a) -> Unit
+}
+
+impl Copier[File] {
+  fun copy_into(&this: ~File, dst: ~File) -> Unit = ()
+}
+
+fun main() -> Unit = ()
