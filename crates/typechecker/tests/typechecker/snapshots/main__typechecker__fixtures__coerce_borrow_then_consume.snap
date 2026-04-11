@@ -29,6 +29,6 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-len: (String) -> Int
+len: (&~String) -> Int
 consume: (~String) -> String
 test: (~String) -> String

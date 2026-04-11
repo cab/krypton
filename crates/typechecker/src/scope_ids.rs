@@ -78,7 +78,7 @@ fn walk(expr: &mut TypedExpr, gen: &mut ScopeIdGen) {
             body.scope_id = Some(gen.fresh());
             walk(body, gen);
         }
-        TypedExprKind::App { func, args } => {
+        TypedExprKind::App { func, args, .. } => {
             walk(func, gen);
             for a in args {
                 walk(a, gen);

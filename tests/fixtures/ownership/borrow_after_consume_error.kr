@@ -1,0 +1,5 @@
+# expect: error E0101
+type Res = { fd: Int }
+fun peek(&r: ~Res) -> Int = 1
+fun consume(r: ~Res) -> Int = match r { _ => 0 }
+fun test(r: ~Res) -> Int { consume(r); peek(r) }

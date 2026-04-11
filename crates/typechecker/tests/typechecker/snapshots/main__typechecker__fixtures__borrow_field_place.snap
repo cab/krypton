@@ -12,6 +12,7 @@ neg: forall a. (a) -> a
 show: forall a. (a) -> String
 hash: forall a. (a) -> Int
 dispose: forall a. (~a) -> Unit
+peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
@@ -28,8 +29,7 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-A: Choice
-B: Choice
-peek: (&~String) -> Choice
-consume: (~String) -> String
-test: (~String) -> String
+Server: (~Listener) -> Server
+Listener: (Int) -> Listener
+accept: (&~Listener) -> Int
+test: (~Server) -> Int

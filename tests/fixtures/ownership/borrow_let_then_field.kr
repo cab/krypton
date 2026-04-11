@@ -1,0 +1,7 @@
+# expect: ok
+type Server = { listener: ~Listener }
+type Listener = { fd: Int }
+fun make_server() -> ~Server = Server { listener = Listener { fd = 0 } }
+fun accept(&l: ~Listener) -> Int = 42
+fun consume(s: ~Server) -> Int = match s { _ => 0 }
+fun test() -> Int { let s = make_server(); accept(s.listener); consume(s) }

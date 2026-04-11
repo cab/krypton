@@ -1,0 +1,6 @@
+# expect: ok
+type State = { count: Int }
+fun read(&s: ~State, x: Int) -> Int = x
+fun write(&s: ~State, y: Int) -> Int = y
+fun combine(a: Int, b: Int) -> Int = a + b
+fun test(s: ~State) -> Int = combine(read(s, 1), write(s, 2))

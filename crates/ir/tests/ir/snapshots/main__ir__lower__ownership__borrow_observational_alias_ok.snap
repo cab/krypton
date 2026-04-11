@@ -2,7 +2,7 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module ownership__coerce_borrow_then_consume
+module ownership__borrow_observational_alias_ok
 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
@@ -16,13 +16,18 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn len(v0: ~String) -> Int =
-  42
+fn read1(v0: String) -> Int =
+  1
 
-fn consume(v1: ~String) -> String =
-  ""
+fn read2(v1: String) -> Int =
+  2
 
-fn test(v2: ~String) -> String =
-  let v3: Int = call len(v2)
-  let v4: String = call consume(v2)
+fn combine(v2: Int, v3: Int) -> Int =
+  let v4: Int = add_int(v2, v3)
   v4
+
+fn test(v5: String) -> Int =
+  let v6: Int = call read1(v5)
+  let v7: Int = call read2(v5)
+  let v8: Int = call combine(v6, v7)
+  v8

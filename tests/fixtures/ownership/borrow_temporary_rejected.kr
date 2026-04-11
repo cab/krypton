@@ -1,0 +1,6 @@
+# expect: error E0110
+type Server = { listener: ~Listener }
+type Listener = { fd: Int }
+fun make_server() -> ~Server = Server { listener = Listener { fd = 0 } }
+fun accept(&l: ~Listener) -> Int = 42
+fun test() -> Int = accept(make_server().listener)

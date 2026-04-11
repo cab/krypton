@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
-use krypton_parser::ast::{BinOp, Lit, Span, TypeExpr, UnaryOp, Variant, Visibility};
+use krypton_parser::ast::{BinOp, Lit, ParamMode, Span, TypeExpr, UnaryOp, Variant, Visibility};
 
 /// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +259,7 @@ pub enum TypedExprKind {
     App {
         func: Box<TypedExpr>,
         args: Vec<TypedExpr>,
+        param_modes: Vec<ParamMode>,
     },
     TypeApp {
         expr: Box<TypedExpr>,
@@ -633,7 +634,7 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
         expr.ty = subst.apply(&expr.ty);
         match &mut expr.kind {
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 work.push(func);
                 work.extend(args.iter_mut());
             }

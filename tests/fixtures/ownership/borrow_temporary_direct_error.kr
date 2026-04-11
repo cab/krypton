@@ -1,0 +1,5 @@
+# expect: error E0110
+type Res = { fd: Int }
+fun make() -> ~Res = Res { fd = 0 }
+fun peek(&r: ~Res) -> Int = 1
+fun test() -> Int = peek(make())

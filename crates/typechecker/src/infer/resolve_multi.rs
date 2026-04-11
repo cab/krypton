@@ -191,7 +191,7 @@ fn collect_entries(
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
     while let Some(expr) = work.pop() {
-        if let TypedExprKind::App { func, args } = &expr.kind {
+        if let TypedExprKind::App { func, args, .. } = &expr.kind {
             if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
                 trait_name,
                 ..

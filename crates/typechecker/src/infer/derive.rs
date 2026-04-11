@@ -7,7 +7,7 @@ use crate::type_registry::TypeInfo;
 use crate::typed_ast::{
     ResolvedConstraint, TraitName, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern,
 };
-use crate::types::{Type, TypeVarId};
+use crate::types::{ParamMode, Type, TypeVarId};
 
 use super::match_type_with_bindings;
 
@@ -409,6 +409,7 @@ pub(super) fn synthesize_show_body(
                     scope_id: None,
                 }),
                 args: vec![expr],
+                param_modes: vec![ParamMode::Consume],
             },
             ty: Type::String,
             span,
@@ -547,6 +548,7 @@ pub(super) fn synthesize_hash_body(
                     scope_id: None,
                 }),
                 args: vec![expr],
+                param_modes: vec![ParamMode::Consume],
             },
             ty: Type::Int,
             span,

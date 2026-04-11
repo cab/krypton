@@ -1,0 +1,5 @@
+# expect: ok
+type Res = { fd: Int }
+fun peek(&r: ~Res) -> Int = 1
+fun consume(r: ~Res) -> Int = match r { _ => 0 }
+fun test(r: ~Res) -> Int { peek(r); consume(r) }

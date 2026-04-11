@@ -5,7 +5,7 @@ use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, Type
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{ResolvedTypeRef, TypedExpr, TypedExprKind, TypedMatchArm};
-use crate::types::{Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
+use crate::types::{ParamMode, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
 use super::QualifiedModuleBinding;
@@ -226,8 +226,10 @@ impl<'a> InferenceContext<'a> {
         // Resolve function type and extract params + return for per-arg coerce_unify
         let resolved_func = self.subst.apply(func_ty);
         let unwrapped = self.unwrap_own_fn(&resolved_func);
+        let param_modes;
         match &unwrapped {
             Type::Fn(param_types, ret_type) => {
+                param_modes = param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>();
                 if param_types.len() != arg_types.len() {
                     return Err(super::spanned(
                         TypeError::WrongArity {
@@ -284,6 +286,7 @@ impl<'a> InferenceContext<'a> {
                     .collect();
                 let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
+                param_modes = vec![ParamMode::Consume; args_typed.len()];
             }
         }
 
@@ -293,6 +296,7 @@ impl<'a> InferenceContext<'a> {
             kind: TypedExprKind::App {
                 func: Box::new(func_typed),
                 args: args_typed,
+                param_modes,
             },
             ty: if wrap { Type::Own(Box::new(ty)) } else { ty },
             span,
@@ -605,8 +609,10 @@ impl<'a> InferenceContext<'a> {
         // Resolve function type and extract params + return for per-arg coerce_unify
         let resolved_func = self.subst.apply(&func_typed.ty);
         let unwrapped = self.unwrap_own_fn(&resolved_func);
+        let param_modes;
         match &unwrapped {
             Type::Fn(param_types, ret_type) => {
+                param_modes = param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>();
                 if param_types.len() != arg_types.len() {
                     return Err(super::spanned(
                         TypeError::WrongArity {
@@ -685,6 +691,7 @@ impl<'a> InferenceContext<'a> {
                     .collect();
                 let expected_fn = Type::fn_consuming(deferred_args, ret_var.clone());
                 unify(&unwrapped, &expected_fn, self.subst).map_err(|e| super::spanned(e, span))?;
+                param_modes = vec![ParamMode::Consume; args_typed.len()];
             }
         }
 
@@ -699,6 +706,7 @@ impl<'a> InferenceContext<'a> {
             kind: TypedExprKind::App {
                 func: Box::new(func_typed),
                 args: args_typed,
+                param_modes,
             },
             ty,
             span,
@@ -1890,7 +1898,7 @@ fn collect_trait_constraints_on_vars(
                 stack.push(lhs);
                 stack.push(rhs);
             }
-            TypedExprKind::App { func, args }
+            TypedExprKind::App { func, args, .. }
                 if matches!(
                     func.resolved_ref,
                     Some(crate::typed_ast::ResolvedBindingRef::TraitMethod(_))
@@ -1907,7 +1915,7 @@ fn collect_trait_constraints_on_vars(
                 stack.push(func);
                 stack.extend(args.iter());
             }
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 stack.push(func);
                 stack.extend(args.iter());
             }

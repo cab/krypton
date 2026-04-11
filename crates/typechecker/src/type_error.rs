@@ -94,6 +94,7 @@ pub enum TypeErrorCode {
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
     E0108, // Linear `~T` value not consumed before scope exit (T not Disposable)
+    E0110, // Cannot borrow a temporary expression
     E0610, // Duplicate parameter name
     E0611, // Function-type parameter mode mismatch (consume vs borrow)
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
@@ -419,6 +420,11 @@ pub enum TypeError {
         trait_name: String,
         reason: &'static str,
     },
+    /// A temporary expression (non-place) was passed to a borrow (`&`) parameter.
+    /// The caller must bind the value to a variable with `let` first.
+    CannotBorrowTemporary {
+        span: Span,
+    },
 }
 
 impl TypeError {
@@ -505,6 +511,7 @@ impl TypeError {
             TypeError::ParamModeMismatch { .. } => TypeErrorCode::E0611,
             TypeError::LinearValueNotConsumed { .. } => TypeErrorCode::E0108,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
+            TypeError::CannotBorrowTemporary { .. } => TypeErrorCode::E0110,
         }
     }
 
@@ -823,6 +830,9 @@ impl TypeError {
                 ))
             }
             TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
+            TypeError::CannotBorrowTemporary { .. } => {
+                Some("bind the expression to a variable with `let` first, then pass the variable".to_string())
+            }
         }
     }
 
@@ -1489,6 +1499,12 @@ impl fmt::Display for TypeError {
                     f,
                     "unsupported trait constraint shape for `{}`",
                     trait_name
+                )
+            }
+            TypeError::CannotBorrowTemporary { .. } => {
+                write!(
+                    f,
+                    "cannot borrow a temporary expression; bind it to a variable with `let` first"
                 )
             }
         }

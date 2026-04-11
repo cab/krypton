@@ -1,0 +1,6 @@
+# expect: ok
+type Res = { fd: Int }
+fun peek1(&r: ~Res) -> Int = 1
+fun peek2(&r: ~Res) -> Int = 2
+fun combine(a: Int, b: Int) -> Int = a + b
+fun test(r: ~Res) -> Int = combine(peek1(r), peek2(r))

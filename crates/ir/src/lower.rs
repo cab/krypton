@@ -204,7 +204,7 @@ fn free_vars_inner(
                 free.push(name.clone());
             }
         }
-        TypedExprKind::App { func, args } => {
+        TypedExprKind::App { func, args, .. } => {
             free_vars_inner(func, bound, free, seen);
             for a in args {
                 free_vars_inner(a, bound, free, seen);
@@ -354,7 +354,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
     }
     match &expr.kind {
         TypedExprKind::Lit(_) | TypedExprKind::Var(_) => false,
-        TypedExprKind::App { func, args } => {
+        TypedExprKind::App { func, args, .. } => {
             contains_expr_kind(func, pred) || args.iter().any(|a| contains_expr_kind(a, pred))
         }
         TypedExprKind::TypeApp { expr: inner, .. }
@@ -1835,7 +1835,7 @@ impl LowerCtx {
                     Err(LowerError::CompoundInAtom)
                 }
             }
-            TypedExprKind::App { func, args } => self.lower_app(func, args),
+            TypedExprKind::App { func, args, .. } => self.lower_app(func, args),
             TypedExprKind::Tuple(elems) => {
                 let mut bindings = vec![];
                 let mut atoms = vec![];
@@ -2361,7 +2361,7 @@ impl LowerCtx {
                 })
             }
 
-            TypedExprKind::App { func, args } => self.lower_app_expr(func, args, &expr.ty),
+            TypedExprKind::App { func, args, .. } => self.lower_app_expr(func, args, &expr.ty),
 
             // Short-circuit: lhs && rhs → switch lhs { 1 -> rhs | _ -> false }
             TypedExprKind::BinaryOp {

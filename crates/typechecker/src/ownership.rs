@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, Span, TypeExpr};
+use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, ParamMode, Span};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern};
@@ -73,11 +73,6 @@ fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
 }
 
 // ── Surface-AST helpers (used only by compute_fn_qualifiers) ───────────────
-
-/// Check if a param has an `own` type annotation.
-fn is_own_param(param: &krypton_parser::ast::Param) -> bool {
-    matches!(&param.ty, Some(TypeExpr::Own { .. }))
-}
 
 /// Count the maximum number of uses of `name` along any single execution path.
 fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
@@ -427,7 +422,7 @@ fn collect_free_owned(
                 acc.insert(name.clone());
             }
         }
-        TypedExprKind::App { func, args } => {
+        TypedExprKind::App { func, args, .. } => {
             collect_free_owned(func, owned, bound, acc);
             for a in args {
                 collect_free_owned(a, owned, bound, acc);
@@ -552,12 +547,12 @@ pub fn check_ownership(
         "MaybeOwn leaked past qualifier resolution into ownership checking"
     );
 
-    // Build map: fn_name -> vec of is_own for each param
-    let mut fn_param_info: HashMap<String, Vec<bool>> = HashMap::new();
+    // Build map: fn_name -> vec of ParamMode for each param
+    let mut fn_param_info: HashMap<String, Vec<ParamMode>> = HashMap::new();
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
-            let own_params: Vec<bool> = fn_decl.params.iter().map(is_own_param).collect();
-            fn_param_info.insert(fn_decl.name.clone(), own_params);
+            let modes: Vec<ParamMode> = fn_decl.params.iter().map(|p| p.mode).collect();
+            fn_param_info.insert(fn_decl.name.clone(), modes);
         }
     }
     // Also populate fn_param_info for imported functions from their TypeScheme
@@ -566,11 +561,8 @@ pub fn check_ownership(
             continue;
         }
         if let Type::Fn(params, _) = &scheme.ty {
-            let own_params: Vec<bool> = params
-                .iter()
-                .map(|(_, t)| matches!(t, Type::Own(_)))
-                .collect();
-            fn_param_info.insert(name.clone(), own_params);
+            let modes: Vec<ParamMode> = params.iter().map(|(m, _)| *m).collect();
+            fn_param_info.insert(name.clone(), modes);
         }
     }
 
@@ -637,6 +629,15 @@ pub fn check_ownership(
 ///   analysis on the surface AST. A param is `Unlimited` if it may be called
 ///   multiple times with the same argument.
 ///
+/// Extract the root binding name from a place expression (variable or field chain).
+fn place_root(expr: &TypedExpr) -> Option<&str> {
+    match &expr.kind {
+        TypedExprKind::Var(name) => Some(name),
+        TypedExprKind::FieldAccess { expr, .. } => place_root(expr),
+        _ => None,
+    }
+}
+
 /// `owned` is the live set of bindings subject to move tracking (grows via let-binding).
 /// `affine` is the frozen set of params with affine type (used for qualifier mismatch errors).
 struct OwnershipChecker<'a> {
@@ -644,7 +645,7 @@ struct OwnershipChecker<'a> {
     consumed: HashMap<String, Span>,
     partially_consumed: HashMap<String, Span>,
     moves: HashMap<Span, String>,
-    fn_param_info: &'a HashMap<String, Vec<bool>>,
+    fn_param_info: &'a HashMap<String, Vec<ParamMode>>,
     affine: &'a HashSet<String>,
     fn_qualifiers: &'a HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &'a HashSet<Span>,
@@ -798,12 +799,70 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, param_modes } => {
+                // Borrow regions (AC #9):
+                // - Arguments are evaluated left-to-right.
+                // - A nested call that borrows a place releases its borrow when the
+                //   call returns: `combine(read(s, 1), write(s, 2))` sees `read` borrow
+                //   `s`, then release, then `write` borrow `s`, then release.
+                // - Sibling arguments to the *same* direct call overlap: `f(s, s)` with
+                //   two exclusive borrows overlaps and is rejected here via aliasing
+                //   detection. Observational borrows of the same root may alias freely.
                 self.check_expr(func)?;
-                let callee_params =
-                    callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
                 let callee_qualifiers =
                     callee_var_name(func).and_then(|name| self.fn_qualifiers.get(name));
+
+                // Resolve per-argument modes: prefer param_modes from the App node,
+                // fall back to fn_param_info for compatibility.
+                let fallback_modes =
+                    callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
+                let get_mode = |i: usize| -> ParamMode {
+                    if let Some(m) = param_modes.get(i) {
+                        return *m;
+                    }
+                    if let Some(modes) = fallback_modes {
+                        if let Some(m) = modes.get(i) {
+                            return *m;
+                        }
+                    }
+                    ParamMode::Consume
+                };
+
+                // First pass: detect exclusive borrow aliasing.
+                // Two exclusive borrows (`&param: ~T`) of the same place root are rejected.
+                // Observational borrows (`&param: T`) do not conflict.
+                let mut exclusive_roots: Vec<(usize, &str)> = Vec::new();
+                for (i, arg) in args.iter().enumerate() {
+                    let mode = get_mode(i);
+                    if matches!(mode, ParamMode::Borrow) {
+                        // Exclusive borrow — only for owned param types
+                        if let Some(root) = place_root(arg) {
+                            if self.owned.contains(root) {
+                                for &(j, prev_root) in &exclusive_roots {
+                                    if root == prev_root {
+                                        let _ = j; // used arg index for error context
+                                        return Err(SpannedTypeError {
+                                            error: Box::new(TypeError::AlreadyMoved {
+                                                name: root.to_string(),
+                                            }),
+                                            span: arg.span,
+                                            note: Some(format!(
+                                                "`{}` is already exclusively borrowed by another argument in this call",
+                                                root
+                                            )),
+                                            secondary_span: None,
+                                            source_file: None,
+                                            var_names: None,
+                                        });
+                                    }
+                                }
+                                exclusive_roots.push((i, root));
+                            }
+                        }
+                    }
+                }
+
+                // Second pass: qualifier checks and borrow/consume processing.
                 for (i, arg) in args.iter().enumerate() {
                     // Check qualifier mismatch: affine Var arg passed to RequiresU param
                     if let TypedExprKind::Var(arg_name) = &arg.kind {
@@ -836,7 +895,6 @@ impl<'a> OwnershipChecker<'a> {
                     if !matches!(&arg.kind, TypedExprKind::Var(_)) {
                         let is_affine_arg = match &arg.kind {
                             TypedExprKind::Lambda { .. } => {
-                                // Lambda is affine if it captures owned values (check via its type)
                                 self.lambda_own_captures.contains_key(&arg.span)
                                     || matches!(&arg.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)))
                             }
@@ -883,15 +941,27 @@ impl<'a> OwnershipChecker<'a> {
                         }
                     }
 
-                    let is_non_consuming_borrow = if let TypedExprKind::Var(arg_name) = &arg.kind {
-                        self.owned.contains(arg_name)
-                            && callee_params.is_some_and(|params| i < params.len() && !params[i])
-                    } else {
-                        false
-                    };
-                    if is_non_consuming_borrow {
-                        if let TypedExprKind::Var(name) = &arg.kind {
-                            self.check_not_consumed(name, arg.span, None)?;
+                    // Borrow vs consume: borrow slots do not consume the argument.
+                    let mode = get_mode(i);
+                    let is_borrow = matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
+                    if is_borrow {
+                        if let Some(root) = place_root(arg) {
+                            // Place expression (variable or field chain) — check not consumed, keep live
+                            if self.owned.contains(root) {
+                                self.check_not_consumed(root, arg.span, None)?;
+                            }
+                        } else {
+                            // Non-place expression passed to a borrow slot — reject
+                            return Err(SpannedTypeError {
+                                error: Box::new(TypeError::CannotBorrowTemporary {
+                                    span: arg.span,
+                                }),
+                                span: arg.span,
+                                note: None,
+                                secondary_span: None,
+                                source_file: None,
+                                var_names: None,
+                            });
                         }
                     } else {
                         self.check_expr(arg)?;
@@ -1087,6 +1157,13 @@ impl<'a> OwnershipChecker<'a> {
             TypedExprKind::Lambda { params, body } => {
                 let lambda_params: HashSet<String> = params.iter().cloned().collect();
                 let captured = free_owned_vars(body, self.owned, &lambda_params);
+                // A lambda consumes its owned captures only if it's classified as own
+                // (`~fn`). A plain `fn` closure that only borrows its captures does not
+                // consume them. `lambda_own_captures` is populated during inference by
+                // `first_own_capture`, which uses `capture_demands_own` to detect
+                // own-demanding uses (including borrow-slot awareness).
+                let is_own_lambda = self.lambda_own_captures.contains_key(&expr.span)
+                    || matches!(&expr.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
                 for name in &captured {
                     if let Some(&first_span) = self
                         .consumed
@@ -1106,8 +1183,10 @@ impl<'a> OwnershipChecker<'a> {
                             var_names: None,
                         });
                     }
-                    self.consumed.insert(name.clone(), expr.span);
-                    self.moves.insert(expr.span, name.clone());
+                    if is_own_lambda {
+                        self.consumed.insert(name.clone(), expr.span);
+                        self.moves.insert(expr.span, name.clone());
+                    }
                 }
                 let saved_consumed = std::mem::take(&mut self.consumed);
                 let saved_partial = std::mem::take(&mut self.partially_consumed);
@@ -1247,7 +1326,7 @@ impl<'a> OwnershipChecker<'a> {
 
 fn check_fn(
     typed_fn: &TypedFnDecl,
-    fn_param_info: &HashMap<String, Vec<bool>>,
+    fn_param_info: &HashMap<String, Vec<ParamMode>>,
     fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
     let_own_spans: &HashSet<Span>,
     lambda_own_captures: &HashMap<Span, String>,

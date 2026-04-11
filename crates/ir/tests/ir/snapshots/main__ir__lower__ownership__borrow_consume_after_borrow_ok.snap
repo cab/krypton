@@ -2,9 +2,9 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module ownership__coerce_borrow_then_consume
+module ownership__borrow_consume_after_borrow_ok
 
-import core/peek/peek as peek(e) -> e
+struct Res { fd: Int }
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
@@ -16,13 +16,14 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn len(v0: ~String) -> Int =
-  42
 
-fn consume(v1: ~String) -> String =
-  ""
+fn peek(v0: ~Res) -> Int =
+  1
 
-fn test(v2: ~String) -> String =
-  let v3: Int = call len(v2)
-  let v4: String = call consume(v2)
+fn consume(v1: ~Res) -> Int =
+  0
+
+fn test(v2: ~Res) -> Int =
+  let v3: Int = call peek(v2)
+  let v4: Int = call consume(v2)
   v4

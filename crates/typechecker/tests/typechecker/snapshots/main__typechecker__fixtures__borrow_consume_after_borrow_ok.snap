@@ -28,8 +28,7 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-A: Choice
-B: Choice
-peek: (&~String) -> Choice
-consume: (~String) -> String
-test: (~String) -> String
+Res: (Int) -> Res
+peek: (&~Res) -> Int
+consume: (~Res) -> Int
+test: (~Res) -> Int

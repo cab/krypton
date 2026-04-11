@@ -4,7 +4,6 @@ expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
 lt: forall a. (a, a) -> Bool
-combine: forall a. (a, a) -> a
 sub: forall a. (a, a) -> a
 mul: forall a. (a, a) -> a
 div: forall a. (a, a) -> a
@@ -12,6 +11,7 @@ neg: forall a. (a) -> a
 show: forall a. (a) -> String
 hash: forall a. (a) -> Int
 dispose: forall a. (~a) -> Unit
+peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
@@ -28,8 +28,7 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-A: Choice
-B: Choice
-peek: (&~String) -> Choice
-consume: (~String) -> String
-test: (~String) -> String
+read1: (&String) -> Int
+read2: (&String) -> Int
+combine: (Int, Int) -> Int
+test: (String) -> Int

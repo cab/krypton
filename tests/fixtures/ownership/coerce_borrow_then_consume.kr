@@ -1,5 +1,4 @@
-# expect: error E0101
-# blocked: M37-T7 (borrow does not suppress consumption tracking yet)
+# expect: ok
 fun len(&s: ~String) -> Int = 42
 
 fun consume(s: ~String) -> String = match s { _ => "" }

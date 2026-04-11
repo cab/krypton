@@ -2,8 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module ownership__coerce_borrow_then_consume
+module ownership__borrow_field_place
 
+struct Server { listener: ~Listener }
+struct Listener { fd: Int }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
@@ -16,13 +18,11 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn len(v0: ~String) -> Int =
+
+fn accept(v0: ~Listener) -> Int =
   42
 
-fn consume(v1: ~String) -> String =
-  ""
-
-fn test(v2: ~String) -> String =
-  let v3: Int = call len(v2)
-  let v4: String = call consume(v2)
-  v4
+fn test(v1: ~Server) -> Int =
+  let v2: ~Listener = project v1.0
+  let v3: Int = call accept(v2)
+  v3

@@ -1,0 +1,4 @@
+# expect: error E0101
+type Res = { fd: Int }
+fun copy(&a: ~Res, &b: ~Res) -> Int = 1
+fun test(r: ~Res) -> Int = copy(r, r)

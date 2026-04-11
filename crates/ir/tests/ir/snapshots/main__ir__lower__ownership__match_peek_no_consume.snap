@@ -5,24 +5,24 @@ expression: ir_module.to_string()
 module ownership__match_peek_no_consume
 
 type Choice = A#0 | B#1
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn peek(v0: String) -> Choice =
-  let v1: ~Choice = construct Choice::A#0()
+fn peek(v0: ~String) -> Choice =
+  let v1: Choice = construct Choice::A#0()
   v1
 
 fn consume(v2: ~String) -> String =
-  v2
+  ""
 
 fn test(v3: ~String) -> String =
   let_join v7(v5: Int) =

@@ -1,0 +1,5 @@
+# expect: ok
+fun read1(&s: String) -> Int = 1
+fun read2(&s: String) -> Int = 2
+fun combine(a: Int, b: Int) -> Int = a + b
+fun test(s: String) -> Int = combine(read1(s), read2(s))

@@ -171,7 +171,7 @@ fn collect_moved_vars_inner(
                 acc.push(name.clone());
             }
         }
-        TypedExprKind::App { func, args } => {
+        TypedExprKind::App { func, args, .. } => {
             collect_moved_vars_inner(func, ownership_moves, acc);
             for arg in args {
                 collect_moved_vars_inner(arg, ownership_moves, acc);
@@ -625,7 +625,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 self.walk_expr(func, live);
                 for arg in args {
                     self.walk_expr(arg, live);

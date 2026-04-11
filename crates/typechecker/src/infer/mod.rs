@@ -16,8 +16,8 @@ use crate::typed_ast::{
     TypedModule,
 };
 use crate::types::{
-    type_to_canonical_name, BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv,
-    TypeScheme, TypeVarGen, TypeVarId,
+    type_to_canonical_name, BindingSource, ConstructorBindingKind, ParamMode, Substitution, Type,
+    TypeEnv, TypeScheme, TypeVarGen, TypeVarId,
 };
 use crate::unify::{coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -940,8 +940,8 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
             !is_capture(expr, capture_name) && capture_demands_own(expr, capture_name, subst)
         }
 
-        // Function application: check param types to decide shared vs own
-        TypedExprKind::App { func, args } => {
+        // Function application: check param types and modes to decide shared vs own
+        TypedExprKind::App { func, args, param_modes } => {
             let func_ty = subst.apply(&func.ty);
             let fn_params = match &func_ty {
                 Type::Fn(p, _) => Some(p.as_slice()),
@@ -954,6 +954,12 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
 
             for (i, arg) in args.iter().enumerate() {
                 if is_capture(arg, capture_name) {
+                    // Check param mode first: borrow slots never demand own
+                    let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
+                    if matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
+                        // Borrow slot — capture is not consumed, doesn't force ~fn
+                        continue;
+                    }
                     // Determine if this arg position demands own
                     let demands = if let Some(params) = fn_params {
                         if let Some((_, pty)) = params.get(i) {

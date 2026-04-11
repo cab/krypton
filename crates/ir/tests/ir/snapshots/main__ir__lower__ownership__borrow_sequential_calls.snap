@@ -2,8 +2,9 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module ownership__coerce_borrow_then_consume
+module ownership__borrow_sequential_calls
 
+struct State { count: Int }
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
@@ -16,13 +17,19 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn len(v0: ~String) -> Int =
-  42
 
-fn consume(v1: ~String) -> String =
-  ""
+fn read(v0: ~State, v1: Int) -> Int =
+  v1
 
-fn test(v2: ~String) -> String =
-  let v3: Int = call len(v2)
-  let v4: String = call consume(v2)
-  v4
+fn write(v2: ~State, v3: Int) -> Int =
+  v3
+
+fn combine(v4: Int, v5: Int) -> Int =
+  let v6: Int = add_int(v4, v5)
+  v6
+
+fn test(v7: ~State) -> Int =
+  let v8: Int = call read(v7, 1)
+  let v9: Int = call write(v7, 2)
+  let v10: Int = call combine(v8, v9)
+  v10

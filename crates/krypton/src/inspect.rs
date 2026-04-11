@@ -246,7 +246,7 @@ impl<'a> TypedFormatter<'a> {
             TypedExprKind::QuestionMark { .. } => {
                 self.emit_close_comments_for_span(&expr.span, "early return");
             }
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 self.emit_early_return_closes_in_value(func);
                 for arg in args {
                     self.emit_early_return_closes_in_value(arg);
@@ -303,7 +303,7 @@ impl<'a> TypedFormatter<'a> {
 
     fn emit_nested_moves(&mut self, expr: &TypedExpr) {
         match &expr.kind {
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 self.emit_move_comments_for_span(&func.span);
                 for arg in args {
                     self.emit_move_comments_for_span(&arg.span);
@@ -390,7 +390,7 @@ impl<'a> TypedFormatter<'a> {
         match &expr.kind {
             TypedExprKind::Lit(lit) => self.fmt_lit(lit),
             TypedExprKind::Var(name) => self.buf.push_str(name),
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 self.fmt_expr_prec(func, 7);
                 self.buf.push('(');
                 for (i, arg) in args.iter().enumerate() {

@@ -1,0 +1,5 @@
+# expect: ok
+type Server = { listener: ~Listener }
+type Listener = { fd: Int }
+fun accept(&l: ~Listener) -> Int = 42
+fun test(s: ~Server) -> Int = accept(s.listener)

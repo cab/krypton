@@ -423,7 +423,7 @@ fn walk_trait_method_calls(
     work.push(expr);
     while let Some(expr) = work.pop() {
         match &expr.kind {
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
                     trait_name: trait_id,
                     method_name,
@@ -678,7 +678,7 @@ pub(super) fn check_trait_instances(
     work.push(expr);
     while let Some(expr) = work.pop() {
         match &expr.kind {
-            TypedExprKind::App { func, args } => {
+            TypedExprKind::App { func, args, .. } => {
                 if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
                     trait_name: trait_id,
                     method_name,

@@ -5,12 +5,12 @@ expression: ir_module.to_string()
 module closures__lazy_own_explicit_own
 
 import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[r3]) -> Option[r3]
-import core/list/sort_by as sort_by(List[w5], (w5) -> l5) -> List[w5]
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
 import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[z7]) -> List[z7]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
 import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
@@ -22,7 +22,7 @@ fn use_twice(v0: (Int) -> Int) -> Int =
   let v3: Int = add_int(v1, v2)
   v3
 
-fn shared_read(v4: Option[Int]) -> Int =
+fn shared_read(v4: ~Option[Int]) -> Int =
   switch v4 {
     0 (v5: Int) ->
       v5
@@ -30,13 +30,23 @@ fn shared_read(v4: Option[Int]) -> Int =
       0
   }
 
-fn test() -> Int =
-  let v6: ~Option[Int] = construct Option::Some#0(2)
-  let v7: (Int) -> Int = make_closure(lambda$26, [v6])
-  let v12: Int = call use_twice(v7)
-  v12
+fn consume(v6: ~Option[Int]) -> Int =
+  switch v6 {
+    0 (v7: Int) ->
+      v7
+    1 ->
+      0
+  }
 
-fn lambda$26(v8: ~Option[Int], v9: Int) -> Int =
-  let v10: Int = call shared_read(v8)
-  let v11: Int = add_int(v9, v10)
-  v11
+fn test() -> Int =
+  let v8: ~Option[Int] = construct Option::Some#0(2)
+  let v9: (Int) -> Int = make_closure(lambda$27, [v8])
+  let v14: Int = call use_twice(v9)
+  let v15: Int = call consume(v8)
+  let v16: Int = add_int(v14, v15)
+  v16
+
+fn lambda$27(v10: ~Option[Int], v11: Int) -> Int =
+  let v12: Int = call shared_read(v10)
+  let v13: Int = add_int(v11, v12)
+  v13
