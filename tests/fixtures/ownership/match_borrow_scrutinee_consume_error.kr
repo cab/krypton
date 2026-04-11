@@ -1,0 +1,9 @@
+# expect: error E0111
+type Payload = Open(~String) | Closed
+
+fun consume(s: ~String) -> Int = match s { _ => 0 }
+
+fun drain(&p: ~Payload) -> Int = match p {
+    Open(s) => consume(s),
+    Closed => 0,
+}

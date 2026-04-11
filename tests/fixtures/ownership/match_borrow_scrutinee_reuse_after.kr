@@ -1,0 +1,9 @@
+# expect: ok
+type Payload = Open(~String) | Closed
+
+fun tag(&p: ~Payload) -> Int = 1
+
+fun drain(&p: ~Payload) -> Int {
+    match p { Open(_) => 0, Closed => 0 };
+    tag(p)
+}

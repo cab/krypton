@@ -921,7 +921,7 @@ struct OwnershipChecker<'a> {
     /// ownership. Borrowed bindings may only be reborrowed (passed to another
     /// `&` slot); they cannot be consumed, returned as `~T`, stored in a
     /// field, captured by a closure, or rebound by `let`.
-    borrowed: &'a HashSet<String>,
+    borrowed: HashSet<String>,
     consumed: HashMap<String, Span>,
     partially_consumed: HashMap<String, Span>,
     moves: HashMap<Span, String>,
@@ -1068,13 +1068,19 @@ impl<'a> OwnershipChecker<'a> {
         pattern: &TypedPattern,
         guard: Option<&TypedExpr>,
         body: &TypedExpr,
+        scrutinee_is_borrowed: bool,
     ) -> Result<BranchConsumeMaps, SpannedTypeError> {
         let saved_owned = self.owned.clone();
+        let saved_borrowed = self.borrowed.clone();
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
 
         for name in collect_owned_pattern_vars(pattern) {
-            self.owned.insert(name);
+            if scrutinee_is_borrowed {
+                self.borrowed.insert(name);
+            } else {
+                self.owned.insert(name);
+            }
         }
 
         let result = (|| {
@@ -1100,6 +1106,7 @@ impl<'a> OwnershipChecker<'a> {
         let branch_consumed = std::mem::replace(&mut self.consumed, saved_consumed);
         let branch_partial = std::mem::replace(&mut self.partially_consumed, saved_partial);
         *self.owned = saved_owned;
+        self.borrowed = saved_borrowed;
 
         result?;
         Ok((branch_consumed, branch_partial))
@@ -1462,6 +1469,8 @@ impl<'a> OwnershipChecker<'a> {
 
             TypedExprKind::Match { scrutinee, arms } => {
                 self.check_expr(scrutinee)?;
+                let scrutinee_is_borrowed = place_root(scrutinee)
+                    .is_some_and(|root| self.borrowed.contains(root));
                 let before: HashSet<String> = self.consumed.keys().cloned().collect();
                 let n = arms.len();
                 let mut per_arm_new: Vec<HashMap<String, Span>> = Vec::new();
@@ -1469,8 +1478,12 @@ impl<'a> OwnershipChecker<'a> {
 
                 for arm in arms {
                     let pattern_owned = collect_owned_pattern_vars(&arm.pattern);
-                    let (arm_consumed, arm_partial) =
-                        self.check_match_arm_branch(&arm.pattern, arm.guard.as_deref(), &arm.body)?;
+                    let (arm_consumed, arm_partial) = self.check_match_arm_branch(
+                        &arm.pattern,
+                        arm.guard.as_deref(),
+                        &arm.body,
+                        scrutinee_is_borrowed,
+                    )?;
 
                     let newly: HashMap<String, Span> = arm_consumed
                         .into_iter()
@@ -1521,7 +1534,7 @@ impl<'a> OwnershipChecker<'a> {
                 // wins over any generic Var-arm error the body walk would
                 // produce for the same reference.
                 let borrowed_captures =
-                    free_borrowed_vars(body, self.borrowed, &lambda_params);
+                    free_borrowed_vars(body, &self.borrowed, &lambda_params);
                 if let Some(name) = borrowed_captures.into_iter().next() {
                     return Err(SpannedTypeError {
                         error: Box::new(TypeError::BorrowedBindingMisuse {
@@ -1770,7 +1783,7 @@ fn check_fn(
     let mut own_fn_notes = HashMap::new();
     let mut checker = OwnershipChecker {
         owned: &mut owned,
-        borrowed: &borrowed,
+        borrowed,
         consumed: HashMap::new(),
         partially_consumed: HashMap::new(),
         moves: HashMap::new(),

@@ -1,0 +1,9 @@
+# expect: ok
+type Payload = Open(~String) | Closed
+
+fun peek(&s: ~String) -> Int = 42
+
+fun drain(&p: ~Payload) -> Int = match p {
+    Open(s) => peek(s),
+    Closed => 0,
+}
