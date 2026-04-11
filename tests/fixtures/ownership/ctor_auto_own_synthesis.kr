@@ -1,0 +1,44 @@
+# expect: ok
+# M42-T7: constructors for resource-carrying types auto-synthesize `~T` when
+# there is no expected type (or the expected type is an unbound variable).
+
+extern java "net.Socket" as pub Socket lifts always {}
+extern js "net.mjs"     as pub Socket lifts always {}
+
+extern java "net.Socket" {
+    fun close_socket(s: ~Socket) -> Unit
+}
+extern js "net.mjs" {
+    fun close_socket(s: ~Socket) -> Unit
+}
+
+type Conn = { sock: ~Socket, name: String }
+type ConnState = Open(~Socket) | Closed
+
+# Record constructor, no annotation → auto-wraps to ~Conn.
+fun mk_conn(s: ~Socket) -> ~Conn = {
+  let c = Conn { sock = s, name = "foo" }
+  c
+}
+
+# Sum constructor with owned payload → auto-wraps to ~ConnState.
+fun mk_open(s: ~Socket) -> ~ConnState = {
+  let st = Open(s)
+  st
+}
+
+# Nullary variant of an affine sum → auto-wraps to ~ConnState.
+fun mk_closed() -> ~ConnState = Closed
+
+# Identity pass-through: the fresh type var threaded in as `expected` should
+# count as "no opinion", so the inner ctor still auto-wraps.
+fun identity[a](x: a) -> a = x
+fun mk_via_identity(s: ~Socket) -> ~Conn =
+  identity(Conn { sock = s, name = "bar" })
+
+# Plain (non-resource) record still synthesizes bare T.
+type Point = { x: Int, y: Int }
+fun mk_point() -> Point = {
+  let p = Point { x = 1, y = 2 }
+  p
+}

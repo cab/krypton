@@ -42,7 +42,7 @@ fn has_own_field(type_name: &str, registry: &TypeRegistry) -> bool {
 }
 
 /// Check if a resolved type is affine (contains own or is a struct/sum with own fields).
-fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
+pub(crate) fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
     match ty {
         Type::Own(_) => true,
         Type::Shape(inner) => type_is_affine(inner, registry),

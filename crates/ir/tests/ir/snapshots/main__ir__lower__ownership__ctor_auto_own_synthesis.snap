@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module ownership__ctor_auto_own_synthesis
+
+struct Conn { sock: ~Socket, name: String }
+struct Point { x: Int, y: Int }
+type ConnState = Open#0(~Socket) | Closed#1
+extern java "net.Socket" close_socket(~Socket) -> Unit
+extern type java "net.Socket" Socket
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+
+fn mk_conn(v0: ~Socket) -> ~Conn =
+  let v1: ~Conn = construct Conn(v0, "foo")
+  v1
+
+fn mk_open(v2: ~Socket) -> ~ConnState =
+  let v3: ~ConnState = construct ConnState::Open#0(v2)
+  v3
+
+fn mk_closed() -> ~ConnState =
+  let v4: ~ConnState = construct ConnState::Closed#1()
+  v4
+
+fn identity(v5: q8) -> q8 =
+  v5
+
+fn mk_via_identity(v6: ~Socket) -> ~Conn =
+  let v7: ~Conn = construct Conn(v6, "bar")
+  let v8: ~Conn = call identity(v7)
+  v8
+
+fn mk_point() -> Point =
+  let v9: Point = construct Point(1, 2)
+  v9

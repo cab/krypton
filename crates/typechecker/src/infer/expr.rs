@@ -127,14 +127,39 @@ impl<'a> InferenceContext<'a> {
 
     /// Bidirectional constructor synthesis predicate (disposable.md §"Literal
     /// and constructor synthesis"). Constructors synthesize bare `T` unless
-    /// the expected context walks to `Own(T)`, in which case they target `~T`
-    /// directly. `MaybeOwn` on expected is ignored at synthesis time — it only
-    /// appears during deferred unification, long after this check.
-    fn expected_wants_own(&self, expected: Option<&Type>) -> bool {
-        match expected.map(|t| self.subst.apply(t)) {
+    /// either:
+    ///   1. the expected context walks to `Own(T)`, or
+    ///   2. there is no expected context (or it is an unbound type variable)
+    ///      and the result type is structurally resource-carrying.
+    ///
+    /// Case 2 is the M42-T7 auto-synthesis rule: with no opinion from the
+    /// expected side, a constructor for a resource-carrying type wraps its
+    /// result in `~` because `~T` is the only correct value form. An unbound
+    /// `Type::Var` counts as "no opinion" so that `identity(Conn { ... })`
+    /// still wraps — the fresh parameter variable threaded in as the expected
+    /// type carries no information.
+    ///
+    /// A concrete bare `Named`/etc. expected type is left untouched so that
+    /// `let c: Conn = Conn { ... }` (a user error on a resource-carrying type)
+    /// produces a bare result and is later caught by E0109 (M39-T6).
+    /// `MaybeOwn` on expected is ignored at synthesis time — it only appears
+    /// during deferred unification, long after this check.
+    fn should_wrap_ctor_result(&self, expected: Option<&Type>, result_ty: &Type) -> bool {
+        let applied = expected.map(|t| self.subst.apply(t));
+        match &applied {
             Some(Type::Own(_)) => true,
+            None => self.ctor_result_is_affine(result_ty),
+            Some(Type::Var(_)) => self.ctor_result_is_affine(result_ty),
             _ => false,
         }
+    }
+
+    fn ctor_result_is_affine(&self, ty: &Type) -> bool {
+        let Some(reg) = self.registry else {
+            return false;
+        };
+        let resolved = self.subst.apply(ty);
+        crate::ownership::type_is_affine(&resolved, reg)
     }
 
     pub fn extract_fn_params(&self, ty: &Type) -> Option<Vec<Type>> {
@@ -291,7 +316,7 @@ impl<'a> InferenceContext<'a> {
         }
 
         let ty = self.subst.apply(&ret_var);
-        let wrap = is_constructor && self.expected_wants_own(expected_type);
+        let wrap = is_constructor && self.should_wrap_ctor_result(expected_type, &ty);
         Ok(TypedExpr {
             kind: TypedExprKind::App {
                 func: Box::new(func_typed),
@@ -360,6 +385,8 @@ impl<'a> InferenceContext<'a> {
         ))
     }
 
+    // TODO: Move to a struct?
+    #[allow(clippy::too_many_arguments)]
     fn infer_qualified_var_call_inner(
         &mut self,
         binding: &super::QualifiedModuleBinding,
@@ -478,7 +505,7 @@ impl<'a> InferenceContext<'a> {
         let func_ty = export.scheme.instantiate(&mut || self.gen.fresh());
         let wrap_nullary = is_constructor
             && !matches!(&func_ty, Type::Fn(_, _))
-            && self.expected_wants_own(expected_type);
+            && self.should_wrap_ctor_result(expected_type, &func_ty);
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(resolved_name),
             ty: if wrap_nullary {
@@ -696,7 +723,7 @@ impl<'a> InferenceContext<'a> {
         }
 
         let ty = self.subst.apply(&ret_var);
-        let ty = if is_constructor && self.expected_wants_own(expected_type) {
+        let ty = if is_constructor && self.should_wrap_ctor_result(expected_type, &ty) {
             Type::Own(Box::new(ty))
         } else {
             ty
@@ -1081,7 +1108,7 @@ impl<'a> InferenceContext<'a> {
                     let export_ty = export.scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if is_constructor
                         && !matches!(&export_ty, Type::Fn(_, _))
-                        && self.expected_wants_own(expected_type)
+                        && self.should_wrap_ctor_result(expected_type, &export_ty)
                     {
                         Type::Own(Box::new(export_ty.clone()))
                     } else {
@@ -1099,7 +1126,10 @@ impl<'a> InferenceContext<'a> {
         }
         let target_typed = self.infer_expr_inner(target, None)?;
         let resolved = self.subst.apply(&target_typed.ty);
-        let base_is_owned = matches!(&resolved, Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _));
+        let base_is_owned = matches!(
+            &resolved,
+            Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _)
+        );
         // Unwrap Own/MaybeOwn/Shape wrapper — field access works on the inner type
         let inner_resolved = match &resolved {
             Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => inner.as_ref(),
@@ -1151,8 +1181,10 @@ impl<'a> InferenceContext<'a> {
     ) -> Result<TypedExpr, SpannedTypeError> {
         let scrutinee_typed = self.infer_expr_inner(scrutinee, None)?;
         let scrutinee_ty = self.subst.apply(&scrutinee_typed.ty);
-        let scrutinee_is_owned =
-            matches!(&scrutinee_ty, Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _));
+        let scrutinee_is_owned = matches!(
+            &scrutinee_ty,
+            Type::Own(_) | Type::Shape(_) | Type::MaybeOwn(_, _)
+        );
         // Unwrap Own/MaybeOwn/Shape wrapper — match works on the inner type
         let match_ty = match &scrutinee_ty {
             Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
@@ -1361,7 +1393,7 @@ impl<'a> InferenceContext<'a> {
                     }
                 }
 
-                let result_ty = if self.expected_wants_own(expected_type) {
+                let result_ty = if self.should_wrap_ctor_result(expected_type, &struct_ty) {
                     Type::Own(Box::new(struct_ty))
                 } else {
                     struct_ty
@@ -1589,7 +1621,7 @@ impl<'a> InferenceContext<'a> {
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))
                         && self.registry.is_some_and(|r| r.is_constructor(name))
-                        && self.expected_wants_own(expected_type)
+                        && self.should_wrap_ctor_result(expected_type, &ty)
                     {
                         Type::Own(Box::new(ty))
                     } else {
