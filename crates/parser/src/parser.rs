@@ -53,13 +53,14 @@ fn to_span(s: LexSpan) -> Span {
 }
 
 const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
-const SHAPE_IN_FN_TYPE: &str = "`shape` is not permitted inside a function type in v0.1";
+const SHAPE_IN_FN_TYPE: &str = "`shape` is not permitted inside a function type";
 
 /// Shallow walker: returns `true` if `te` contains any `TypeExpr::Shape`
 /// (including at its root). Used by the parser gate to reject `shape` in
-/// nested / first-class function types — `shape` is only allowed at the
-/// root of a top-level `fun` signature slot, which is parsed outside this
-/// function-type path.
+/// nested / first-class function types — `shape` is a def-site
+/// polymorphism mechanism, allowed only at the root of a top-level `fun`
+/// signature slot (parsed outside this function-type path). Higher-order
+/// use cases go through traits; see the ownership chapter of the book.
 fn type_expr_has_shape(te: &TypeExpr) -> bool {
     match te {
         TypeExpr::Shape { .. } => true,

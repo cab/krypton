@@ -1469,6 +1469,13 @@ impl<'a> OwnershipChecker<'a> {
 
             TypedExprKind::Match { scrutinee, arms } => {
                 self.check_expr(scrutinee)?;
+                // A match scrutinee is borrowed only when it roots onto an
+                // already-borrowed binding (e.g., matching on `&x` inside a
+                // function whose slot is `&~T`). Non-place scrutinees —
+                // function calls, arithmetic, constructor applications — are
+                // always owned: Krypton has no `&T`-returning functions,
+                // so these expressions cannot yield a borrow. If that
+                // invariant ever changes, this line must be revisited.
                 let scrutinee_is_borrowed = place_root(scrutinee)
                     .is_some_and(|root| self.borrowed.contains(root));
                 let before: HashSet<String> = self.consumed.keys().cloned().collect();
