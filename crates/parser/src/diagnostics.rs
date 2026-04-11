@@ -10,6 +10,7 @@ pub enum ErrorCode {
     P0004, // Unnecessary syntax
     P0005, // Deprecated syntax
     P0006, // Invalid binding mode
+    P0007, // `shape` inside a nested function type (v0.1 disallows)
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -21,6 +22,7 @@ impl std::fmt::Display for ErrorCode {
             ErrorCode::P0004 => write!(f, "P0004"),
             ErrorCode::P0005 => write!(f, "P0005"),
             ErrorCode::P0006 => write!(f, "P0006"),
+            ErrorCode::P0007 => write!(f, "P0007"),
         }
     }
 }

@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # peek is a bare identity; owned values passed to it are consumed.
 type Choice = A | B
 fun classify(s: String) -> Choice = A

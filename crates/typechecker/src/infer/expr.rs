@@ -268,8 +268,40 @@ impl<'a> InferenceContext<'a> {
                 for (i, (arg_ty, (_, param_ty))) in
                     arg_types.iter().zip(param_types.iter()).enumerate()
                 {
+                    // Raw (unsubstituted) slot declaration: distinguishes
+                    // `Type::Var` (bare `a`) from `Type::Shape(Var)` (`shape a`).
+                    // Used below to retarget Mismatch/OwnershipMismatch errors
+                    // into `BareTypeVarResourceArg` when the slot is bare `a`
+                    // and the arg is `~T`. Soundness: invariant (3) from the
+                    // ownership_shape_draft — the ownership-erased unifier
+                    // accepts the pair, but the post-unification mode check
+                    // rejects it here with a targeted `shape a` hint.
+                    let raw_param_ty = func_param_types
+                        .as_ref()
+                        .and_then(|ps| ps.get(i))
+                        .cloned();
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. }
+                                | TypeError::OwnershipMismatch { .. }
+                                | TypeError::QualifierConflict { .. }
+                        ) {
+                            if let Some(ref raw) = raw_param_ty {
+                                if matches!(raw, Type::Var(_)) {
+                                    let resolved_arg = self.subst.apply(arg_ty);
+                                    if matches!(resolved_arg, Type::Own(_)) {
+                                        err.error = Box::new(TypeError::BareTypeVarResourceArg {
+                                            callee_name: callee_name.map(|s| s.to_string()),
+                                            param_index: i,
+                                            param_ty: raw.clone(),
+                                            arg_ty: resolved_arg,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                         if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {
                                 let note = if let Some(Expr::Var { name: arg_name, .. }) = args.get(i) {
@@ -649,12 +681,40 @@ impl<'a> InferenceContext<'a> {
                         span,
                     ));
                 }
+                // Raw (unsubstituted) parameter types: distinguishes
+                // `Type::Var` (bare `a`) from `Type::Shape(Var)` (`shape a`)
+                // so we can retarget Mismatch/OwnershipMismatch into the
+                // `BareTypeVarResourceArg` variant when the slot was declared
+                // bare `a` but the arg is owned.
+                let raw_params: Option<Vec<Type>> = self.extract_fn_params(&func_typed.ty);
                 // Per-arg coerce_unify: directional, catches fabrication structurally
                 for (i, (arg_ty, (_, param_ty))) in
                     arg_types.iter().zip(param_types.iter()).enumerate()
                 {
                     coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
                         let mut err = super::spanned(e, span);
+                        // Bare-`a` / owned-arg retarget — see notes on
+                        // `BareTypeVarResourceArg` in type_error.rs.
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. }
+                                | TypeError::OwnershipMismatch { .. }
+                                | TypeError::QualifierConflict { .. }
+                        ) {
+                            if let Some(raw) = raw_params.as_ref().and_then(|ps| ps.get(i)) {
+                                if matches!(raw, Type::Var(_)) {
+                                    let resolved_arg = self.subst.apply(arg_ty);
+                                    if matches!(resolved_arg, Type::Own(_)) {
+                                        err.error = Box::new(TypeError::BareTypeVarResourceArg {
+                                            callee_name: callee_name.map(|s| s.to_string()),
+                                            param_index: i,
+                                            param_ty: raw.clone(),
+                                            arg_ty: resolved_arg,
+                                        });
+                                    }
+                                }
+                            }
+                        }
                         // Add ownership-specific notes
                         if matches!(&*err.error, TypeError::OwnershipMismatch { .. }) {
                             if let Some(cname) = callee_name {

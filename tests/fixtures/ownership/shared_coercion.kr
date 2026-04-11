@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun identity[a](x: a) -> a = x
 fun use_it(buf: ~String) -> Unit = {
     identity(buf)

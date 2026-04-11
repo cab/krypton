@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 fun dup[a](x: a) -> (a, a) = (x, x)
 fun test(buf: ~String) -> Unit = {
     dup(buf)

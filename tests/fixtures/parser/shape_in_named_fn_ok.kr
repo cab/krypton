@@ -1,0 +1,2 @@
+# expect: ok
+fun f[a](x: shape a) -> shape a = x

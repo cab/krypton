@@ -1,0 +1,53 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefFn:
+      platform: ~
+      name: f
+      visibility: Private
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 19
+            - 20
+      params:
+        - name: x
+          ty:
+            Shape:
+              inner:
+                Var:
+                  name: a
+                  span:
+                    - 31
+                    - 32
+              span:
+                - 25
+                - 32
+          mode: Consume
+          span:
+            - 22
+            - 32
+      constraints: []
+      return_type:
+        Shape:
+          inner:
+            Var:
+              name: a
+              span:
+                - 43
+                - 44
+          span:
+            - 37
+            - 44
+      body:
+        Var:
+          name: x
+          span:
+            - 47
+            - 48
+      span:
+        - 13
+        - 48

@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # peek is a bare identity; owned values passed to it are consumed.
 fun test(val: ~String) -> String {
     peek(val);

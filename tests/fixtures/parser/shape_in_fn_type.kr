@@ -1,0 +1,2 @@
+# expect: error P0007
+fun f[a](cb: (shape a) -> shape a) -> Int = 0

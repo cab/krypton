@@ -53,6 +53,28 @@ fn to_span(s: LexSpan) -> Span {
 }
 
 const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
+const SHAPE_IN_FN_TYPE: &str = "`shape` is not permitted inside a function type in v0.1";
+
+/// Shallow walker: returns `true` if `te` contains any `TypeExpr::Shape`
+/// (including at its root). Used by the parser gate to reject `shape` in
+/// nested / first-class function types — `shape` is only allowed at the
+/// root of a top-level `fun` signature slot, which is parsed outside this
+/// function-type path.
+fn type_expr_has_shape(te: &TypeExpr) -> bool {
+    match te {
+        TypeExpr::Shape { .. } => true,
+        TypeExpr::Own { inner, .. } => type_expr_has_shape(inner),
+        TypeExpr::App { args, .. } => args.iter().any(type_expr_has_shape),
+        TypeExpr::Fn { params, ret, .. } => {
+            params.iter().any(|p| type_expr_has_shape(&p.ty)) || type_expr_has_shape(ret)
+        }
+        TypeExpr::Tuple { elements, .. } => elements.iter().any(type_expr_has_shape),
+        TypeExpr::Named { .. }
+        | TypeExpr::Var { .. }
+        | TypeExpr::Qualified { .. }
+        | TypeExpr::Wildcard { .. } => false,
+    }
+}
 
 fn is_uppercase(s: &str) -> bool {
     s.starts_with(|c: char| c.is_uppercase())
@@ -129,6 +151,12 @@ where
         let fn_type_slot = symbol(Token::Amp)
             .or_not()
             .then(ty.clone())
+            .validate(|(amp, ty), e, emitter| {
+                if type_expr_has_shape(&ty) {
+                    emitter.emit(Rich::custom(e.span(), SHAPE_IN_FN_TYPE.to_string()));
+                }
+                (amp, ty)
+            })
             .map(|(amp, ty)| FnTypeParam {
                 mode: if amp.is_some() {
                     if matches!(ty, TypeExpr::Own { .. }) {
@@ -156,6 +184,11 @@ where
             .validate(|(params, ret), e, emitter| {
                 if ret.is_none() && params.iter().any(|p| matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow)) {
                     emitter.emit(Rich::custom(e.span(), SLOT_NOT_A_TYPE.to_string()));
+                }
+                if let Some(r) = ret.as_ref() {
+                    if type_expr_has_shape(r) {
+                        emitter.emit(Rich::custom(e.span(), SHAPE_IN_FN_TYPE.to_string()));
+                    }
                 }
                 (params, ret)
             })
@@ -1822,6 +1855,9 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
     match e.reason() {
         chumsky::error::RichReason::Custom(msg) if msg == SLOT_NOT_A_TYPE => {
             return ErrorCode::P0006;
+        }
+        chumsky::error::RichReason::Custom(msg) if msg == SHAPE_IN_FN_TYPE => {
+            return ErrorCode::P0007;
         }
         chumsky::error::RichReason::ExpectedFound { expected, found } => {
             if found.is_none() {

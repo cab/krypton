@@ -1,0 +1,18 @@
+# expect: error E0104
+extern java "native.Buffer" as pub Buffer lifts always {}
+extern js "native.mjs"     as pub Buffer lifts always {}
+
+extern java "native.Buffer" {
+    fun get_buffer() -> ~Buffer
+}
+extern js "native.mjs" {
+    fun get_buffer() -> ~Buffer
+}
+
+fun tvar[a](state: a) -> a = state
+
+fun main() -> Int {
+    let b = get_buffer();
+    let _ = tvar(b);
+    0
+}

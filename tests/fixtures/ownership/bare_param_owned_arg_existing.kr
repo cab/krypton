@@ -1,0 +1,7 @@
+# expect: error E0001
+# Counter-fixture: ordinary Own(T) -> T rejection for a concrete non-resource
+# type retains its existing ownership-mismatch message. Proves the targeted
+# `shape a` diagnostic fires only for bare type-variable slots.
+fun take_plain(s: String) -> Int = 0
+
+fun main(x: ~String) -> Int = take_plain(x)

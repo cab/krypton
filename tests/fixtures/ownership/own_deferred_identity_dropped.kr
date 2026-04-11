@@ -1,4 +1,4 @@
-# expect: error E0001
+# expect: error E0104
 # identity with owned arg cannot be returned as bare without an explicit consume
 fun identity[a](x: a) -> a = x
 fun test(s: ~String) -> String = identity(s)

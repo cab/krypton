@@ -488,6 +488,20 @@ pub enum TypeError {
         method_name: String,
         count: usize,
     },
+    /// A callee declares a parameter slot with a bare type variable `a`,
+    /// but the caller passed an owned (`~T`) argument. In v0.1 a bare `a`
+    /// slot accepts only plain (non-resource) values; to take either plain
+    /// or owned, the slot must be written `shape a`. The unifier is
+    /// ownership-erased, so this mismatch surfaces via `Mismatch` /
+    /// `OwnershipMismatch` / `QualifierConflict`; the call-site lifts those
+    /// to this targeted variant whenever the raw slot type was a bare
+    /// `Type::Var` (not `Type::Shape`) and the arg is `Own(_)`.
+    BareTypeVarResourceArg {
+        callee_name: Option<String>,
+        param_index: usize,
+        param_ty: Type,
+        arg_ty: Type,
+    },
     /// A shape-polymorphic impl body typechecked for one legal value form
     /// of a `shape` parameter but not the other. The failing form is
     /// captured in `failing_form` (e.g. "a = ~T (owned)") and the nested
@@ -605,6 +619,7 @@ impl TypeError {
             TypeError::BorrowedBindingMisuse { .. } => TypeErrorCode::E0111,
             TypeError::TooManyShapeParameters { .. } => TypeErrorCode::E0320,
             TypeError::ShapeImplDualCheckFailure { .. } => TypeErrorCode::E0319,
+            TypeError::BareTypeVarResourceArg { .. } => TypeErrorCode::E0104,
         }
     }
 
@@ -962,6 +977,18 @@ impl TypeError {
             TypeError::ShapeImplDualCheckFailure { failing_form, inner, .. } => Some(format!(
                 "the impl body must typecheck for both plain and owned instantiations of the `shape` parameter; the fork with {failing_form} failed: {inner}"
             )),
+            TypeError::BareTypeVarResourceArg { callee_name, param_index, param_ty, arg_ty } => {
+                let callee = callee_name
+                    .as_deref()
+                    .map(|n| format!("`{n}`"))
+                    .unwrap_or_else(|| "this function".to_string());
+                let param_ty = param_ty.renumber_for_display();
+                let arg_ty = arg_ty.renumber_for_display();
+                Some(format!(
+                    "{callee} declares parameter {} with a bare type variable `{param_ty}` (accepts only plain values in v0.1), but got `{arg_ty}`. To accept owned values too, change the parameter to `shape {param_ty}`.",
+                    param_index + 1,
+                ))
+            }
             TypeError::BorrowedBindingMisuse { context, .. } => Some(match context {
                 BorrowMisuseContext::ConsumedOrReturned => {
                     "borrowed bindings may only be reborrowed into `&` slots; rebind the owner at the caller to consume it".to_string()
@@ -1018,6 +1045,18 @@ impl TypeError {
                     "ownership mismatch: expected `{}`, found `{}`",
                     format_type_with_var_map(expected, names),
                     format_type_with_var_map(actual, names),
+                )
+            }
+            TypeError::BareTypeVarResourceArg { callee_name, param_index, param_ty, arg_ty } => {
+                let callee = callee_name
+                    .as_deref()
+                    .map(|n| format!("`{n}`"))
+                    .unwrap_or_else(|| "this function".to_string());
+                format!(
+                    "{callee} expects parameter {} of type `{}` (plain form), but got `{}`",
+                    param_index + 1,
+                    format_type_with_var_map(param_ty, names),
+                    format_type_with_var_map(arg_ty, names),
                 )
             }
             TypeError::FnCapabilityMismatch { expected, actual } => {
@@ -1701,6 +1740,25 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "trait `{trait_name}` method `{method_name}` has {count} `shape` parameters; the v0.1 cap is 2"
+                )
+            }
+            TypeError::BareTypeVarResourceArg {
+                callee_name,
+                param_index,
+                param_ty,
+                arg_ty,
+            } => {
+                let callee = callee_name
+                    .as_deref()
+                    .map(|n| format!("`{n}`"))
+                    .unwrap_or_else(|| "this function".to_string());
+                let renamed = renumber_types_for_display(&[param_ty, arg_ty]);
+                write!(
+                    f,
+                    "{callee} expects parameter {} of type `{}` (plain form), but got `{}`",
+                    param_index + 1,
+                    renamed[0],
+                    renamed[1]
                 )
             }
             TypeError::ShapeImplDualCheckFailure {
