@@ -502,17 +502,27 @@ impl<'a> AutoCloseAnalyzer<'a> {
                     if matches!(param.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
                         continue;
                     }
-                    // Self-skip: inside an `impl Disposable[T] { fun dispose(...) }`,
-                    // the self parameter is excluded from BOTH the disposable and the
-                    // linear track to avoid infinite recursion / bogus leaks.
-                    if let Some(self_name) = close_self_type {
+                    // Inside an `impl Disposable[T] { fun dispose(...) }`, the
+                    // self parameter is always classified as Linear, never as
+                    // Disposable. Classifying it as Disposable would recursively
+                    // insert an auto-dispose call on itself; classifying it by
+                    // its fields would let an empty body silently leak `~`
+                    // fields. Linear forces the body to explicitly discharge
+                    // the obligation by destructuring or by passing the value
+                    // to an extern consuming function.
+                    let kind = if let Some(self_name) = close_self_type {
                         if let Type::Own(inner) = param_ty {
                             if concrete_type_name(inner) == Some(self_name) {
-                                continue;
+                                OwnedKind::Linear(self_name.to_string())
+                            } else {
+                                this.classify(param_ty)
                             }
+                        } else {
+                            this.classify(param_ty)
                         }
-                    }
-                    let kind = this.classify(param_ty);
+                    } else {
+                        this.classify(param_ty)
+                    };
                     // TypedParam has no span; use the function body span as a
                     // stable proxy. Dedup is keyed on (name, span) so two params
                     // sharing the same span still emit distinct diagnostics.

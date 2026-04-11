@@ -8,7 +8,9 @@ extern java "krypton.runtime.KryptonIO" {
 type Handle = MkHandle(String)
 
 impl Disposable[Handle] {
-    fun dispose(h: ~Handle) -> Unit = println("closed")
+    fun dispose(h: ~Handle) -> Unit = match h {
+        MkHandle(_) => println("closed"),
+    }
 }
 
 fun main() -> Unit = {

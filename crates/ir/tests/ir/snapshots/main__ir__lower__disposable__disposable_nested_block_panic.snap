@@ -36,9 +36,15 @@ fn main() -> Unit =
   v4
 
 fn Disposable$$HandleA$$dispose(v7: ~HandleA) -> Unit =
-  let v8: Unit = call println("close_a")
-  v8
+  switch v7 {
+    0 (v8: Int) ->
+      let v9: Unit = call println("close_a")
+      v9
+  }
 
-fn Disposable$$HandleB$$dispose(v9: ~HandleB) -> Unit =
-  let v10: Unit = call println("close_b")
-  v10
+fn Disposable$$HandleB$$dispose(v10: ~HandleB) -> Unit =
+  switch v10 {
+    0 (v11: Int) ->
+      let v12: Unit = call println("close_b")
+      v12
+  }

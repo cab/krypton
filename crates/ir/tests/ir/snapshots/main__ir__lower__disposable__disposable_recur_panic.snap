@@ -61,5 +61,8 @@ fn main() -> Unit =
   v19
 
 fn Disposable$$Handle$$dispose(v20: ~Handle) -> Unit =
-  let v21: Unit = call println("closed")
-  v21
+  switch v20 {
+    0 (v21: Int) ->
+      let v22: Unit = call println("closed")
+      v22
+  }

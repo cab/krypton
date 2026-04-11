@@ -1,9 +1,12 @@
 # expect: ok
-# Inside a Disposable dispose impl, the `self` parameter is skipped by
-# the linear check as well as the disposable auto-close, to avoid
-# infinite recursion and bogus self-leak errors.
+# Inside a Disposable dispose impl, the `self` parameter is classified as
+# Linear (not Disposable), so auto-close does not recursively insert a
+# dispose(self) call. The body must still explicitly discharge the self
+# obligation — here by destructuring via pattern match.
 type Foo = MkFoo(Int)
 
 impl Disposable[Foo] {
-    fun dispose(f: ~Foo) -> Unit = ()
+    fun dispose(f: ~Foo) -> Unit = match f {
+        MkFoo(_) => (),
+    }
 }

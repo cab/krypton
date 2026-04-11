@@ -13,11 +13,15 @@ type H1 = MkH1
 type H2 = MkH2
 
 impl Disposable[H1] {
-    fun dispose(h: ~H1) -> Unit = println("close1")
+    fun dispose(h: ~H1) -> Unit = match h {
+        MkH1 => println("close1"),
+    }
 }
 
 impl Disposable[H2] {
-    fun dispose(h: ~H2) -> Unit = println("close2")
+    fun dispose(h: ~H2) -> Unit = match h {
+        MkH2 => println("close2"),
+    }
 }
 
 fun main() -> Unit = {

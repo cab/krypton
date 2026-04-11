@@ -3,7 +3,9 @@ extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
 type Handle = MkHandle(String)
 
 impl Disposable[Handle] {
-    fun dispose(h: ~Handle) -> Unit = println("closed")
+    fun dispose(h: ~Handle) -> Unit = match h {
+        MkHandle(_) => println("closed"),
+    }
 }
 
 fun fallible() -> Result[String, Int] = Err("fail")

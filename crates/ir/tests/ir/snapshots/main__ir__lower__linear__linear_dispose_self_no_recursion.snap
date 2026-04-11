@@ -20,4 +20,7 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
 fn Disposable$$Foo$$dispose(v0: ~Foo) -> Unit =
-  ()
+  switch v0 {
+    0 (v1: Int) ->
+      ()
+  }
