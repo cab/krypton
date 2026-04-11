@@ -1,5 +1,6 @@
 ---
 source: crates/typechecker/tests/typechecker/fixtures.rs
+assertion_line: 94
 expression: snapshot
 ---
 eq: forall a. (a, a) -> Bool
@@ -28,6 +29,6 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Conn: (~Int) -> Conn
+Conn: (~Sock) -> Conn
 peek: (&~Conn) -> Int
 main: () -> Unit

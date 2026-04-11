@@ -1,7 +1,8 @@
 # expect: ok
 # Deriving Disposable on a generic container emits an impl with a
-# `Disposable[a]` where-clause. This fixture typechecks; the runtime
-# exercise is covered by the non-generic fixtures.
+# `Disposable[a]` where-clause. This fixture typechecks only; runtime
+# coverage for generic `deriving (Disposable)` lives in
+# `disposable_derive_generic_runtime.kr`.
 type Resource = { id: Int }
 
 impl Disposable[Resource] {

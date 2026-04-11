@@ -2368,16 +2368,11 @@ impl ModuleInferenceState {
                             for ((_, ast_ty), (_, resolved_ty)) in
                                 ast_fields.iter().zip(info_fields.iter())
                             {
-                                let mut errs = Vec::new();
                                 crate::ownership::check_no_bare_resource_use(
                                     resolved_ty,
                                     &self.registry,
                                     ast_ty.span(),
-                                    &mut errs,
-                                );
-                                if let Some(e) = errs.into_iter().next() {
-                                    return Err(e);
-                                }
+                                )?;
                             }
                         }
                         (
@@ -2390,16 +2385,11 @@ impl ModuleInferenceState {
                                 for (ast_ty, resolved_ty) in
                                     ast_v.fields.iter().zip(info_v.fields.iter())
                                 {
-                                    let mut errs = Vec::new();
                                     crate::ownership::check_no_bare_resource_use(
                                         resolved_ty,
                                         &self.registry,
                                         ast_ty.span(),
-                                        &mut errs,
-                                    );
-                                    if let Some(e) = errs.into_iter().next() {
-                                        return Err(e);
-                                    }
+                                    )?;
                                 }
                             }
                         }
@@ -3743,39 +3733,6 @@ fn process_deriving(
                     ));
                 }
 
-                // A hand-written `impl Trait[T]` for the same (trait, type)
-                // conflicts with the `deriving` clause. The default error
-                // (`DuplicateInstance` fired from `register_instance` below)
-                // points at the impl's span and uses generic wording — emit
-                // a targeted diagnostic at the `deriving` clause instead so
-                // the user sees "remove the deriving or the impl".
-                let conflicts_with_impl = module.decls.iter().any(|other| match other {
-                    Decl::DefImpl {
-                        trait_name: impl_trait,
-                        type_args,
-                        ..
-                    } => {
-                        impl_trait == trait_name
-                            && type_args.iter().any(|arg| match arg {
-                                krypton_parser::ast::TypeExpr::Named { name, .. }
-                                | krypton_parser::ast::TypeExpr::App { name, .. } => {
-                                    name == &type_decl.name
-                                }
-                                _ => false,
-                            })
-                    }
-                    _ => false,
-                });
-                if conflicts_with_impl {
-                    return Err(spanned(
-                        TypeError::DerivingConflictsWithImpl {
-                            trait_name: trait_name.clone(),
-                            type_name: type_decl.name.clone(),
-                        },
-                        type_decl.span,
-                    ));
-                }
-
                 let field_types: Vec<&Type> = match &type_info.kind {
                     crate::type_registry::TypeKind::Record { fields } => {
                         fields.iter().map(|(_, ty)| ty).collect()
@@ -3798,54 +3755,35 @@ fn process_deriving(
                 let mut derived_constraints: Vec<ResolvedConstraint> = Vec::new();
                 let mut visited_constraints: HashSet<(String, String)> = HashSet::new();
 
-                if trait_name == "Disposable" {
-                    // Only owned fields contribute Disposable constraints.
-                    // Plain-data fields are skipped entirely — the derived
-                    // dispose body binds them but does nothing with them.
-                    for ft in &field_types {
-                        let inner = match ft {
+                for ft in &field_types {
+                    // Disposable: only owned fields contribute constraints;
+                    // plain fields are skipped entirely — the derived dispose
+                    // body binds them but does nothing with them.
+                    let check_ty: &Type = if trait_name == "Disposable" {
+                        match ft {
                             Type::Own(inner) => inner.as_ref(),
                             _ => continue,
-                        };
-                        if !derive::collect_derived_constraints_for_type(
-                            trait_registry,
-                            trait_name,
-                            inner,
-                            &local_type_params,
-                            &type_decl.name,
-                            &mut visited_constraints,
-                            &mut derived_constraints,
-                        ) {
-                            return Err(spanned(
-                                TypeError::CannotDerive {
-                                    trait_name: trait_name.clone(),
-                                    type_name: type_decl.name.clone(),
-                                    field_type: format!("{}", inner),
-                                },
-                                type_decl.span,
-                            ));
                         }
-                    }
-                } else {
-                    for ft in &field_types {
-                        if !derive::collect_derived_constraints_for_type(
-                            trait_registry,
-                            trait_name,
-                            ft,
-                            &local_type_params,
-                            &type_decl.name,
-                            &mut visited_constraints,
-                            &mut derived_constraints,
-                        ) {
-                            return Err(spanned(
-                                TypeError::CannotDerive {
-                                    trait_name: trait_name.clone(),
-                                    type_name: type_decl.name.clone(),
-                                    field_type: format!("{}", ft),
-                                },
-                                type_decl.span,
-                            ));
-                        }
+                    } else {
+                        ft
+                    };
+                    if !derive::collect_derived_constraints_for_type(
+                        trait_registry,
+                        trait_name,
+                        check_ty,
+                        &local_type_params,
+                        &type_decl.name,
+                        &mut visited_constraints,
+                        &mut derived_constraints,
+                    ) {
+                        return Err(spanned(
+                            TypeError::CannotDerive {
+                                trait_name: trait_name.clone(),
+                                type_name: type_decl.name.clone(),
+                                field_type: format!("{}", check_ty),
+                            },
+                            type_decl.span,
+                        ));
                     }
                 }
 
@@ -3871,6 +3809,29 @@ fn process_deriving(
                     .lookup_trait_by_name(trait_name)
                     .map(|ti| ti.trait_name())
                     .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
+                // A hand-written `impl Trait[T]` for the same (trait, type)
+                // conflicts with the `deriving` clause. `register_impl_instances`
+                // has already populated the instance table, so we can query it
+                // directly — this uses the same unification-based equality as
+                // `register_instance` and correctly handles `Own`/`Shape`
+                // wrapper stripping and arity. The default error
+                // (`DuplicateInstance` fired from `register_instance` below)
+                // points at the impl's span and uses generic wording — emit
+                // a targeted diagnostic at the `deriving` clause instead so
+                // the user sees "remove the deriving or the impl".
+                if trait_registry
+                    .find_instance_multi(&derive_full_trait_name, &[target_type.clone()])
+                    .is_some()
+                {
+                    return Err(spanned(
+                        TypeError::DerivingConflictsWithImpl {
+                            trait_name: trait_name.clone(),
+                            type_name: type_decl.name.clone(),
+                        },
+                        type_decl.span,
+                    ));
+                }
+
                 let instance = InstanceInfo {
                     trait_name: derive_full_trait_name.clone(),
                     target_types: vec![target_type.clone()],
@@ -4532,16 +4493,11 @@ fn infer_function_bodies<'a>(
                         // Borrow modes encode `&` via the mode, not the
                         // type, so the bare spelling is legal there.
                         if matches!(p.mode, crate::types::ParamMode::Consume) {
-                            let mut errs = Vec::new();
                             crate::ownership::check_no_bare_resource_use(
                                 &annotated_ty,
                                 &state.registry,
                                 ty_expr.span(),
-                                &mut errs,
-                            );
-                            if let Some(e) = errs.into_iter().next() {
-                                return Err(e);
-                            }
+                            )?;
                         }
                         unify(&ptv, &annotated_ty, &mut state.subst)
                             .map_err(|e| spanned(e, decl.span))?;
@@ -4562,18 +4518,11 @@ fn infer_function_bodies<'a>(
                     .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, decl.span))?;
                     // E0109: return types are always value positions.
-                    {
-                        let mut errs = Vec::new();
-                        crate::ownership::check_no_bare_resource_use(
-                            &resolved_ret,
-                            &state.registry,
-                            ret_ty_expr.span(),
-                            &mut errs,
-                        );
-                        if let Some(e) = errs.into_iter().next() {
-                            return Err(e);
-                        }
-                    }
+                    crate::ownership::check_no_bare_resource_use(
+                        &resolved_ret,
+                        &state.registry,
+                        ret_ty_expr.span(),
+                    )?;
                     state.env.fn_return_type = Some(resolved_ret);
                 } else {
                     state.env.fn_return_type = Some(Type::Var(state.gen.fresh()));

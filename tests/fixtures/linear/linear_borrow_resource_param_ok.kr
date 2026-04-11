@@ -1,7 +1,10 @@
 # expect: ok
 # Borrow mode parameters expose ownership via `&` — the bare type
 # spelling is legal inside the borrow mode.
-type Conn = { id: ~Int }
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs"   as pub Sock lifts always {}
+
+type Conn = { sock: ~Sock }
 
 fun peek(&c: ~Conn) -> Int = 1
 

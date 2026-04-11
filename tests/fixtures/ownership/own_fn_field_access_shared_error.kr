@@ -1,6 +1,0 @@
-# expect: error E0109
-# Pre-M39-T6 this tested the shared-view rejection of calling a `~fn`
-# field. M39-T6 rejects the bare spelling at the annotation site first.
-type Callback = { run: ~() -> String }
-fun consume(buf: ~String) -> String = match buf { _ => "" }
-fun test(cb: Callback) -> String = (cb.run)()

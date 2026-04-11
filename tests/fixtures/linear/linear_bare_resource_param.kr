@@ -1,6 +1,9 @@
 # expect: error E0109
 # Consume-mode param with a bare resource-carrying type must be `~Conn`.
-type Conn = { id: ~Int }
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs"   as pub Sock lifts always {}
+
+type Conn = { sock: ~Sock }
 
 fun take(c: Conn) -> Int = 1
 

@@ -1,9 +1,0 @@
-# expect: error E0109
-# Pre-M39-T6 this tested the shared-view rejection of destructuring a
-# struct carrying a `~fn` field. M39-T6 rejects the bare spelling first.
-type Wrapper = { action: ~() -> String }
-fun test(w: Wrapper) -> String {
-    match w {
-        Wrapper { action } => action()
-    }
-}

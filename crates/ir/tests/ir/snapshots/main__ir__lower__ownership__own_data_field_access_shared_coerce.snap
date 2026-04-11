@@ -1,11 +1,12 @@
 ---
 source: crates/ir/tests/ir/lower.rs
+assertion_line: 80
 expression: ir_module.to_string()
 ---
 module ownership__own_data_field_access_shared_coerce
 
-struct Config { timeout: ~Int }
-struct Task { config: ~Config }
+struct Task { sock: ~Sock, timeout: Int }
+extern type java "net.Sock" Sock
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
@@ -19,7 +20,6 @@ import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 
-fn get_timeout(v0: Task) -> Int =
-  let v1: Config = project v0.0
-  let v2: Int = project v1.0
-  v2
+fn get_timeout(v0: ~Task) -> Int =
+  let v1: Int = project v0.1
+  v1

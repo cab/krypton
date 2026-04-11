@@ -1,7 +1,14 @@
 # expect: error E0309
 # `deriving (Disposable)` plus a hand-written `impl Disposable[Conn]` is
 # ambiguous: the user must remove one.
-type Conn = { id: Int } deriving (Disposable)
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs"   as pub Sock lifts always {}
+
+impl Disposable[Sock] {
+    fun dispose(s: ~Sock) -> Unit = ()
+}
+
+type Conn = { sock: ~Sock } deriving (Disposable)
 
 impl Disposable[Conn] {
     fun dispose(c: ~Conn) -> Unit = ()

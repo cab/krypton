@@ -1,7 +1,8 @@
-# expect: error E0109
-# Pre-M39-T6, bare `Task` in a param position was accepted and the `~Int`
-# field was coerced to `Int`. M39-T6 rejects the bare spelling at the
-# annotation site — the user must write `~Task` or borrow via `&t: ~Task`.
-type Config = { timeout: ~Int }
-type Task = { config: ~Config }
-fun get_timeout(t: Task) -> Int = t.config.timeout
+# expect: ok
+# Reading a plain-data field from a borrow of a resource-carrying record
+# must succeed: the borrow observes the record without consuming it.
+# Replaces the pre-M39-T6 shared-coerce-of-bare-`Task` test.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs" as pub Sock lifts always {}
+type Task = { sock: ~Sock, timeout: Int }
+fun get_timeout(&t: ~Task) -> Int = t.timeout

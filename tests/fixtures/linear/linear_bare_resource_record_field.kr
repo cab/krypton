@@ -1,6 +1,9 @@
 # expect: error E0109
 # A record field carrying a resource-carrying type must be `~Conn`.
-type Conn = { id: ~Int }
+extern java "net.Sock" as pub Sock lifts always {}
+extern js "net.mjs"   as pub Sock lifts always {}
+
+type Conn = { sock: ~Sock }
 
 type Wrap = { inner: Conn }
 

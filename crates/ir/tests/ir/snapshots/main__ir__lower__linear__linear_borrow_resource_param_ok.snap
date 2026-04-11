@@ -1,10 +1,12 @@
 ---
 source: crates/ir/tests/ir/lower.rs
+assertion_line: 80
 expression: ir_module.to_string()
 ---
 module linear__linear_borrow_resource_param_ok
 
-struct Conn { id: ~Int }
+struct Conn { sock: ~Sock }
+extern type java "net.Sock" Sock
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
