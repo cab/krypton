@@ -1,0 +1,6 @@
+# expect: error E0111
+# Moving an owned field out of a borrowed binding by passing it to a
+# consuming slot is the fabrication case — must be rejected.
+type Wrap = { inner: ~String }
+fun consume(s: ~String) -> Int = match s { _ => 0 }
+fun f(&w: ~Wrap) -> Int = consume(w.inner)

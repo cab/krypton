@@ -1,0 +1,3 @@
+# expect: error E0111
+type Wrap = { inner: ~String }
+fun f(&buf: ~String) -> ~Wrap = Wrap { inner = buf }

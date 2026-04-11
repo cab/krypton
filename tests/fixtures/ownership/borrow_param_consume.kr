@@ -1,0 +1,3 @@
+# expect: error E0111
+fun consume(s: ~String) -> Int = match s { _ => 0 }
+fun f(&buf: ~String) -> Int = consume(buf)

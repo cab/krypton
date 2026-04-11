@@ -1,0 +1,7 @@
+# expect: ok
+# Reborrowing an owned field projection of a borrowed binding: `&~Wrap.inner`
+# is itself a borrow-place, so passing it to another `&~String` slot is a
+# reborrow, not a move.
+type Wrap = { inner: ~String }
+fun len(&s: ~String) -> Int = 42
+fun f(&w: ~Wrap) -> Int { len(w.inner); len(w.inner) }

@@ -1,0 +1,7 @@
+# expect: ok
+# Nested place projection: reborrowing a sub-field of a borrowed record is
+# still a borrow-place and may flow into another `&` slot.
+type Inner = { name: ~String }
+type Outer = { inner: ~Inner }
+fun len(&s: ~String) -> Int = 42
+fun f(&o: ~Outer) -> Int = len(o.inner.name)

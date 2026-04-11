@@ -1,0 +1,5 @@
+# expect: ok
+# Reading a plain-data field (non-owned) from a borrowed binding is a copy,
+# not a move — and may be returned directly.
+type Task = { timeout: Int, name: ~String }
+fun get_timeout(&t: ~Task) -> Int = t.timeout

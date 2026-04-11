@@ -1,0 +1,6 @@
+# expect: error E0111
+# Returning an owned sub-field of a borrowed binding would transfer
+# ownership the caller did not grant.
+type Inner = { name: ~String }
+type Outer = { inner: ~Inner }
+fun f(&o: ~Outer) -> ~String = o.inner.name

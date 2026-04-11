@@ -107,6 +107,7 @@ pub enum TypeErrorCode {
     E0108, // Linear `~T` value not consumed before scope exit (T not Disposable)
     E0109, // Bare use of a resource-carrying type at a value position (must be `~T`)
     E0110, // Cannot borrow a temporary expression
+    E0111, // Invalid use of a borrowed binding (consume, return, store, capture, rebind)
     E0610, // Duplicate parameter name
     E0611, // Function-type parameter mode mismatch (consume vs borrow)
     E0612, // Trait impl method parameter mode does not match trait requirement
@@ -469,6 +470,28 @@ pub enum TypeError {
         trait_name: String,
         type_name: String,
     },
+    /// A borrowed binding (parameter declared with `&x: ~T` or `&x: T`) was
+    /// used in a position that requires ownership — consumed, returned,
+    /// stored in a field, captured by a closure, or rebound by `let`.
+    /// Borrowed bindings may only be reborrowed into another `&` slot.
+    BorrowedBindingMisuse {
+        name: String,
+        context: BorrowMisuseContext,
+    },
+}
+
+/// How a borrowed binding was misused. Drives the diagnostic wording.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BorrowMisuseContext {
+    /// Passed to a consuming slot, used as a value expression, returned as
+    /// `~T`, or otherwise flowed into an owning position.
+    ConsumedOrReturned,
+    /// Rebound via `let x = borrowed`.
+    ReboundByLet,
+    /// Used as the value of a struct literal field (constructor storage).
+    StoredInField,
+    /// Captured (as a free variable) by a lambda body.
+    CapturedByClosure,
 }
 
 impl TypeError {
@@ -559,6 +582,7 @@ impl TypeError {
             TypeError::CannotBorrowTemporary { .. } => TypeErrorCode::E0110,
             TypeError::BareUseOfResourceType { .. } => TypeErrorCode::E0109,
             TypeError::DerivingConflictsWithImpl { .. } => TypeErrorCode::E0309,
+            TypeError::BorrowedBindingMisuse { .. } => TypeErrorCode::E0111,
         }
     }
 
@@ -910,6 +934,20 @@ impl TypeError {
                     "remove the `deriving ({trait_name})` clause or delete the hand-written `impl {trait_name}` block"
                 ))
             }
+            TypeError::BorrowedBindingMisuse { context, .. } => Some(match context {
+                BorrowMisuseContext::ConsumedOrReturned => {
+                    "borrowed bindings may only be reborrowed into `&` slots; rebind the owner at the caller to consume it".to_string()
+                }
+                BorrowMisuseContext::ReboundByLet => {
+                    "borrowed bindings cannot be rebound; use the borrowed name directly or reborrow into another `&` slot".to_string()
+                }
+                BorrowMisuseContext::StoredInField => {
+                    "storing a borrowed binding in a field would outlive the borrow; pass an owned value or reborrow".to_string()
+                }
+                BorrowMisuseContext::CapturedByClosure => {
+                    "closures cannot capture borrowed bindings (no closure lifetimes); reborrow into a call or restructure to pass the value explicitly".to_string()
+                }
+            }),
         }
     }
 
@@ -1621,6 +1659,15 @@ impl fmt::Display for TypeError {
                     f,
                     "`deriving ({trait_name})` on `{type_name}` conflicts with a hand-written `impl {trait_name}` for `{type_name}`"
                 )
+            }
+            TypeError::BorrowedBindingMisuse { name, context } => {
+                let action = match context {
+                    BorrowMisuseContext::ConsumedOrReturned => "cannot be consumed or returned",
+                    BorrowMisuseContext::ReboundByLet => "cannot be rebound by `let`",
+                    BorrowMisuseContext::StoredInField => "cannot be stored in a field",
+                    BorrowMisuseContext::CapturedByClosure => "cannot be captured by a closure",
+                };
+                write!(f, "`{name}` is a borrowed binding and {action}")
             }
         }
     }

@@ -5,7 +5,9 @@ use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, ParamMode, Span};
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern};
 use crate::types::{Type, TypeScheme, TypeVarId};
-use crate::unify::{BareResourceContext, SecondaryLabel, SpannedTypeError, TypeError};
+use crate::unify::{
+    BareResourceContext, BorrowMisuseContext, SecondaryLabel, SpannedTypeError, TypeError,
+};
 
 /// (consumed, partially_consumed) maps recorded for one branch of an if/match.
 type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
@@ -631,6 +633,57 @@ fn free_owned_vars(
     result
 }
 
+/// Walk tail-value positions of `expr`, invoking `on_tail` at each one.
+/// A tail position is where the value of the expression "comes out" to its
+/// consumer: the expression itself if it's atomic, the last element of a Do
+/// block, the body of a Let, both branches of an If, every arm body of a
+/// Match, the inner of a TypeApp, and the operand of a unary `?`.
+fn for_each_tail_position<F>(expr: &TypedExpr, on_tail: &mut F)
+where
+    F: FnMut(&TypedExpr),
+{
+    match &expr.kind {
+        TypedExprKind::Do(exprs) => {
+            if let Some(last) = exprs.last() {
+                for_each_tail_position(last, on_tail);
+            }
+        }
+        TypedExprKind::Let { body: Some(body), .. }
+        | TypedExprKind::LetPattern { body: Some(body), .. } => {
+            for_each_tail_position(body, on_tail);
+        }
+        TypedExprKind::If { then_, else_, .. } => {
+            for_each_tail_position(then_, on_tail);
+            for_each_tail_position(else_, on_tail);
+        }
+        TypedExprKind::Match { arms, .. } => {
+            for arm in arms {
+                for_each_tail_position(&arm.body, on_tail);
+            }
+        }
+        TypedExprKind::TypeApp { expr: inner, .. } => for_each_tail_position(inner, on_tail),
+        TypedExprKind::QuestionMark { expr: inner, .. } => for_each_tail_position(inner, on_tail),
+        _ => on_tail(expr),
+    }
+}
+
+/// Free variables of `expr` that refer to a binding in `borrowed` and are not
+/// shadowed by `bound`. Mirrors `free_owned_vars`; used to detect a closure
+/// capturing a borrow-mode parameter.
+fn free_borrowed_vars(
+    expr: &TypedExpr,
+    borrowed: &HashSet<String>,
+    bound: &HashSet<String>,
+) -> HashSet<String> {
+    // `collect_free_owned` is generic over "which names are roots to report":
+    // it filters by `owned.contains(name)`. Reuse it by passing the borrowed
+    // set in that parameter position — the traversal and shadowing logic are
+    // identical.
+    let mut result = HashSet::new();
+    collect_free_owned(expr, borrowed, bound, &mut result);
+    result
+}
+
 fn collect_free_owned(
     expr: &TypedExpr,
     owned: &HashSet<String>,
@@ -863,6 +916,12 @@ fn place_root(expr: &TypedExpr) -> Option<&str> {
 /// `affine` is the frozen set of params with affine type (used for qualifier mismatch errors).
 struct OwnershipChecker<'a> {
     owned: &'a mut HashSet<String>,
+    /// Root names of parameters declared with `&x: ~T` or `&x: T`. These
+    /// bindings view a value they do not own: the caller still holds the
+    /// ownership. Borrowed bindings may only be reborrowed (passed to another
+    /// `&` slot); they cannot be consumed, returned as `~T`, stored in a
+    /// field, captured by a closure, or rebound by `let`.
+    borrowed: &'a HashSet<String>,
     consumed: HashMap<String, Span>,
     partially_consumed: HashMap<String, Span>,
     moves: HashMap<Span, String>,
@@ -951,6 +1010,43 @@ impl<'a> OwnershipChecker<'a> {
         Ok(())
     }
 
+    /// Reject a place expression rooted in a borrowed parameter flowing into
+    /// a consume point *when the place's value type is owning*. Reading a
+    /// plain-data field from a borrow (`&~Task.timeout: Int`) is a copy and
+    /// is legal; reading an owned projection (`&~Wrap.inner: ~String`) would
+    /// move out of a borrow and is not.
+    ///
+    /// Call at known consume points (owning-slot args, let values, struct
+    /// field stores, return position). `Var`/`FieldAccess` arms are
+    /// otherwise free to walk without error — the point of check is the
+    /// place where a value *flows into an owning position*.
+    fn check_not_borrow_place(
+        &self,
+        expr: &TypedExpr,
+        context: BorrowMisuseContext,
+        note: Option<String>,
+    ) -> Result<(), SpannedTypeError> {
+        if !matches!(&expr.ty, Type::Own(_)) {
+            return Ok(());
+        }
+        if let Some(root) = place_root(expr) {
+            if self.borrowed.contains(root) {
+                return Err(SpannedTypeError {
+                    error: Box::new(TypeError::BorrowedBindingMisuse {
+                        name: root.to_string(),
+                        context,
+                    }),
+                    span: expr.span,
+                    note,
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+        }
+        Ok(())
+    }
+
     fn check_exprs(&mut self, exprs: &[TypedExpr]) -> Result<(), SpannedTypeError> {
         for e in exprs {
             self.check_expr(e)?;
@@ -1012,6 +1108,12 @@ impl<'a> OwnershipChecker<'a> {
     fn check_expr(&mut self, expr: &TypedExpr) -> Result<(), SpannedTypeError> {
         match &expr.kind {
             TypedExprKind::Var(name) => {
+                // A Var reference to a borrowed binding is just a borrow-place
+                // read; it is not itself an error. The error fires at the
+                // consume points where the borrow-place would flow into an
+                // owning position (see `check_not_borrow_place` callsites
+                // below: App consume-mode args, Let value, StructLit field,
+                // lambda capture, tail-return position).
                 if self.owned.contains(name) {
                     self.check_not_consumed(name, expr.span, self.own_fn_notes.get(name).cloned())?;
                     self.consumed.insert(name.clone(), expr.span);
@@ -1056,9 +1158,11 @@ impl<'a> OwnershipChecker<'a> {
                 for (i, arg) in args.iter().enumerate() {
                     let mode = get_mode(i);
                     if matches!(mode, ParamMode::Borrow) {
-                        // Exclusive borrow — only for owned param types
+                        // Exclusive borrow — reject double-exclusive-borrow of the
+                        // same place root whether the root is an owned local or a
+                        // borrowed parameter being reborrowed.
                         if let Some(root) = place_root(arg) {
-                            if self.owned.contains(root) {
+                            if self.owned.contains(root) || self.borrowed.contains(root) {
                                 for &(j, prev_root) in &exclusive_roots {
                                     if root == prev_root {
                                         let _ = j; // used arg index for error context
@@ -1167,7 +1271,11 @@ impl<'a> OwnershipChecker<'a> {
                     let is_borrow = matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
                     if is_borrow {
                         if let Some(root) = place_root(arg) {
-                            // Place expression (variable or field chain) — check not consumed, keep live
+                            // Place expression (variable or field chain) — keep live.
+                            // Owned locals check move state; borrowed params fall
+                            // through unchecked (they cannot be consumed, so
+                            // cannot be in `self.consumed`). Reborrowing a
+                            // borrowed binding is legal.
                             if self.owned.contains(root) {
                                 self.check_not_consumed(root, arg.span, None)?;
                             }
@@ -1185,6 +1293,14 @@ impl<'a> OwnershipChecker<'a> {
                             });
                         }
                     } else {
+                        // Consume-mode slot: a borrow-place cannot flow into
+                        // an owning position. Pre-check before walking the
+                        // arg so the diagnostic points at the arg site.
+                        self.check_not_borrow_place(
+                            arg,
+                            BorrowMisuseContext::ConsumedOrReturned,
+                            None,
+                        )?;
                         self.check_expr(arg)?;
                     }
                 }
@@ -1194,6 +1310,27 @@ impl<'a> OwnershipChecker<'a> {
             TypedExprKind::TypeApp { expr, .. } => self.check_expr(expr),
 
             TypedExprKind::Let { name, value, body } => {
+                // A borrowed binding (or owning projection of one) cannot be
+                // rebound as an owner by `let`. Plain-data projections like
+                // `let n = t.int_field` are fine — the value type check
+                // inside `check_not_borrow_place` gates on `Type::Own`.
+                if matches!(&value.ty, Type::Own(_)) {
+                    if let Some(root) = place_root(value) {
+                        if self.borrowed.contains(root) {
+                            return Err(SpannedTypeError {
+                                error: Box::new(TypeError::BorrowedBindingMisuse {
+                                    name: root.to_string(),
+                                    context: BorrowMisuseContext::ReboundByLet,
+                                }),
+                                span: value.span,
+                                note: Some(format!("rebinding `{}` as `{}`", root, name)),
+                                secondary_span: None,
+                                source_file: None,
+                                var_names: None,
+                            });
+                        }
+                    }
+                }
                 self.check_expr(value)?;
                 // Fabrication guard: let_own_spans marks bindings that resolved to Type::Own.
                 // Exempt ~fn closures (closure affinity, not value ownership).
@@ -1377,6 +1514,28 @@ impl<'a> OwnershipChecker<'a> {
 
             TypedExprKind::Lambda { params, body } => {
                 let lambda_params: HashSet<String> = params.iter().cloned().collect();
+
+                // Closures cannot capture borrowed bindings: Krypton has no
+                // closure lifetimes, so a borrowed capture could outlive the
+                // borrow. Check before walking the body so this diagnostic
+                // wins over any generic Var-arm error the body walk would
+                // produce for the same reference.
+                let borrowed_captures =
+                    free_borrowed_vars(body, self.borrowed, &lambda_params);
+                if let Some(name) = borrowed_captures.into_iter().next() {
+                    return Err(SpannedTypeError {
+                        error: Box::new(TypeError::BorrowedBindingMisuse {
+                            name,
+                            context: BorrowMisuseContext::CapturedByClosure,
+                        }),
+                        span: expr.span,
+                        note: None,
+                        secondary_span: None,
+                        source_file: None,
+                        var_names: None,
+                    });
+                }
+
                 let captured = free_owned_vars(body, self.owned, &lambda_params);
                 // A lambda consumes its owned captures only if it's classified as own
                 // (`~fn`). A plain `fn` closure that only borrows its captures does not
@@ -1428,11 +1587,40 @@ impl<'a> OwnershipChecker<'a> {
                         }
                         return Ok(());
                     }
+                    // Borrowed root: field access yields another borrow-place
+                    // (place-projection rule: `&~T.field: ~U` is `&~U`). Not an
+                    // error at the read site; the containing consume-point
+                    // pre-check is what rejects flow into owning positions.
+                    if self.borrowed.contains(name) {
+                        return Ok(());
+                    }
                 }
                 self.check_expr(inner)
             }
 
             TypedExprKind::StructLit { fields, .. } => {
+                // Flag direct storage of a borrowed owning place in a struct
+                // field (the only direction that fabricates ownership).
+                // Plain-data projections are fine; gated on `Type::Own`.
+                for (fname, value) in fields {
+                    if matches!(&value.ty, Type::Own(_)) {
+                        if let Some(root) = place_root(value) {
+                            if self.borrowed.contains(root) {
+                                return Err(SpannedTypeError {
+                                    error: Box::new(TypeError::BorrowedBindingMisuse {
+                                        name: root.to_string(),
+                                        context: BorrowMisuseContext::StoredInField,
+                                    }),
+                                    span: value.span,
+                                    note: Some(format!("stored in field `{}`", fname)),
+                                    secondary_span: None,
+                                    source_file: None,
+                                    var_names: None,
+                                });
+                            }
+                        }
+                    }
+                }
                 for (_, e) in fields {
                     self.check_expr(e)?;
                 }
@@ -1556,11 +1744,23 @@ fn check_fn(
 ) -> Result<HashMap<Span, String>, SpannedTypeError> {
     let mut owned: HashSet<String> = HashSet::new();
     let mut affine: HashSet<String> = HashSet::new();
+    let mut borrowed: HashSet<String> = HashSet::new();
 
-    // Build owned/affine sets from resolved param types
+    // Build owned/affine/borrowed sets from resolved param types.
+    //
+    // A param in borrow mode (`&x: ~T` or `&x: T`) is tracked in `borrowed`
+    // instead of `owned`/`affine`: the caller still holds ownership, so the
+    // callee cannot consume, return, store, capture, or rebind the value,
+    // but it also is not subject to single-use affine tracking.
     if let Some(scheme_params) = fn_scheme_params.get(typed_fn.name.as_str()) {
         for (param, param_ty) in typed_fn.params.iter().zip(scheme_params.iter()) {
-            if matches!(param_ty, Type::Own(_)) || type_is_affine(param_ty, registry) {
+            let is_borrow_mode = matches!(
+                param.mode,
+                ParamMode::Borrow | ParamMode::ObservationalBorrow
+            );
+            if is_borrow_mode {
+                borrowed.insert(param.name.clone());
+            } else if matches!(param_ty, Type::Own(_)) || type_is_affine(param_ty, registry) {
                 owned.insert(param.name.clone());
                 affine.insert(param.name.clone());
             }
@@ -1570,6 +1770,7 @@ fn check_fn(
     let mut own_fn_notes = HashMap::new();
     let mut checker = OwnershipChecker {
         owned: &mut owned,
+        borrowed: &borrowed,
         consumed: HashMap::new(),
         partially_consumed: HashMap::new(),
         moves: HashMap::new(),
@@ -1582,6 +1783,27 @@ fn check_fn(
         registry,
     };
     checker.check_expr(&typed_fn.body)?;
+
+    // Tail-return positions: a function body's value comes out through these
+    // expressions. If any tail is a place rooted in a borrowed parameter, the
+    // caller would receive a borrow as if it were owned — reject here.
+    let mut tail_error: Option<SpannedTypeError> = None;
+    for_each_tail_position(&typed_fn.body, &mut |tail| {
+        if tail_error.is_some() {
+            return;
+        }
+        if let Err(e) = checker.check_not_borrow_place(
+            tail,
+            BorrowMisuseContext::ConsumedOrReturned,
+            Some("returned from this function".to_string()),
+        ) {
+            tail_error = Some(e);
+        }
+    });
+    if let Some(e) = tail_error {
+        return Err(e);
+    }
+
     Ok(checker.moves)
 }
 
