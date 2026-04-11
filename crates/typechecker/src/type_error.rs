@@ -94,6 +94,7 @@ pub enum TypeErrorCode {
     E0609, // @instance/@constructor on JS target
     E0107, // Owned value consumed in match guard
     E0108, // Linear `~T` value not consumed before scope exit (T not Disposable)
+    E0109, // Bare use of a resource-carrying type at a value position (must be `~T`)
     E0110, // Cannot borrow a temporary expression
     E0610, // Duplicate parameter name
     E0611, // Function-type parameter mode mismatch (consume vs borrow)
@@ -438,6 +439,24 @@ pub enum TypeError {
         expected_mode: ParamMode,
         actual_mode: ParamMode,
     },
+    /// A resource-carrying type (one whose structural classification is
+    /// affine via `~` fields or an `extern type` `lifts: always` marker)
+    /// appears in a value position without the `~` owned qualifier. Every
+    /// value-position use of a resource type must be spelled `~T`; the bare
+    /// spelling is reserved for borrow positions (`&x: ~T`) and for generic
+    /// type parameters.
+    BareUseOfResourceType {
+        type_name: String,
+        suggested_spelling: String,
+    },
+    /// A `deriving` clause for a trait collides with a hand-written `impl`
+    /// of the same trait for the same type. The deriving machinery always
+    /// errors on duplicates (every derivable trait), but this targeted
+    /// variant points directly at the `deriving` clause with a clear fix.
+    DerivingConflictsWithImpl {
+        trait_name: String,
+        type_name: String,
+    },
 }
 
 impl TypeError {
@@ -526,6 +545,8 @@ impl TypeError {
             TypeError::LinearValueNotConsumed { .. } => TypeErrorCode::E0108,
             TypeError::UnsupportedConstraint { .. } => TypeErrorCode::E0317,
             TypeError::CannotBorrowTemporary { .. } => TypeErrorCode::E0110,
+            TypeError::BareUseOfResourceType { .. } => TypeErrorCode::E0109,
+            TypeError::DerivingConflictsWithImpl { .. } => TypeErrorCode::E0309,
         }
     }
 
@@ -852,6 +873,16 @@ impl TypeError {
             TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
             TypeError::CannotBorrowTemporary { .. } => {
                 Some("bind the expression to a variable with `let` first, then pass the variable".to_string())
+            }
+            TypeError::BareUseOfResourceType { type_name, suggested_spelling } => {
+                Some(format!(
+                    "spell `~{type_name}`, borrow via `&x: ~{type_name}`, or change the field/parameter/return type. Suggested: `{suggested_spelling}`"
+                ))
+            }
+            TypeError::DerivingConflictsWithImpl { trait_name, .. } => {
+                Some(format!(
+                    "remove the `deriving ({trait_name})` clause or delete the hand-written `impl {trait_name}` block"
+                ))
             }
         }
     }
@@ -1544,6 +1575,18 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "cannot borrow a temporary expression; bind it to a variable with `let` first"
+                )
+            }
+            TypeError::BareUseOfResourceType { type_name, .. } => {
+                write!(
+                    f,
+                    "bare use of resource-carrying type `{type_name}`: value-position annotations must use `~{type_name}`"
+                )
+            }
+            TypeError::DerivingConflictsWithImpl { trait_name, type_name } => {
+                write!(
+                    f,
+                    "`deriving ({trait_name})` on `{type_name}` conflicts with a hand-written `impl {trait_name}` for `{type_name}`"
                 )
             }
         }

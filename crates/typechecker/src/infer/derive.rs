@@ -680,3 +680,208 @@ pub(super) fn synthesize_hash_body(
     let fn_ty = Type::fn_consuming(vec![target_type.clone()], Type::Int);
     (body, fn_ty)
 }
+
+/// Synthesize a `dispose` method body for a derived `Disposable` instance.
+///
+/// For records: emit a single-arm `Match` destructuring the record into
+/// field bindings `__x0..__xN`, then a reverse-order chain of
+/// `dispose(__xi)` calls for each owned field (`Type::Own(_)`), followed
+/// by `Unit`. Non-owned (plain-data) fields are bound to their `__xi`
+/// name but not used — the binding discharges the auto-close linearity
+/// obligation on the self parameter.
+///
+/// For sum types: emit a Match with one arm per variant; each arm
+/// destructures its variant payload and dispose-calls each owned position
+/// in reverse order, terminated with `Unit`.
+///
+/// The method takes `__a: ~T` (consume mode). The outer Match destructures
+/// `__a` in-place, which discharges the Linear classification the
+/// auto-close analyzer assigns to the `close_self_type` self parameter
+/// (see `auto_close.rs::analyze_function`).
+pub(super) fn synthesize_dispose_body(
+    type_info: &TypeInfo,
+    target_type: &Type,
+    span: Span,
+    trait_id: Option<TraitName>,
+) -> (TypedExpr, Type) {
+    let owned_target = Type::Own(Box::new(target_type.clone()));
+
+    let param_a = TypedExpr {
+        kind: TypedExprKind::Var("__a".to_string()),
+        ty: owned_target.clone(),
+        span,
+        resolved_ref: None,
+        scope_id: None,
+    };
+
+    let unit_expr = || TypedExpr {
+        kind: TypedExprKind::Lit(Lit::Unit),
+        ty: Type::Unit,
+        span,
+        resolved_ref: None,
+        scope_id: None,
+    };
+
+    // Build `dispose(arg)` where arg has type `~U`.
+    let dispose_call = |arg: TypedExpr| -> TypedExpr {
+        let arg_ty = arg.ty.clone();
+        TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(TypedExpr {
+                    kind: TypedExprKind::Var("dispose".to_string()),
+                    ty: Type::fn_consuming(vec![arg_ty], Type::Unit),
+                    span,
+                    resolved_ref: trait_id
+                        .clone()
+                        .map(|trait_name| super::trait_method_binding_ref(trait_name, "dispose")),
+                    scope_id: None,
+                }),
+                args: vec![arg],
+                param_modes: vec![ParamMode::Consume],
+            },
+            ty: Type::Unit,
+            span,
+            resolved_ref: None,
+            scope_id: None,
+        }
+    };
+
+    // Sequence a list of dispose calls via nested `Let { name: "_" }`,
+    // terminated with `Unit`. Calls are expected in execution order (LIFO
+    // of declaration order).
+    let sequence = |calls: Vec<TypedExpr>| -> TypedExpr {
+        let mut body = unit_expr();
+        for call in calls.into_iter().rev() {
+            body = TypedExpr {
+                kind: TypedExprKind::Let {
+                    name: "_".to_string(),
+                    value: Box::new(call),
+                    body: Some(Box::new(body)),
+                },
+                ty: Type::Unit,
+                span,
+                resolved_ref: None,
+                scope_id: None,
+            };
+        }
+        body
+    };
+
+    let body = match &type_info.kind {
+        crate::type_registry::TypeKind::Record { fields } => {
+            // Destructure __a into per-field bindings __x0..__xN.
+            let field_pats: Vec<(String, TypedPattern)> = fields
+                .iter()
+                .enumerate()
+                .map(|(i, (field_name, ty))| {
+                    (
+                        field_name.clone(),
+                        TypedPattern::Var {
+                            name: format!("__x{}", i),
+                            ty: ty.clone(),
+                            span,
+                        },
+                    )
+                })
+                .collect();
+
+            let struct_pat = TypedPattern::StructPat {
+                name: type_info.name.clone(),
+                fields: field_pats,
+                rest: false,
+                ty: target_type.clone(),
+                span,
+                resolved_type_ref: None,
+            };
+
+            // Build dispose calls in reverse declaration order for LIFO.
+            let mut calls: Vec<TypedExpr> = Vec::new();
+            for (i, (_, ty)) in fields.iter().enumerate().rev() {
+                if let Type::Own(inner) = ty {
+                    let binding = TypedExpr {
+                        kind: TypedExprKind::Var(format!("__x{}", i)),
+                        ty: Type::Own(inner.clone()),
+                        span,
+                        resolved_ref: None,
+                        scope_id: None,
+                    };
+                    calls.push(dispose_call(binding));
+                }
+            }
+            let arm_body = sequence(calls);
+
+            TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(param_a),
+                    arms: vec![TypedMatchArm {
+                        pattern: struct_pat,
+                        guard: None,
+                        body: arm_body,
+                    }],
+                },
+                ty: Type::Unit,
+                span,
+                resolved_ref: None,
+                scope_id: None,
+            }
+        }
+        crate::type_registry::TypeKind::Sum { variants } => {
+            let arms: Vec<TypedMatchArm> = variants
+                .iter()
+                .map(|variant| {
+                    let bindings: Vec<String> = (0..variant.fields.len())
+                        .map(|i| format!("__x{}", i))
+                        .collect();
+                    let pattern = TypedPattern::Constructor {
+                        name: variant.name.clone(),
+                        args: bindings
+                            .iter()
+                            .zip(variant.fields.iter())
+                            .map(|(n, ft)| TypedPattern::Var {
+                                name: n.clone(),
+                                ty: ft.clone(),
+                                span,
+                            })
+                            .collect(),
+                        ty: target_type.clone(),
+                        span,
+                        resolved_variant_ref: None,
+                    };
+
+                    let mut calls: Vec<TypedExpr> = Vec::new();
+                    for (i, ft) in variant.fields.iter().enumerate().rev() {
+                        if let Type::Own(inner) = ft {
+                            let binding = TypedExpr {
+                                kind: TypedExprKind::Var(format!("__x{}", i)),
+                                ty: Type::Own(inner.clone()),
+                                span,
+                                resolved_ref: None,
+                                scope_id: None,
+                            };
+                            calls.push(dispose_call(binding));
+                        }
+                    }
+                    TypedMatchArm {
+                        pattern,
+                        guard: None,
+                        body: sequence(calls),
+                    }
+                })
+                .collect();
+
+            TypedExpr {
+                kind: TypedExprKind::Match {
+                    scrutinee: Box::new(param_a),
+                    arms,
+                },
+                ty: Type::Unit,
+                span,
+                resolved_ref: None,
+                scope_id: None,
+            }
+        }
+    };
+
+    let fn_ty = Type::fn_consuming(vec![owned_target], Type::Unit);
+    (body, fn_ty)
+}

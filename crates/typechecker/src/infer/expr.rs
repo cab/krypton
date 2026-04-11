@@ -925,8 +925,21 @@ impl<'a> InferenceContext<'a> {
             // `~List[Int]` from the constructor and then need to drop — but
             // the `~T → T` drop coercion no longer exists.
             let resolved_ann: Option<Type> = if let Some(ty_expr) = ty_ann {
-                if self.registry.is_some() {
-                    Some(self.resolve_type_expr_spanned(ty_expr, span)?)
+                if let Some(registry) = self.registry {
+                    let ann = self.resolve_type_expr_spanned(ty_expr, span)?;
+                    // E0109: let-bound values are consumed, so a bare
+                    // resource-carrying type in the annotation is illegal.
+                    let mut errs = Vec::new();
+                    crate::ownership::check_no_bare_resource_use(
+                        &ann,
+                        registry,
+                        ty_expr.span(),
+                        &mut errs,
+                    );
+                    if let Some(e) = errs.into_iter().next() {
+                        return Err(e);
+                    }
+                    Some(ann)
                 } else {
                     None
                 }
@@ -1255,8 +1268,21 @@ impl<'a> InferenceContext<'a> {
         // Resolve an annotation before inferring the RHS so constructors inside
         // the RHS can synthesize directly to the annotated form.
         let resolved_ann: Option<Type> = if let Some(ty_expr) = ty_ann {
-            if self.registry.is_some() {
-                Some(self.resolve_type_expr_spanned(ty_expr, span)?)
+            if let Some(registry) = self.registry {
+                let ann = self.resolve_type_expr_spanned(ty_expr, span)?;
+                // E0109: let-pattern bindings consume the value, so a bare
+                // resource-carrying annotation is illegal at the binding site.
+                let mut errs = Vec::new();
+                crate::ownership::check_no_bare_resource_use(
+                    &ann,
+                    registry,
+                    ty_expr.span(),
+                    &mut errs,
+                );
+                if let Some(e) = errs.into_iter().next() {
+                    return Err(e);
+                }
+                Some(ann)
             } else {
                 None
             }
