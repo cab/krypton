@@ -1,0 +1,29 @@
+---
+source: crates/krypton/tests/krypton/inspect.rs
+assertion_line: 71
+expression: output
+---
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type File = MkFile(String)
+
+impl Disposable[File] {
+    fun dispose(f: ~File) -> Unit = match f {
+        MkFile(_) => println("closed"),
+    }
+}
+
+fun read(&f: ~File, n: Int) -> Int = n
+
+fun write(&f: ~File, s: String) -> Unit = println(s)
+
+fun main() -> Unit {
+    let f: ~File = MkFile("/tmp/x")
+    read(f, 10)
+    write(f, "hi")
+    read(f, 20)
+    ()
+    # close(f) [scope exit]
+}

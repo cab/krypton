@@ -635,14 +635,25 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::App { func, args, .. } => {
+            TypedExprKind::App {
+                func,
+                args,
+                param_modes,
+            } => {
                 self.walk_expr(func, live);
                 for arg in args {
                     self.walk_expr(arg, live);
                 }
-                // Deep consumption detection: any var moved within an arg is
-                // removed from `live` and recorded in `consumptions`.
-                for arg in args {
+                // Consumption detection: only examine consume-mode args.
+                // Borrow slots receive a place expression whose root must
+                // stay live (M37-T6 guarantees the arg cannot itself perform
+                // a consume), so auto-close skips them rather than relying
+                // on `ownership_moves` being empty for those spans.
+                for (i, arg) in args.iter().enumerate() {
+                    let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
+                    if !matches!(mode, ParamMode::Consume) {
+                        continue;
+                    }
                     let consumed = collect_moved_vars(arg, self.ownership_moves);
                     for var_name in consumed {
                         if let Some(pos) = Self::find_live(live, &var_name) {

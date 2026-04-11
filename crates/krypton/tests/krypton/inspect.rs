@@ -52,3 +52,27 @@ fn inspect_consumed() {
     let output = run_inspect("tests/fixtures/inspect/inspect_consumed.kr");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn inspect_borrow_auto_close() {
+    let output = run_inspect("tests/fixtures/inspect/inspect_borrow_auto_close.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspect_borrow_then_consume() {
+    let output = run_inspect("tests/fixtures/inspect/inspect_borrow_then_consume.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspect_borrow_read_write_close_once() {
+    let output = run_inspect("tests/fixtures/inspect/inspect_borrow_read_write_close_once.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspect_borrow_question_mark() {
+    let output = run_inspect("tests/fixtures/inspect/inspect_borrow_question_mark.kr");
+    insta::assert_snapshot!(output);
+}

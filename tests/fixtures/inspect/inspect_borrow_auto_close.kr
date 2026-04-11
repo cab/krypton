@@ -1,0 +1,18 @@
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
+
+type Handle = MkHandle(String)
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = match h {
+        MkHandle(_) => println("closed"),
+    }
+}
+
+fun peek(&h: ~Handle) -> Unit = println("peek")
+
+fun main() -> Unit {
+    let h: ~Handle = MkHandle("test")
+    peek(h);
+    peek(h);
+    peek(h)
+}

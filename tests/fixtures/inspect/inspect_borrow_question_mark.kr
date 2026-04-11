@@ -1,0 +1,24 @@
+extern java "krypton.runtime.KryptonIO" { fun println[a](x: a) -> Unit }
+
+type File = MkFile(String)
+
+impl Disposable[File] {
+    fun dispose(f: ~File) -> Unit = match f {
+        MkFile(_) => println("closed"),
+    }
+}
+
+fun peek(&f: ~File) -> Int = 1
+fun fallible() -> Result[String, Int] = Err("fail")
+
+fun work() -> Result[String, Int] {
+    let f: ~File = MkFile("/tmp/x")
+    peek(f);
+    let x = fallible()?;
+    Ok(x)
+}
+
+fun main() -> Unit = match work() {
+    Ok(v) => println(v),
+    Err(e) => println("err"),
+}
