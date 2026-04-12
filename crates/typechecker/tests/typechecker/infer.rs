@@ -2416,7 +2416,7 @@ fn infer_module_pub_import_reexport_private_error() {
     };
     assert_eq!(
         err.type_error().unwrap().error.error_code().to_string(),
-        "E0510"
+        "E0519"
     );
 }
 

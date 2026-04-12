@@ -1,0 +1,8 @@
+# expect: error E0517
+import vec_mod.{length}
+import list_mod.{length}
+
+fun no_match(xs) -> Int {
+  let _ : String = xs
+  length(xs)
+}

@@ -10,6 +10,17 @@ use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeE
 
 use super::QualifiedModuleBinding;
 
+pub(super) struct DeferredOverload {
+    pub name: String,
+    pub candidates: Vec<crate::types::OverloadCandidate>,
+    pub candidate_descriptions: Vec<String>,
+    pub arg_types: Vec<Type>,
+    pub ret_type_var: TypeVarId,
+    pub _is_ufcs: bool,
+    pub span: Span,
+    pub owning_fn: usize,
+}
+
 pub(crate) struct InferenceContext<'a> {
     pub(super) env: &'a mut TypeEnv,
     pub(super) subst: &'a mut Substitution,
@@ -25,6 +36,25 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) module_path: &'a str,
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
     pub(super) self_type: Option<Type>,
+    pub(super) deferred_overloads: &'a mut Vec<DeferredOverload>,
+    pub(super) owning_fn_idx: usize,
+}
+
+/// True iff `ty` contains any free `Type::Var`.
+pub(super) fn contains_type_var(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Fn(params, ret) => {
+            params.iter().any(|(_, p)| contains_type_var(p)) || contains_type_var(ret)
+        }
+        Type::Named(_, args) => args.iter().any(contains_type_var),
+        Type::App(ctor, args) => contains_type_var(ctor) || args.iter().any(contains_type_var),
+        Type::Tuple(elems) => elems.iter().any(contains_type_var),
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            contains_type_var(inner)
+        }
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => false,
+    }
 }
 
 impl<'a> InferenceContext<'a> {
@@ -837,7 +867,45 @@ impl<'a> InferenceContext<'a> {
             })
             .collect();
 
+        let has_unsolved = arg_types.iter().any(|t| contains_type_var(t));
+
         let (winner_idx, winner_match) = match matches.len() {
+            0 if has_unsolved => {
+                // Args have unsolved vars — defer resolution to post-inference pass
+                let ret_var = self.gen.fresh();
+                if let Some(expected) = expected_type {
+                    let _ = unify(&Type::Var(ret_var), expected, self.subst);
+                }
+                self.deferred_overloads.push(DeferredOverload {
+                    name: name.to_string(),
+                    candidates: candidates.to_vec(),
+                    candidate_descriptions: candidate_descriptions.clone(),
+                    arg_types: arg_types.clone(),
+                    ret_type_var: ret_var,
+                    _is_ufcs,
+                    span,
+                    owning_fn: self.owning_fn_idx,
+                });
+                let placeholder_param_modes = arg_types.iter().map(|_| ParamMode::Consume).collect();
+                let func_typed = TypedExpr {
+                    kind: TypedExprKind::Var(name.to_string()),
+                    ty: Type::Unit,
+                    span,
+                    resolved_ref: None,
+                    scope_id: None,
+                };
+                return Ok(TypedExpr {
+                    kind: TypedExprKind::App {
+                        func: Box::new(func_typed),
+                        args: args_typed,
+                        param_modes: placeholder_param_modes,
+                    },
+                    ty: Type::Var(ret_var),
+                    span,
+                    resolved_ref: None,
+                    scope_id: None,
+                });
+            }
             0 => {
                 return Err(super::spanned(
                     TypeError::NoMatchingOverload {
@@ -849,6 +917,42 @@ impl<'a> InferenceContext<'a> {
                 ));
             }
             1 => matches.into_iter().next().unwrap(),
+            _ if has_unsolved => {
+                // Multiple matches but args have unsolved vars — defer
+                let ret_var = self.gen.fresh();
+                if let Some(expected) = expected_type {
+                    let _ = unify(&Type::Var(ret_var), expected, self.subst);
+                }
+                self.deferred_overloads.push(DeferredOverload {
+                    name: name.to_string(),
+                    candidates: candidates.to_vec(),
+                    candidate_descriptions: candidate_descriptions.clone(),
+                    arg_types: arg_types.clone(),
+                    ret_type_var: ret_var,
+                    _is_ufcs,
+                    span,
+                    owning_fn: self.owning_fn_idx,
+                });
+                let placeholder_param_modes = arg_types.iter().map(|_| ParamMode::Consume).collect();
+                let func_typed = TypedExpr {
+                    kind: TypedExprKind::Var(name.to_string()),
+                    ty: Type::Unit,
+                    span,
+                    resolved_ref: None,
+                    scope_id: None,
+                };
+                return Ok(TypedExpr {
+                    kind: TypedExprKind::App {
+                        func: Box::new(func_typed),
+                        args: args_typed,
+                        param_modes: placeholder_param_modes,
+                    },
+                    ty: Type::Var(ret_var),
+                    span,
+                    resolved_ref: None,
+                    scope_id: None,
+                });
+            }
             _ => {
                 let ambiguous: Vec<String> = matches
                     .iter()

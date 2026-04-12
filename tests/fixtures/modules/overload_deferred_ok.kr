@@ -1,0 +1,9 @@
+# expect: ok
+import vec_mod.{length}
+import list_mod.{length}
+
+fun example(xs) -> Int {
+  let n = length(xs)
+  let _ : Vec[Int] = xs
+  n
+}

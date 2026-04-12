@@ -75,7 +75,7 @@ pub enum TypeErrorCode {
     E0105, // Disposable branch leak (consumed in some branches but not all)
     E0012, // Reserved name
     E0509, // Duplicate import name (same name from different modules)
-    E0510, // Unknown export (name does not exist in module)
+    E0510, // Unresolved deferred overload
     E0013, // Redundant match arm
     E0015, // Duplicate constructor across types (value namespace)
     E0016, // Type/trait name collision (type namespace)
@@ -118,6 +118,7 @@ pub enum TypeErrorCode {
     E0516, // Local overload arity mismatch
     E0517, // No matching overload
     E0518, // Ambiguous overload
+    E0519, // Unknown export (name does not exist in module)
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -399,6 +400,10 @@ pub enum TypeError {
         name: String,
         candidates: Vec<String>,
     },
+    UnresolvedOverload {
+        name: String,
+        candidates: Vec<String>,
+    },
     DuplicateParam {
         name: String,
     },
@@ -610,7 +615,7 @@ impl TypeError {
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::DuplicateImport { .. } => TypeErrorCode::E0509,
             TypeError::ImportOverloadArityMismatch { .. } => TypeErrorCode::E0515,
-            TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
+            TypeError::UnknownExport { .. } => TypeErrorCode::E0519,
             TypeError::RedundantPattern => TypeErrorCode::E0013,
             TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
             TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
@@ -632,6 +637,7 @@ impl TypeError {
             TypeError::LocalOverloadOverlap { .. } => TypeErrorCode::E0514,
             TypeError::NoMatchingOverload { .. } => TypeErrorCode::E0517,
             TypeError::AmbiguousOverload { .. } => TypeErrorCode::E0518,
+            TypeError::UnresolvedOverload { .. } => TypeErrorCode::E0510,
             TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
@@ -1054,6 +1060,9 @@ impl TypeError {
             }),
             TypeError::NoMatchingOverload { .. } => None,
             TypeError::AmbiguousOverload { .. } => None,
+            TypeError::UnresolvedOverload { .. } => {
+                Some("add a type annotation to disambiguate".to_string())
+            }
         }
     }
 
@@ -1698,6 +1707,13 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "ambiguous overload for `{name}`: multiple candidates match\ncandidates:\n{cand_list}"
+                )
+            }
+            TypeError::UnresolvedOverload { name, candidates } => {
+                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
+                write!(
+                    f,
+                    "ambiguous call to `{name}`: type of argument is not known; cannot select among candidates:\n{cand_list}"
                 )
             }
             TypeError::DuplicateParam { name } => {

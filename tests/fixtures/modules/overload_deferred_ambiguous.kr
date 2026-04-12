@@ -1,0 +1,5 @@
+# expect: error E0510
+import vec_mod.{length}
+import list_mod.{length}
+
+fun ambiguous(xs) -> Int = length(xs)

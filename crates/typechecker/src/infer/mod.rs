@@ -121,6 +121,7 @@ mod expr;
 mod imports;
 mod pattern;
 mod resolve_multi;
+mod resolve_overloads;
 
 /// If a `coerce_unify` error was produced at a call site where the
 /// callee's slot was declared as a bare type variable (`a`, not `shape a`)
@@ -875,6 +876,7 @@ pub fn infer_expr(
     let empty_tpa = HashMap::new();
     let empty_qm = HashMap::new();
     let empty_imported_types = HashMap::new();
+    let mut deferred = Vec::new();
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -890,6 +892,8 @@ pub fn infer_expr(
         module_path: "__expr__",
         shadowed_prelude_fns: &[],
         self_type: None,
+        deferred_overloads: &mut deferred,
+        owning_fn_idx: 0,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }
@@ -4827,6 +4831,7 @@ fn infer_function_bodies<'a>(
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
 
     for component in &sccs {
+        let mut deferred_overloads: Vec<expr::DeferredOverload> = Vec::new();
         let mut pre_bound: Vec<(usize, Type)> = Vec::new();
         for &idx in component {
             let tv = Type::Var(state.gen.fresh());
@@ -4986,6 +4991,8 @@ fn infer_function_bodies<'a>(
                         module_path: mod_path,
                         shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
                         self_type: None,
+                        deferred_overloads: &mut deferred_overloads,
+                        owning_fn_idx: idx,
                     };
                     ctx.infer_expr_inner(&decl.body, fn_ret_expected.as_ref())?
                 };
@@ -5123,6 +5130,13 @@ fn infer_function_bodies<'a>(
             &mut state.subst,
             &mut state.gen,
         );
+
+        resolve_overloads::resolve_deferred_overloads(
+            &mut deferred_overloads,
+            &mut fn_bodies,
+            &mut state.subst,
+            &mut state.gen,
+        )?;
 
         // Generalize against an empty env: all env bindings are either fully-quantified
         // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
@@ -5823,6 +5837,7 @@ where
     state.env.fn_return_type = Some(concrete_ret_type);
 
     let impl_qual_snap = state.subst.push_qual_scope();
+    let mut impl_deferred = Vec::new();
     let body_result = {
         let fn_ret_expected = state.env.fn_return_type.clone();
         let mut ctx = InferenceContext {
@@ -5840,6 +5855,8 @@ where
             module_path,
             shadowed_prelude_fns: &state.imports.shadowed_prelude_fns,
             self_type: Some(resolved_target.clone()),
+            deferred_overloads: &mut impl_deferred,
+            owning_fn_idx: 0,
         };
         ctx.infer_expr_inner(&method.body, fn_ret_expected.as_ref())
     };
