@@ -1,0 +1,8 @@
+# expect: error E0305
+trait MyTrait[a] {
+    fun check(_0: a, _1: a) -> Bool
+}
+
+fun check(x: Int) -> Bool = true
+
+fun main() = check(1)

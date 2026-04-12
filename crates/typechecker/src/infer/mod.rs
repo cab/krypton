@@ -2341,36 +2341,7 @@ impl ModuleInferenceState {
     }
 
     fn resolve_fn_param_types_for_overlap(&self, f: &FnDecl) -> Option<Vec<Type>> {
-        let type_exprs: Vec<&krypton_parser::ast::TypeExpr> = f
-            .params
-            .iter()
-            .map(|p| p.ty.as_ref())
-            .collect::<Option<Vec<_>>>()?;
-
-        let mut gen = TypeVarGen::new();
-        let mut type_param_map = HashMap::new();
-        let mut type_param_arity = HashMap::new();
-        for tp in &f.type_params {
-            let id = gen.fresh();
-            type_param_map.insert(tp.name.clone(), id);
-            type_param_arity.insert(tp.name.clone(), tp.arity);
-        }
-
-        let mut types = Vec::new();
-        for texpr in type_exprs {
-            match type_registry::resolve_type_expr(
-                texpr,
-                &type_param_map,
-                &type_param_arity,
-                &self.registry,
-                ResolutionContext::UserAnnotation,
-                None,
-            ) {
-                Ok(ty) => types.push(ty),
-                Err(_) => return None,
-            }
-        }
-        Some(types)
+        resolve_fn_param_types_for_overlap(f, &self.registry)
     }
 
     fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {
@@ -3299,15 +3270,30 @@ fn process_traits_and_deriving(
                 .lookup_trait(existing)
                 .is_some_and(|info| info.is_prelude);
             if !existing_is_prelude && !is_prelude {
-                // Two non-prelude traits with same method name → error
-                return Err(spanned(
-                    TypeError::TraitMethodCollision {
-                        method_name: method_name.clone(),
-                        trait1: existing.local_name.clone(),
-                        trait2: trait_id.local_name.clone(),
-                    },
-                    (0, 0),
-                ));
+                // Two non-prelude traits with same method name — check overlap
+                let existing_params = trait_method_param_types(&trait_registry, existing, &method_name);
+                let new_params = trait_method_param_types(&trait_registry, &trait_id, &method_name);
+                let overlaps = match (&existing_params, &new_params) {
+                    (Some(a), Some(b)) => {
+                        if a.len() != b.len() {
+                            true // arity mismatch
+                        } else {
+                            types_overlap(a, b)
+                        }
+                    }
+                    _ => true, // can't resolve → assume overlap
+                };
+                if overlaps {
+                    return Err(spanned(
+                        TypeError::TraitMethodCollision {
+                            method_name: method_name.clone(),
+                            trait1: existing.local_name.clone(),
+                            trait2: trait_id.local_name.clone(),
+                        },
+                        (0, 0),
+                    ));
+                }
+                // Non-overlapping — first wins for trait_method_map
             } else if existing_is_prelude && !is_prelude {
                 // Local shadows prelude
                 trait_method_map.insert(method_name, trait_id);
@@ -3320,7 +3306,7 @@ fn process_traits_and_deriving(
     }
 
     // Phase 6: Conflict and reserved-name checks
-    check_trait_name_conflicts(module, &trait_method_map, is_core_module)?;
+    check_trait_name_conflicts(module, &trait_method_map, &trait_registry, &state.registry, is_core_module)?;
 
     Ok((
         trait_registry,
@@ -4604,10 +4590,55 @@ fn register_impl_instances(
     Ok(())
 }
 
+fn resolve_fn_param_types_for_overlap(f: &FnDecl, registry: &TypeRegistry) -> Option<Vec<Type>> {
+    let type_exprs: Vec<&krypton_parser::ast::TypeExpr> = f
+        .params
+        .iter()
+        .map(|p| p.ty.as_ref())
+        .collect::<Option<Vec<_>>>()?;
+
+    let mut gen = TypeVarGen::new();
+    let mut type_param_map = HashMap::new();
+    let mut type_param_arity = HashMap::new();
+    for tp in &f.type_params {
+        let id = gen.fresh();
+        type_param_map.insert(tp.name.clone(), id);
+        type_param_arity.insert(tp.name.clone(), tp.arity);
+    }
+
+    let mut types = Vec::new();
+    for texpr in type_exprs {
+        match type_registry::resolve_type_expr(
+            texpr,
+            &type_param_map,
+            &type_param_arity,
+            registry,
+            ResolutionContext::UserAnnotation,
+            None,
+        ) {
+            Ok(ty) => types.push(ty),
+            Err(_) => return None,
+        }
+    }
+    Some(types)
+}
+
+fn trait_method_param_types(
+    trait_registry: &TraitRegistry,
+    trait_name: &TraitName,
+    method_name: &str,
+) -> Option<Vec<Type>> {
+    let info = trait_registry.lookup_trait(trait_name)?;
+    let method = info.methods.iter().find(|m| m.name == method_name)?;
+    Some(method.param_types.iter().map(|(_, ty)| ty.clone()).collect())
+}
+
 /// Phase 6: Check for trait method name conflicts and reserved name usage.
 fn check_trait_name_conflicts(
     module: &Module,
     trait_method_map: &HashMap<String, TraitName>,
+    trait_registry: &TraitRegistry,
+    type_registry: &TypeRegistry,
     is_core_module: bool,
 ) -> Result<(), SpannedTypeError> {
     // Check for top-level def names conflicting with trait method names
@@ -4635,35 +4666,72 @@ fn check_trait_name_conflicts(
         for decl in &module.decls {
             if let Decl::DefFn(f) = decl {
                 if let Some((trait_name, method_span)) = user_trait_methods.get(&f.name) {
-                    return Err(SpannedTypeError {
-                        error: Box::new(TypeError::DefinitionConflictsWithTraitMethod {
-                            def_name: f.name.clone(),
-                            trait_name: trait_name.clone(),
-                        }),
-                        span: f.span,
-                        note: None,
-                        secondary_span: Some(Box::new(crate::unify::SecondaryLabel {
-                            span: *method_span,
-                            message: "trait method defined here".into(),
-                            source_file: None,
-                        })),
-                        source_file: None,
-                        var_names: None,
-                    });
-                }
-                if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
-                    if let Some(trait_id) = trait_method_map.get(&f.name) {
+                    // Try overlap check: resolve free fn params and trait method params
+                    let should_error = if let Some(fn_params) = resolve_fn_param_types_for_overlap(f, type_registry) {
+                        if let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) {
+                            if let Some(method) = trait_info.methods.iter().find(|m| m.name == f.name) {
+                                let method_params: Vec<Type> = method.param_types.iter().map(|(_, ty)| ty.clone()).collect();
+                                if fn_params.len() != method_params.len() {
+                                    true // arity mismatch
+                                } else {
+                                    types_overlap(&fn_params, &method_params)
+                                }
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    } else {
+                        true // unannotated → can't prove non-overlap
+                    };
+                    if should_error {
                         return Err(SpannedTypeError {
                             error: Box::new(TypeError::DefinitionConflictsWithTraitMethod {
                                 def_name: f.name.clone(),
-                                trait_name: trait_id.local_name.clone(),
+                                trait_name: trait_name.clone(),
                             }),
                             span: f.span,
                             note: None,
-                            secondary_span: None,
+                            secondary_span: Some(Box::new(crate::unify::SecondaryLabel {
+                                span: *method_span,
+                                message: "trait method defined here".into(),
+                                source_file: None,
+                            })),
                             source_file: None,
                             var_names: None,
                         });
+                    }
+                }
+                if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
+                    if let Some(trait_id) = trait_method_map.get(&f.name) {
+                        // Try overlap check for imported trait method
+                        let should_error = if let Some(fn_params) = resolve_fn_param_types_for_overlap(f, type_registry) {
+                            if let Some(method_params) = trait_method_param_types(trait_registry, trait_id, &f.name) {
+                                if fn_params.len() != method_params.len() {
+                                    true // arity mismatch
+                                } else {
+                                    types_overlap(&fn_params, &method_params)
+                                }
+                            } else {
+                                true
+                            }
+                        } else {
+                            true // unannotated → can't prove non-overlap
+                        };
+                        if should_error {
+                            return Err(SpannedTypeError {
+                                error: Box::new(TypeError::DefinitionConflictsWithTraitMethod {
+                                    def_name: f.name.clone(),
+                                    trait_name: trait_id.local_name.clone(),
+                                }),
+                                span: f.span,
+                                note: None,
+                                secondary_span: None,
+                                source_file: None,
+                                var_names: None,
+                            });
+                        }
                     }
                 }
             }

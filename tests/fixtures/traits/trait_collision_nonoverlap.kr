@@ -1,0 +1,10 @@
+# expect: ok
+trait Foo[a] {
+    fun act(_0: a, _1: Int) -> a
+}
+
+trait Bar[a] {
+    fun act(_0: a, _1: String) -> a
+}
+
+fun main() = 0

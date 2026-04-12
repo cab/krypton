@@ -1,0 +1,8 @@
+# expect: ok
+trait MyTrait[a] {
+    fun length(_0: Vec[a]) -> Int
+}
+
+fun length(l: List[Int]) -> Int = 0
+
+fun main() = length(Nil)

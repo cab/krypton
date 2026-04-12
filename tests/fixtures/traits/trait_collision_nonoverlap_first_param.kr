@@ -1,0 +1,10 @@
+# expect: ok
+trait Foo[a] {
+    fun convert(_0: Vec[a]) -> a
+}
+
+trait Bar[a] {
+    fun convert(_0: List[a]) -> a
+}
+
+fun main() = 0

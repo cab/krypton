@@ -768,7 +768,7 @@ impl TypeError {
                 Some(format!("field type `{}` does not implement `{}`", field_type, trait_name))
             }
             TypeError::DefinitionConflictsWithTraitMethod { .. } => {
-                Some("trait methods are bound as module-level names; choose a different name for this definition".to_string())
+                Some("parameter types overlap with trait method signature; use non-overlapping concrete types or choose a different name".to_string())
             }
             TypeError::InvalidImpl {
                 missing_methods,
@@ -888,7 +888,7 @@ impl TypeError {
                 Some("trait methods must have explicit return type annotations".to_string())
             }
             TypeError::TraitMethodCollision { trait1, trait2, method_name } => {
-                Some(format!("traits `{}` and `{}` both define method `{}`; use qualified imports or rename to disambiguate", trait1, trait2, method_name))
+                Some(format!("traits `{}` and `{}` define method `{}` with overlapping parameter types; use qualified imports or rename to disambiguate", trait1, trait2, method_name))
             }
             TypeError::MissingTraitBound { type_var, trait_name, fn_name } => {
                 match type_var {

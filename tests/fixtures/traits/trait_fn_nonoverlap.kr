@@ -1,0 +1,8 @@
+# expect: ok
+trait MyTrait[a] {
+    fun process(_0: a, _1: Vec[Int]) -> a
+}
+
+fun process(x: String, y: List[Int]) -> String = x
+
+fun main() = ""

@@ -1,0 +1,10 @@
+# expect: error E0311
+trait Foo[a] {
+    fun transform(_0: a, _1: Int) -> a
+}
+
+trait Bar[a] {
+    fun transform(_0: a, _1: Int) -> a
+}
+
+fun main() = 0

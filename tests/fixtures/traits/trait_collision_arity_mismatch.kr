@@ -1,0 +1,10 @@
+# expect: error E0311
+trait Foo[a] {
+    fun serialize(_0: a) -> String
+}
+
+trait Bar[a] {
+    fun serialize(_0: a, _1: Int) -> String
+}
+
+fun main() = 0
