@@ -1,0 +1,8 @@
+# expect: ok
+import vec_mod.{length}
+import list_mod.{length}
+
+fun apply(f: (Vec[Int]) -> Int, v: Vec[Int]) -> Int = f(v)
+
+fun test_value(v: Vec[Int]) -> Int = apply(length, v)
+fun test_lambda(v: Vec[Int]) -> Int = apply((x) -> length(x), v)

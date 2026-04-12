@@ -97,6 +97,26 @@ pub fn candidate_matches(
     })
 }
 
+/// Check whether a candidate function scheme matches a given expected type.
+/// Instantiates the scheme with fresh type variables, then tries coerce_unify
+/// against the whole expected type. On success returns the instantiated type
+/// and local substitution so the caller can commit them.
+pub fn candidate_matches_expected_type(
+    scheme: &TypeScheme,
+    expected: &Type,
+    gen: &mut TypeVarGen,
+) -> Option<CandidateMatch> {
+    let instantiated = scheme.instantiate(&mut || gen.fresh());
+    let mut subst = Substitution::new();
+    if coerce_unify(&instantiated, expected, &mut subst).is_err() {
+        return None;
+    }
+    Some(CandidateMatch {
+        instantiated_ty: instantiated,
+        local_subst: subst,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +235,57 @@ mod tests {
         let ty = Type::Fn(vec![], Box::new(Type::Unit));
         let params = fn_param_types(&ty).unwrap();
         assert!(params.is_empty());
+    }
+
+    #[test]
+    fn expected_type_matching_concrete() {
+        use crate::types::{ParamMode, TypeScheme};
+        let scheme = TypeScheme::mono(Type::Fn(
+            vec![(ParamMode::Borrow, named("Vec", vec![Type::Int]))],
+            Box::new(Type::Int),
+        ));
+        let expected = Type::Fn(
+            vec![(ParamMode::Borrow, named("Vec", vec![Type::Int]))],
+            Box::new(Type::Int),
+        );
+        let mut gen = TypeVarGen::new();
+        assert!(candidate_matches_expected_type(&scheme, &expected, &mut gen).is_some());
+    }
+
+    #[test]
+    fn expected_type_non_matching() {
+        use crate::types::{ParamMode, TypeScheme};
+        let scheme = TypeScheme::mono(Type::Fn(
+            vec![(ParamMode::Borrow, named("List", vec![Type::Int]))],
+            Box::new(Type::Int),
+        ));
+        let expected = Type::Fn(
+            vec![(ParamMode::Borrow, named("Vec", vec![Type::Int]))],
+            Box::new(Type::Int),
+        );
+        let mut gen = TypeVarGen::new();
+        assert!(candidate_matches_expected_type(&scheme, &expected, &mut gen).is_none());
+    }
+
+    #[test]
+    fn expected_type_generic_scheme() {
+        use crate::types::{ParamMode, TypeScheme};
+        use std::collections::HashMap;
+        let a = TypeVarId(100);
+        let scheme = TypeScheme {
+            vars: vec![a],
+            constraints: vec![],
+            ty: Type::Fn(
+                vec![(ParamMode::Borrow, named("Vec", vec![Type::Var(a)]))],
+                Box::new(Type::Int),
+            ),
+            var_names: HashMap::new(),
+        };
+        let expected = Type::Fn(
+            vec![(ParamMode::Borrow, named("Vec", vec![Type::Int]))],
+            Box::new(Type::Int),
+        );
+        let mut gen = TypeVarGen::new();
+        assert!(candidate_matches_expected_type(&scheme, &expected, &mut gen).is_some());
     }
 }

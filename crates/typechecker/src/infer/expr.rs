@@ -1030,6 +1030,97 @@ impl<'a> InferenceContext<'a> {
         })
     }
 
+    /// Resolve an overloaded name used as a value (not a call) by filtering
+    /// candidates against the expected type from the enclosing expression.
+    fn resolve_overloaded_value(
+        &mut self,
+        name: &str,
+        candidates: &[crate::types::OverloadCandidate],
+        expected_type: Option<&Type>,
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        let candidate_descriptions: Vec<String> = candidates
+            .iter()
+            .map(|c| {
+                let display_name = match &c.source {
+                    crate::types::BindingSource::ImportedFunction { qualified_name, .. } => {
+                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                    }
+                    crate::types::BindingSource::TopLevelLocalFunction { qualified_name } => {
+                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                    }
+                    _ => name.to_string(),
+                };
+                format!("{}: {}", display_name, c.scheme.ty)
+            })
+            .collect();
+
+        let expected = match expected_type {
+            Some(et) => self.subst.apply(et),
+            None => {
+                return Err(super::spanned(
+                    TypeError::UnresolvedOverload {
+                        name: name.to_string(),
+                        candidates: candidate_descriptions,
+                    },
+                    span,
+                ));
+            }
+        };
+
+        let mut matches: Vec<(usize, crate::overload::CandidateMatch)> = Vec::new();
+        for (i, c) in candidates.iter().enumerate() {
+            if let Some(m) = crate::overload::candidate_matches_expected_type(
+                &c.scheme,
+                &expected,
+                &mut self.gen,
+            ) {
+                matches.push((i, m));
+            }
+        }
+
+        let (winner_idx, winner_match) = match matches.len() {
+            0 => {
+                return Err(super::spanned(
+                    TypeError::NoMatchingOverload {
+                        name: name.to_string(),
+                        candidates: candidate_descriptions,
+                        arg_types: vec![],
+                    },
+                    span,
+                ));
+            }
+            1 => matches.into_iter().next().unwrap(),
+            _ => {
+                let ambiguous: Vec<String> = matches
+                    .iter()
+                    .map(|(i, _)| candidate_descriptions[*i].clone())
+                    .collect();
+                return Err(super::spanned(
+                    TypeError::AmbiguousOverload {
+                        name: name.to_string(),
+                        candidates: ambiguous,
+                    },
+                    span,
+                ));
+            }
+        };
+
+        let winning = &candidates[winner_idx];
+        self.subst.merge_type_bindings(winner_match.local_subst);
+
+        let resolved_ref = super::resolved_ref_from_binding_source(&winning.source);
+        let ty = self.subst.apply(&winner_match.instantiated_ty);
+
+        Ok(TypedExpr {
+            kind: TypedExprKind::Var(name.to_string()),
+            ty,
+            span,
+            resolved_ref,
+            scope_id: None,
+        })
+    }
+
     // ── Extracted match-arm helpers ─────────────────────────────────────
 
     fn infer_lambda(
@@ -1923,6 +2014,14 @@ impl<'a> InferenceContext<'a> {
 
             Expr::Var { name, span, .. } => match self.env.lookup_entry(name) {
                 Some(entry) => {
+                    if let Some(candidates) = entry.overload_candidates.clone() {
+                        return self.resolve_overloaded_value(
+                            name,
+                            &candidates,
+                            expected_type,
+                            *span,
+                        );
+                    }
                     let scheme = entry.scheme.clone();
                     let ty = scheme.instantiate(&mut || self.gen.fresh());
                     let ty = if !matches!(&ty, Type::Fn(_, _))

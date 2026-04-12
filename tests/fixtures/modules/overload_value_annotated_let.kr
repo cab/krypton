@@ -1,0 +1,8 @@
+# expect: ok
+import vec_mod.{length}
+import list_mod.{length}
+
+fun test(v: Vec[Int]) -> Int = {
+    let f: (Vec[Int]) -> Int = length
+    f(v)
+}

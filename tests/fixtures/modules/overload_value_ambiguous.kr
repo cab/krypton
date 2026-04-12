@@ -1,0 +1,8 @@
+# expect: error E0510
+import vec_mod.{length}
+import list_mod.{length}
+
+fun test() = {
+    let f = length
+    f
+}
