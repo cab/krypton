@@ -1,0 +1,4 @@
+# expect: ok
+import facade_overload_lib.{length}
+fun use_vec(v: Vec[Int]) -> Int = length(v)
+fun use_list(l: List[Int]) -> Int = length(l)

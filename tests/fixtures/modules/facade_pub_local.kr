@@ -1,0 +1,2 @@
+pub import vec_mod.{length}
+pub fun length(s: String) -> Int = 0

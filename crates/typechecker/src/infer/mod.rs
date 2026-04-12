@@ -1988,22 +1988,41 @@ impl ImportContext {
     ) -> Result<BindingSource, SpannedTypeError> {
         let name = b.name.clone();
         let scheme = b.scheme.clone();
+        let is_prelude_import = b.is_prelude;
         let already_bound = env.lookup(&name).is_some();
         let binding_source = self.register_import_binding(b)?;
         if !already_bound {
             env.bind_with_source(name, scheme, binding_source.clone());
         } else {
-            // Only create overload candidates when the same name is imported
-            // from genuinely different source modules (validated as non-overlapping
-            // by register_import_binding). Trait method re-imports from the same
-            // module should not create overloads.
-            let distinct_modules: std::collections::HashSet<&str> = self
-                .get_by_name(&name)
-                .map(|f| f.qualified_name.module_path.as_str())
-                .collect();
-            if distinct_modules.len() > 1 {
+            let existing_is_prelude = env
+                .lookup_entry(&name)
+                .map(|e| match &e.source {
+                    BindingSource::ImportedFunction { is_prelude, .. } => *is_prelude,
+                    BindingSource::TraitMethod { is_prelude, .. } => *is_prelude,
+                    _ => false,
+                })
+                .unwrap_or(false);
+
+            if existing_is_prelude && !is_prelude_import {
+                // By-name prelude shadowing: replace prelude entry with user import
                 if let Some(entry) = env.lookup_entry_mut(&name) {
-                    entry.add_overload_candidate(scheme, binding_source.clone());
+                    entry.scheme = scheme;
+                    entry.source = binding_source.clone();
+                    entry.overload_candidates = None;
+                }
+            } else {
+                // Only create overload candidates when the same name is imported
+                // from genuinely different source modules (validated as non-overlapping
+                // by register_import_binding). Trait method re-imports from the same
+                // module should not create overloads.
+                let distinct_modules: std::collections::HashSet<&str> = self
+                    .get_by_name(&name)
+                    .map(|f| f.qualified_name.module_path.as_str())
+                    .collect();
+                if distinct_modules.len() > 1 {
+                    if let Some(entry) = env.lookup_entry_mut(&name) {
+                        entry.add_overload_candidate(scheme, binding_source.clone());
+                    }
                 }
             }
         }
@@ -2773,6 +2792,7 @@ impl ModuleInferenceState {
                     scheme: scheme.clone(),
                     origin: None,
                     def_span: None,
+                    qualified_name: None,
                 });
             }
         }
@@ -2785,6 +2805,7 @@ impl ModuleInferenceState {
                     scheme: result_schemes[i].clone().unwrap(),
                     origin: None,
                     def_span: Some(decl.span),
+                    qualified_name: None,
                 });
             }
         }
@@ -2797,6 +2818,7 @@ impl ModuleInferenceState {
                     scheme: binding.scheme.clone(),
                     origin: None,
                     def_span: Some(binding.def_span),
+                    qualified_name: None,
                 });
             }
         }

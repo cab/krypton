@@ -1,0 +1,3 @@
+# expect: error E0509
+pub import vec_mod.{length}
+pub import vec_mod_dup.{length}

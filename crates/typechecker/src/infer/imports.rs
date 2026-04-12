@@ -246,9 +246,6 @@ impl ModuleInferenceState {
 
         // Bind exported functions from the interface
         for ef in &iface.exported_fns {
-            if reexported_fn_names.contains(ef.name.as_str()) {
-                continue;
-            }
             if requested.contains(ef.name.as_str()) {
                 let effective_name = aliases
                     .get(&ef.name)
@@ -819,15 +816,22 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    if let Some(f) = self.imports.get_by_name(&effective_name).next() {
-                        // Try to propagate def_span from the source module's exports
-                        let reexport_def_span =
-                            self.env.get_def_span(&effective_name).map(|d| d.span);
+                    let mut seen = std::collections::HashSet::new();
+                    let candidates: Vec<_> = self
+                        .imports
+                        .get_by_name(&effective_name)
+                        .filter(|f| seen.insert(f.qualified_name.clone()))
+                        .map(|f| (f.scheme.clone(), f.origin.clone(), f.qualified_name.clone()))
+                        .collect();
+                    let reexport_def_span =
+                        self.env.get_def_span(&effective_name).map(|d| d.span);
+                    for (scheme, origin, qualified_name) in candidates {
                         self.reexported_fn_types.push(typed_ast::ExportedFn {
                             name: effective_name.clone(),
-                            scheme: f.scheme.clone(),
-                            origin: f.origin.clone(),
+                            scheme,
+                            origin,
                             def_span: reexport_def_span,
+                            qualified_name: Some(qualified_name),
                         });
                     }
                 }

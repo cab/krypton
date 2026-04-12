@@ -360,6 +360,9 @@ pub struct ExportedFn {
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
     pub def_span: Option<Span>,
+    /// For re-exports, the original defining module + local name.
+    /// `None` for locally-defined exports.
+    pub qualified_name: Option<QualifiedName>,
 }
 
 pub struct TraitDefInfo {

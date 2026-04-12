@@ -340,17 +340,10 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
         .reexported_fn_types
         .iter()
         .map(|ef| {
-            // Look up canonical defining module and original name from fn_types
-            let (canonical_module, canonical_name) = typed
-                .fn_types_by_name
-                .get(&ef.name)
-                .and_then(|&idx| typed.fn_types.get(idx))
-                .map(|entry| {
-                    (
-                        entry.qualified_name.module_path.clone(),
-                        entry.qualified_name.local_name.clone(),
-                    )
-                })
+            let (canonical_module, canonical_name) = ef
+                .qualified_name
+                .as_ref()
+                .map(|qn| (qn.module_path.clone(), qn.local_name.clone()))
                 .unwrap_or_else(|| (typed.module_path.clone(), ef.name.clone()));
             let symbol = typed
                 .exported_type_infos
