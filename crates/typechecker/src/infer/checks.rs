@@ -320,6 +320,7 @@ pub(super) fn check_constrained_function_refs(
                 }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Discharge(inner) => work.push(inner),
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
     }
@@ -658,6 +659,7 @@ fn walk_trait_method_calls(
                 }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Discharge(inner) => work.push(inner),
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
     }
@@ -1055,6 +1057,7 @@ pub(super) fn check_trait_instances(
                 }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Discharge(inner) => work.push(inner),
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
     }

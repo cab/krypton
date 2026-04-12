@@ -1787,8 +1787,19 @@ where
                 .collect::<Vec<_>>()
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
+        .then(
+            symbol(Token::Deriving)
+                .ignore_then(
+                    select! { Token::Ident(s) => s.to_string() }
+                        .separated_by(symbol(Token::Comma))
+                        .collect::<Vec<_>>()
+                        .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen)),
+                )
+                .or_not()
+                .map(|d| d.unwrap_or_default()),
+        )
         .map_with(
-            |(((((platform, target), module_path), as_clause), lifts), methods), e| {
+            |((((((platform, target), module_path), as_clause), lifts), methods), deriving), e| {
                 let (is_trait, alias, alias_visibility, type_params) = match as_clause {
                     Some((is_trait, is_pub, name, params)) => {
                         let vis = if !is_trait && is_pub {
@@ -1810,6 +1821,7 @@ where
                     type_params,
                     lifts,
                     methods,
+                    deriving,
                     span: to_span(e.span()),
                 }
             },

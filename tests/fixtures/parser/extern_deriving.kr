@@ -1,0 +1,2 @@
+# expect: ok
+extern java "java.lang.Integer" as pub JInt {} deriving (Disposable)

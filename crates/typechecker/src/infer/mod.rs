@@ -1071,6 +1071,7 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
                     .is_some_and(|b| capture_demands_own(b, capture_name, subst))
         }
         TypedExprKind::QuestionMark { expr, .. } => capture_demands_own(expr, capture_name, subst),
+        TypedExprKind::Discharge(inner) => capture_demands_own(inner, capture_name, subst),
     }
 }
 
@@ -3977,6 +3978,103 @@ fn process_deriving(
                     methods: vec![typed_ast::InstanceMethod {
                         name: method_name.to_string(),
                         params,
+                        body,
+                        scheme,
+                        constraint_pairs: vec![],
+                    }],
+                    is_intrinsic: false,
+                });
+            }
+        }
+
+        // Extern type deriving
+        if let Decl::Extern {
+            alias: Some(name),
+            deriving,
+            is_trait: false,
+            span,
+            ..
+        } = decl
+        {
+            for trait_name in deriving {
+                if trait_name != "Disposable" {
+                    return Err(spanned(
+                        TypeError::CannotDerive {
+                            trait_name: trait_name.clone(),
+                            type_name: name.clone(),
+                            field_type: name.clone(),
+                        },
+                        *span,
+                    ));
+                }
+
+                let type_info = registry.lookup_type(name).unwrap();
+                let type_args: Vec<Type> = type_info
+                    .type_param_vars
+                    .iter()
+                    .map(|&v| Type::Var(v))
+                    .collect();
+                let target_type = Type::Named(name.clone(), type_args);
+
+                let derive_full_trait_name = trait_registry
+                    .lookup_trait_by_name(trait_name)
+                    .map(|ti| ti.trait_name())
+                    .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
+
+                if trait_registry
+                    .find_instance_multi(&derive_full_trait_name, &[target_type.clone()])
+                    .is_some()
+                {
+                    return Err(spanned(
+                        TypeError::DerivingConflictsWithImpl {
+                            trait_name: trait_name.clone(),
+                            type_name: name.clone(),
+                        },
+                        *span,
+                    ));
+                }
+
+                let instance = InstanceInfo {
+                    trait_name: derive_full_trait_name.clone(),
+                    target_types: vec![target_type.clone()],
+                    target_type_name: name.clone(),
+                    type_var_ids: HashMap::new(),
+                    constraints: vec![],
+                    span: *span,
+                    is_builtin: false,
+                };
+                trait_registry
+                    .register_instance(instance)
+                    .map_err(|boxed| {
+                        let (e, existing_span) = *boxed;
+                        duplicate_instance_spanned(e, *span, existing_span)
+                    })?;
+
+                let syn_span: Span = (0, 0);
+                let (body, fn_ty) =
+                    derive::synthesize_extern_dispose_body(&target_type, syn_span);
+
+                let mk_param = |n: &str| crate::typed_ast::TypedParam {
+                    name: n.to_string(),
+                    mode: crate::types::ParamMode::Consume,
+                };
+
+                let scheme = TypeScheme {
+                    vars: vec![],
+                    constraints: Vec::new(),
+                    ty: fn_ty,
+                    var_names: HashMap::new(),
+                };
+
+                derived_instance_defs.push(InstanceDefInfo {
+                    trait_name: derive_full_trait_name,
+                    target_type_name: name.clone(),
+                    target_types: vec![target_type],
+                    type_var_ids: HashMap::new(),
+                    constraints: vec![],
+                    methods: vec![typed_ast::InstanceMethod {
+                        name: "dispose".to_string(),
+                        params: vec![mk_param("__a")],
                         body,
                         scheme,
                         constraint_pairs: vec![],

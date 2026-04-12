@@ -1,0 +1,17 @@
+# skip: js(java-only extern)
+# expect: output "before\nafter"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+extern java "java.lang.StringBuilder" as pub SB lifts always {} deriving (Disposable)
+
+extern java "java.lang.StringBuilder" {
+    @constructor fun new_sb() -> ~SB
+}
+
+fun main() -> Unit = {
+    println("before")
+    let sb: ~SB = new_sb()
+    println("after")
+}

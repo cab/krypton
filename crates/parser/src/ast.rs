@@ -54,6 +54,7 @@ pub enum Decl {
         type_params: Vec<String>,
         lifts: Option<Lifts>,
         methods: Vec<ExternMethod>,
+        deriving: Vec<String>,
         span: Span,
     },
 }

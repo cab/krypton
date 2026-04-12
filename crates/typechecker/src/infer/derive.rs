@@ -885,3 +885,31 @@ pub(super) fn synthesize_dispose_body(
     let fn_ty = Type::fn_consuming(vec![owned_target], Type::Unit);
     (body, fn_ty)
 }
+
+/// Synthesize a no-op dispose body for extern types.
+///
+/// Extern types are opaque — they can't be destructured. The generated dispose
+/// uses `Discharge` to consume the owned `__a` parameter (satisfying linearity)
+/// without requiring a pattern match or extern call.
+pub(super) fn synthesize_extern_dispose_body(
+    target_type: &Type,
+    span: Span,
+) -> (TypedExpr, Type) {
+    let owned_target = Type::Own(Box::new(target_type.clone()));
+    let param_a = TypedExpr {
+        kind: TypedExprKind::Var("__a".to_string()),
+        ty: owned_target.clone(),
+        span,
+        resolved_ref: None,
+        scope_id: None,
+    };
+    let body = TypedExpr {
+        kind: TypedExprKind::Discharge(Box::new(param_a)),
+        ty: Type::Unit,
+        span,
+        resolved_ref: None,
+        scope_id: None,
+    };
+    let fn_ty = Type::fn_consuming(vec![owned_target], Type::Unit);
+    (body, fn_ty)
+}

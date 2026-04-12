@@ -2049,6 +2049,7 @@ fn collect_trait_constraints_on_vars(
                     stack.push(b);
                 }
             }
+            TypedExprKind::Discharge(inner) => stack.push(inner),
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
     }

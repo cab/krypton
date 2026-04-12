@@ -293,6 +293,9 @@ fn free_vars_inner(
         TypedExprKind::QuestionMark { expr: inner, .. } => {
             free_vars_inner(inner, bound, free, seen);
         }
+        TypedExprKind::Discharge(inner) => {
+            free_vars_inner(inner, bound, free, seen);
+        }
         TypedExprKind::LetPattern {
             pattern,
             value,
@@ -360,7 +363,8 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
         TypedExprKind::TypeApp { expr: inner, .. }
         | TypedExprKind::UnaryOp { operand: inner, .. }
         | TypedExprKind::FieldAccess { expr: inner, .. }
-        | TypedExprKind::QuestionMark { expr: inner, .. } => contains_expr_kind(inner, pred),
+        | TypedExprKind::QuestionMark { expr: inner, .. }
+        | TypedExprKind::Discharge(inner) => contains_expr_kind(inner, pred),
         TypedExprKind::BinaryOp { lhs, rhs, .. } => {
             contains_expr_kind(lhs, pred) || contains_expr_kind(rhs, pred)
         }
@@ -1373,6 +1377,11 @@ impl LowerCtx {
     /// lower_expr + inline_compound_let instead.
     fn lower_to_atom(&mut self, expr: &TypedExpr) -> Result<(Vec<LetBinding>, Atom), LowerError> {
         match &expr.kind {
+            TypedExprKind::Discharge(inner) => {
+                // Evaluate inner (for ownership discharge), discard, return Unit.
+                let (bindings, _atom) = self.lower_to_atom(inner)?;
+                Ok((bindings, Atom::Lit(Literal::Unit)))
+            }
             TypedExprKind::Lit(lit) => Ok((vec![], Atom::Lit(convert_lit(lit)))),
             TypedExprKind::Var(name) => {
                 if resolved_constructor_ref(expr).is_some()
@@ -1703,10 +1712,10 @@ impl LowerCtx {
         expr: &TypedExpr,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         match &expr.kind {
-            TypedExprKind::Lit(_) => {
-                // Lits are atoms — callers should use lower_to_atom instead
+            TypedExprKind::Discharge(_) | TypedExprKind::Lit(_) => {
+                // Atoms — callers should use lower_to_atom instead
                 Err(LowerError::InternalError(
-                    "lower_to_simple called on Lit (use lower_to_atom)".to_string(),
+                    "lower_to_simple called on Lit/Discharge (use lower_to_atom)".to_string(),
                 ))
             }
             TypedExprKind::Var(name) => {
@@ -2016,6 +2025,12 @@ impl LowerCtx {
 
     fn lower_expr(&mut self, expr: &TypedExpr) -> Result<Expr, LowerError> {
         match &expr.kind {
+            TypedExprKind::Discharge(inner) => {
+                // Lower inner for ownership discharge, discard, return Unit.
+                let (bindings, _atom) = self.lower_to_atom(inner)?;
+                let unit_expr = atom_expr_at(expr.span, expr.ty.clone().into(), Atom::Lit(Literal::Unit));
+                Ok(Self::wrap_bindings(bindings, unit_expr))
+            }
             TypedExprKind::Lit(lit) => Ok(atom_expr_at(
                 expr.span,
                 expr.ty.clone().into(),

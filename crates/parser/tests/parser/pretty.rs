@@ -96,6 +96,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             type_params,
             lifts,
             methods,
+            deriving,
             ..
         } => Decl::Extern {
             platform: None,
@@ -134,6 +135,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                     span: (0, 0),
                 })
                 .collect(),
+            deriving: deriving.clone(),
             span: (0, 0),
         },
     }

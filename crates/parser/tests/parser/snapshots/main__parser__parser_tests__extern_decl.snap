@@ -67,6 +67,7 @@ decls:
           span:
             - 63
             - 93
+      deriving: []
       span:
         - 1
         - 95

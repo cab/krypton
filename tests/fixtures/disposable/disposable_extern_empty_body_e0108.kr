@@ -1,0 +1,7 @@
+# skip: js(java-only extern)
+# expect: error E0108
+extern java "native.Handle" as pub Handle lifts always {}
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = ()
+}

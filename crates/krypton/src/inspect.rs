@@ -625,6 +625,11 @@ impl<'a> TypedFormatter<'a> {
                 }
                 self.buf.push_str(" }");
             }
+            TypedExprKind::Discharge(inner) => {
+                self.buf.push_str("discharge(");
+                self.fmt_expr(inner);
+                self.buf.push(')');
+            }
             TypedExprKind::StructUpdate { base, fields } => {
                 self.buf.push_str("{ ");
                 self.fmt_expr(base);

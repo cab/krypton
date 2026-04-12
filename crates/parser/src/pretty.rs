@@ -575,6 +575,7 @@ impl<'a> Formatter<'a> {
             type_params,
             lifts,
             methods,
+            deriving,
             ..
         } = decl
         else {
@@ -647,6 +648,11 @@ impl<'a> Formatter<'a> {
         self.indent_level -= 1;
         self.buf.push('\n');
         self.buf.push('}');
+        if !deriving.is_empty() {
+            self.buf.push_str(" deriving (");
+            self.buf.push_str(&deriving.join(", "));
+            self.buf.push(')');
+        }
     }
 
     fn fmt_block_body(&mut self, exprs: &[Expr]) {

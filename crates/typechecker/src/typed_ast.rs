@@ -319,6 +319,9 @@ pub enum TypedExprKind {
         is_option: bool, // true=Option, false=Result
     },
     VecLit(Vec<TypedExpr>),
+    /// Compiler-only node: consumes an owned value and produces Unit.
+    /// Used by derived extern dispose to discharge linearity without destructuring.
+    Discharge(Box<TypedExpr>),
 }
 
 #[derive(Debug, Clone)]
@@ -696,6 +699,7 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
                 }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Discharge(inner) => work.push(inner),
         }
     }
 }

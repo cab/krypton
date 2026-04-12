@@ -313,6 +313,7 @@ fn collect_entries(
                 }
             }
             TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
+            TypedExprKind::Discharge(inner) => work.push(inner),
             TypedExprKind::App { .. } => unreachable!("handled above"),
             TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }

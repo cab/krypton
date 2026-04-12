@@ -1,0 +1,11 @@
+# skip: js(java-only extern)
+# expect: ok
+extern java "native.Handle" as pub Handle lifts always {}
+
+extern java "native.Handle" {
+    fun close_handle(h: ~Handle) -> Unit
+}
+
+impl Disposable[Handle] {
+    fun dispose(h: ~Handle) -> Unit = close_handle(h)
+}

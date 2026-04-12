@@ -786,6 +786,9 @@ fn collect_free_owned(
         TypedExprKind::QuestionMark { expr, .. } => {
             collect_free_owned(expr, owned, bound, acc);
         }
+        TypedExprKind::Discharge(inner) => {
+            collect_free_owned(inner, owned, bound, acc);
+        }
         TypedExprKind::Lit(_) => {}
     }
 }
@@ -1748,6 +1751,7 @@ impl<'a> OwnershipChecker<'a> {
             | TypedExprKind::Recur(elements)
             | TypedExprKind::VecLit(elements) => self.check_exprs(elements),
             TypedExprKind::QuestionMark { expr, .. } => self.check_expr(expr),
+            TypedExprKind::Discharge(inner) => self.check_expr(inner),
             TypedExprKind::Lit(_) => Ok(()),
         }
     }

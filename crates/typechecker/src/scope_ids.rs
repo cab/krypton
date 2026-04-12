@@ -128,6 +128,7 @@ fn walk(expr: &mut TypedExpr, gen: &mut ScopeIdGen) {
             }
         }
         TypedExprKind::QuestionMark { expr: inner, .. } => walk(inner, gen),
+        TypedExprKind::Discharge(inner) => walk(inner, gen),
         TypedExprKind::Var(_) | TypedExprKind::Lit(_) => {}
     }
 }

@@ -1,0 +1,20 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - Extern:
+      platform: ~
+      target: Java
+      module_path: java.lang.Integer
+      alias: JInt
+      alias_visibility: Pub
+      is_trait: false
+      type_params: []
+      lifts: ~
+      methods: []
+      deriving:
+        - Disposable
+      span:
+        - 13
+        - 81

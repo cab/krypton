@@ -985,6 +985,16 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
+            TypedExprKind::Discharge(inner) => {
+                self.walk_expr(inner, live);
+                let consumed = collect_moved_vars(inner, self.ownership_moves);
+                for var_name in consumed {
+                    if let Some(pos) = Self::find_live(live, &var_name) {
+                        live.remove(pos);
+                    }
+                }
+            }
+
             TypedExprKind::Lit(_) => {}
         }
     }
