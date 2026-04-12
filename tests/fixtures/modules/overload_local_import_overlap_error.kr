@@ -1,0 +1,4 @@
+# expect: error E0513
+import vec_mod.{length}
+
+fun length[a](x: a) -> Int = 0

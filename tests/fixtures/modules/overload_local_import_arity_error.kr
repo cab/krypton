@@ -1,0 +1,4 @@
+# expect: error E0515
+import vec_mod.{length}
+
+fun length(x: Int, y: Int) -> Int = 0

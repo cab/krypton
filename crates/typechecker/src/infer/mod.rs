@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    Decl, Expr, ExternMethod, ExternTarget, Module, Pattern, Span, TypeConstraint, TypeDecl,
-    TypeDeclKind, TypeParam, Visibility,
+    Decl, Expr, ExternMethod, ExternTarget, FnDecl, Module, Pattern, Span, TypeConstraint,
+    TypeDecl, TypeDeclKind, TypeParam, Visibility,
 };
 
+use crate::overload::{fn_param_types, types_overlap};
 use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
@@ -2339,9 +2340,41 @@ impl ModuleInferenceState {
         }
     }
 
+    fn resolve_fn_param_types_for_overlap(&self, f: &FnDecl) -> Option<Vec<Type>> {
+        let type_exprs: Vec<&krypton_parser::ast::TypeExpr> = f
+            .params
+            .iter()
+            .map(|p| p.ty.as_ref())
+            .collect::<Option<Vec<_>>>()?;
+
+        let mut gen = TypeVarGen::new();
+        let mut type_param_map = HashMap::new();
+        let mut type_param_arity = HashMap::new();
+        for tp in &f.type_params {
+            let id = gen.fresh();
+            type_param_map.insert(tp.name.clone(), id);
+            type_param_arity.insert(tp.name.clone(), tp.arity);
+        }
+
+        let mut types = Vec::new();
+        for texpr in type_exprs {
+            match type_registry::resolve_type_expr(
+                texpr,
+                &type_param_map,
+                &type_param_arity,
+                &self.registry,
+                ResolutionContext::UserAnnotation,
+                None,
+            ) {
+                Ok(ty) => types.push(ty),
+                Err(_) => return None,
+            }
+        }
+        Some(types)
+    }
+
     fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {
-        let mut seen: HashSet<&str> = HashSet::new();
-        // First pass: collect all extern method names (same name across targets is fine)
+        // Collect all extern method names (same name across targets is fine)
         let mut extern_names: HashSet<&str> = HashSet::new();
         for decl in &module.decls {
             if let Decl::Extern { methods, .. } = decl {
@@ -2350,16 +2383,67 @@ impl ModuleInferenceState {
                 }
             }
         }
-        // Second pass: check DefFn duplicates and DefFn-vs-extern conflicts
+        // Group DefFn by name
+        let mut groups: HashMap<&str, Vec<&FnDecl>> = HashMap::new();
         for decl in &module.decls {
             if let Decl::DefFn(f) = decl {
-                if extern_names.contains(f.name.as_str()) || !seen.insert(&f.name) {
+                if extern_names.contains(f.name.as_str()) {
                     return Err(spanned(
                         TypeError::DuplicateFunction {
                             name: f.name.clone(),
                         },
                         f.span,
                     ));
+                }
+                groups.entry(&f.name).or_default().push(f);
+            }
+        }
+        // Check each group with >1 definition for valid overloading
+        for (name, fns) in &groups {
+            if fns.len() <= 1 {
+                continue;
+            }
+            let last_span = fns.last().unwrap().span;
+            // All defs must have type annotations on all params
+            let param_types: Vec<Vec<Type>> = {
+                let mut pts = Vec::new();
+                for f in fns {
+                    match self.resolve_fn_param_types_for_overlap(f) {
+                        Some(tys) => pts.push(tys),
+                        None => {
+                            return Err(spanned(
+                                TypeError::LocalOverloadMissingAnnotation {
+                                    name: name.to_string(),
+                                },
+                                last_span,
+                            ));
+                        }
+                    }
+                }
+                pts
+            };
+            // All arities must match
+            let arities: Vec<usize> = param_types.iter().map(|p| p.len()).collect();
+            if arities.iter().any(|a| *a != arities[0]) {
+                return Err(spanned(
+                    TypeError::LocalOverloadArityMismatch {
+                        name: name.to_string(),
+                        arities,
+                    },
+                    last_span,
+                ));
+            }
+            // Pairwise overlap check
+            for i in 0..param_types.len() {
+                for j in (i + 1)..param_types.len() {
+                    if types_overlap(&param_types[i], &param_types[j]) {
+                        return Err(spanned(
+                            TypeError::LocalOverloadOverlap {
+                                name: name.to_string(),
+                            },
+                            fns[j].span,
+                        ));
+                    }
                 }
             }
         }
@@ -2370,18 +2454,67 @@ impl ModuleInferenceState {
         for decl in &module.decls {
             match decl {
                 Decl::DefFn(f) => {
-                    if let Some(imp) = self
+                    let non_prelude_imports: Vec<_> = self
                         .imports
                         .get_by_name(&f.name)
-                        .find(|imp| !imp.is_prelude)
-                    {
-                        return Err(spanned(
-                            TypeError::DefinitionConflictsWithImport {
-                                def_name: f.name.clone(),
-                                source_module: imp.qualified_name.module_path.clone(),
-                            },
-                            f.span,
-                        ));
+                        .filter(|imp| !imp.is_prelude)
+                        .collect();
+                    if non_prelude_imports.is_empty() {
+                        continue;
+                    }
+                    // Try to resolve local param types for overload checking
+                    let local_params = match self.resolve_fn_param_types_for_overlap(f) {
+                        Some(params) => params,
+                        None => {
+                            // Unannotated — keep current error behavior
+                            let imp = &non_prelude_imports[0];
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: f.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                f.span,
+                            ));
+                        }
+                    };
+                    for imp in &non_prelude_imports {
+                        let imp_params = match fn_param_types(&imp.scheme.ty) {
+                            Some(params) => params,
+                            None => {
+                                // Import is not a function — conflict
+                                return Err(spanned(
+                                    TypeError::DefinitionConflictsWithImport {
+                                        def_name: f.name.clone(),
+                                        source_module: imp.qualified_name.module_path.clone(),
+                                    },
+                                    f.span,
+                                ));
+                            }
+                        };
+                        if imp_params.len() != local_params.len() {
+                            return Err(spanned(
+                                TypeError::ImportOverloadArityMismatch {
+                                    name: f.name.clone(),
+                                    arities: vec![
+                                        ("(local)".to_string(), local_params.len()),
+                                        (
+                                            imp.qualified_name.module_path.clone(),
+                                            imp_params.len(),
+                                        ),
+                                    ],
+                                },
+                                f.span,
+                            ));
+                        }
+                        if types_overlap(&local_params, &imp_params) {
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: f.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                f.span,
+                            ));
+                        }
                     }
                 }
                 Decl::Extern { methods, .. } => {

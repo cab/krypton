@@ -115,6 +115,7 @@ pub enum TypeErrorCode {
     E0319, // Shape-polymorphic impl body failed to typecheck for one value form
     E0320, // Too many `shape` parameters in a single trait method (cap is 2)
     E0515, // Import overload arity mismatch
+    E0516, // Local overload arity mismatch
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -377,6 +378,16 @@ pub enum TypeError {
     DuplicateFunction {
         name: String,
     },
+    LocalOverloadArityMismatch {
+        name: String,
+        arities: Vec<usize>,
+    },
+    LocalOverloadMissingAnnotation {
+        name: String,
+    },
+    LocalOverloadOverlap {
+        name: String,
+    },
     DuplicateParam {
         name: String,
     },
@@ -605,6 +616,9 @@ impl TypeError {
             TypeError::UnresolvedMultiParamConstraint { .. } => TypeErrorCode::E0301,
             TypeError::DefinitionConflictsWithImport { .. } => TypeErrorCode::E0513,
             TypeError::DuplicateFunction { .. } => TypeErrorCode::E0514,
+            TypeError::LocalOverloadArityMismatch { .. } => TypeErrorCode::E0516,
+            TypeError::LocalOverloadMissingAnnotation { .. } => TypeErrorCode::E0514,
+            TypeError::LocalOverloadOverlap { .. } => TypeErrorCode::E0514,
             TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
@@ -906,6 +920,15 @@ impl TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 Some(format!("function `{name}` is already defined in this module; use a trait for type-based dispatch"))
+            }
+            TypeError::LocalOverloadArityMismatch { name, .. } => {
+                Some(format!("all definitions of `{name}` must have the same number of parameters; rename one to a different name"))
+            }
+            TypeError::LocalOverloadMissingAnnotation { name } => {
+                Some(format!("add explicit type annotations to all parameters of each `{name}` definition to form an overload set"))
+            }
+            TypeError::LocalOverloadOverlap { name } => {
+                Some(format!("parameter types of `{name}` overlap, so these cannot form an overload set; rename one definition"))
             }
             TypeError::DuplicateParam { name } => {
                 Some(format!("parameter `{name}` is already defined in this function"))
@@ -1633,6 +1656,19 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateFunction { name } => {
                 write!(f, "duplicate function definition: {}", name)
+            }
+            TypeError::LocalOverloadArityMismatch { name, arities } => {
+                write!(
+                    f,
+                    "local overload arity mismatch for `{name}`: definitions have {} parameter(s)",
+                    arities.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(" vs ")
+                )
+            }
+            TypeError::LocalOverloadMissingAnnotation { name } => {
+                write!(f, "overloaded local function `{name}` requires type annotations")
+            }
+            TypeError::LocalOverloadOverlap { name } => {
+                write!(f, "overlapping local overloads for `{name}`")
             }
             TypeError::DuplicateParam { name } => {
                 write!(f, "duplicate parameter name: {}", name)

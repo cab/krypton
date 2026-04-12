@@ -1,0 +1,4 @@
+# expect: ok
+import vec_mod.{length}
+
+fun length(l: List[Int]) -> Int = 0

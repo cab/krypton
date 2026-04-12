@@ -204,6 +204,58 @@ fn ok_shadow_prelude_list_with_same_constructors() {
 }
 
 #[test]
+// ----------------------------------------------------------------------------
+// Local overload sets
+// ----------------------------------------------------------------------------
+
+#[test]
+fn ok_local_overload_non_overlapping() {
+    expect_ok(
+        r#"
+            fun length(v: Vec[Int]) -> Int = 0
+            fun length(l: List[Int]) -> Int = 0
+            fun main() -> Int = 0
+        "#,
+    );
+}
+
+#[test]
+fn e0514_local_overload_overlapping() {
+    expect_error_code(
+        r#"
+            fun id[a](x: a) -> a = x
+            fun id[b](y: b) -> b = y
+            fun main() -> Int = 0
+        "#,
+        "E0514",
+    );
+}
+
+#[test]
+fn e0516_local_overload_arity_mismatch() {
+    expect_error_code(
+        r#"
+            fun foo(x: Int) -> Int = x
+            fun foo(x: Int, y: Int) -> Int = x
+            fun main() -> Int = 0
+        "#,
+        "E0516",
+    );
+}
+
+#[test]
+fn e0514_local_overload_unannotated() {
+    expect_error_code(
+        r#"
+            fun foo(x) = x
+            fun foo(y) = y
+            fun main() -> Int = 0
+        "#,
+        "E0514",
+    );
+}
+
+#[test]
 fn ok_user_type_named_after_prelude_constructor_name() {
     // A brand-new user type whose only constructor happens to reuse the name
     // of a prelude constructor (`Some`) must not collide — prelude
