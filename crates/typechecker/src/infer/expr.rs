@@ -798,7 +798,7 @@ impl<'a> InferenceContext<'a> {
         name: &str,
         candidates: &[crate::types::OverloadCandidate],
         args: &[Expr],
-        is_ufcs: bool,
+        _is_ufcs: bool,
         expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
@@ -812,15 +812,13 @@ impl<'a> InferenceContext<'a> {
             args_typed.push(a_typed);
         }
 
-        // 2. Filter candidates via candidate_matches
-        let matching: Vec<usize> = candidates
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| {
-                crate::overload::candidate_matches(&c.scheme, &arg_types, &mut self.gen)
-            })
-            .map(|(i, _)| i)
-            .collect();
+        // 2. Filter candidates via candidate_matches, keeping match results
+        let mut matches: Vec<(usize, crate::overload::CandidateMatch)> = Vec::new();
+        for (i, c) in candidates.iter().enumerate() {
+            if let Some(m) = crate::overload::candidate_matches(&c.scheme, &arg_types, &mut self.gen) {
+                matches.push((i, m));
+            }
+        }
 
         // 3. Select
         let candidate_descriptions: Vec<String> = candidates
@@ -839,7 +837,7 @@ impl<'a> InferenceContext<'a> {
             })
             .collect();
 
-        let winner = match matching.len() {
+        let (winner_idx, winner_match) = match matches.len() {
             0 => {
                 return Err(super::spanned(
                     TypeError::NoMatchingOverload {
@@ -850,11 +848,11 @@ impl<'a> InferenceContext<'a> {
                     span,
                 ));
             }
-            1 => matching[0],
+            1 => matches.into_iter().next().unwrap(),
             _ => {
-                let ambiguous: Vec<String> = matching
+                let ambiguous: Vec<String> = matches
                     .iter()
-                    .map(|&i| candidate_descriptions[i].clone())
+                    .map(|(i, _)| candidate_descriptions[*i].clone())
                     .collect();
                 return Err(super::spanned(
                     TypeError::AmbiguousOverload {
@@ -866,10 +864,11 @@ impl<'a> InferenceContext<'a> {
             }
         };
 
-        let winning = &candidates[winner];
+        let winning = &candidates[winner_idx];
+        let func_ty = winner_match.instantiated_ty;
 
-        // 4. Instantiate winning candidate's scheme with fresh vars in real subst
-        let func_ty = winning.scheme.instantiate(&mut || self.gen.fresh());
+        // 4. Commit the candidate's local substitution into the real one
+        self.subst.merge_type_bindings(winner_match.local_subst);
 
         // 5. Apply expected return type steering
         if let Some(expected) = expected_type {
@@ -879,32 +878,12 @@ impl<'a> InferenceContext<'a> {
             }
         }
 
-        // 6. Full per-arg coerce_unify against real substitution
+        // 6. Extract param modes and return type from the (now-committed) function type
         let resolved_func_ty = self.subst.apply(&func_ty);
         let unwrapped = self.unwrap_own_fn(&resolved_func_ty);
-        let param_modes;
-        match &unwrapped {
-            Type::Fn(param_types, ret_type) => {
-                param_modes = param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>();
-                if param_types.len() != arg_types.len() {
-                    return Err(super::spanned(
-                        TypeError::WrongArity {
-                            expected: param_types.len(),
-                            actual: arg_types.len(),
-                        },
-                        span,
-                    ));
-                }
-                for (arg_ty, (_, param_ty)) in arg_types.iter().zip(param_types.iter()) {
-                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
-                        let mut err = super::spanned(e, span);
-                        self.add_shadowed_prelude_note(&mut err, is_ufcs);
-                        err
-                    })?;
-                }
-                let ret_var = Type::Var(self.fresh());
-                unify(ret_type, &ret_var, self.subst)
-                    .map_err(|e| super::spanned(e, span))?;
+        let param_modes = match &unwrapped {
+            Type::Fn(param_types, _) => {
+                param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>()
             }
             _ => {
                 return Err(super::spanned(
@@ -912,7 +891,7 @@ impl<'a> InferenceContext<'a> {
                     span,
                 ));
             }
-        }
+        };
 
         // 7. Build result
         let resolved_ref = super::resolved_ref_from_binding_source(&winning.source);
@@ -926,14 +905,10 @@ impl<'a> InferenceContext<'a> {
             _ => self.subst.apply(&ty),
         };
 
-        // Build func_typed for the winning candidate
-        let func_span = match args.first() {
-            _ => span,
-        };
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(name.to_string()),
             ty,
-            span: func_span,
+            span,
             resolved_ref: resolved_ref.clone(),
             scope_id: None,
         };

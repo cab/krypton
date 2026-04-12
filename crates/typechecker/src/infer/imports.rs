@@ -29,6 +29,34 @@ fn constructor_kind_from_summary(
 }
 
 impl ModuleInferenceState {
+    /// Bind an imported name's def span, or just update the span if the name
+    /// already has overload candidates (to avoid overwriting the overload set).
+    fn bind_or_update_def_span(
+        &mut self,
+        effective_name: String,
+        scheme: crate::types::TypeScheme,
+        binding_source: crate::types::BindingSource,
+        def_span: Span,
+        source_module: String,
+    ) {
+        let has_overloads = self.env.lookup_entry(&effective_name)
+            .is_some_and(|e| e.overload_candidates.is_some());
+        let ds = crate::types::DefSpan {
+            span: def_span,
+            source_module: Some(source_module),
+        };
+        if has_overloads {
+            self.env.set_def_span(effective_name, ds);
+        } else {
+            self.env.bind_with_source_and_def_span(
+                effective_name,
+                scheme,
+                binding_source,
+                ds,
+            );
+        }
+    }
+
     /// Build a synthetic `Decl::Import` for the prelude, gathering all re-exported names
     /// from the cached prelude module. Returns `None` when we ARE the prelude or it
     /// isn't cached yet.
@@ -266,27 +294,13 @@ impl ModuleInferenceState {
                             },
                         )?;
                         if let Some(ds) = ef.def_span {
-                            let has_overloads = self.env.lookup_entry(&effective_name)
-                                .is_some_and(|e| e.overload_candidates.is_some());
-                            if has_overloads {
-                                self.env.set_def_span(
-                                    effective_name.clone(),
-                                    crate::types::DefSpan {
-                                        span: ds,
-                                        source_module: Some(path.to_string()),
-                                    },
-                                );
-                            } else {
-                                self.env.bind_with_source_and_def_span(
-                                    effective_name.clone(),
-                                    ef.scheme.clone(),
-                                    binding_source,
-                                    crate::types::DefSpan {
-                                        span: ds,
-                                        source_module: Some(path.to_string()),
-                                    },
-                                );
-                            }
+                            self.bind_or_update_def_span(
+                                effective_name.clone(),
+                                ef.scheme.clone(),
+                                binding_source,
+                                ds,
+                                path.to_string(),
+                            );
                         }
                     }
                 }
@@ -437,27 +451,13 @@ impl ModuleInferenceState {
                             },
                         )?;
                         if let Some(ds) = ef.def_span {
-                            let has_overloads = self.env.lookup_entry(&effective_name)
-                                .is_some_and(|e| e.overload_candidates.is_some());
-                            if has_overloads {
-                                self.env.set_def_span(
-                                    effective_name.clone(),
-                                    crate::types::DefSpan {
-                                        span: ds,
-                                        source_module: Some(original_prov.0.clone()),
-                                    },
-                                );
-                            } else {
-                                self.env.bind_with_source_and_def_span(
-                                    effective_name.clone(),
-                                    ef.scheme.clone(),
-                                    binding_source,
-                                    crate::types::DefSpan {
-                                        span: ds,
-                                        source_module: Some(original_prov.0.clone()),
-                                    },
-                                );
-                            }
+                            self.bind_or_update_def_span(
+                                effective_name.clone(),
+                                ef.scheme.clone(),
+                                binding_source,
+                                ds,
+                                original_prov.0.clone(),
+                            );
                         }
                     }
                 }

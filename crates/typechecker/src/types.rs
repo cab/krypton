@@ -1005,6 +1005,11 @@ impl Substitution {
         self.map.insert(var, ty);
     }
 
+    /// Merge all type-variable bindings from `other` into `self`.
+    pub fn merge_type_bindings(&mut self, other: Substitution) {
+        self.map.extend(other.map);
+    }
+
     // ── Qualifier variable methods ──────────────────────────────────────
 
     /// Create a fresh qualifier variable at the current scope depth.

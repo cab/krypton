@@ -28,11 +28,12 @@ pub fn types_overlap(a: &[Type], b: &[Type]) -> bool {
     true
 }
 
-/// Extract value-parameter types from a Type that is Fn.
+/// Extract value-parameter types from a Type that is Fn (or ~Fn).
 /// Returns None if the type is not a function.
 pub fn fn_param_types(ty: &Type) -> Option<Vec<Type>> {
     match ty {
         Type::Fn(params, _) => Some(params.iter().map(|(_, ty)| ty.clone()).collect()),
+        Type::Own(inner) => fn_param_types(inner),
         _ => None,
     }
 }
@@ -59,29 +60,41 @@ pub fn check_overload_arity(
     Ok(())
 }
 
+/// Result of a successful candidate match — carries the instantiated function
+/// type and the local substitution so the caller can commit them without
+/// re-instantiating.
+pub struct CandidateMatch {
+    pub instantiated_ty: Type,
+    pub local_subst: Substitution,
+}
+
 /// Check whether a candidate function scheme matches the given argument types.
 /// Instantiates the scheme with fresh type variables, then tries coerce_unify
-/// for each arg/param pair in a fresh substitution. Returns true if all succeed.
+/// for each arg/param pair in a fresh substitution. On success returns the
+/// instantiated type and local substitution so the caller can commit them.
 pub fn candidate_matches(
     scheme: &TypeScheme,
     arg_types: &[Type],
     gen: &mut TypeVarGen,
-) -> bool {
+) -> Option<CandidateMatch> {
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     let params = match fn_param_types(&instantiated) {
         Some(p) => p,
-        None => return false,
+        None => return None,
     };
     if params.len() != arg_types.len() {
-        return false;
+        return None;
     }
     let mut subst = Substitution::new();
     for (arg, param) in arg_types.iter().zip(params.iter()) {
         if coerce_unify(arg, param, &mut subst).is_err() {
-            return false;
+            return None;
         }
     }
-    true
+    Some(CandidateMatch {
+        instantiated_ty: instantiated,
+        local_subst: subst,
+    })
 }
 
 #[cfg(test)]
