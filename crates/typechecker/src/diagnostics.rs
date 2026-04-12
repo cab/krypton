@@ -103,7 +103,7 @@ fn lower_type_error(
         primary_label: Some(format!("{}: {}", code, err.format_message())),
         secondary_labels,
         help: err.format_help(),
-        note: err.note.clone(),
+        note: err.note.clone().or_else(|| err.error.note()),
     };
 
     (vec![diag], all_sources)

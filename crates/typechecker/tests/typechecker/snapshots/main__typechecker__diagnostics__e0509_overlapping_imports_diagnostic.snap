@@ -1,0 +1,17 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0509] Error: overlapping imports for `length`
+   ╭─[ ../../tests/fixtures/modules/overload_import_overlap_error.kr:3:1 ]
+   │
+ 3 │ import generic_length_mod.{length}
+   │ ─────────────────┬────────────────  
+   │                  ╰────────────────── E0509: overlapping imports for `length`
+   │ 
+   │ Help: use an alias: `import generic_length_mod.{length as alias}`
+   │ 
+   │ Note:   vec_mod.length: (Vec[Int]) -> Int
+   │         generic_length_mod.length: forall a. (a) -> Int
+   │       parameter types overlap, so these candidates cannot be distinguished by argument types
+───╯

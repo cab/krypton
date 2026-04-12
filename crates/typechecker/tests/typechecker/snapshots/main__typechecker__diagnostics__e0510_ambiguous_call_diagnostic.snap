@@ -1,0 +1,17 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0510] Error: ambiguous call to `length`
+   ╭─[ ../../tests/fixtures/modules/overload_deferred_ambiguous.kr:5:28 ]
+   │
+ 5 │ fun ambiguous(xs) -> Int = length(xs)
+   │                            ─────┬────  
+   │                                 ╰────── E0510: ambiguous call to `length`
+   │ 
+   │ Help: add a type annotation to disambiguate
+   │ 
+   │ Note: type of argument is not known; cannot select among candidates:
+   │         vec_mod.length: (Vec[Int]) -> Int
+   │         list_mod.length: (List[Int]) -> Int
+───╯

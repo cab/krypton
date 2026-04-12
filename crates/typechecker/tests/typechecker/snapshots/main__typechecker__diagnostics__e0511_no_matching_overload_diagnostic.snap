@@ -1,0 +1,18 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0511] Error: no matching overload for `length`
+   ╭─[ ../../tests/fixtures/modules/overload_call_no_match.kr:5:30 ]
+   │
+ 5 │ fun test(s: String) -> Int = length(s)
+   │                              ────┬────  
+   │                                  ╰────── E0511: no matching overload for `length`
+   │ 
+   │ Help: check that the correct module is imported for this argument type
+   │ 
+   │ Note: argument types: (String)
+   │       candidates considered:
+   │         vec_mod.length: (Vec[Int]) -> Int — does not match
+   │         list_mod.length: (List[Int]) -> Int — does not match
+───╯

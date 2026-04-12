@@ -80,7 +80,7 @@ pub enum TypeErrorCode {
     E0015, // Duplicate constructor across types (value namespace)
     E0016, // Type/trait name collision (type namespace)
     E0318, // Duplicate trait (type namespace)
-    E0511, // Wildcard not allowed in this position
+    E0511, // No matching overload
     E0512, // Nested wildcard in impl head
     E0307, // Unknown trait
     E0308, // Self outside impl block
@@ -119,6 +119,7 @@ pub enum TypeErrorCode {
     E0517, // No matching overload
     E0518, // Ambiguous overload
     E0519, // Unknown export (name does not exist in module)
+    E0520, // Wildcard not allowed in this position
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -617,7 +618,7 @@ impl TypeError {
             TypeError::ImportOverloadArityMismatch { .. } => TypeErrorCode::E0515,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0519,
             TypeError::RedundantPattern => TypeErrorCode::E0013,
-            TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
+            TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0520,
             TypeError::NestedWildcard { .. } => TypeErrorCode::E0512,
             TypeError::UnknownTrait { .. } => TypeErrorCode::E0307,
             TypeError::SelfOutsideImpl => TypeErrorCode::E0308,
@@ -635,7 +636,7 @@ impl TypeError {
             TypeError::LocalOverloadArityMismatch { .. } => TypeErrorCode::E0516,
             TypeError::LocalOverloadMissingAnnotation { .. } => TypeErrorCode::E0514,
             TypeError::LocalOverloadOverlap { .. } => TypeErrorCode::E0514,
-            TypeError::NoMatchingOverload { .. } => TypeErrorCode::E0517,
+            TypeError::NoMatchingOverload { .. } => TypeErrorCode::E0511,
             TypeError::AmbiguousOverload { .. } => TypeErrorCode::E0518,
             TypeError::UnresolvedOverload { .. } => TypeErrorCode::E0510,
             TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
@@ -877,11 +878,8 @@ impl TypeError {
             TypeError::ReservedName { name } => {
                 Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
             }
-            TypeError::DuplicateImport { name, modules, signatures } => {
-                let sigs = signatures.iter().enumerate().map(|(i, s)| {
-                    format!("  `{}`: {}", modules[i], s)
-                }).collect::<Vec<_>>().join("\n");
-                Some(format!("parameter types overlap, so these cannot form an overload set:\n{}\nrename one import with an alias: `import {}.{{{} as alias}}`", sigs, modules[1], name))
+            TypeError::DuplicateImport { name, modules, .. } => {
+                Some(format!("use an alias: `import {}.{{{} as alias}}`", modules[1], name))
             }
             TypeError::ImportOverloadArityMismatch { name, arities } => {
                 Some(format!("rename one import with an alias: `import {}.{{{} as alias}}`", arities[1].0, name))
@@ -1058,11 +1056,50 @@ impl TypeError {
                     "closures cannot capture borrowed bindings (no closure lifetimes); reborrow into a call or restructure to pass the value explicitly".to_string()
                 }
             }),
-            TypeError::NoMatchingOverload { .. } => None,
+            TypeError::NoMatchingOverload { .. } => {
+                Some("check that the correct module is imported for this argument type".to_string())
+            }
             TypeError::AmbiguousOverload { .. } => None,
             TypeError::UnresolvedOverload { .. } => {
                 Some("add a type annotation to disambiguate".to_string())
             }
+        }
+    }
+
+    pub fn note(&self) -> Option<String> {
+        match self {
+            TypeError::DuplicateImport { name, modules, signatures } => {
+                let mut lines = Vec::new();
+                for (i, sig) in signatures.iter().enumerate() {
+                    lines.push(format!("  {}.{}: {}", modules[i], name, sig));
+                }
+                lines.push("parameter types overlap, so these candidates cannot be distinguished by argument types".to_string());
+                Some(lines.join("\n"))
+            }
+            TypeError::UnresolvedOverload { candidates, .. } => {
+                let mut lines = vec!["type of argument is not known; cannot select among candidates:".to_string()];
+                for c in candidates {
+                    lines.push(format!("  {c}"));
+                }
+                Some(lines.join("\n"))
+            }
+            TypeError::NoMatchingOverload { candidates, arg_types, .. } => {
+                let arg_list = arg_types.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", ");
+                let mut lines = vec![format!("argument types: ({arg_list})")];
+                lines.push("candidates considered:".to_string());
+                for c in candidates {
+                    lines.push(format!("  {c} \u{2014} does not match"));
+                }
+                Some(lines.join("\n"))
+            }
+            TypeError::AmbiguousOverload { candidates, .. } => {
+                let mut lines = vec!["multiple candidates match:".to_string()];
+                for c in candidates {
+                    lines.push(format!("  {c}"));
+                }
+                Some(lines.join("\n"))
+            }
+            _ => None,
         }
     }
 
@@ -1535,12 +1572,8 @@ impl fmt::Display for TypeError {
                     name
                 )
             }
-            TypeError::DuplicateImport { name, modules, .. } => {
-                write!(
-                    f,
-                    "duplicate import: `{}` is already imported from `{}`; use `import {}.{{{} as alias}}` to disambiguate",
-                    name, modules[0], modules[1], name
-                )
+            TypeError::DuplicateImport { name, .. } => {
+                write!(f, "overlapping imports for `{name}`")
             }
             TypeError::ImportOverloadArityMismatch { name, arities } => {
                 write!(
@@ -1694,27 +1727,14 @@ impl fmt::Display for TypeError {
             TypeError::LocalOverloadOverlap { name } => {
                 write!(f, "overlapping local overloads for `{name}`")
             }
-            TypeError::NoMatchingOverload { name, candidates, arg_types } => {
-                let arg_list = arg_types.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", ");
-                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
-                write!(
-                    f,
-                    "no matching overload for `{name}` with argument types ({arg_list})\ncandidates:\n{cand_list}"
-                )
+            TypeError::NoMatchingOverload { name, .. } => {
+                write!(f, "no matching overload for `{name}`")
             }
-            TypeError::AmbiguousOverload { name, candidates } => {
-                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
-                write!(
-                    f,
-                    "ambiguous overload for `{name}`: multiple candidates match\ncandidates:\n{cand_list}"
-                )
+            TypeError::AmbiguousOverload { name, .. } => {
+                write!(f, "ambiguous overload for `{name}`")
             }
-            TypeError::UnresolvedOverload { name, candidates } => {
-                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
-                write!(
-                    f,
-                    "ambiguous call to `{name}`: type of argument is not known; cannot select among candidates:\n{cand_list}"
-                )
+            TypeError::UnresolvedOverload { name, .. } => {
+                write!(f, "ambiguous call to `{name}`")
             }
             TypeError::DuplicateParam { name } => {
                 write!(f, "duplicate parameter name: {}", name)

@@ -87,7 +87,7 @@ pub(super) fn resolve_deferred_overloads(
                     i += 1;
                 }
                 0 => {
-                    // Concrete args, no match → E0517
+                    // Concrete args, no match → E0511
                     let entry = deferred.remove(i);
                     return Err(super::spanned(
                         TypeError::NoMatchingOverload {

@@ -1,4 +1,4 @@
-# expect: error E0517
+# expect: error E0511
 import vec_mod.{length}
 import list_mod.{length}
 

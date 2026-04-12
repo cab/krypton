@@ -77,6 +77,28 @@ fn render_fixture_error(fixture: &str) -> String {
         .collect()
 }
 
+fn render_fixture_module_error(fixture: &str) -> String {
+    let path = std::path::Path::new(fixture);
+    let src = std::fs::read_to_string(path).unwrap();
+    let resolver = CompositeResolver::with_source_root(path.parent().unwrap().to_path_buf());
+    let (module, errors) = parse(&src);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let errors = match infer::infer_module(
+        &module,
+        &resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok(_) => panic!("expected a type error"),
+        Err(errors) => errors,
+    };
+    let (diags, srcs) = lower_infer_errors(fixture, &src, &errors);
+    diags
+        .iter()
+        .map(|d| PlainTextRenderer.render(d, &srcs))
+        .collect()
+}
+
 fn render_module_error_with_resolver(
     src: &str,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
@@ -842,4 +864,25 @@ fn e0109_let_binding_wording() {
         output.contains("let-bindings consume the value"),
         "expected let-specific help in:\n{output}"
     );
+}
+
+#[test]
+fn e0509_overlapping_imports_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_import_overlap_error.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn e0510_ambiguous_call_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_deferred_ambiguous.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn e0511_no_matching_overload_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_call_no_match.kr");
+    insta::assert_snapshot!(output);
 }
