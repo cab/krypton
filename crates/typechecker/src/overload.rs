@@ -28,6 +28,15 @@ pub fn types_overlap(a: &[Type], b: &[Type]) -> bool {
     true
 }
 
+/// Extract value-parameter types from a Type that is Fn.
+/// Returns None if the type is not a function.
+pub fn fn_param_types(ty: &Type) -> Option<Vec<Type>> {
+    match ty {
+        Type::Fn(params, _) => Some(params.iter().map(|(_, ty)| ty.clone()).collect()),
+        _ => None,
+    }
+}
+
 pub struct OverloadArityMismatch {
     pub name: String,
     pub arities: Vec<(String, usize)>,
@@ -142,5 +151,31 @@ mod tests {
     #[test]
     fn empty() {
         assert!(check_overload_arity("foo", &[]).is_ok());
+    }
+
+    #[test]
+    fn fn_param_types_extracts_params() {
+        use crate::types::ParamMode;
+        let ty = Type::Fn(
+            vec![
+                (ParamMode::Borrow, Type::Int),
+                (ParamMode::Borrow, Type::String),
+            ],
+            Box::new(Type::Bool),
+        );
+        let params = fn_param_types(&ty).unwrap();
+        assert_eq!(params, vec![Type::Int, Type::String]);
+    }
+
+    #[test]
+    fn fn_param_types_not_fn() {
+        assert!(fn_param_types(&Type::Int).is_none());
+    }
+
+    #[test]
+    fn fn_param_types_zero_params() {
+        let ty = Type::Fn(vec![], Box::new(Type::Unit));
+        let params = fn_param_types(&ty).unwrap();
+        assert!(params.is_empty());
     }
 }

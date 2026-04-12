@@ -114,6 +114,7 @@ pub enum TypeErrorCode {
     E0317, // Unsupported trait constraint shape (e.g. multi-parameter)
     E0319, // Shape-polymorphic impl body failed to typecheck for one value form
     E0320, // Too many `shape` parameters in a single trait method (cap is 2)
+    E0515, // Import overload arity mismatch
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -306,6 +307,11 @@ pub enum TypeError {
     DuplicateImport {
         name: String,
         modules: Vec<String>,
+        signatures: Vec<String>,
+    },
+    ImportOverloadArityMismatch {
+        name: String,
+        arities: Vec<(String, usize)>,
     },
     UnknownExport {
         name: String,
@@ -581,6 +587,7 @@ impl TypeError {
             TypeError::DisposableBranchLeak { .. } => TypeErrorCode::E0105,
             TypeError::ReservedName { .. } => TypeErrorCode::E0012,
             TypeError::DuplicateImport { .. } => TypeErrorCode::E0509,
+            TypeError::ImportOverloadArityMismatch { .. } => TypeErrorCode::E0515,
             TypeError::UnknownExport { .. } => TypeErrorCode::E0510,
             TypeError::RedundantPattern => TypeErrorCode::E0013,
             TypeError::WildcardNotAllowed { .. } => TypeErrorCode::E0511,
@@ -837,8 +844,14 @@ impl TypeError {
             TypeError::ReservedName { name } => {
                 Some(format!("names starting with `__krypton_` are reserved for compiler internals; rename `{}`", name))
             }
-            TypeError::DuplicateImport { name, modules } => {
-                Some(format!("rename one import with an alias: `import {}.{{{} as alias}}`", modules[1], name))
+            TypeError::DuplicateImport { name, modules, signatures } => {
+                let sigs = signatures.iter().enumerate().map(|(i, s)| {
+                    format!("  `{}`: {}", modules[i], s)
+                }).collect::<Vec<_>>().join("\n");
+                Some(format!("parameter types overlap, so these cannot form an overload set:\n{}\nrename one import with an alias: `import {}.{{{} as alias}}`", sigs, modules[1], name))
+            }
+            TypeError::ImportOverloadArityMismatch { name, arities } => {
+                Some(format!("rename one import with an alias: `import {}.{{{} as alias}}`", arities[1].0, name))
             }
             TypeError::UnknownExport { name, module_path } => {
                 Some(format!("module `{}` has no export named `{}`", module_path, name))
@@ -1475,11 +1488,18 @@ impl fmt::Display for TypeError {
                     name
                 )
             }
-            TypeError::DuplicateImport { name, modules } => {
+            TypeError::DuplicateImport { name, modules, .. } => {
                 write!(
                     f,
                     "duplicate import: `{}` is already imported from `{}`; use `import {}.{{{} as alias}}` to disambiguate",
                     name, modules[0], modules[1], name
+                )
+            }
+            TypeError::ImportOverloadArityMismatch { name, arities } => {
+                write!(
+                    f,
+                    "import overload arity mismatch: `{}` has {} parameter(s) in `{}` but {} in `{}`",
+                    name, arities[0].1, arities[0].0, arities[1].1, arities[1].0
                 )
             }
             TypeError::UnknownExport { name, module_path } => {

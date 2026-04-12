@@ -1,0 +1,3 @@
+# expect: error E0515
+import helpers_a.{compute}
+import helpers_c.{compute}

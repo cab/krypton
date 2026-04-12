@@ -1,0 +1,1 @@
+pub fun length(v: Vec[Int]) -> Int = 0

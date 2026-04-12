@@ -1,0 +1,4 @@
+# expect: ok
+import vec_mod.{length}
+import list_mod.{length}
+import int_mod.{abs}

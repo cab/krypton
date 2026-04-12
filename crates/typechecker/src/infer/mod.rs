@@ -1891,20 +1891,61 @@ impl ImportContext {
         // prelude-origin shadowing for later local-definition checks.
         let effective_is_prelude = is_prelude || same_symbol_as_prelude;
 
-        // Reject same-name import from a different surviving import source.
+        // Check same-name imports from different modules for overload compatibility.
         let same_name: Vec<_> = self.get_by_name(&name).collect();
         for existing in same_name {
             if existing.qualified_name.module_path != source_module {
-                return Err(spanned(
-                    TypeError::DuplicateImport {
-                        name: name.clone(),
-                        modules: vec![
-                            existing.qualified_name.module_path.clone(),
-                            source_module.clone(),
-                        ],
-                    },
-                    span,
-                ));
+                let existing_params = crate::overload::fn_param_types(&existing.scheme.ty);
+                let new_params = crate::overload::fn_param_types(&scheme.ty);
+
+                match (existing_params, new_params) {
+                    (Some(ep), Some(np)) => {
+                        if ep.len() != np.len() {
+                            return Err(spanned(
+                                TypeError::ImportOverloadArityMismatch {
+                                    name: name.clone(),
+                                    arities: vec![
+                                        (existing.qualified_name.module_path.clone(), ep.len()),
+                                        (source_module.clone(), np.len()),
+                                    ],
+                                },
+                                span,
+                            ));
+                        }
+                        if crate::overload::types_overlap(&ep, &np) {
+                            return Err(spanned(
+                                TypeError::DuplicateImport {
+                                    name: name.clone(),
+                                    modules: vec![
+                                        existing.qualified_name.module_path.clone(),
+                                        source_module.clone(),
+                                    ],
+                                    signatures: vec![
+                                        format!("{}", existing.scheme),
+                                        format!("{}", scheme),
+                                    ],
+                                },
+                                span,
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(spanned(
+                            TypeError::DuplicateImport {
+                                name: name.clone(),
+                                modules: vec![
+                                    existing.qualified_name.module_path.clone(),
+                                    source_module.clone(),
+                                ],
+                                signatures: vec![
+                                    format!("{}", existing.scheme),
+                                    format!("{}", scheme),
+                                ],
+                            },
+                            span,
+                        ));
+                    }
+                }
             }
         }
 
@@ -1942,8 +1983,11 @@ impl ImportContext {
     ) -> Result<BindingSource, SpannedTypeError> {
         let name = b.name.clone();
         let scheme = b.scheme.clone();
+        let already_bound = env.lookup(&name).is_some();
         let binding_source = self.register_import_binding(b)?;
-        env.bind_with_source(name, scheme, binding_source.clone());
+        if !already_bound {
+            env.bind_with_source(name, scheme, binding_source.clone());
+        }
         Ok(binding_source)
     }
 
