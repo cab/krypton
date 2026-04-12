@@ -5,6 +5,7 @@ pub mod infer;
 pub mod intrinsics;
 pub mod link_context;
 pub mod module_interface;
+pub mod overload;
 pub mod ownership;
 pub mod scc;
 pub mod scope_ids;
