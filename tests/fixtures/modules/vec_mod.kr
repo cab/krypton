@@ -1,1 +1,2 @@
 pub fun length(v: Vec[Int]) -> Int = 0
+pub fun fold(v: Vec[Int], init: Int, f: (Int, Int) -> Int) -> Int = init

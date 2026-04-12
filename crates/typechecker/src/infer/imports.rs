@@ -266,15 +266,27 @@ impl ModuleInferenceState {
                             },
                         )?;
                         if let Some(ds) = ef.def_span {
-                            self.env.bind_with_source_and_def_span(
-                                effective_name.clone(),
-                                ef.scheme.clone(),
-                                binding_source,
-                                crate::types::DefSpan {
-                                    span: ds,
-                                    source_module: Some(path.to_string()),
-                                },
-                            );
+                            let has_overloads = self.env.lookup_entry(&effective_name)
+                                .is_some_and(|e| e.overload_candidates.is_some());
+                            if has_overloads {
+                                self.env.set_def_span(
+                                    effective_name.clone(),
+                                    crate::types::DefSpan {
+                                        span: ds,
+                                        source_module: Some(path.to_string()),
+                                    },
+                                );
+                            } else {
+                                self.env.bind_with_source_and_def_span(
+                                    effective_name.clone(),
+                                    ef.scheme.clone(),
+                                    binding_source,
+                                    crate::types::DefSpan {
+                                        span: ds,
+                                        source_module: Some(path.to_string()),
+                                    },
+                                );
+                            }
                         }
                     }
                 }
@@ -425,15 +437,27 @@ impl ModuleInferenceState {
                             },
                         )?;
                         if let Some(ds) = ef.def_span {
-                            self.env.bind_with_source_and_def_span(
-                                effective_name.clone(),
-                                ef.scheme.clone(),
-                                binding_source,
-                                crate::types::DefSpan {
-                                    span: ds,
-                                    source_module: Some(original_prov.0.clone()),
-                                },
-                            );
+                            let has_overloads = self.env.lookup_entry(&effective_name)
+                                .is_some_and(|e| e.overload_candidates.is_some());
+                            if has_overloads {
+                                self.env.set_def_span(
+                                    effective_name.clone(),
+                                    crate::types::DefSpan {
+                                        span: ds,
+                                        source_module: Some(original_prov.0.clone()),
+                                    },
+                                );
+                            } else {
+                                self.env.bind_with_source_and_def_span(
+                                    effective_name.clone(),
+                                    ef.scheme.clone(),
+                                    binding_source,
+                                    crate::types::DefSpan {
+                                        span: ds,
+                                        source_module: Some(original_prov.0.clone()),
+                                    },
+                                );
+                            }
                         }
                     }
                 }

@@ -558,6 +558,23 @@ impl<'a> InferenceContext<'a> {
         expected_type: Option<&Type>,
         span: Span,
     ) -> Result<TypedExpr, SpannedTypeError> {
+        if let Expr::Var { name, .. } = func {
+            if let Some(candidates) = self
+                .env
+                .lookup_entry(name)
+                .and_then(|e| e.overload_candidates.as_ref())
+                .cloned()
+            {
+                return self.resolve_overloaded_call(
+                    name,
+                    &candidates,
+                    args,
+                    is_ufcs,
+                    expected_type,
+                    span,
+                );
+            }
+        }
         let func_typed = self.infer_expr_inner(func, None)?;
         let is_constructor = if let Expr::Var { name, .. } = func {
             self.registry.is_some_and(|r| r.is_constructor(name))
@@ -772,6 +789,164 @@ impl<'a> InferenceContext<'a> {
             ty,
             span,
             resolved_ref: None,
+            scope_id: None,
+        })
+    }
+
+    fn resolve_overloaded_call(
+        &mut self,
+        name: &str,
+        candidates: &[crate::types::OverloadCandidate],
+        args: &[Expr],
+        is_ufcs: bool,
+        expected_type: Option<&Type>,
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        // 1. Infer each arg without param expectations (we don't know which candidate yet)
+        let mut args_typed = Vec::new();
+        let mut arg_types = Vec::new();
+        for a in args {
+            let a_typed = self.infer_expr_inner(a, None)?;
+            let a_ty = self.subst.apply(&a_typed.ty);
+            arg_types.push(a_ty);
+            args_typed.push(a_typed);
+        }
+
+        // 2. Filter candidates via candidate_matches
+        let matching: Vec<usize> = candidates
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                crate::overload::candidate_matches(&c.scheme, &arg_types, &mut self.gen)
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        // 3. Select
+        let candidate_descriptions: Vec<String> = candidates
+            .iter()
+            .map(|c| {
+                let display_name = match &c.source {
+                    crate::types::BindingSource::ImportedFunction { qualified_name, .. } => {
+                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                    }
+                    crate::types::BindingSource::TopLevelLocalFunction { qualified_name } => {
+                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                    }
+                    _ => name.to_string(),
+                };
+                format!("{}: {}", display_name, c.scheme.ty)
+            })
+            .collect();
+
+        let winner = match matching.len() {
+            0 => {
+                return Err(super::spanned(
+                    TypeError::NoMatchingOverload {
+                        name: name.to_string(),
+                        candidates: candidate_descriptions,
+                        arg_types,
+                    },
+                    span,
+                ));
+            }
+            1 => matching[0],
+            _ => {
+                let ambiguous: Vec<String> = matching
+                    .iter()
+                    .map(|&i| candidate_descriptions[i].clone())
+                    .collect();
+                return Err(super::spanned(
+                    TypeError::AmbiguousOverload {
+                        name: name.to_string(),
+                        candidates: ambiguous,
+                    },
+                    span,
+                ));
+            }
+        };
+
+        let winning = &candidates[winner];
+
+        // 4. Instantiate winning candidate's scheme with fresh vars in real subst
+        let func_ty = winning.scheme.instantiate(&mut || self.gen.fresh());
+
+        // 5. Apply expected return type steering
+        if let Some(expected) = expected_type {
+            let unwrapped = self.unwrap_own_fn(&func_ty);
+            if let Type::Fn(_, ret_type) = &unwrapped {
+                let _ = coerce_unify(ret_type, expected, self.subst);
+            }
+        }
+
+        // 6. Full per-arg coerce_unify against real substitution
+        let resolved_func_ty = self.subst.apply(&func_ty);
+        let unwrapped = self.unwrap_own_fn(&resolved_func_ty);
+        let param_modes;
+        match &unwrapped {
+            Type::Fn(param_types, ret_type) => {
+                param_modes = param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>();
+                if param_types.len() != arg_types.len() {
+                    return Err(super::spanned(
+                        TypeError::WrongArity {
+                            expected: param_types.len(),
+                            actual: arg_types.len(),
+                        },
+                        span,
+                    ));
+                }
+                for (arg_ty, (_, param_ty)) in arg_types.iter().zip(param_types.iter()) {
+                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                        let mut err = super::spanned(e, span);
+                        self.add_shadowed_prelude_note(&mut err, is_ufcs);
+                        err
+                    })?;
+                }
+                let ret_var = Type::Var(self.fresh());
+                unify(ret_type, &ret_var, self.subst)
+                    .map_err(|e| super::spanned(e, span))?;
+            }
+            _ => {
+                return Err(super::spanned(
+                    TypeError::NotAFunction { actual: unwrapped },
+                    span,
+                ));
+            }
+        }
+
+        // 7. Build result
+        let resolved_ref = super::resolved_ref_from_binding_source(&winning.source);
+        let ty = self.subst.apply(&func_ty);
+        let ret_ty = match &ty {
+            Type::Fn(_, ret) => self.subst.apply(ret),
+            Type::Own(inner) => match inner.as_ref() {
+                Type::Fn(_, ret) => self.subst.apply(ret),
+                _ => self.subst.apply(&ty),
+            },
+            _ => self.subst.apply(&ty),
+        };
+
+        // Build func_typed for the winning candidate
+        let func_span = match args.first() {
+            _ => span,
+        };
+        let func_typed = TypedExpr {
+            kind: TypedExprKind::Var(name.to_string()),
+            ty,
+            span: func_span,
+            resolved_ref: resolved_ref.clone(),
+            scope_id: None,
+        };
+
+        Ok(TypedExpr {
+            kind: TypedExprKind::App {
+                func: Box::new(func_typed),
+                args: args_typed,
+                param_modes,
+            },
+            ty: ret_ty,
+            span,
+            resolved_ref,
             scope_id: None,
         })
     }

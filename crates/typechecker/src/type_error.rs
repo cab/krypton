@@ -116,6 +116,8 @@ pub enum TypeErrorCode {
     E0320, // Too many `shape` parameters in a single trait method (cap is 2)
     E0515, // Import overload arity mismatch
     E0516, // Local overload arity mismatch
+    E0517, // No matching overload
+    E0518, // Ambiguous overload
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -388,6 +390,15 @@ pub enum TypeError {
     LocalOverloadOverlap {
         name: String,
     },
+    NoMatchingOverload {
+        name: String,
+        candidates: Vec<String>,
+        arg_types: Vec<Type>,
+    },
+    AmbiguousOverload {
+        name: String,
+        candidates: Vec<String>,
+    },
     DuplicateParam {
         name: String,
     },
@@ -619,6 +630,8 @@ impl TypeError {
             TypeError::LocalOverloadArityMismatch { .. } => TypeErrorCode::E0516,
             TypeError::LocalOverloadMissingAnnotation { .. } => TypeErrorCode::E0514,
             TypeError::LocalOverloadOverlap { .. } => TypeErrorCode::E0514,
+            TypeError::NoMatchingOverload { .. } => TypeErrorCode::E0517,
+            TypeError::AmbiguousOverload { .. } => TypeErrorCode::E0518,
             TypeError::DuplicateParam { .. } => TypeErrorCode::E0610,
             TypeError::OrPatternBindingMismatch { .. } => TypeErrorCode::E0014,
             TypeError::ExternTraitOnJsTarget { .. } => TypeErrorCode::E0604,
@@ -1039,6 +1052,8 @@ impl TypeError {
                     "closures cannot capture borrowed bindings (no closure lifetimes); reborrow into a call or restructure to pass the value explicitly".to_string()
                 }
             }),
+            TypeError::NoMatchingOverload { .. } => None,
+            TypeError::AmbiguousOverload { .. } => None,
         }
     }
 
@@ -1669,6 +1684,21 @@ impl fmt::Display for TypeError {
             }
             TypeError::LocalOverloadOverlap { name } => {
                 write!(f, "overlapping local overloads for `{name}`")
+            }
+            TypeError::NoMatchingOverload { name, candidates, arg_types } => {
+                let arg_list = arg_types.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", ");
+                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
+                write!(
+                    f,
+                    "no matching overload for `{name}` with argument types ({arg_list})\ncandidates:\n{cand_list}"
+                )
+            }
+            TypeError::AmbiguousOverload { name, candidates } => {
+                let cand_list = candidates.iter().map(|c| format!("  {c}")).collect::<Vec<_>>().join("\n");
+                write!(
+                    f,
+                    "ambiguous overload for `{name}`: multiple candidates match\ncandidates:\n{cand_list}"
+                )
             }
             TypeError::DuplicateParam { name } => {
                 write!(f, "duplicate parameter name: {}", name)

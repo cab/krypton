@@ -1,0 +1,5 @@
+# expect: ok
+import vec_mod
+import list_mod.{length}
+
+fun test(v: Vec[Int]) -> Int = vec_mod.length(v)

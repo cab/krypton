@@ -667,7 +667,6 @@ import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
 import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
@@ -677,13 +676,15 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn length(v0: Vec[Int]) -> Int =
   0
+
+fn fold(v1: Vec[Int], v2: Int, v3: (Int, Int) -> Int) -> Int =
+  v2
 module list_mod
 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
 import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
@@ -693,6 +694,9 @@ import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
 fn length(v0: List[Int]) -> Int =
   0
+
+fn fold(v1: List[Int], v2: Int, v3: (Int, Int) -> Int) -> Int =
+  v2
 module int_mod
 
 import core/peek/peek as peek(e) -> e

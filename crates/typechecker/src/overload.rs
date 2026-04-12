@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::trait_registry::freshen_type;
-use crate::types::{Substitution, Type, TypeVarGen, TypeVarId};
-use crate::unify::unify;
+use crate::types::{Substitution, Type, TypeScheme, TypeVarGen, TypeVarId};
+use crate::unify::{coerce_unify, unify};
 
 /// Check whether two parameter type tuples structurally overlap — i.e., whether
 /// a substitution of type variables exists that makes them simultaneously equal.
@@ -57,6 +57,31 @@ pub fn check_overload_arity(
         }
     }
     Ok(())
+}
+
+/// Check whether a candidate function scheme matches the given argument types.
+/// Instantiates the scheme with fresh type variables, then tries coerce_unify
+/// for each arg/param pair in a fresh substitution. Returns true if all succeed.
+pub fn candidate_matches(
+    scheme: &TypeScheme,
+    arg_types: &[Type],
+    gen: &mut TypeVarGen,
+) -> bool {
+    let instantiated = scheme.instantiate(&mut || gen.fresh());
+    let params = match fn_param_types(&instantiated) {
+        Some(p) => p,
+        None => return false,
+    };
+    if params.len() != arg_types.len() {
+        return false;
+    }
+    let mut subst = Substitution::new();
+    for (arg, param) in arg_types.iter().zip(params.iter()) {
+        if coerce_unify(arg, param, &mut subst).is_err() {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

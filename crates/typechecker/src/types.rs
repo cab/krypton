@@ -1214,9 +1214,30 @@ pub enum BindingSource {
 }
 
 #[derive(Debug, Clone)]
+pub struct OverloadCandidate {
+    pub scheme: TypeScheme,
+    pub source: BindingSource,
+}
+
+#[derive(Debug, Clone)]
 pub struct EnvEntry {
     pub scheme: TypeScheme,
     pub source: BindingSource,
+    pub overload_candidates: Option<Vec<OverloadCandidate>>,
+}
+
+impl EnvEntry {
+    /// Add an overload candidate. On first call, initializes the Vec with the
+    /// original entry plus the new candidate. On subsequent calls, appends.
+    pub fn add_overload_candidate(&mut self, scheme: TypeScheme, source: BindingSource) {
+        let candidates = self.overload_candidates.get_or_insert_with(|| {
+            vec![OverloadCandidate {
+                scheme: self.scheme.clone(),
+                source: self.source.clone(),
+            }]
+        });
+        candidates.push(OverloadCandidate { scheme, source });
+    }
 }
 
 /// Scoped type environment for variable lookups.
@@ -1257,7 +1278,7 @@ impl TypeEnv {
         source: BindingSource,
     ) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, EnvEntry { scheme, source });
+            scope.insert(name, EnvEntry { scheme, source, overload_candidates: None });
         }
     }
 
@@ -1373,6 +1394,15 @@ impl TypeEnv {
         None
     }
 
+    pub fn lookup_entry_mut(&mut self, name: &str) -> Option<&mut EnvEntry> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(entry) = scope.get_mut(name) {
+                return Some(entry);
+            }
+        }
+        None
+    }
+
     /// Remove a name from all scopes (used when shadowing prelude types).
     pub fn unbind(&mut self, name: &str) {
         for scope in &mut self.scopes {
@@ -1389,6 +1419,10 @@ impl TypeEnv {
         def_span: DefSpan,
     ) {
         self.bind_with_source(name.clone(), scheme, source);
+        self.def_spans.insert(name, def_span);
+    }
+
+    pub fn set_def_span(&mut self, name: std::string::String, def_span: DefSpan) {
         self.def_spans.insert(name, def_span);
     }
 

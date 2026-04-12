@@ -1988,6 +1988,20 @@ impl ImportContext {
         let binding_source = self.register_import_binding(b)?;
         if !already_bound {
             env.bind_with_source(name, scheme, binding_source.clone());
+        } else {
+            // Only create overload candidates when the same name is imported
+            // from genuinely different source modules (validated as non-overlapping
+            // by register_import_binding). Trait method re-imports from the same
+            // module should not create overloads.
+            let distinct_modules: std::collections::HashSet<&str> = self
+                .get_by_name(&name)
+                .map(|f| f.qualified_name.module_path.as_str())
+                .collect();
+            if distinct_modules.len() > 1 {
+                if let Some(entry) = env.lookup_entry_mut(&name) {
+                    entry.add_overload_candidate(scheme, binding_source.clone());
+                }
+            }
         }
         Ok(binding_source)
     }
@@ -5128,20 +5142,42 @@ fn infer_function_bodies<'a>(
                     }
                 }
             }
-            state.env.bind_with_source_and_def_span(
-                fn_decls[idx].name.clone(),
-                scheme.clone(),
-                BindingSource::TopLevelLocalFunction {
-                    qualified_name: crate::types::BindingQualifiedName {
-                        module_path: mod_path.to_string(),
-                        local_name: fn_decls[idx].name.clone(),
+            let local_source = BindingSource::TopLevelLocalFunction {
+                qualified_name: crate::types::BindingQualifiedName {
+                    module_path: mod_path.to_string(),
+                    local_name: fn_decls[idx].name.clone(),
+                },
+            };
+            let fn_name = fn_decls[idx].name.clone();
+            // Check if this name has multiple definitions in this SCC or
+            // already has overload candidates (from imports).
+            let is_overloaded = pre_bound.iter().filter(|(i, _)| fn_decls[*i].name == fn_name).count() > 1
+                || state.env.lookup_entry(&fn_name).is_some_and(|e| e.overload_candidates.is_some());
+            if is_overloaded {
+                if let Some(existing) = state.env.lookup_entry_mut(&fn_name) {
+                    existing.add_overload_candidate(scheme.clone(), local_source);
+                } else {
+                    state.env.bind_with_source_and_def_span(
+                        fn_name,
+                        scheme.clone(),
+                        local_source,
+                        crate::types::DefSpan {
+                            span: fn_decls[idx].span,
+                            source_module: None,
+                        },
+                    );
+                }
+            } else {
+                state.env.bind_with_source_and_def_span(
+                    fn_name,
+                    scheme.clone(),
+                    local_source,
+                    crate::types::DefSpan {
+                        span: fn_decls[idx].span,
+                        source_module: None,
                     },
-                },
-                crate::types::DefSpan {
-                    span: fn_decls[idx].span,
-                    source_module: None,
-                },
-            );
+                );
+            }
             result_schemes[idx] = Some(scheme);
         }
     }

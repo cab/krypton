@@ -1,0 +1,5 @@
+# expect: error E0517
+import vec_mod.{length}
+import list_mod.{length}
+
+fun test(s: String) -> Int = length(s)

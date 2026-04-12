@@ -1,1 +1,2 @@
 pub fun length(l: List[Int]) -> Int = 0
+pub fun fold(l: List[Int], init: Int, f: (Int, Int) -> Int) -> Int = init
