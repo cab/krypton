@@ -340,11 +340,14 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
         .reexported_fn_types
         .iter()
         .map(|ef| {
-            let (canonical_module, canonical_name) = ef
-                .qualified_name
-                .as_ref()
-                .map(|qn| (qn.module_path.clone(), qn.local_name.clone()))
-                .unwrap_or_else(|| (typed.module_path.clone(), ef.name.clone()));
+            let qn = ef.qualified_name.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "ICE: re-exported fn '{}' missing qualified_name",
+                    ef.name
+                )
+            });
+            let (canonical_module, canonical_name) =
+                (qn.module_path.clone(), qn.local_name.clone());
             let symbol = typed
                 .exported_type_infos
                 .values()

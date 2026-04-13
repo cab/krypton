@@ -2004,7 +2004,12 @@ impl ImportContext {
                 .unwrap_or(false);
 
             if existing_is_prelude && !is_prelude_import {
-                // By-name prelude shadowing: replace prelude entry with user import
+                // Full by-name prelude eviction: the prelude is always processed
+                // before user imports (prepended via .chain() in process_imports),
+                // so at this point every existing overload candidate is
+                // prelude-sourced.  Clearing them is correct — subsequent user
+                // imports of the same name will build a fresh overload set via
+                // the else branch below.
                 if let Some(entry) = env.lookup_entry_mut(&name) {
                     entry.scheme = scheme;
                     entry.source = binding_source.clone();
