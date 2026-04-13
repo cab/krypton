@@ -512,6 +512,10 @@ module core/ordering
 
 type Ordering = LT#0 | EQ#1 | GT#2
 
+module core/never
+
+type Never = 
+
 module core/map
 
 extern java "krypton.runtime.KryptonMap" staticEmpty() -> Map[b8, c8]

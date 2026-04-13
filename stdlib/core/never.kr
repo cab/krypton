@@ -1,0 +1,2 @@
+# core/never — the canonical uninhabited type
+pub type Never = |

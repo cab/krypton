@@ -2,13 +2,12 @@
 source: crates/ir/tests/ir/lower.rs
 expression: output
 ---
-module cross_module_extern_java
+module prelude_shadow_overload_fold
 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
 import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
@@ -16,18 +15,27 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-import cross_module_extern_java_lib/negate as negate(Int) -> Int
-import cross_module_extern_java_lib/abs as abs(Int) -> Int
-declare abs: (Int) -> Int
-declare negate: (Int) -> Int
-declare println: (h) -> Unit
+import vec_mod/fold as fold(Vec[Int], Int, (Int, Int) -> Int) -> Int
+import list_mod/fold as fold(List[Int], Int, (Int, Int) -> Int) -> Int
+declare fold: (List[Int], Int, (Int, Int) -> Int) -> Int
 
-fn main() -> Unit =
-  let v1: Int = call negate(42)
-  let v2: Int = call abs(v1)
-  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v3: Unit = call println(v0, v2)
+fn test_vec(v0: Vec[Int]) -> Int =
+  let v4: (Int, Int) -> Int = make_closure(lambda$25, [])
+  let v5: Int = call fold(v0, 0, v4)
+  v5
+
+fn test_list(v6: List[Int]) -> Int =
+  let v10: (Int, Int) -> Int = make_closure(lambda$26, [])
+  let v11: Int = call fold(v6, 0, v10)
+  v11
+
+fn lambda$25(v1: Int, v2: Int) -> Int =
+  let v3: Int = add_int(v1, v2)
   v3
+
+fn lambda$26(v7: Int, v8: Int) -> Int =
+  let v9: Int = add_int(v7, v8)
+  v9
 module core/eq
 
 trait Eq[d] { eq(d, d): Bool }
@@ -674,14 +682,12 @@ import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
-module cross_module_extern_java_lib
+module vec_mod
 
-extern java "java.lang.Math" abs(Int) -> Int
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
 import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
 import core/list/map as map(List[v], (v) -> x) -> List[x]
 import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
 import core/io/println as println(h) -> Unit
@@ -689,6 +695,26 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn negate(v0: Int) -> Int =
-  let v1: Int = sub_int(0, v0)
-  v1
+fn length(v0: Vec[Int]) -> Int =
+  0
+
+fn fold(v1: Vec[Int], v2: Int, v3: (Int, Int) -> Int) -> Int =
+  v2
+module list_mod
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+fn length(v0: List[Int]) -> Int =
+  0
+
+fn fold(v1: List[Int], v2: Int, v3: (Int, Int) -> Int) -> Int =
+  v2
