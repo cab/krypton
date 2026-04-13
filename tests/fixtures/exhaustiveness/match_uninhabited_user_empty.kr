@@ -1,0 +1,5 @@
+# expect: ok
+type NoMessages = |
+fun get_value(r: Result[NoMessages, Int]) -> Int = match r {
+    Ok(x) => x,
+}

@@ -1,0 +1,4 @@
+# expect: ok
+fun get_value(r: Result[Never, Int]) -> Int = match r {
+    Ok(x) => x,
+}

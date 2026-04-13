@@ -1,0 +1,5 @@
+# expect: error E0006
+type MyError = Fail(String)
+fun get_value(r: Result[MyError, Int]) -> Int = match r {
+    Ok(x) => x,
+}

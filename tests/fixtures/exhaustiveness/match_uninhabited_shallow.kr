@@ -1,0 +1,5 @@
+# expect: error E0006
+type Wrapper = { e: Never }
+fun get_value(r: Result[Wrapper, Int]) -> Int = match r {
+    Ok(x) => x,
+}

@@ -112,21 +112,44 @@ fn cartesian_product(lists: &[Vec<Pat>]) -> Vec<Vec<Pat>> {
 /// set cannot be enumerated (Int/String have infinitely many values).
 /// When `depth >= MAX_DEPTH`, returns None to bound recursion on recursive
 /// types like List where Cons would otherwise expand forever.
-fn all_constructors(ty: &Type, registry: &TypeRegistry, depth: usize) -> Option<Vec<Con>> {
+fn all_constructors(
+    ty: &Type,
+    registry: &TypeRegistry,
+    depth: usize,
+    skip_uninhabited: bool,
+) -> Option<Vec<Con>> {
     if depth >= MAX_DEPTH {
         return None;
     }
     match ty {
         Type::Bool => Some(vec![Con::BoolLit(true), Con::BoolLit(false)]),
-        Type::Named(name, _) => {
+        Type::Named(name, type_args) => {
             let info = registry.lookup_type(name)?;
             match &info.kind {
-                TypeKind::Sum { variants } => Some(
-                    variants
-                        .iter()
-                        .map(|v| Con::Variant(v.name.clone()))
-                        .collect(),
-                ),
+                TypeKind::Sum { variants } => {
+                    if variants.is_empty() {
+                        return None;
+                    }
+                    Some(
+                        variants
+                            .iter()
+                            .filter(|v| {
+                                if !skip_uninhabited {
+                                    return true;
+                                }
+                                !v.fields.iter().any(|f| {
+                                    let resolved = substitute_type_params(
+                                        f,
+                                        &info.type_param_vars,
+                                        type_args,
+                                    );
+                                    matches!(&resolved, Type::Named(n, _) if registry.is_empty_sum(n))
+                                })
+                            })
+                            .map(|v| Con::Variant(v.name.clone()))
+                            .collect(),
+                    )
+                }
                 TypeKind::Record { .. } => Some(vec![Con::Record(name.clone())]),
             }
         }
@@ -356,7 +379,7 @@ fn is_useful(
         }
         Pat::Wild => {
             let heads = head_constructors(matrix);
-            if let Some(all_cons) = all_constructors(ty, registry, depth) {
+            if let Some(all_cons) = all_constructors(ty, registry, depth, false) {
                 let head_set: HashSet<Con> = heads.into_iter().collect();
                 let is_complete = all_cons.iter().all(|c| head_set.contains(c));
                 if is_complete {
@@ -406,7 +429,7 @@ fn witness(
     let ty = &type_stack[0];
     let heads = head_constructors(matrix);
 
-    if let Some(all_cons) = all_constructors(ty, registry, depth) {
+    if let Some(all_cons) = all_constructors(ty, registry, depth, true) {
         let head_set: HashSet<Con> = heads.into_iter().collect();
         let is_complete = all_cons.iter().all(|c| head_set.contains(c));
 
@@ -516,6 +539,12 @@ pub fn check_exhaustiveness(
         Some(r) => r,
         None => return Ok(()),
     };
+
+    if let Type::Named(name, _) = scrutinee_ty {
+        if registry.is_empty_sum(name) {
+            return Ok(());
+        }
+    }
 
     let types = vec![scrutinee_ty.clone()];
     // Matrix of only unguarded rows — guarded arms don't contribute to coverage
