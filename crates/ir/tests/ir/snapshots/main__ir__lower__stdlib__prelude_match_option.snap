@@ -10,15 +10,15 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn unwrap_or(v0: Option[k8], v1: k8) -> k8 =
+fn unwrap_or(v0: Option[j8], v1: j8) -> j8 =
   switch v0 {
-    0 (v2: k8) ->
+    0 (v2: j8) ->
       v2
     1 ->
       v1

@@ -1,0 +1,2 @@
+# expect: ok
+fun search(n: Int) -> String = if n == 0 { "found" } else { recur(n - 1) }

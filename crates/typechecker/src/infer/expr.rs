@@ -111,11 +111,22 @@ impl<'a> InferenceContext<'a> {
     /// Given a list of branch types (already joined), resolve the final type:
     /// preserves Own only if ALL branches are Own.
     fn resolve_join_ownership(&self, branch_types: &[Type]) -> Type {
-        let all_own = branch_types.iter().all(|t| {
+        let is_empty = |t: &Type| -> bool {
             let resolved = self.subst.apply(t);
-            matches!(&resolved, Type::Own(_))
-        });
-        let resolved = self.subst.apply(&branch_types[0]);
+            matches!(&resolved, Type::Named(name, _) if self.registry.is_some_and(|r| r.is_empty_sum(name)))
+        };
+        let representative = branch_types
+            .iter()
+            .find(|t| !is_empty(t))
+            .unwrap_or(&branch_types[0]);
+        let all_own = branch_types
+            .iter()
+            .filter(|t| !is_empty(t))
+            .all(|t| {
+                let resolved = self.subst.apply(t);
+                matches!(&resolved, Type::Own(_))
+            });
+        let resolved = self.subst.apply(representative);
         if all_own {
             resolved
         } else {
@@ -2218,7 +2229,7 @@ impl<'a> InferenceContext<'a> {
                         }
                     }
                 }
-                let ty = Type::Var(self.fresh());
+                let ty = Type::Named("Never".into(), vec![]);
                 Ok(TypedExpr {
                     kind: TypedExprKind::Recur(typed_args),
                     ty,

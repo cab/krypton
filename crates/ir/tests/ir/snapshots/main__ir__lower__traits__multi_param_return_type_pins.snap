@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_return_type_pins
 
-trait Convert[i8] { convert(i8): j8 }
+trait Convert[h8] { convert(h8): i8 }
 instance traits__multi_param_return_type_pins.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
 instance traits__multi_param_return_type_pins.Convert[Int$$Float] { convert=Convert$$Int$$Float$$convert }
 import core/peek/peek as peek(d) -> d
@@ -13,7 +13,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

@@ -10,7 +10,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -20,7 +20,7 @@ import core/io/read_file as read_file(String) -> Result[String, String]
 declare println: (g) -> Unit
 declare read_file: (String) -> Result[String, String]
 
-fn handle(v0: Result[p8, q8]) -> Unit =
+fn handle(v0: Result[o8, p8]) -> Unit =
   switch v0 {
     0 (v1: d) ->
       let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]

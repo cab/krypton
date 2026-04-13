@@ -1,0 +1,2 @@
+# expect: ok
+fun loop(n: Int) -> Never = recur(n + 1)

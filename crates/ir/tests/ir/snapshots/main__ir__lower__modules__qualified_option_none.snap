@@ -4,25 +4,25 @@ expression: ir_module.to_string()
 ---
 module modules__qualified_option_none
 
-extern java "krypton.runtime.KryptonIO" println(y7) -> Unit
+extern java "krypton.runtime.KryptonIO" println(x7) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[p3]) -> Option[p3]
 import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/option/Some as __qual$option$Some(c) -> Option[c]
-import core/option/unwrap as __qual$option$unwrap(Option[Never]) -> Never
-declare println: (y7) -> Unit
+import core/option/unwrap as __qual$option$unwrap(Option[i]) -> i
+declare println: (x7) -> Unit
 
 fn main() -> Unit =
-  let v1: Option[l8] = construct Option::None#1()
-  let v0: Option[l8] = v1
+  let v1: Option[k8] = construct Option::None#1()
+  let v0: Option[k8] = v1
   let v2: Option[Int] = construct Option::Some#0(42)
   let_join v6(v4: Int) =
     let v5: Unit = call println(v0)

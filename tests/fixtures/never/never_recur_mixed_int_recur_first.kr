@@ -1,0 +1,2 @@
+# expect: ok
+fun find(n: Int) -> Int = if n != 0 { recur(n - 1) } else { 42 }

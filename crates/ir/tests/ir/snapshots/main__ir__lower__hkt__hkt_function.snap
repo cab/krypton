@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module hkt__hkt_function
 
 type Box[a] = Box#0(a)
-trait Functor[j8] { fmap(j8[k8], (k8) -> l8): j8[l8] }
-trait Hoist[m8] { hoist(n8[m8], (n8[m8]) -> o8[m8]): o8[m8] }
+trait Functor[i8] { fmap(i8[j8], (j8) -> k8): i8[k8] }
+trait Hoist[l8] { hoist(m8[l8], (m8[l8]) -> n8[l8]): n8[l8] }
 instance hkt__hkt_function.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance hkt__hkt_function.Hoist[Int] { hoist=Hoist$$Int$$hoist }
 import core/peek/peek as peek(d) -> d
@@ -15,16 +15,16 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn apply(v0: Dict[hkt__hkt_function.Functor, t8], v1: t8[v8]) -> t8[v8] =
-  let v4: (v8) -> v8 = make_closure(lambda$30, [])
-  let v5: t8[v8] = trait_call hkt__hkt_function.Functor.fmap(v0, v1, v4)
+fn apply(v0: Dict[hkt__hkt_function.Functor, s8], v1: s8[u8]) -> s8[u8] =
+  let v4: (u8) -> u8 = make_closure(lambda$30, [])
+  let v5: s8[u8] = trait_call hkt__hkt_function.Functor.fmap(v0, v1, v4)
   v5
 
 fn main(v6: Box[Int]) -> Box[Int] =
@@ -32,17 +32,17 @@ fn main(v6: Box[Int]) -> Box[Int] =
   let v8: Box[Int] = call apply(v7, v6)
   v8
 
-fn Functor$$Box$$fmap(v9: Box[j9], v10: (j9) -> l9) -> Box[l9] =
+fn Functor$$Box$$fmap(v9: Box[i9], v10: (i9) -> k9) -> Box[k9] =
   switch v9 {
-    0 (v11: j9) ->
-      let v12: l9 = call_closure v10(v11)
-      let v13: Box[l9] = construct Box::Box#0(v12)
+    0 (v11: i9) ->
+      let v12: k9 = call_closure v10(v11)
+      let v13: Box[k9] = construct Box::Box#0(v12)
       v13
   }
 
-fn Hoist$$Int$$hoist(v14: n9[Int], v15: (n9[Int]) -> o9[Int]) -> o9[Int] =
-  let v16: o9[Int] = call_closure v15(v14)
+fn Hoist$$Int$$hoist(v14: m9[Int], v15: (m9[Int]) -> n9[Int]) -> n9[Int] =
+  let v16: n9[Int] = call_closure v15(v14)
   v16
 
-fn lambda$30(v3: v8) -> v8 =
+fn lambda$30(v3: u8) -> u8 =
   v3

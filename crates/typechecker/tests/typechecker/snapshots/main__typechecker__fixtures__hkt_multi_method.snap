@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 Box: forall a. (a) -> Box[a]
 main: () -> Int
-Functor$$Box$$fmap: (Box[b9], (b9) -> d9) -> Box[d9]
+Functor$$Box$$fmap: (Box[a9], (a9) -> c9) -> Box[c9]

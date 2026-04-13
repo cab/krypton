@@ -10,21 +10,21 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/get as get(Map[m9, y9], m9) -> Option[y9]
+import core/map/get as get(Map[l9, x9], l9) -> Option[x9]
 import core/json/JNum as JNum(Float) -> Json
 import core/json/JObj as JObj(Map[String, Json]) -> Json
 import core/json/JBool as JBool(Bool) -> Json
 import core/json/JStr as JStr(String) -> Json
 import core/json/JArr as JArr(List[Json]) -> Json
-import core/map/from_list as from_list(List[(y12, z12)]) -> Map[y12, z12]
-declare from_list: (List[(y12, z12)]) -> Map[y12, z12]
-declare get: (Map[m9, y9], m9) -> Option[y9]
+import core/map/from_list as from_list(List[(x12, y12)]) -> Map[x12, y12]
+declare from_list: (List[(x12, y12)]) -> Map[x12, y12]
+declare get: (Map[l9, x9], l9) -> Option[x9]
 declare println: (g) -> Unit
 
 fn main() -> Unit =

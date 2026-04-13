@@ -1,0 +1,34 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module never__never_recur_mixed_int_recur_first
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+fn find(v0: Int) -> Int =
+  let_join [recur] v1(v2: Int) =
+    let_join v8(v6: Bool) =
+      if v6 {
+        let v7: Int = sub_int(v2, 1)
+        jump v1(v7)
+      } else {
+        42
+      }
+    in
+    let v3: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v4: Bool = trait_call core/eq.Eq.eq(v3, v2, 0)
+    let v5: Bool = not(v4)
+    jump v8(v5)
+  in
+  jump v1(v0)

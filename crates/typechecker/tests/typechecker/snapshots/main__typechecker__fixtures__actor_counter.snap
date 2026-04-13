@@ -35,5 +35,5 @@ receive: forall m. (Mailbox[m]) -> m
 Inc: CounterMsg
 Dec: CounterMsg
 Get: (Ref[Int]) -> CounterMsg
-counter: forall a. (Mailbox[CounterMsg], Int) -> a
-main: forall a. () -> (Mailbox[CounterMsg], Int) -> a
+counter: (Mailbox[CounterMsg], Int) -> Never
+main: () -> (Mailbox[CounterMsg], Int) -> Never

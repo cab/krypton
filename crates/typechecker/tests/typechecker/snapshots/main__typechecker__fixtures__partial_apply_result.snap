@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 Ok: forall a b. (b) -> Result[a, b]
 Err: forall a b. (a) -> Result[a, b]
-Functor$$Result$$Var0$$Var1$$fmap: (Result[b9, c9], (c9) -> e9) -> Result[b9, e9]
+Functor$$Result$$Var0$$Var1$$fmap: (Result[a9, b9], (b9) -> d9) -> Result[a9, d9]

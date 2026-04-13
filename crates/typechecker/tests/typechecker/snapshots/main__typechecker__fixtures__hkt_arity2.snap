@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Pair: forall a b. (a, b) -> Pair[a, b]
-Bifunctor$$Pair$$bimap: (Pair[a9, b9], (a9) -> e9, (b9) -> f9) -> Pair[e9, f9]
+Bifunctor$$Pair$$bimap: (Pair[z8, a9], (z8) -> d9, (a9) -> e9) -> Pair[d9, e9]

@@ -11,7 +11,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -19,17 +19,17 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn unwrap_or(v0: Option[o8], v1: o8) -> o8 =
+fn unwrap_or(v0: Option[n8], v1: n8) -> n8 =
   switch v0 {
     0 ->
       v1
-    1 (v2: o8) ->
+    1 (v2: n8) ->
       v2
   }
 
 fn main() -> Unit =
-  let v4: Option[r8] = construct Option::None#0()
-  let v3: Option[r8] = v4
+  let v4: Option[q8] = construct Option::None#0()
+  let v3: Option[q8] = v4
   let v5: Option[Int] = construct Option::Some#1(42)
   let v6: Int = call unwrap_or(v5, 0)
   let v7: Int = call unwrap_or(v3, v6)

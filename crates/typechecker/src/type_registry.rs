@@ -84,8 +84,19 @@ impl TypeRegistry {
             lifts: None,
             is_prelude: true,
         });
+        // Never — the canonical empty sum type (zero constructors).
+        // Registered as a builtin so `is_empty_sum` works in all modules,
+        // even before the prelude's `type Never = |` declaration is processed.
+        self.types.entry("Never".to_string()).or_insert(TypeInfo {
+            name: "Never".to_string(),
+            type_params: vec![],
+            type_param_vars: vec![],
+            kind: TypeKind::Sum { variants: vec![] },
+            lifts: None,
+            is_prelude: true,
+        });
         // All builtins are user-visible in annotations
-        for name in &["Int", "Float", "Bool", "String", "Unit", "Vec"] {
+        for name in &["Int", "Float", "Bool", "String", "Unit", "Vec", "Never"] {
             self.user_visible.insert(name.to_string());
         }
     }

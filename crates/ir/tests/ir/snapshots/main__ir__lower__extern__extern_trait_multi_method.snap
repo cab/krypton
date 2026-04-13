@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module extern__extern_trait_multi_method
 
 struct MyHandler { name: String }
-trait Callback[i8] { on_failure(i8, String): Unit; on_response(i8, String): Unit }
+trait Callback[h8] { on_failure(h8, String): Unit; on_response(h8, String): Unit }
 instance extern__extern_trait_multi_method.Callback[MyHandler] { on_failure=Callback$$MyHandler$$on_failure, on_response=Callback$$MyHandler$$on_response }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[p3]) -> Option[p3]
@@ -13,7 +13,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,7 +21,7 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, k8], v1: k8) -> Unit =
+fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, j8], v1: j8) -> Unit =
   let v2: Unit = trait_call extern__extern_trait_multi_method.Callback.on_failure(v0, v1, "test")
   v2
 

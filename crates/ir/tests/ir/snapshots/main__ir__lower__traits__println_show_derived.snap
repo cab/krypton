@@ -12,7 +12,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -27,9 +27,9 @@ fn main() -> Unit =
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[core/show.Show, y7], v5: MyOption[y7]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, x7], v5: MyOption[x7]) -> String =
   switch v5 {
-    0 (v6: y7) ->
+    0 (v6: x7) ->
       let v7: String = trait_call core/show.Show.show(v4, v6)
       let v8: String = concat_string("MySome(", v7)
       let v9: String = concat_string(v8, ")")

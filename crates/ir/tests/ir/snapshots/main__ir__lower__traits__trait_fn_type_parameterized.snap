@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_parameterized
 
-trait Test[i8] { test(i8): String }
+trait Test[h8] { test(h8): String }
 instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=Test$$$Fun0$$Var0$$test }
 instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=Test$$$Fun1$Int$$Var0$$test }
 import core/peek/peek as peek(d) -> d
@@ -13,7 +13,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v6, v9)
   v10
 
-fn Test$$$Fun0$$Var0$$test(v11: () -> j8) -> String =
+fn Test$$$Fun0$$Var0$$test(v11: () -> i8) -> String =
   "got-unit"
 
-fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> k8) -> String =
+fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> j8) -> String =
   "got-int"

@@ -15,11 +15,11 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/list/length as length(List[l]) -> Int
 declare length: (List[l]) -> Int
 declare println: (g) -> Unit
-declare to_list: (Vec[x7]) -> List[x7]
+declare to_list: (Vec[w7]) -> List[w7]
 
 fn main() -> Unit =
   let v1: Vec[Int] = make_vec(1, 2, 3)

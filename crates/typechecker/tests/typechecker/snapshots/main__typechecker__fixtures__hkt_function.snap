@@ -32,5 +32,5 @@ GT: Ordering
 Box: forall a. (a) -> Box[a]
 apply: forall f a. (f[a]) -> f[a] where f: Functor
 main: (Box[Int]) -> Box[Int]
-Functor$$Box$$fmap: (Box[j9], (j9) -> l9) -> Box[l9]
-Hoist$$Int$$hoist: (n9[Int], (n9[Int]) -> o9[Int]) -> o9[Int]
+Functor$$Box$$fmap: (Box[i9], (i9) -> k9) -> Box[k9]
+Hoist$$Int$$hoist: (m9[Int], (m9[Int]) -> n9[Int]) -> n9[Int]

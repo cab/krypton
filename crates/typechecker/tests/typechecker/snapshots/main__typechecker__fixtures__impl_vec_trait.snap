@@ -29,4 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-MyTrait$$Vec$$Var0$$check: (Vec[j8]) -> String
+MyTrait$$Vec$$Var0$$check: (Vec[i8]) -> String

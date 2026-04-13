@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module shape_impl__shape_impl_mono_owned
 
 type Handle = MkHandle#0
-trait Identity[i8] { identify(i8): i8 }
+trait Identity[h8] { identify(h8): h8 }
 instance core/disposable.Disposable[Handle] { dispose=Disposable$$Handle$$dispose }
 instance shape_impl__shape_impl_mono_owned.Identity[Vec$Handle] { identify=Identity$$Vec$Handle$$identify }
 import core/peek/peek as peek(d) -> d
@@ -14,7 +14,7 @@ import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
