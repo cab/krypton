@@ -886,3 +886,31 @@ fn e0511_no_matching_overload_diagnostic() {
         render_fixture_module_error("../../tests/fixtures/modules/overload_call_no_match.kr");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn e0515_arity_mismatch_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_arity_error.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn e0514_local_overlap_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_local_overlap_error.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn e0516_local_arity_mismatch_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/overload_local_arity_error.kr");
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn e0001_facade_private_not_exported_diagnostic() {
+    let output =
+        render_fixture_module_error("../../tests/fixtures/modules/facade_private_no_match.kr");
+    insta::assert_snapshot!(output);
+}

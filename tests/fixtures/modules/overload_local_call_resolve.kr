@@ -1,0 +1,6 @@
+# expect: ok
+fun stringify(x: Int) -> String = "int"
+fun stringify(x: Bool) -> String = "bool"
+
+fun test_int() -> String = stringify(42)
+fun test_bool() -> String = stringify(true)

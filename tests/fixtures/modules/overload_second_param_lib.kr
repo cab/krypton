@@ -1,0 +1,1 @@
+pub fun format(x: Int, locale: String) -> String = "locale"

@@ -1,0 +1,6 @@
+# expect: ok
+import overload_second_param_lib.{format}
+import overload_second_param_lib2.{format}
+
+fun test_locale() -> String = format(42, "en")
+fun test_precision() -> String = format(42, 3)

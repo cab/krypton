@@ -1,0 +1,34 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module modules__overload_deferred_dual
+
+import core/peek/peek as peek(e) -> e
+import core/list/last as last(List[q3]) -> Option[q3]
+import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
+import core/io/println as println(h) -> Unit
+import core/option/Some as Some(c) -> Option[c]
+import core/result/Ok as Ok(e) -> Result[d, e]
+import core/result/Err as Err(d) -> Result[d, e]
+import core/list/Cons as Cons(f, List[f]) -> List[f]
+import vec_mod/length as length(Vec[Int]) -> Int
+import vec_mod/fold as fold(Vec[Int], Int, (Int, Int) -> Int) -> Int
+import list_mod/length as length(List[Int]) -> Int
+import list_mod/fold as fold(List[Int], Int, (Int, Int) -> Int) -> Int
+declare fold: (List[Int], Int, (Int, Int) -> Int) -> Int
+declare length: (List[Int]) -> Int
+
+fn example(v0: Vec[Int]) -> Int =
+  let v1: Int = call length(v0)
+  let v6: (Int, Int) -> Int = make_closure(lambda$25, [])
+  let v2: Int = call fold(v0, 0, v6)
+  let v7: Int = add_int(v1, v2)
+  v7
+
+fn lambda$25(v3: Int, v4: Int) -> Int =
+  let v5: Int = add_int(v3, v4)
+  v5

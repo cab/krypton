@@ -1,0 +1,3 @@
+# expect: error E0514
+fun process(x: Int) -> String = "int"
+fun process(y: Int) -> String = "also int"

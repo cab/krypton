@@ -1,0 +1,4 @@
+# expect: error E0001
+import facade_private_local.{length}
+
+fun test(s: String) -> Int = length(s)

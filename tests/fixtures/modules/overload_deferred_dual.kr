@@ -1,0 +1,10 @@
+# expect: ok
+import vec_mod.{length, fold}
+import list_mod.{length, fold}
+
+fun example(xs) -> Int {
+  let n = length(xs)
+  let m = fold(xs, 0, (acc: Int, x: Int) -> acc + x)
+  let _ : Vec[Int] = xs
+  n + m
+}

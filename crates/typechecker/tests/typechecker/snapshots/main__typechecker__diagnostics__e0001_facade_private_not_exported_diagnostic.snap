@@ -1,0 +1,11 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0001] Error: type mismatch: expected Vec[Int], found String
+   ╭─[ ../../tests/fixtures/modules/facade_private_no_match.kr:4:30 ]
+   │
+ 4 │ fun test(s: String) -> Int = length(s)
+   │                              ────┬────  
+   │                                  ╰────── E0001: type mismatch: expected Vec[Int], found String
+───╯

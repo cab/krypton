@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0514] Error: overlapping local overloads for `process`
+   ╭─[ ../../tests/fixtures/modules/overload_local_overlap_error.kr:3:1 ]
+   │
+ 3 │ fun process(y: Int) -> String = "also int"
+   │ ─────────────────────┬────────────────────  
+   │                      ╰────────────────────── E0514: overlapping local overloads for `process`
+   │ 
+   │ Help: parameter types of `process` overlap, so these cannot form an overload set; rename one definition
+───╯

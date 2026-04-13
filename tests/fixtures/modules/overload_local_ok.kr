@@ -1,0 +1,5 @@
+# expect: ok
+fun process(x: Int) -> String = "int"
+fun process(x: String) -> String = "string"
+
+fun test() -> String = process(42)
