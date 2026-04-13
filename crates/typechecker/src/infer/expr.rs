@@ -73,7 +73,7 @@ impl<'a> InferenceContext<'a> {
         expected: &Type,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
-        coerce_unify(actual, expected, self.subst).map_err(|e| super::spanned(e, span))
+        coerce_unify(actual, expected, self.subst, self.registry).map_err(|e| super::spanned(e, span))
     }
 
     fn add_shadowed_prelude_note(&self, err: &mut SpannedTypeError, is_ufcs: bool) {
@@ -105,7 +105,7 @@ impl<'a> InferenceContext<'a> {
         b: &Type,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
-        join_types(a, b, self.subst).map_err(|e| super::spanned(e, span))
+        join_types(a, b, self.subst, self.registry).map_err(|e| super::spanned(e, span))
     }
 
     /// Given a list of branch types (already joined), resolve the final type:
@@ -310,7 +310,7 @@ impl<'a> InferenceContext<'a> {
                         .as_ref()
                         .and_then(|ps| ps.get(i))
                         .cloned();
-                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                    coerce_unify(arg_ty, param_ty, self.subst, self.registry).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         super::retarget_bare_var_owned_arg(
                             &mut err,
@@ -622,7 +622,7 @@ impl<'a> InferenceContext<'a> {
                 let resolved_func_ty = self.subst.apply(&func_typed.ty);
                 let unwrapped = self.unwrap_own_fn(&resolved_func_ty);
                 if let Type::Fn(_, ret_type) = &unwrapped {
-                    coerce_unify(ret_type, expected, self.subst).map_err(|e| {
+                    coerce_unify(ret_type, expected, self.subst, self.registry).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         self.add_shadowed_prelude_note(&mut err, is_ufcs);
                         err
@@ -692,7 +692,7 @@ impl<'a> InferenceContext<'a> {
                         // Best-effort early resolution to help subsequent lambda args
                         // infer correctly. The formal per-arg coerce_unify below catches
                         // any actual type mismatch with full error context.
-                        let _ = coerce_unify(&a_ty, expected_param_ty, self.subst);
+                        let _ = coerce_unify(&a_ty, expected_param_ty, self.subst, self.registry);
                     }
                 }
             }
@@ -726,7 +726,7 @@ impl<'a> InferenceContext<'a> {
                 for (i, (arg_ty, (_, param_ty))) in
                     arg_types.iter().zip(param_types.iter()).enumerate()
                 {
-                    coerce_unify(arg_ty, param_ty, self.subst).map_err(|e| {
+                    coerce_unify(arg_ty, param_ty, self.subst, self.registry).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         super::retarget_bare_var_owned_arg(
                             &mut err,
@@ -978,7 +978,7 @@ impl<'a> InferenceContext<'a> {
         if let Some(expected) = expected_type {
             let unwrapped = self.unwrap_own_fn(&func_ty);
             if let Type::Fn(_, ret_type) = &unwrapped {
-                let _ = coerce_unify(ret_type, expected, self.subst);
+                let _ = coerce_unify(ret_type, expected, self.subst, self.registry);
             }
         }
 
@@ -1328,7 +1328,7 @@ impl<'a> InferenceContext<'a> {
             // this coerce_unify is a no-op for constructor RHS in the common case
             // and remains the safety net for non-constructor flows.
             let binding_ty = if let Some(annotated_ty) = resolved_ann {
-                coerce_unify(&val_typed.ty, &annotated_ty, self.subst).map_err(|e| {
+                coerce_unify(&val_typed.ty, &annotated_ty, self.subst, self.registry).map_err(|e| {
                     let mut err = super::spanned(e, span);
                     if matches!(
                         &*err.error,
@@ -1616,7 +1616,13 @@ impl<'a> InferenceContext<'a> {
         let match_ty = self.subst.apply(&match_ty);
         crate::exhaustiveness::check_exhaustiveness(&match_ty, &typed_arms, self.registry, span)?;
         let ty = if branch_types.is_empty() {
-            Type::Unit
+            if self.registry.map_or(false, |r| {
+                matches!(&match_ty, Type::Named(name, _) if r.is_empty_sum(name))
+            }) {
+                match_ty.clone()
+            } else {
+                Type::Unit
+            }
         } else {
             self.resolve_join_ownership(&branch_types)
         };

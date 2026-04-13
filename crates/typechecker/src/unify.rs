@@ -23,8 +23,16 @@ pub use crate::type_error::{
     BareResourceContext, BorrowMisuseContext, SecondaryLabel, SpannedTypeError, TypeError,
     TypeErrorCode,
 };
+use crate::type_registry::TypeRegistry;
 use crate::types;
 use crate::types::{QualifierState, Substitution, Type, TypeVarId};
+
+fn is_empty_sum_type(ty: &Type, registry: Option<&TypeRegistry>) -> bool {
+    match ty {
+        Type::Named(name, _) => registry.is_some_and(|r| r.is_empty_sum(name)),
+        _ => false,
+    }
+}
 
 /// Resolve type variable chains through the substitution.
 fn walk(ty: &Type, subst: &Substitution) -> Type {
@@ -296,8 +304,9 @@ pub fn coerce_unify(
     actual: &Type,
     expected: &Type,
     subst: &mut Substitution,
+    registry: Option<&TypeRegistry>,
 ) -> Result<(), TypeError> {
-    coerce_unify_inner(actual, expected, subst, false)
+    coerce_unify_inner(actual, expected, subst, false, registry)
 }
 
 fn coerce_unify_inner(
@@ -305,6 +314,7 @@ fn coerce_unify_inner(
     expected: &Type,
     subst: &mut Substitution,
     in_constructor: bool,
+    registry: Option<&TypeRegistry>,
 ) -> Result<(), TypeError> {
     let actual = resolve_shape(walk(actual, subst), subst);
     let expected = resolve_shape(walk(expected, subst), subst);
@@ -313,6 +323,26 @@ fn coerce_unify_inner(
     if let (Type::Var(a), Type::Var(b)) = (&actual, &expected) {
         if a == b {
             return Ok(());
+        }
+    }
+
+    // Empty sum directional rule: an empty sum type flows into any expected type.
+    if is_empty_sum_type(&actual, registry) {
+        if let Type::Var(b) = &expected {
+            if subst.get(*b).is_none() {
+                return Ok(());
+            }
+        }
+        return Ok(());
+    }
+
+    // Reverse direction: non-empty-sum actual against empty-sum expected is a mismatch.
+    if is_empty_sum_type(&expected, registry) && !is_empty_sum_type(&actual, registry) {
+        if !matches!(&actual, Type::Var(_)) {
+            return Err(TypeError::Mismatch {
+                expected: expected.clone(),
+                actual: actual.clone(),
+            });
         }
     }
 
@@ -396,15 +426,16 @@ fn coerce_unify_inner(
                         &resolved_expected,
                         subst,
                         in_constructor,
+                        registry,
                     );
                 }
                 Type::MaybeOwn(q2, exp_inner) => {
                     subst.unify_qualifiers(*q, *q2)?;
-                    return coerce_unify_inner(inner, exp_inner, subst, in_constructor);
+                    return coerce_unify_inner(inner, exp_inner, subst, in_constructor, registry);
                 }
                 _ => {
                     // Plain context: do NOT set Shared. Coerce inner against expected.
-                    return coerce_unify_inner(inner, &expected, subst, in_constructor);
+                    return coerce_unify_inner(inner, &expected, subst, in_constructor, registry);
                 }
             }
         }
@@ -420,20 +451,20 @@ fn coerce_unify_inner(
             subst.get_qualifier(*q),
             Some(QualifierState::Pending) | None
         ) {
-            return coerce_unify_inner(&actual, inner, subst, in_constructor);
+            return coerce_unify_inner(&actual, inner, subst, in_constructor, registry);
         }
     }
 
     // Both Own: recurse on inner
     if let (Type::Own(a_inner), Type::Own(e_inner)) = (&actual, &expected) {
-        return coerce_unify_inner(a_inner, e_inner, subst, in_constructor);
+        return coerce_unify_inner(a_inner, e_inner, subst, in_constructor, registry);
     }
 
     // fn → ~fn: multi-use function satisfies single-use requirement
     if let Type::Fn(..) = &actual {
         if let Type::Own(inner) = &expected {
             if let Type::Fn(..) = inner.as_ref() {
-                return coerce_unify_inner(&actual, inner, subst, in_constructor);
+                return coerce_unify_inner(&actual, inner, subst, in_constructor, registry);
             }
         }
     }
@@ -467,9 +498,9 @@ fn coerce_unify_inner(
                     actual_mode: *ma,
                 });
             }
-            coerce_unify_inner(pb, pa, subst, false)?; // FLIP: contravariant; fn positions are not constructor
+            coerce_unify_inner(pb, pa, subst, false, registry)?; // FLIP: contravariant; fn positions are not constructor
         }
-        return coerce_unify_inner(ret_a, ret_b, subst, false); // covariant
+        return coerce_unify_inner(ret_a, ret_b, subst, false, registry); // covariant
     }
 
     // Named types: covariant — recurse with in_constructor: true
@@ -482,7 +513,7 @@ fn coerce_unify_inner(
                 });
             }
             for (a, e) in args1.iter().zip(args2.iter()) {
-                coerce_unify_inner(a, e, subst, true)?; // inside constructor
+                coerce_unify_inner(a, e, subst, true, registry)?; // inside constructor
             }
             return Ok(());
         }
@@ -497,7 +528,7 @@ fn coerce_unify_inner(
             });
         }
         for (a, b) in elems_a.iter().zip(elems_b.iter()) {
-            coerce_unify_inner(a, b, subst, true)?; // inside constructor
+            coerce_unify_inner(a, b, subst, true, registry)?; // inside constructor
         }
         return Ok(());
     }
@@ -521,13 +552,26 @@ fn coerce_unify_inner(
 /// Strips Own from either side to find the common supertype:
 ///   join(Own(T), Own(T)) = unify inner, both Own → result can be Own
 ///   join(Own(T), T) = strip Own, unify → result is T
-pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), TypeError> {
+pub fn join_types(
+    a: &Type,
+    b: &Type,
+    subst: &mut Substitution,
+    registry: Option<&TypeRegistry>,
+) -> Result<(), TypeError> {
     let a = resolve_shape(walk(a, subst), subst);
     let b = resolve_shape(walk(b, subst), subst);
 
+    // Empty sum is the identity for join: join(E, T) = T, join(T, E) = T.
+    if is_empty_sum_type(&a, registry) {
+        return Ok(());
+    }
+    if is_empty_sum_type(&b, registry) {
+        return Ok(());
+    }
+
     // Both Own: join inner types
     if let (Type::Own(a_inner), Type::Own(b_inner)) = (&a, &b) {
-        return join_types(a_inner, b_inner, subst);
+        return join_types(a_inner, b_inner, subst, registry);
     }
 
     // One Own, one bare (non-fn): strip Own, join inner with bare.
@@ -535,24 +579,24 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
     // so that type vars are bound to bare types, not Own types.
     if let Type::Own(a_inner) = &a {
         if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
-            return join_types(a_inner, &b, subst);
+            return join_types(a_inner, &b, subst, registry);
         }
     }
     if let Type::Own(b_inner) = &b {
         if !matches!(b_inner.as_ref(), Type::Fn(_, _)) {
-            return join_types(&a, b_inner, subst);
+            return join_types(&a, b_inner, subst, registry);
         }
     }
 
     // MaybeOwn stripping — same as Own at join points
     if let Type::MaybeOwn(_, a_inner) = &a {
         if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
-            return join_types(a_inner, &b, subst);
+            return join_types(a_inner, &b, subst, registry);
         }
     }
     if let Type::MaybeOwn(_, b_inner) = &b {
         if !matches!(b_inner.as_ref(), Type::Fn(_, _)) {
-            return join_types(&a, b_inner, subst);
+            return join_types(&a, b_inner, subst, registry);
         }
     }
 
@@ -565,9 +609,9 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
             });
         }
         for ((_, pa), (_, pb)) in params_a.iter().zip(params_b.iter()) {
-            join_types(pa, pb, subst)?;
+            join_types(pa, pb, subst, registry)?;
         }
-        return join_types(ret_a, ret_b, subst);
+        return join_types(ret_a, ret_b, subst, registry);
     }
 
     // Tuple: join element-wise
@@ -579,7 +623,7 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
             });
         }
         for (ea, eb) in elems_a.iter().zip(elems_b.iter()) {
-            join_types(ea, eb, subst)?;
+            join_types(ea, eb, subst, registry)?;
         }
         return Ok(());
     }
@@ -594,7 +638,7 @@ pub fn join_types(a: &Type, b: &Type, subst: &mut Substitution) -> Result<(), Ty
                 });
             }
             for (a1, a2) in args1.iter().zip(args2.iter()) {
-                join_types(a1, a2, subst)?;
+                join_types(a1, a2, subst, registry)?;
             }
             return Ok(());
         }

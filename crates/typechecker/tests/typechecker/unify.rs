@@ -174,7 +174,7 @@ fn coerce_own_to_var_defers_then_defaults_shared() {
     let mut subst = Substitution::new();
     // coerce_unify(Own(Int), Var(a)) in bare position → a = MaybeOwn(q, Int) (deferred)
     let snap = subst.push_qual_scope();
-    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst).is_ok());
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst, None).is_ok());
     // Before scope resolution: still MaybeOwn
     let before = subst.apply(&a);
     assert!(matches!(&before, Type::MaybeOwn(_, inner) if **inner == Type::Int));
@@ -190,9 +190,9 @@ fn coerce_own_to_var_confirms_affine_when_expected_own() {
     let mut subst = Substitution::new();
     let snap = subst.push_qual_scope();
     // coerce_unify(Own(Int), Var(a)) → a = MaybeOwn(q, Int)
-    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst).is_ok());
+    assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst, None).is_ok());
     // Now coerce MaybeOwn(q, Int) against Own(Int) → confirms q = Affine
-    assert!(coerce_unify(&a, &Type::Own(Box::new(Type::Int)), &mut subst).is_ok());
+    assert!(coerce_unify(&a, &Type::Own(Box::new(Type::Int)), &mut subst, None).is_ok());
     subst.commit_qual_scope(snap);
     assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
 }
@@ -201,7 +201,7 @@ fn coerce_own_to_var_confirms_affine_when_expected_own() {
 fn coerce_bare_to_own_fails() {
     let mut subst = Substitution::new();
     // coerce_unify(Int, Own(Int)) → OwnershipMismatch (fabrication rejected)
-    let err = coerce_unify(&Type::Int, &Type::Own(Box::new(Type::Int)), &mut subst).unwrap_err();
+    let err = coerce_unify(&Type::Int, &Type::Own(Box::new(Type::Int)), &mut subst, None).unwrap_err();
     assert!(matches!(err, TypeError::OwnershipMismatch { .. }));
 }
 
@@ -210,7 +210,7 @@ fn coerce_own_to_bare_rejected() {
     let mut subst = Substitution::new();
     // coerce_unify(Own(Int), Int) → rejected (no silent drop; linear-by-default
     // requires an explicit consume, per disposable.md §"No ~T → T coercion").
-    let err = coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).unwrap_err();
+    let err = coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst, None).unwrap_err();
     assert!(matches!(err, TypeError::Mismatch { .. }));
 }
 
@@ -221,7 +221,8 @@ fn coerce_own_to_own_ok() {
     assert!(coerce_unify(
         &Type::Own(Box::new(Type::Int)),
         &Type::Own(Box::new(Type::Int)),
-        &mut subst
+        &mut subst,
+        None,
     )
     .is_ok());
 }
@@ -232,7 +233,7 @@ fn coerce_fn_to_own_fn_ok() {
     let bare_fn = Type::fn_consuming(vec![], Type::Int);
     let own_fn = Type::Own(Box::new(Type::fn_consuming(vec![], Type::Int)));
     // fn → ~fn coercion is OK
-    assert!(coerce_unify(&bare_fn, &own_fn, &mut subst).is_ok());
+    assert!(coerce_unify(&bare_fn, &own_fn, &mut subst, None).is_ok());
 }
 
 #[test]
@@ -241,7 +242,7 @@ fn coerce_own_fn_to_bare_fn_fails() {
     let bare_fn = Type::fn_consuming(vec![], Type::Int);
     let own_fn = Type::Own(Box::new(Type::fn_consuming(vec![], Type::Int)));
     // ~fn → fn rejected
-    let err = coerce_unify(&own_fn, &bare_fn, &mut subst).unwrap_err();
+    let err = coerce_unify(&own_fn, &bare_fn, &mut subst, None).unwrap_err();
     assert!(matches!(err, TypeError::FnCapabilityMismatch { .. }));
 }
 
@@ -255,7 +256,7 @@ fn coerce_fn_param_contravariant_preserves_own() {
     // Var(a) is on actual side, so it binds to Own(Int) without stripping.
     let fn_own_param = Type::fn_consuming(vec![Type::Own(Box::new(Type::Int))], Type::Int);
     let fn_var_param = Type::fn_consuming(vec![a.clone()], Type::Int);
-    assert!(coerce_unify(&fn_own_param, &fn_var_param, &mut subst).is_ok());
+    assert!(coerce_unify(&fn_own_param, &fn_var_param, &mut subst, None).is_ok());
     // Contravariant: Var on actual side preserves Own
     assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
 }
@@ -269,7 +270,8 @@ fn join_own_own_preserves() {
     assert!(join_types(
         &Type::Own(Box::new(Type::Int)),
         &Type::Own(Box::new(Type::Int)),
-        &mut subst
+        &mut subst,
+        None,
     )
     .is_ok());
 }
@@ -278,14 +280,14 @@ fn join_own_own_preserves() {
 fn join_own_bare_strips() {
     let mut subst = Substitution::new();
     // join_types(Own(Int), Int) → OK (strips to common)
-    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst).is_ok());
+    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst, None).is_ok());
 }
 
 #[test]
 fn join_bare_bare_ok() {
     let mut subst = Substitution::new();
     // join_types(Int, Int) → OK
-    assert!(join_types(&Type::Int, &Type::Int, &mut subst).is_ok());
+    assert!(join_types(&Type::Int, &Type::Int, &mut subst, None).is_ok());
 }
 
 #[test]
@@ -335,4 +337,86 @@ fn mismatch_without_var_names() {
         msg.contains("found String"),
         "expected 'found String' in: {msg}"
     );
+}
+
+// --- empty sum (Never) tests ---
+
+use krypton_typechecker::type_registry::{TypeInfo, TypeKind, TypeRegistry};
+
+fn registry_with_empty_sum(name: &str) -> TypeRegistry {
+    let mut registry = TypeRegistry::new();
+    let mut gen = TypeVarGen::new();
+    registry.register_builtins(&mut gen);
+    registry
+        .register_type(TypeInfo {
+            name: name.to_string(),
+            type_params: vec![],
+            type_param_vars: vec![],
+            kind: TypeKind::Sum { variants: vec![] },
+            lifts: None,
+            is_prelude: false,
+        })
+        .unwrap();
+    registry
+}
+
+#[test]
+fn coerce_empty_sum_to_int() {
+    let reg = registry_with_empty_sum("Never");
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    assert!(coerce_unify(&never, &Type::Int, &mut subst, Some(&reg)).is_ok());
+}
+
+#[test]
+fn coerce_int_to_empty_sum_fails() {
+    let reg = registry_with_empty_sum("Never");
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    let err = coerce_unify(&Type::Int, &never, &mut subst, Some(&reg)).unwrap_err();
+    assert!(matches!(err, TypeError::Mismatch { .. }));
+}
+
+#[test]
+fn coerce_empty_sum_to_var_no_bind() {
+    let reg = registry_with_empty_sum("Never");
+    let mut gen = TypeVarGen::new();
+    let v_id = gen.fresh();
+    let v = Type::Var(v_id);
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    assert!(coerce_unify(&never, &v, &mut subst, Some(&reg)).is_ok());
+    assert!(subst.get(v_id).is_none(), "var should stay unbound");
+}
+
+#[test]
+fn coerce_empty_sum_to_empty_sum() {
+    let reg = registry_with_empty_sum("Never");
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    assert!(coerce_unify(&never, &never, &mut subst, Some(&reg)).is_ok());
+}
+
+#[test]
+fn join_empty_sum_with_int() {
+    let reg = registry_with_empty_sum("Never");
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    assert!(join_types(&never, &Type::Int, &mut subst, Some(&reg)).is_ok());
+}
+
+#[test]
+fn join_int_with_empty_sum() {
+    let reg = registry_with_empty_sum("Never");
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    assert!(join_types(&Type::Int, &never, &mut subst, Some(&reg)).is_ok());
+}
+
+#[test]
+fn coerce_without_registry_no_rule() {
+    let mut subst = Substitution::new();
+    let never = Type::Named("Never".into(), vec![]);
+    let err = coerce_unify(&never, &Type::Int, &mut subst, None).unwrap_err();
+    assert!(matches!(err, TypeError::Mismatch { .. }));
 }

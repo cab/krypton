@@ -1,2 +1,8 @@
 # expect: ok
 fun absurd(x: Never) = match x {}
+fun diverge_into_int() -> Int = panic("oops")
+fun if_with_panic(c: Bool) -> Int = if c { 42 } else { panic("oops") }
+fun option_never(x: Option[Never]) -> Int = match x { None => 0 }
+fun fn_returning_never(f: (String) -> Never) -> (String) -> Never = f
+fun own_never(x: ~Never) -> ~Never = x
+fun user_empty_sum_coerces() -> Int = panic("custom")

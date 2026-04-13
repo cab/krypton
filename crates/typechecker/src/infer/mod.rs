@@ -5049,7 +5049,7 @@ fn infer_function_bodies<'a>(
                     )
                     .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, decl.span))?;
-                    coerce_unify(&body_ty, &annotated_ret, &mut state.subst).map_err(|e| {
+                    coerce_unify(&body_ty, &annotated_ret, &mut state.subst, Some(&state.registry)).map_err(|e| {
                         if let TypeError::InfiniteType { ref var, ref ty } = e {
                             if crate::type_error::is_own_wrapper_of(*var, ty) {
                                 let var_names: Vec<(TypeVarId, String)> = type_param_map
@@ -5120,7 +5120,7 @@ fn infer_function_bodies<'a>(
                     .map(|(p, t)| (p.mode, t))
                     .collect();
                 let fn_ty = Type::Fn(fn_params, Box::new(ret_ty.clone()));
-                crate::unify::join_types(&fn_ty, tv, &mut state.subst)
+                crate::unify::join_types(&fn_ty, tv, &mut state.subst, Some(&state.registry))
                     .map_err(|e| spanned(e, decl.span))?;
 
                 fn_bodies[idx] = Some(body_typed);
@@ -5905,7 +5905,7 @@ where
     let final_ret_type = state.subst.apply(&body_typed.ty);
 
     let expected_ret_type = state.subst.apply(&fork_apply(&trait_method.return_type));
-    coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst).map_err(|_| {
+    coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst, Some(&state.registry)).map_err(|_| {
         spanned_with_names(
             TypeError::Mismatch {
                 expected: expected_ret_type.clone(),

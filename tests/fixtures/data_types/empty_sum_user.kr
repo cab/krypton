@@ -1,0 +1,5 @@
+# expect: ok
+type NoMessages = |
+type Void = |
+fun user_absurd(x: NoMessages) -> Int = match x {}
+fun void_to_int(x: Void) -> Int = match x {}

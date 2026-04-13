@@ -87,7 +87,7 @@ pub fn candidate_matches(
     }
     let mut subst = Substitution::new();
     for (arg, param) in arg_types.iter().zip(params.iter()) {
-        if coerce_unify(arg, param, &mut subst).is_err() {
+        if coerce_unify(arg, param, &mut subst, None).is_err() {
             return None;
         }
     }
@@ -108,7 +108,7 @@ pub fn candidate_matches_expected_type(
 ) -> Option<CandidateMatch> {
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     let mut subst = Substitution::new();
-    if coerce_unify(&instantiated, expected, &mut subst).is_err() {
+    if coerce_unify(&instantiated, expected, &mut subst, None).is_err() {
         return None;
     }
     Some(CandidateMatch {

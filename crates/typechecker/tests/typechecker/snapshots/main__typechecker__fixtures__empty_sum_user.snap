@@ -29,10 +29,5 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-absurd: (Never) -> Never
-diverge_into_int: () -> Int
-if_with_panic: (Bool) -> Int
-option_never: (Option[Never]) -> Int
-fn_returning_never: ((String) -> Never) -> (String) -> Never
-own_never: (~Never) -> ~Never
-user_empty_sum_coerces: () -> Int
+user_absurd: (NoMessages) -> Int
+void_to_int: (Void) -> Int

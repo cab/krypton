@@ -158,6 +158,13 @@ impl TypeRegistry {
         self.types.get(canonical)
     }
 
+    /// Returns `true` if `name` resolves to a sum type with zero constructors.
+    pub fn is_empty_sum(&self, name: &str) -> bool {
+        self.lookup_type(name)
+            .map(|info| matches!(&info.kind, TypeKind::Sum { variants } if variants.is_empty()))
+            .unwrap_or(false)
+    }
+
     pub fn canonical_name<'a>(&'a self, name: &'a str) -> &'a str {
         self.aliases.get(name).map(|s| s.as_str()).unwrap_or(name)
     }

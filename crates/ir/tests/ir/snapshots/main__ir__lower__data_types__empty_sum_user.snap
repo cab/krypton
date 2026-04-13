@@ -2,8 +2,10 @@
 source: crates/ir/tests/ir/lower.rs
 expression: ir_module.to_string()
 ---
-module stdlib__never_type
+module data_types__empty_sum_user
 
+type NoMessages = 
+type Void = 
 import core/peek/peek as peek(e) -> e
 import core/list/last as last(List[q3]) -> Option[q3]
 import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
@@ -16,35 +18,9 @@ import core/option/Some as Some(c) -> Option[c]
 import core/result/Ok as Ok(e) -> Result[d, e]
 import core/result/Err as Err(d) -> Result[d, e]
 import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare panic
 
-fn absurd(v0: Never) -> Never =
+fn user_absurd(v0: NoMessages) -> Int =
   ()
 
-fn diverge_into_int() -> Int =
-  let v1: Int = call panic("oops")
-  v1
-
-fn if_with_panic(v2: Bool) -> Int =
-  if v2 {
-    42
-  } else {
-    let v3: Int = call panic("oops")
-    v3
-  }
-
-fn option_never(v4: Option[Never]) -> Int =
-  switch v4 {
-    1 ->
-      0
-  }
-
-fn fn_returning_never(v5: (String) -> Never) -> (String) -> Never =
-  v5
-
-fn own_never(v6: ~Never) -> ~Never =
-  v6
-
-fn user_empty_sum_coerces() -> Int =
-  let v7: Int = call panic("custom")
-  v7
+fn void_to_int(v1: Void) -> Int =
+  ()
