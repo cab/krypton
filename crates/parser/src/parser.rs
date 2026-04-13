@@ -1269,10 +1269,17 @@ where
             span: to_span(e.span()),
         });
 
-    let sum_kind = variant
-        .separated_by(symbol(Token::Pipe))
-        .at_least(1)
-        .collect::<Vec<_>>()
+    let sum_kind = symbol(Token::Pipe)
+        .ignore_then(
+            variant
+                .clone()
+                .separated_by(symbol(Token::Pipe))
+                .collect::<Vec<_>>(),
+        )
+        .or(variant
+            .separated_by(symbol(Token::Pipe))
+            .at_least(1)
+            .collect::<Vec<_>>())
         .map(|variants| TypeDeclKind::Sum { variants });
 
     // Optional deriving

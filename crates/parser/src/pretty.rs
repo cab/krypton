@@ -386,20 +386,24 @@ impl<'a> Formatter<'a> {
                 self.buf.push_str(" }");
             }
             TypeDeclKind::Sum { variants } => {
-                for (i, v) in variants.iter().enumerate() {
-                    if i > 0 {
-                        self.buf.push_str(" | ");
-                    }
-                    self.buf.push_str(&v.name);
-                    if !v.fields.is_empty() {
-                        self.buf.push('(');
-                        for (j, f) in v.fields.iter().enumerate() {
-                            if j > 0 {
-                                self.buf.push_str(", ");
-                            }
-                            self.fmt_type_expr(f);
+                if variants.is_empty() {
+                    self.buf.push('|');
+                } else {
+                    for (i, v) in variants.iter().enumerate() {
+                        if i > 0 {
+                            self.buf.push_str(" | ");
                         }
-                        self.buf.push(')');
+                        self.buf.push_str(&v.name);
+                        if !v.fields.is_empty() {
+                            self.buf.push('(');
+                            for (j, f) in v.fields.iter().enumerate() {
+                                if j > 0 {
+                                    self.buf.push_str(", ");
+                                }
+                                self.fmt_type_expr(f);
+                            }
+                            self.buf.push(')');
+                        }
                     }
                 }
             }

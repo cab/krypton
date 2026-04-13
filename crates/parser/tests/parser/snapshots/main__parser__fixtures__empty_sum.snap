@@ -1,0 +1,29 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Never
+      visibility: Private
+      type_params: []
+      kind:
+        Sum:
+          variants: []
+      deriving: []
+      span:
+        - 13
+        - 29
+  - DefType:
+      platform: ~
+      name: NoMessages
+      visibility: Private
+      type_params: []
+      kind:
+        Sum:
+          variants: []
+      deriving: []
+      span:
+        - 29
+        - 49

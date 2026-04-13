@@ -1,0 +1,85 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Shape
+      visibility: Private
+      type_params: []
+      kind:
+        Sum:
+          variants:
+            - name: Circle
+              fields:
+                - Named:
+                    name: Float
+                    span:
+                      - 37
+                      - 42
+              span:
+                - 30
+                - 43
+            - name: Square
+              fields:
+                - Named:
+                    name: Float
+                    span:
+                      - 55
+                      - 60
+              span:
+                - 48
+                - 61
+            - name: Triangle
+              fields:
+                - Named:
+                    name: Float
+                    span:
+                      - 75
+                      - 80
+                - Named:
+                    name: Float
+                    span:
+                      - 82
+                      - 87
+                - Named:
+                    name: Float
+                    span:
+                      - 89
+                      - 94
+              span:
+                - 66
+                - 95
+      deriving: []
+      span:
+        - 13
+        - 95
+  - DefType:
+      platform: ~
+      name: Option
+      visibility: Private
+      type_params:
+        - a
+      kind:
+        Sum:
+          variants:
+            - name: Some
+              fields:
+                - Var:
+                    name: a
+                    span:
+                      - 123
+                      - 124
+              span:
+                - 118
+                - 125
+            - name: None
+              fields: []
+              span:
+                - 130
+                - 134
+      deriving: []
+      span:
+        - 97
+        - 134

@@ -1,0 +1,9 @@
+# expect: ok
+type Shape =
+  | Circle(Float)
+  | Square(Float)
+  | Triangle(Float, Float, Float)
+
+type Option[a] =
+  | Some(a)
+  | None

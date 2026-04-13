@@ -1,0 +1,4 @@
+# expect: ok
+type Never = |
+
+type NoMessages = |
