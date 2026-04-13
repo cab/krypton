@@ -4,31 +4,31 @@ expression: ir_module.to_string()
 ---
 module stdlib__list_sort_by_edges
 
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/list/length as length(List[m]) -> Int
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/io/println as println(h) -> Unit
-declare println: (h) -> Unit
-declare sort_by: (List[v5], (v5) -> k5) -> List[v5]
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/list/length as length(List[l]) -> Int
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/io/println as println(g) -> Unit
+declare println: (g) -> Unit
+declare sort_by: (List[u5], (u5) -> j5) -> List[u5]
 
 fn main() -> Unit =
   let v1: List[Int] = construct List::Nil#1()
-  let v3: (Int) -> Int = make_closure(lambda$25, [])
+  let v3: (Int) -> Int = make_closure(lambda$27, [])
   let v4: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v0: List[Int] = call sort_by(v4, v1, v3)
   let_join v41(v9: Unit) =
     let v11: List[Int] = construct List::Nil#1()
     let v12: List[Int] = construct List::Cons#0(42, v11)
-    let v14: (Int) -> Int = make_closure(lambda$26, [])
+    let v14: (Int) -> Int = make_closure(lambda$28, [])
     let v15: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
     let v10: List[Int] = call sort_by(v15, v12, v14)
     let_join v40(v24: Unit) =
@@ -37,11 +37,11 @@ fn main() -> Unit =
       let v28: List[Int] = construct List::Cons#0(2, v27)
       let v29: List[Int] = construct List::Cons#0(1, v28)
       let v30: List[Int] = construct List::Cons#0(3, v29)
-      let v32: (Int) -> Int = make_closure(lambda$27, [])
+      let v32: (Int) -> Int = make_closure(lambda$29, [])
       let v33: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
       let v25: List[Int] = call sort_by(v33, v30, v32)
       switch v25 {
-        0 (v34: Int, v35: List[e]) ->
+        0 (v34: Int, v35: List[d]) ->
           let v36: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
           let v37: Unit = call println(v36, v34)
           v37
@@ -52,7 +52,7 @@ fn main() -> Unit =
       }
     in
     switch v10 {
-      0 (v16: Int, v17: List[e]) ->
+      0 (v16: Int, v17: List[d]) ->
         switch v17 {
           1 ->
             let v18: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
@@ -80,11 +80,11 @@ fn main() -> Unit =
       jump v41(v8)
   }
 
-fn lambda$25(v2: Int) -> Int =
+fn lambda$27(v2: Int) -> Int =
   v2
 
-fn lambda$26(v13: Int) -> Int =
+fn lambda$28(v13: Int) -> Int =
   v13
 
-fn lambda$27(v31: Int) -> Int =
+fn lambda$29(v31: Int) -> Int =
   v31

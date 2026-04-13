@@ -6,19 +6,19 @@ module traits__println_show_derived
 
 type MyOption[a] = MySome#0(a) | MyNone#1
 instance core/show.Show[MyOption] { show=Show$$MyOption$$show }
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/io/println as println(h) -> Unit
-declare println: (h) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/io/println as println(g) -> Unit
+declare println: (g) -> Unit
 
 fn main() -> Unit =
   let v2: MyOption[Int] = construct MyOption::MySome#0(1)
@@ -27,9 +27,9 @@ fn main() -> Unit =
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[core/show.Show, z7], v5: MyOption[z7]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, y7], v5: MyOption[y7]) -> String =
   switch v5 {
-    0 (v6: z7) ->
+    0 (v6: y7) ->
       let v7: String = trait_call core/show.Show.show(v4, v6)
       let v8: String = concat_string("MySome(", v7)
       let v9: String = concat_string(v8, ")")

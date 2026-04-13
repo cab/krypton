@@ -2150,7 +2150,7 @@ impl<'a> JsEmitter<'a> {
             SimpleExprKind::Call { func, args } => {
                 let fn_name = self.fn_name(*func);
                 let arg_strs: Vec<String> = args.iter().map(|a| self.emit_atom(a)).collect();
-                if fn_name == "panic" {
+                if fn_name == "panic" || fn_name == "todo" || fn_name == "unreachable" {
                     self.write(&format!(
                         "(() => {{ throw new KryptonPanic({}); }})()",
                         arg_strs.join(", ")

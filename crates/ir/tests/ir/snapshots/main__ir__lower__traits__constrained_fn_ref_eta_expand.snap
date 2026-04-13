@@ -4,26 +4,26 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_fn_ref_eta_expand
 
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-import core/io/println as println(h) -> Unit
-declare println: (h) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/io/println as println(g) -> Unit
+declare println: (g) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, k8], v1: k8) -> String =
+fn show_it(v0: Dict[core/show.Show, j8], v1: j8) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
 fn main() -> Unit =
-  let v3: (Int) -> String = make_closure(lambda$25, [])
+  let v3: (Int) -> String = make_closure(lambda$27, [])
   let_join v13(v11: Bool) =
     let v7: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v12: Unit = call println(v7, v11)
@@ -34,7 +34,7 @@ fn main() -> Unit =
   let v10: Bool = trait_call core/eq.Eq.eq(v8, v9, "42")
   jump v13(v10)
 
-fn lambda$25(v4: Int) -> String =
+fn lambda$27(v4: Int) -> String =
   let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v6: String = call show_it(v5, v4)
   v6

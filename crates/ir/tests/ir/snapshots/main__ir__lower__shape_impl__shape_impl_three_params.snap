@@ -4,19 +4,19 @@ expression: ir_module.to_string()
 ---
 module shape_impl__shape_impl_three_params
 
-trait Zip3[j8] { pick_first(j8, k8, l8): j8 }
+trait Zip3[i8] { pick_first(i8, j8, k8): i8 }
 instance shape_impl__shape_impl_three_params.Zip3[$Var0$$$Var0$$$Var0] { pick_first=Zip3$$$Var0$$$Var0$$$Var0$$pick_first }
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/io/println as println(h) -> Unit
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn Zip3$$$Var0$$$Var0$$$Var0$$pick_first(v0: p8, v1: q8, v2: r8) -> p8 =
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+fn Zip3$$$Var0$$$Var0$$$Var0$$pick_first(v0: o8, v1: p8, v2: q8) -> o8 =
   v0

@@ -514,7 +514,7 @@ impl<'link> Compiler<'link> {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                if name == "Dict" {
+                if name == "Never" || name == "Dict" {
                     return Ok(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 if let Some(info) = self.types.struct_info.get(name) {
@@ -1243,7 +1243,7 @@ impl<'link> Compiler<'link> {
                     .clone();
 
                 // Intrinsics
-                if name == "panic" {
+                if name == "panic" || name == "todo" || name == "unreachable" {
                     let re_class = self.builder.refs.runtime_exception_class;
                     let re_init = self.builder.refs.runtime_exception_init;
                     self.builder.emit_new_dup(re_class);

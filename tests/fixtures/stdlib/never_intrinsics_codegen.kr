@@ -1,0 +1,5 @@
+# expect: output 42
+fun main() = {
+    let x = if true { 42 } else { panic("oops") };
+    println(x)
+}

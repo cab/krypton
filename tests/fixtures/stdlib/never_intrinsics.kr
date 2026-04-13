@@ -1,0 +1,5 @@
+# expect: ok
+fun panic_in_if(c: Bool) -> Int = if c { 42 } else { panic("oops") }
+fun todo_stub() -> Int = todo("tbd")
+fun unreachable_branch(x: Int) -> String =
+    if x > 0 { "positive" } else { unreachable("negative not supported") }

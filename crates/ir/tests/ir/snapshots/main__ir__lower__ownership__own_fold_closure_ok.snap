@@ -4,24 +4,24 @@ expression: ir_module.to_string()
 ---
 module ownership__own_fold_closure_ok
 
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/io/println as println(h) -> Unit
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-fn fold(v0: List[q8], v1: s8, v2: (s8, q8) -> s8) -> s8 =
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+fn fold(v0: List[p8], v1: r8, v2: (r8, p8) -> r8) -> r8 =
   switch v0 {
     1 ->
       v1
-    0 (v3: q8, v4: List[q8]) ->
-      let v5: s8 = call_closure v2(v1, v3)
-      let v6: s8 = call fold(v4, v5, v2)
+    0 (v3: p8, v4: List[p8]) ->
+      let v5: r8 = call_closure v2(v1, v3)
+      let v6: r8 = call fold(v4, v5, v2)
       v6
   }
 
@@ -29,13 +29,13 @@ fn test() -> ~Option[Int] =
   let v7: List[Int] = construct List::Nil#1()
   let v8: List[Int] = construct List::Cons#0(1, v7)
   let v9: ~Option[Int] = construct Option::Some#0(0)
-  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$24, [])
+  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$26, [])
   let v16: ~Option[Int] = call fold(v8, v9, v15)
   v16
 
-fn lambda$24(v10: ~Option[Int], v11: Int) -> ~Option[Int] =
+fn lambda$26(v10: ~Option[Int], v11: Int) -> ~Option[Int] =
   switch v10 {
-    0 (v12: d) ->
+    0 (v12: c) ->
       let v13: ~Option[Int] = construct Option::Some#0(v11)
       v13
     1 ->

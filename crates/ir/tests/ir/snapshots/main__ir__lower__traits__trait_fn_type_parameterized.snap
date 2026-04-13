@@ -4,22 +4,22 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_parameterized
 
-trait Test[j8] { test(j8): String }
+trait Test[i8] { test(i8): String }
 instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=Test$$$Fun0$$Var0$$test }
 instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=Test$$$Fun1$Int$$Var0$$test }
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/io/println as println(h) -> Unit
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (h) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
 
 fn f() -> String =
   "hello"
@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v6, v9)
   v10
 
-fn Test$$$Fun0$$Var0$$test(v11: () -> k8) -> String =
+fn Test$$$Fun0$$Var0$$test(v11: () -> j8) -> String =
   "got-unit"
 
-fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> l8) -> String =
+fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> k8) -> String =
   "got-int"

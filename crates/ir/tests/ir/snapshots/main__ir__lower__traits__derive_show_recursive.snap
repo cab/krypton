@@ -6,19 +6,19 @@ module traits__derive_show_recursive
 
 type List[a] = Cons#0(a, List[a]) | Nil#1
 instance core/show.Show[List] { show=Show$$List$$show }
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/io/println as println(h) -> Unit
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
-declare println: (h) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
 
 fn main() -> Unit =
   let v1: List[Int] = construct List::Nil#1()
@@ -32,13 +32,13 @@ fn main() -> Unit =
   let v8: Unit = call println(v0, v7)
   v8
 
-fn Show$$List$$show(v9: Dict[core/show.Show, z7], v10: List[z7]) -> String =
+fn Show$$List$$show(v9: Dict[core/show.Show, y7], v10: List[y7]) -> String =
   switch v10 {
-    0 (v11: z7, v12: List[z7]) ->
+    0 (v11: y7, v12: List[y7]) ->
       let v13: String = trait_call core/show.Show.show(v9, v11)
       let v14: String = concat_string("Cons(", v13)
       let v15: String = concat_string(v14, ", ")
-      let v16: Dict[core/show.Show, List[z7]] = make_dict core/show.Show[List[z7]](v9)
+      let v16: Dict[core/show.Show, List[y7]] = make_dict core/show.Show[List[y7]](v9)
       let v17: String = trait_call core/show.Show.show(v16, v12)
       let v18: String = concat_string(v15, v17)
       let v19: String = concat_string(v18, ")")

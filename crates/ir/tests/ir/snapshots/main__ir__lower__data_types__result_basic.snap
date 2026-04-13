@@ -5,29 +5,29 @@ expression: ir_module.to_string()
 module data_types__result_basic
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-import core/peek/peek as peek(e) -> e
-import core/list/last as last(List[q3]) -> Option[q3]
-import core/list/sort_by as sort_by(List[v5], (v5) -> k5) -> List[v5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], v1, (v1, t1) -> v1) -> v1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[y7]) -> List[y7]
-import core/io/println as println(h) -> Unit
-import core/option/Some as Some(c) -> Option[c]
-import core/result/Ok as Ok(e) -> Result[d, e]
-import core/result/Err as Err(d) -> Result[d, e]
-import core/list/Cons as Cons(f, List[f]) -> List[f]
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[x7]) -> List[x7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn extract(v0: Result[q8, Int]) -> Int =
+fn extract(v0: Result[p8, Int]) -> Int =
   switch v0 {
     0 (v1: Int) ->
       v1
-    1 (v2: q8) ->
+    1 (v2: p8) ->
       let v3: Int = sub_int(0, 1)
       v3
   }
 
 fn test() -> Int =
-  let v4: Result[v8, Int] = construct Result::Ok#0(42)
+  let v4: Result[u8, Int] = construct Result::Ok#0(42)
   let v5: Int = call extract(v4)
   v5
