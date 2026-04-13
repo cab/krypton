@@ -97,21 +97,28 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
 /// `adj[i]` contains the indices of functions that function `i` references.
 pub fn build_dependency_graph(fn_decls: &[&FnDecl]) -> Vec<Vec<usize>> {
     let names: HashSet<String> = fn_decls.iter().map(|d| d.name.clone()).collect();
-    let name_to_idx: HashMap<&str, usize> = fn_decls
-        .iter()
-        .enumerate()
-        .map(|(i, d)| (d.name.as_str(), i))
-        .collect();
+    let mut name_to_indices: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, d) in fn_decls.iter().enumerate() {
+        name_to_indices.entry(d.name.as_str()).or_default().push(i);
+    }
 
     fn_decls
         .iter()
-        .map(|decl| {
+        .enumerate()
+        .map(|(i, decl)| {
             let mut refs = HashSet::new();
             collect_refs(&decl.body, &names, &mut refs);
             let mut edges: Vec<usize> = refs
                 .iter()
-                .filter_map(|r| name_to_idx.get(r.as_str()).copied())
+                .flat_map(|r| name_to_indices.get(r.as_str()).into_iter().flatten().copied())
                 .collect();
+            // Add synthetic edges between same-named overloads so they
+            // land in the same SCC and get registered as an overload set.
+            if let Some(siblings) = name_to_indices.get(decl.name.as_str()) {
+                if siblings.len() > 1 {
+                    edges.extend(siblings.iter().copied().filter(|&j| j != i));
+                }
+            }
             edges.sort();
             edges.dedup();
             edges
