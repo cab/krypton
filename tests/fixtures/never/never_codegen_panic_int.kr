@@ -1,0 +1,3 @@
+# expect: panic "boom"
+fun diverge() -> Int = panic("boom")
+fun main() = diverge()

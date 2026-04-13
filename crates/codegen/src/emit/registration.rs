@@ -509,6 +509,28 @@ impl<'link> Compiler<'link> {
         Ok(())
     }
 
+    /// Ensure the `Never` empty sum type is always registered.
+    ///
+    /// `panic`/`todo`/`unreachable` are intrinsics that return `Never`, so every
+    /// module implicitly references the type even without importing `core/never`.
+    pub(super) fn ensure_never_registered(&mut self) -> Result<(), CodegenError> {
+        if self.types.sum_type_info.contains_key("Never") {
+            return Ok(());
+        }
+        let qualified = "core/never/Never";
+        let class_index = self.cp.add_class(qualified)?;
+        let desc = format!("L{qualified};");
+        self.types.class_descriptors.insert(class_index, desc);
+        self.types.sum_type_info.insert(
+            "Never".to_string(),
+            SumTypeInfo {
+                interface_class_index: class_index,
+                variants: HashMap::new(),
+            },
+        );
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Phase 2: Traits & Instances
     // -----------------------------------------------------------------------

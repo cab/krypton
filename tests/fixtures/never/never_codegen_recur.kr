@@ -1,0 +1,3 @@
+# expect: panic "done"
+fun counter(n: Int) -> Never = if n > 1000 { panic("done") } else { recur(n + 1) }
+fun main() = counter(0)

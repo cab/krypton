@@ -1,0 +1,4 @@
+# expect: output "0"
+type NoMessages = |
+fun use_it(x: Option[NoMessages]) -> Int = match x { None => 0 }
+fun main() = println(use_it(None))

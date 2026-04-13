@@ -207,6 +207,7 @@ pub(super) struct BytecodeBuilder {
     pub(super) recur_frame_locals: Vec<VerificationType>,
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
     pub(super) exception_table: Vec<ExceptionTableEntry>,
+    pub(super) dead_code: bool,
 }
 
 impl BytecodeBuilder {
@@ -224,6 +225,7 @@ impl BytecodeBuilder {
             recur_frame_locals: Vec::new(),
             local_fn_info: HashMap::new(),
             exception_table: Vec::new(),
+            dead_code: false,
         }
     }
 
@@ -441,5 +443,6 @@ impl BytecodeBuilder {
         self.recur_frame_locals.clear();
         self.local_fn_info.clear();
         self.exception_table.clear();
+        self.dead_code = false;
     }
 }

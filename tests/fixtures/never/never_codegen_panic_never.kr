@@ -1,0 +1,3 @@
+# expect: panic "boom"
+fun diverge() -> Never = panic("boom")
+fun main() = diverge()

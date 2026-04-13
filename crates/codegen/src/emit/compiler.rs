@@ -1253,6 +1253,7 @@ impl<'link> Compiler<'link> {
                     self.builder.frame.pop_type();
                     self.builder.frame.pop_type();
                     self.builder.emit(Instruction::Athrow);
+                    self.builder.dead_code = true;
                     // Record a frame for dead code after athrow so the verifier
                     // can process any subsequent dead instructions (e.g. Switch goto).
                     self.builder.frame.stack_types.clear();
@@ -2137,6 +2138,7 @@ impl<'link> Compiler<'link> {
                     self.builder.frame.record_frame(recur_target);
 
                     // Compile join_body (jumps are back-edges with target_offset != 0)
+                    self.builder.dead_code = false;
                     self.compile_ir_expr(join_body, ir_module)
                 } else {
                     // Forward join point
@@ -2183,6 +2185,7 @@ impl<'link> Compiler<'link> {
 
                     // Compile body (which contains Jump to this join point)
                     let body_type = self.compile_ir_expr(body, ir_module)?;
+                    let body_dead = self.builder.dead_code;
 
                     // Skip over join_body
                     let skip_goto = self.builder.emit_placeholder(Instruction::Goto(0));
@@ -2209,7 +2212,9 @@ impl<'link> Compiler<'link> {
                     }
                     self.builder.frame.record_frame(join_start);
 
+                    self.builder.dead_code = false;
                     let join_type = self.compile_ir_expr(join_body, ir_module)?;
+                    let join_dead = self.builder.dead_code;
 
                     let after = self.builder.current_offset();
 
@@ -2237,6 +2242,7 @@ impl<'link> Compiler<'link> {
                     self.builder.frame.record_frame(after);
 
                     let _ = join_type;
+                    self.builder.dead_code = body_dead && join_dead;
                     Ok(result_type)
                 }
             }
@@ -2296,6 +2302,8 @@ impl<'link> Compiler<'link> {
                     self.builder.emit(Instruction::Goto(target_offset));
                 }
 
+                self.builder.dead_code = true;
+
                 // Clear stack for dead code after goto, but keep local_types intact
                 // so that enclosing Switch merge frames see the full locals.
                 self.builder.frame.stack_types.clear();
@@ -2334,9 +2342,11 @@ impl<'link> Compiler<'link> {
                 self.builder.frame.pop_type();
 
                 // True branch
+                self.builder.dead_code = false;
                 let true_type = self.compile_ir_expr(true_body, ir_module)?;
                 let target_type = self.builder.fn_return_type.unwrap_or(true_type);
                 self.emit_type_coercion(true_type, target_type);
+                let true_dead = self.builder.dead_code;
                 let goto_patch = self.builder.emit_placeholder(Instruction::Goto(0));
 
                 // False branch — restore state
@@ -2353,14 +2363,19 @@ impl<'link> Compiler<'link> {
                     .patch(false_patch, Instruction::Ifeq(false_start));
                 self.builder.frame.record_frame(false_start);
 
+                self.builder.dead_code = false;
                 let false_type = self.compile_ir_expr(false_body, ir_module)?;
+                // Always emit coercion for false branch — it falls through to the
+                // merge point, so the verifier traces through even in dead code.
                 self.emit_type_coercion(false_type, target_type);
+                let false_dead = self.builder.dead_code;
 
                 if self.builder.next_local > max_next_local {
                     max_next_local = self.builder.next_local;
                 }
 
                 // Merge point
+                self.builder.dead_code = true_dead && false_dead;
                 let after_match = self.builder.current_offset();
                 self.builder
                     .patch(goto_patch, Instruction::Goto(after_match));
@@ -2399,6 +2414,7 @@ impl<'link> Compiler<'link> {
                 let mut goto_patches: Vec<usize> = Vec::new();
                 let mut result_type = None;
                 let mut max_next_local = saved_next_local;
+                let mut all_arms_dead = true;
 
                 let total_branches = branches.len() + if default.is_some() { 1 } else { 0 };
                 let all_tags: Vec<u32> = branches.iter().map(|b| b.tag).collect();
@@ -2417,6 +2433,7 @@ impl<'link> Compiler<'link> {
                     self.builder.next_local = saved_next_local;
                     self.var_locals = saved_var_locals.clone();
                     self.var_types = saved_var_types.clone();
+                    self.builder.dead_code = false;
 
                     if i > 0 {
                         let branch_start = self.builder.current_offset();
@@ -2547,12 +2564,14 @@ impl<'link> Compiler<'link> {
                     }
 
                     let arm_type = self.compile_ir_expr(&branch.body, ir_module)?;
+                    all_arms_dead = all_arms_dead && self.builder.dead_code;
 
                     // Normalize result type
                     let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
                     if result_type.is_none() {
                         result_type = Some(target_type);
                     }
+
                     self.emit_type_coercion(arm_type, target_type);
 
                     if !is_last || default.is_some() {
@@ -2577,22 +2596,29 @@ impl<'link> Compiler<'link> {
                     self.builder.next_local = saved_next_local;
                     self.var_locals = saved_var_locals.clone();
                     self.var_types = saved_var_types.clone();
+                    self.builder.dead_code = false;
 
                     let default_start = self.builder.current_offset();
                     self.builder.frame.record_frame(default_start);
 
                     let arm_type = self.compile_ir_expr(default_body, ir_module)?;
+                    all_arms_dead = all_arms_dead && self.builder.dead_code;
                     let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
                     if result_type.is_none() {
                         result_type = Some(target_type);
                     }
+                    // Default branch always falls through — emit coercion for verifier
                     self.emit_type_coercion(arm_type, target_type);
+                } else {
+                    // No default arm — implicit fallthrough is reachable
+                    all_arms_dead = false;
                 }
 
                 if self.builder.next_local > max_next_local {
                     max_next_local = self.builder.next_local;
                 }
 
+                self.builder.dead_code = all_arms_dead;
                 let after_match = self.builder.current_offset();
                 self.builder.frame.local_types = saved_local_types;
                 self.builder.frame.stack_types = stack_at_match;
@@ -2891,7 +2917,9 @@ impl<'link> Compiler<'link> {
 
         let body_type = self.compile_ir_expr(&fn_def.body, ir_module)?;
 
-        // Return type coercion
+        // Return type coercion + return instruction. Even when the body always
+        // diverges (dead_code=true), we emit these: the JVM verifier traces
+        // dead code at merge points and needs consistent frame types throughout.
         self.emit_type_coercion(body_type, return_type);
 
         let ret_instr = match return_type {

@@ -1,0 +1,4 @@
+# expect: panic "boom"
+fun diverge(s: String) -> Never = panic(s)
+fun apply(f: (String) -> Never, x: String) -> Never = f(x)
+fun main() = apply(diverge, "boom")

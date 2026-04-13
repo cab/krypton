@@ -1206,3 +1206,74 @@ fun main() = { println(describe(Circle(5))); println(describe(Square(3))); print
 "#;
     assert_eq!(run_program(src), "circle\nother\nother");
 }
+
+#[test]
+fn test_never_sealed_interface() {
+    // Compile a program that uses Never (via panic). The prelude Never type
+    // should produce a sealed interface class with zero PermittedSubclasses.
+    let src = r#"
+fun diverge() -> Never = panic("boom")
+fun main() = diverge()
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let dir = compile_typed_modules(&typed_modules, &link_ctx);
+
+    // Check that core/never/Never.class exists
+    let never_class = dir.path().join("core/never/Never.class");
+    assert!(
+        never_class.exists(),
+        "core/never/Never.class should exist"
+    );
+    let javap_out = javap_output(&never_class, true);
+    assert!(
+        javap_out.contains("interface"),
+        "Never should be an interface"
+    );
+    assert!(
+        javap_out.contains("PermittedSubclasses"),
+        "Never should have PermittedSubclasses"
+    );
+}
+
+#[test]
+fn test_user_empty_sum_sealed_interface() {
+    let src = r#"
+type NoMessages = |
+fun main() = 0
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let dir = compile_typed_modules(&typed_modules, &link_ctx);
+
+    let class_path = dir.path().join("test/NoMessages.class");
+    assert!(
+        class_path.exists(),
+        "test/NoMessages.class should exist"
+    );
+    let javap_out = javap_output(&class_path, true);
+    assert!(
+        javap_out.contains("interface"),
+        "NoMessages should be an interface"
+    );
+    assert!(
+        javap_out.contains("PermittedSubclasses"),
+        "NoMessages should have PermittedSubclasses"
+    );
+}

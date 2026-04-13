@@ -189,6 +189,7 @@ fn compile_module_inner(
     compiler.register_imported_extern_types(module_path)?;
     compiler.register_imported_structs_from_metadata(module_path)?;
     compiler.register_imported_sum_types_from_metadata(module_path)?;
+    compiler.ensure_never_registered()?;
 
     let mut result_classes: Vec<(String, Vec<u8>)> = Vec::new();
     result_classes.extend(compiler.register_structs_ir(ir_module)?);
