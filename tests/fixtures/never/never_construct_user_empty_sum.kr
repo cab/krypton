@@ -1,0 +1,3 @@
+# expect: error E0017
+type NoMessages = |
+fun main() -> NoMessages = NoMessages {}

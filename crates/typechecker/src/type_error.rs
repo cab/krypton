@@ -120,6 +120,7 @@ pub enum TypeErrorCode {
     E0518, // Ambiguous overload
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
+    E0017, // Cannot construct uninhabited type
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -183,6 +184,9 @@ pub enum TypeError {
     MissingFields {
         type_name: String,
         fields: Vec<String>,
+    },
+    CannotConstructUninhabited {
+        type_name: String,
     },
     NotAStruct {
         actual: Type,
@@ -577,6 +581,7 @@ impl TypeError {
             TypeError::InfiniteType { .. } => TypeErrorCode::E0007,
             TypeError::UnknownField { .. } => TypeErrorCode::E0008,
             TypeError::MissingFields { .. } => TypeErrorCode::E0009,
+            TypeError::CannotConstructUninhabited { .. } => TypeErrorCode::E0017,
             TypeError::NotAStruct { .. } => TypeErrorCode::E0010,
             TypeError::NonExhaustive { .. } => TypeErrorCode::E0006,
             TypeError::AlreadyMoved { .. } => TypeErrorCode::E0101,
@@ -736,6 +741,9 @@ impl TypeError {
             }
             TypeError::MissingFields { type_name, fields } => {
                 Some(format!("type `{}` requires fields: {}", type_name, fields.join(", ")))
+            }
+            TypeError::CannotConstructUninhabited { type_name } => {
+                Some(format!("type `{}` is a sum type with no constructors; no value of this type can ever exist", type_name))
             }
             TypeError::NotAStruct { actual } => {
                 let actual = actual.renumber_for_display();
@@ -1131,6 +1139,9 @@ impl TypeError {
                     format_type_with_var_map(actual, names),
                 )
             }
+            TypeError::CannotConstructUninhabited { type_name } => {
+                format!("cannot construct a value of uninhabited type `{}`; this type has no constructors", type_name)
+            }
             TypeError::NotAStruct { actual } => {
                 format!(
                     "not a struct: type {} is not a record",
@@ -1213,6 +1224,9 @@ impl TypeError {
                         format_type_with_var_map(actual, names),
                     ))
                 }
+            }
+            TypeError::CannotConstructUninhabited { type_name } => {
+                Some(format!("type `{}` is a sum type with no constructors; no value of this type can ever exist", type_name))
             }
             TypeError::NotAStruct { actual } => Some(format!(
                 "the expression has type `{}`, which is not a struct",
@@ -1322,6 +1336,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::MissingFields { type_name, fields } => {
                 write!(f, "missing fields on {}: {}", type_name, fields.join(", "))
+            }
+            TypeError::CannotConstructUninhabited { type_name } => {
+                write!(f, "cannot construct a value of uninhabited type `{}`; this type has no constructors", type_name)
             }
             TypeError::NotAStruct { actual } => {
                 let actual = actual.renumber_for_display();

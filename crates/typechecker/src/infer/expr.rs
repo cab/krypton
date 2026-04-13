@@ -1756,6 +1756,14 @@ impl<'a> InferenceContext<'a> {
                 span,
             )
         })?;
+        if reg.is_empty_sum(name) {
+            return Err(super::spanned(
+                TypeError::CannotConstructUninhabited {
+                    type_name: name.to_string(),
+                },
+                span,
+            ));
+        }
         match &info.kind {
             type_registry::TypeKind::Record {
                 fields: record_fields,
