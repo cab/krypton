@@ -1,11 +1,13 @@
 ---
-source: crates/typechecker/tests/diagnostics_test.rs
+source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
-[E0301] Error: the trait `Show` is not implemented for `Opaque`
+[E0301] Error: `Opaque` does not satisfy the `Show` bound
    ╭─[ ../../tests/fixtures/traits/no_show_in_block.kr:4:3 ]
    │
  4 │   println(Opaque)
    │   ───────┬───────  
-   │          ╰───────── E0301: the trait `Show` is not implemented for `Opaque`
+   │          ╰───────── E0301: `Opaque` does not satisfy the `Show` bound
+   │ 
+   │ Help: required by a bound in `println` — add `impl Show[Opaque]` or a `deriving (Show)` clause
 ───╯

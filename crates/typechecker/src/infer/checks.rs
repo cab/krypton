@@ -15,6 +15,23 @@ use super::{
     free_vars, leading_type_var, match_type_with_bindings, no_instance_error, spanned, strip_own,
 };
 
+fn bin_op_symbol(op: &BinOp) -> &'static str {
+    match op {
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Eq => "==",
+        BinOp::Neq => "!=",
+        BinOp::Lt => "<",
+        BinOp::Gt => ">",
+        BinOp::Le => "<=",
+        BinOp::Ge => ">=",
+        BinOp::And => "&&",
+        BinOp::Or => "||",
+    }
+}
+
 fn bare_function_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedCallableRef)> {
     match &expr.kind {
         TypedExprKind::Var(name) => match expr.resolved_ref.as_ref() {
@@ -219,6 +236,9 @@ pub(super) fn check_constrained_function_refs(
                                         &requirement_ty,
                                         expr.span,
                                         var_names,
+                                        crate::type_error::NoInstanceCause::Bound {
+                                            required_by: name.to_string(),
+                                        },
                                     ));
                                 }
                                 continue;
@@ -777,7 +797,9 @@ pub(super) fn check_trait_instances(
                                     TypeError::NoInstance {
                                         trait_name: trait_id.local_name.clone(),
                                         ty: display,
-                                        required_by: None,
+                                        cause: crate::type_error::NoInstanceCause::MethodCall {
+                                            method_name: method_name.to_string(),
+                                        },
                                     },
                                     expr.span,
                                 ));
@@ -810,6 +832,9 @@ pub(super) fn check_trait_instances(
                                     &concrete_ty,
                                     expr.span,
                                     var_names,
+                                    crate::type_error::NoInstanceCause::MethodCall {
+                                        method_name: method_name.to_string(),
+                                    },
                                 ));
                             }
                         }
@@ -830,6 +855,9 @@ pub(super) fn check_trait_instances(
                                             &concrete,
                                             expr.span,
                                             var_names,
+                                            crate::type_error::NoInstanceCause::Bound {
+                                                required_by: method.name.clone(),
+                                            },
                                         ));
                                     }
                                 }
@@ -914,6 +942,9 @@ pub(super) fn check_trait_instances(
                                                 &concrete,
                                                 expr.span,
                                                 var_names,
+                                                crate::type_error::NoInstanceCause::Bound {
+                                                    required_by: name.to_string(),
+                                                },
                                             ));
                                         }
                                     }
@@ -938,6 +969,9 @@ pub(super) fn check_trait_instances(
                                         &display_ty,
                                         expr.span,
                                         var_names,
+                                        crate::type_error::NoInstanceCause::Bound {
+                                            required_by: name.to_string(),
+                                        },
                                     ));
                                 }
                             }
@@ -974,6 +1008,9 @@ pub(super) fn check_trait_instances(
                             &operand_ty,
                             expr.span,
                             var_names,
+                            crate::type_error::NoInstanceCause::Operator {
+                                symbol: bin_op_symbol(op).to_string(),
+                            },
                         ));
                     }
                 }
@@ -996,6 +1033,9 @@ pub(super) fn check_trait_instances(
                             &operand_ty,
                             expr.span,
                             var_names,
+                            crate::type_error::NoInstanceCause::Operator {
+                                symbol: "-".to_string(),
+                            },
                         ));
                     }
                 }

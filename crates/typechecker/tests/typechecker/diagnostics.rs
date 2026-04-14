@@ -703,6 +703,122 @@ fn e0301_span_points_to_call_not_block() {
 }
 
 #[test]
+fn e0301_method_call_names_method_and_type() {
+    let src = "import core/show.{Show, show}\n\
+               type Opaque = Opaque\n\
+               fun main() -> String = show(Opaque)\n";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("no `show` function found for type `Opaque`"),
+        "expected method-call lead sentence in:\n{output}"
+    );
+    assert!(
+        output.contains("deriving (Show)") && output.contains("impl Show[Opaque]"),
+        "expected help to suggest deriving/impl in:\n{output}"
+    );
+    assert!(
+        !output.contains("could not deduce") && !output.contains("no instance for"),
+        "expected no trait-jargon wording in:\n{output}"
+    );
+}
+
+#[test]
+fn e0301_operator_names_operator_and_type() {
+    let output = render_fixture_error("../../tests/fixtures/traits/op_no_instance.kr");
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("cannot use `+` on `Bool`"),
+        "expected operator lead sentence in:\n{output}"
+    );
+    assert!(
+        output.contains("implement `Semigroup[Bool]`"),
+        "expected help to suggest Semigroup[Bool] impl in:\n{output}"
+    );
+    assert!(
+        !output.contains("could not deduce") && !output.contains("no instance for"),
+        "expected no trait-jargon wording in:\n{output}"
+    );
+}
+
+#[test]
+fn e0301_unary_neg_names_operator() {
+    let src = "fun main() -> Bool = -true\n";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("cannot use `-` on `Bool`"),
+        "expected unary-neg lead sentence in:\n{output}"
+    );
+    assert!(
+        output.contains("implement `Neg[Bool]`"),
+        "expected help to suggest Neg[Bool] impl in:\n{output}"
+    );
+}
+
+#[test]
+fn e0301_where_bound_names_bound() {
+    let output = render_fixture_error(
+        "../../tests/fixtures/traits/constrained_fn_ref_missing_instance.kr",
+    );
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("does not satisfy the `Show` bound"),
+        "expected bound lead sentence in:\n{output}"
+    );
+    assert!(
+        output.contains("required by a bound in"),
+        "expected help to name the requiring bound in:\n{output}"
+    );
+}
+
+#[test]
+fn e0301_multi_param_names_method() {
+    let output =
+        render_fixture_error("../../tests/fixtures/traits/multi_param_zero_match_concrete.kr");
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("no `convert` function found for types `Bool, String`"),
+        "expected multi-param method-call lead in:\n{output}"
+    );
+}
+
+#[test]
+fn e0301_no_jargon_audit() {
+    // Defense-in-depth audit: no E0301 diagnostic should contain the old
+    // typeclass jargon. Covers every E0301 fixture in the corpus.
+    let fixtures = [
+        "../../tests/fixtures/traits/no_show_in_block.kr",
+        "../../tests/fixtures/traits/op_no_instance.kr",
+        "../../tests/fixtures/traits/multi_param_zero_match_concrete.kr",
+        "../../tests/fixtures/traits/constrained_fn_ref_missing_instance.kr",
+        "../../tests/fixtures/traits/method_where_no_instance.kr",
+        "../../tests/fixtures/traits/println_no_show.kr",
+        "../../tests/fixtures/traits/trait_no_instance.kr",
+        "../../tests/fixtures/traits/trait_no_instance_generic.kr",
+        "../../tests/fixtures/traits/constrained_instance_option_missing_bound.kr",
+        "../../tests/fixtures/traits/constrained_instance_multi_bound_missing.kr",
+        "../../tests/fixtures/traits/multi_param_still_deferred.kr",
+    ];
+    for fixture in fixtures {
+        let output = render_fixture_error(fixture);
+        assert!(
+            !output.contains("could not deduce"),
+            "`{fixture}` contains forbidden phrase `could not deduce`:\n{output}"
+        );
+        assert!(
+            !output.contains("no instance for"),
+            "`{fixture}` contains forbidden phrase `no instance for`:\n{output}"
+        );
+    }
+}
+
+#[test]
 fn impl_method_mode_mismatch_diagnostic() {
     let src = "type File = { fd: Int }\n\
                trait Reader[a] { fun read(&this: ~a) -> Int }\n\

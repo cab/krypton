@@ -777,13 +777,14 @@ pub(super) fn no_instance_error(
     ty: &Type,
     span: Span,
     var_names: &HashMap<TypeVarId, String>,
+    cause: crate::type_error::NoInstanceCause,
 ) -> SpannedTypeError {
     let display_ty = ty.strip_own();
     let mut err = spanned(
         TypeError::NoInstance {
             trait_name: trait_name.local_name.clone(),
             ty: crate::types::format_type_for_error(&display_ty, var_names),
-            required_by: None,
+            cause,
         },
         span,
     );
@@ -4014,7 +4015,9 @@ fn process_deriving(
                         TypeError::NoInstance {
                             trait_name: trait_name.clone(),
                             ty: type_decl.name.clone(),
-                            required_by: None,
+                            cause: crate::type_error::NoInstanceCause::MethodCall {
+                                method_name: "deriving".to_string(),
+                            },
                         },
                         type_decl.span,
                     ));

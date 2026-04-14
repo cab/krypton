@@ -26,6 +26,20 @@ pub(crate) fn is_own_wrapper_of(var: TypeVarId, ty: &Type) -> bool {
     }
 }
 
+/// Why a NoInstance error was raised. Drives the wording of the lead message
+/// and the fix suggestion in `help()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoInstanceCause {
+    /// Trait method called directly, e.g. `show(x)` or `map(xs, f)`.
+    MethodCall { method_name: String },
+    /// Binary or unary operator, e.g. `x + y`, `-x`.
+    Operator { symbol: String },
+    /// Unsatisfied `where` bound on a call to a polymorphic function.
+    Bound { required_by: String },
+    /// Superclass requirement of a trait impl was not satisfied.
+    Superclass { required_by: String },
+}
+
 /// Annotation site where a bare resource-carrying type was rejected (E0109).
 /// Drives context-specific wording in the diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,7 +236,7 @@ pub enum TypeError {
     NoInstance {
         trait_name: String,
         ty: String,
-        required_by: Option<String>,
+        cause: NoInstanceCause,
     },
     OrphanInstance {
         trait_name: String,
@@ -592,12 +606,10 @@ impl TypeError {
             TypeError::UnsupportedExpr { .. } => TypeErrorCode::E0001,
             TypeError::ConstrainedFunctionRef { .. } => TypeErrorCode::E0001,
             TypeError::NoInstance {
-                required_by: None, ..
-            } => TypeErrorCode::E0301,
-            TypeError::NoInstance {
-                required_by: Some(_),
+                cause: NoInstanceCause::Superclass { .. },
                 ..
             } => TypeErrorCode::E0303,
+            TypeError::NoInstance { .. } => TypeErrorCode::E0301,
             TypeError::OrphanInstance { .. } => TypeErrorCode::E0302,
             TypeError::OwnedTypeImpl { .. } => TypeErrorCode::E0316,
             TypeError::DuplicateInstance { .. } => TypeErrorCode::E0309,
@@ -775,10 +787,29 @@ impl TypeError {
             TypeError::ConstrainedFunctionRef { name, .. } => {
                 Some(format!("call `{name}` directly with arguments, or pass it where the type can be inferred"))
             }
-            TypeError::NoInstance { required_by: Some(bound), .. } => {
-                Some(format!("required by a bound in `{}`", bound))
-            }
-            TypeError::NoInstance { .. } => None,
+            TypeError::NoInstance { trait_name, ty, cause } => match cause {
+                NoInstanceCause::MethodCall { .. } => {
+                    // For multi-param dispatch `ty` is a joined list like
+                    // "Bool, String" — `deriving` can't target a tuple of
+                    // types, so only suggest the impl form in that case.
+                    if ty.contains(',') {
+                        Some(format!("write `impl {trait_name}[{ty}]`"))
+                    } else {
+                        Some(format!(
+                            "add `deriving ({trait_name})` to `{ty}`, or write `impl {trait_name}[{ty}]`"
+                        ))
+                    }
+                }
+                NoInstanceCause::Operator { symbol } => Some(format!(
+                    "implement `{trait_name}[{ty}]` to enable `{symbol}` on `{ty}`"
+                )),
+                NoInstanceCause::Bound { required_by } => Some(format!(
+                    "required by a bound in `{required_by}` \u{2014} add `impl {trait_name}[{ty}]` or a `deriving ({trait_name})` clause"
+                )),
+                NoInstanceCause::Superclass { required_by } => Some(format!(
+                    "required by a bound in `{required_by}`"
+                )),
+            },
             TypeError::OrphanInstance { trait_name, ty, modules_checked } => {
                 let mut msg = format!("cannot implement `{}` for `{}`: only user-defined types can have trait implementations", trait_name, ty);
                 if !modules_checked.is_empty() {
@@ -1426,13 +1457,35 @@ impl fmt::Display for TypeError {
                     "`{name}` has trait constraints that can't be resolved here: {constraint_list}"
                 )
             }
-            TypeError::NoInstance { trait_name, ty, .. } => {
-                write!(
-                    f,
-                    "the trait `{}` is not implemented for `{}`",
-                    trait_name, ty
-                )
-            }
+            TypeError::NoInstance { trait_name, ty, cause } => match cause {
+                NoInstanceCause::MethodCall { method_name } => {
+                    // Singular/plural wording for multi-param trait dispatch:
+                    // `ty` may already be a comma-joined list like "Bool, String".
+                    let noun = if ty.contains(',') { "types" } else { "type" };
+                    write!(
+                        f,
+                        "no `{method_name}` function found for {noun} `{ty}`"
+                    )
+                }
+                NoInstanceCause::Operator { symbol } => {
+                    write!(
+                        f,
+                        "cannot use `{symbol}` on `{ty}` \u{2014} `{ty}` does not implement `{trait_name}`"
+                    )
+                }
+                NoInstanceCause::Bound { .. } => {
+                    write!(
+                        f,
+                        "`{ty}` does not satisfy the `{trait_name}` bound"
+                    )
+                }
+                NoInstanceCause::Superclass { .. } => {
+                    write!(
+                        f,
+                        "the trait `{trait_name}` is not implemented for `{ty}`"
+                    )
+                }
+            },
             TypeError::OrphanInstance { trait_name, ty, modules_checked } => {
                 if modules_checked.is_empty() {
                     write!(

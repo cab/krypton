@@ -1,0 +1,13 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0301] Error: no `convert` function found for types `Bool, String`
+    ╭─[ ../../tests/fixtures/traits/multi_param_zero_match_concrete.kr:12:21 ]
+    │
+ 12 │     let s: String = convert(true)
+    │                     ──────┬──────  
+    │                           ╰──────── E0301: no `convert` function found for types `Bool, String`
+    │ 
+    │ Help: write `impl Convert[Bool, String]`
+────╯
