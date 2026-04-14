@@ -313,6 +313,49 @@ pub fn coerce_unify(
     coerce_unify_inner(actual, expected, subst, false, registry)
 }
 
+/// Raw (unsubstituted) parameter metadata used by [`coerce_unify_arg`] to
+/// emit targeted `BareTypeVarResourceArg` diagnostics when an unbound bare
+/// type-variable slot absorbs an owned argument.
+pub struct ArgCoerceCtx<'a> {
+    pub raw_param_ty: Option<&'a Type>,
+    pub is_constructor: bool,
+    pub callee_name: Option<&'a str>,
+    pub param_index: usize,
+}
+
+/// Arg-flavored entry point for [`coerce_unify`] that rejects the
+/// `(raw: Var, actual: Own(_))` pair preemptively outside constructor
+/// position. Centralizes the invariant that eager `β := Own(T)` binding
+/// must not silently absorb `~T` into a bare `α` slot — every arg-coerce
+/// site gets it automatically, so adding a new arg form cannot forget to
+/// surface the `shape a` hint. The retarget companion in
+/// `infer/retarget_bare_var_owned_arg` still covers the case where
+/// downstream context pins the slot before this entry runs.
+pub fn coerce_unify_arg(
+    arg_ty: &Type,
+    param_ty: &Type,
+    ctx: &ArgCoerceCtx<'_>,
+    subst: &mut Substitution,
+    registry: Option<&TypeRegistry>,
+) -> Result<(), TypeError> {
+    if !ctx.is_constructor {
+        if let Some(raw) = ctx.raw_param_ty {
+            if matches!(raw, Type::Var(_))
+                && matches!(walk(raw, subst), Type::Var(_))
+                && matches!(walk(arg_ty, subst), Type::Own(_))
+            {
+                return Err(TypeError::BareTypeVarResourceArg {
+                    callee_name: ctx.callee_name.map(|s| s.to_string()),
+                    param_index: ctx.param_index,
+                    param_ty: raw.clone(),
+                    arg_ty: subst.apply(arg_ty),
+                });
+            }
+        }
+    }
+    coerce_unify_inner(arg_ty, param_ty, subst, false, registry)
+}
+
 fn coerce_unify_inner(
     actual: &Type,
     expected: &Type,
@@ -360,11 +403,21 @@ fn coerce_unify_inner(
                     // `typechecker_DESIGN.md` §4.2. The `(x, x)` case is the
                     // only shape that still needs `MaybeOwn` deferral (§5);
                     // that path is retained at the consumer arms below but no
-                    // longer populated from this site. `~β → β` (scheme shape
-                    // `fun view[t](x: ~t) -> t`) is the one self-reference that
-                    // stays silent — binding would trip occurs-check.
+                    // longer populated from this site.
+                    //
+                    // SOUNDNESS: the `actual = ~β, expected = β` self-reference
+                    // arm below can only arise from instantiating a scheme of
+                    // the shape `~α → α` (e.g. `fun view[t](x: ~t) -> t`),
+                    // where both occurrences of `α` share the same fresh var
+                    // id. Binding `β := Own(Var(β))` would trip the occurs
+                    // check; accepting silently matches the scheme's intent.
+                    // Any other caller reaching this arm is a compiler bug.
                     if let Type::Var(s) = inner.as_ref() {
                         if s == b {
+                            debug_assert!(
+                                subst.get(*s).is_none(),
+                                "~β → β self-reference arm requires β unbound"
+                            );
                             return Ok(());
                         }
                     }

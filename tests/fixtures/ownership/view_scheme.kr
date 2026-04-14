@@ -1,0 +1,7 @@
+# expect: ok
+# Exercises the `~β → β` silent self-reference arm in `coerce_unify`.
+# Instantiating `view` at call site produces a fresh `α` that appears in
+# both the `~α` parameter slot and the `α` return slot; passing an owned
+# value must succeed without triggering occurs-check on `β := Own(Var(β))`.
+fun view[t](x: ~t) -> t = x
+fun test(s: ~String) -> String = view(s)

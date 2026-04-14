@@ -151,54 +151,19 @@ pub(super) fn retarget_bare_var_owned_arg(
     if !matches!(raw, Type::Var(_)) {
         return;
     }
-    let resolved_arg = subst.apply(arg_ty);
-    if !matches!(resolved_arg, Type::Own(_)) {
+    // Needed when downstream context pins `α := T` before the arg-coerce
+    // loop runs, so the pre-check's `walk(raw) == Var` guard misses and the
+    // coercion surfaces a plain `Mismatch` we rewrite here.
+    if !matches!(unify::walk(arg_ty, subst), Type::Own(_)) {
         return;
     }
+    let resolved_arg = subst.apply(arg_ty);
     err.error = Box::new(TypeError::BareTypeVarResourceArg {
         callee_name: callee_name.map(|s| s.to_string()),
         param_index,
         param_ty: raw.clone(),
         arg_ty: resolved_arg,
     });
-}
-
-/// Proactive companion to `retarget_bare_var_owned_arg`. Fires at arg-coerce
-/// time when the slot is a still-unbound bare type variable and the argument
-/// resolves to `~T`, so the `shape a` hint surfaces even when `coerce_unify`
-/// succeeds via eager binding. If downstream pressure has already pinned the
-/// slot (walk resolves past `Var`), we stay silent.
-pub(super) fn check_bare_var_owned_arg(
-    raw_param_ty: Option<&Type>,
-    arg_ty: &Type,
-    subst: &Substitution,
-    callee_name: Option<&str>,
-    param_index: usize,
-    span: krypton_parser::ast::Span,
-) -> Result<(), SpannedTypeError> {
-    let Some(raw) = raw_param_ty else {
-        return Ok(());
-    };
-    if !matches!(raw, Type::Var(_)) {
-        return Ok(());
-    }
-    let walked = unify::walk(raw, subst);
-    if !matches!(walked, Type::Var(_)) {
-        return Ok(());
-    }
-    let resolved_arg = subst.apply(arg_ty);
-    if !matches!(resolved_arg, Type::Own(_)) {
-        return Ok(());
-    }
-    Err(spanned(
-        TypeError::BareTypeVarResourceArg {
-            callee_name: callee_name.map(|s| s.to_string()),
-            param_index,
-            param_ty: raw.clone(),
-            arg_ty: resolved_arg,
-        },
-        span,
-    ))
 }
 
 #[derive(Clone)]

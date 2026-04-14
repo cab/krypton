@@ -321,17 +321,13 @@ impl<'a> InferenceContext<'a> {
                         .as_ref()
                         .and_then(|ps| ps.get(i))
                         .cloned();
-                    if !is_constructor {
-                        super::check_bare_var_owned_arg(
-                            raw_param_ty.as_ref(),
-                            arg_ty,
-                            self.subst,
-                            callee_name,
-                            i,
-                            span,
-                        )?;
-                    }
-                    coerce_unify(arg_ty, param_ty, self.subst, self.registry).map_err(|e| {
+                    let arg_ctx = crate::unify::ArgCoerceCtx {
+                        raw_param_ty: raw_param_ty.as_ref(),
+                        is_constructor,
+                        callee_name,
+                        param_index: i,
+                    };
+                    crate::unify::coerce_unify_arg(arg_ty, param_ty, &arg_ctx, self.subst, self.registry).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         super::retarget_bare_var_owned_arg(
                             &mut err,
@@ -715,20 +711,24 @@ impl<'a> InferenceContext<'a> {
                         // coerce loop below has a chance to surface the `shape a` hint.
                         // Constructors are exempt: `~List[~T]` construction relies on
                         // eager absorption of `~T` into the type-parameter slot.
-                        if !is_constructor {
-                            super::check_bare_var_owned_arg(
-                                Some(expected_param_ty),
-                                &a_ty,
-                                self.subst,
-                                callee_name,
-                                i,
-                                span,
-                            )?;
-                        }
                         // Best-effort early resolution to help subsequent lambda args
-                        // infer correctly. The formal per-arg coerce_unify below catches
-                        // any actual type mismatch with full error context.
-                        let _ = coerce_unify(&a_ty, expected_param_ty, self.subst, self.registry);
+                        // infer correctly. The formal per-arg coerce loop below catches
+                        // any actual type mismatch with full error context; the bare-var
+                        // pre-check still runs here via `coerce_unify_arg`.
+                        let arg_ctx = crate::unify::ArgCoerceCtx {
+                            raw_param_ty: Some(expected_param_ty),
+                            is_constructor,
+                            callee_name,
+                            param_index: i,
+                        };
+                        if let Err(e) = crate::unify::coerce_unify_arg(
+                            &a_ty, expected_param_ty, &arg_ctx, self.subst, self.registry,
+                        ) {
+                            if matches!(e, TypeError::BareTypeVarResourceArg { .. }) {
+                                return Err(super::spanned(e, span));
+                            }
+                            // Other errors are deferred to the formal per-arg loop below.
+                        }
                     }
                 }
             }
@@ -762,17 +762,13 @@ impl<'a> InferenceContext<'a> {
                 for (i, (arg_ty, (_, param_ty))) in
                     arg_types.iter().zip(param_types.iter()).enumerate()
                 {
-                    if !is_constructor {
-                        super::check_bare_var_owned_arg(
-                            raw_params.as_ref().and_then(|ps| ps.get(i)),
-                            arg_ty,
-                            self.subst,
-                            callee_name,
-                            i,
-                            span,
-                        )?;
-                    }
-                    coerce_unify(arg_ty, param_ty, self.subst, self.registry).map_err(|e| {
+                    let arg_ctx = crate::unify::ArgCoerceCtx {
+                        raw_param_ty: raw_params.as_ref().and_then(|ps| ps.get(i)),
+                        is_constructor,
+                        callee_name,
+                        param_index: i,
+                    };
+                    crate::unify::coerce_unify_arg(arg_ty, param_ty, &arg_ctx, self.subst, self.registry).map_err(|e| {
                         let mut err = super::spanned(e, span);
                         super::retarget_bare_var_owned_arg(
                             &mut err,
