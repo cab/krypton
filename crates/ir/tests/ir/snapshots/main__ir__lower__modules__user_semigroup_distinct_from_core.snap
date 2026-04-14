@@ -1,0 +1,33 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module modules__user_semigroup_distinct_from_core
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/io/println as println(g) -> Unit
+import user_semigroup_distinct_lib/MaxInt as MaxInt(Int) -> MaxInt
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: MaxInt = construct MaxInt(3)
+  let v2: MaxInt = construct MaxInt(5)
+  let v3: Dict[user_semigroup_distinct_lib.MaxSemigroup, MaxInt] = get_dict user_semigroup_distinct_lib.MaxSemigroup[MaxInt]
+  let v0: MaxInt = trait_call user_semigroup_distinct_lib.MaxSemigroup.pick(v3, v1, v2)
+  let v5: Int = project v0.0
+  let v6: Int = add_int(v5, 3)
+  let v7: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v8: String = trait_call core/show.Show.show(v7, v6)
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v9: Unit = call println(v4, v8)
+  v9

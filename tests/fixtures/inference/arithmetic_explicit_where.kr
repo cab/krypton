@@ -1,0 +1,3 @@
+# expect: output "3"
+fun add[a](x: a, y: a) -> a where a: Semigroup = x + y
+fun main() = println(show(add(1, 2)))

@@ -1,0 +1,10 @@
+# expect: output "8"
+import core/io.{println}
+import user_semigroup_distinct_lib.{MaxInt, pick}
+
+# Core Semigroup[Int] (via operator +) and user Semigroup[MaxInt]
+# coexist with distinct qualified trait names.
+fun main() {
+    let m = pick(MaxInt(3), MaxInt(5));
+    println(show(m.val + 3))
+}

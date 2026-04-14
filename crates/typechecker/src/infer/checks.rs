@@ -600,28 +600,19 @@ fn walk_trait_method_calls(
             }
             TypedExprKind::BinaryOp { op, lhs, rhs } => {
                 let trait_name = match op {
-                    BinOp::Add => Some("Semigroup"),
-                    BinOp::Sub => Some("Sub"),
-                    BinOp::Mul => Some("Mul"),
-                    BinOp::Div => Some("Div"),
-                    BinOp::Eq | BinOp::Neq => Some("Eq"),
-                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some("Ord"),
+                    BinOp::Add => Some(TraitName::core_semigroup()),
+                    BinOp::Sub => Some(TraitName::core_sub()),
+                    BinOp::Mul => Some(TraitName::core_mul()),
+                    BinOp::Div => Some(TraitName::core_div()),
+                    BinOp::Eq | BinOp::Neq => Some(TraitName::core_eq()),
+                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::core_ord()),
                     BinOp::And | BinOp::Or => None,
                 };
                 if let Some(tn) = trait_name {
                     let operand_ty = strip_own(&subst.apply(&lhs.ty));
                     if let Some(v) = leading_type_var(&operand_ty) {
                         if fn_type_param_vars.contains(&v) {
-                            let module = match tn {
-                                "Semigroup" => "core/semigroup",
-                                "Sub" => "core/sub",
-                                "Mul" => "core/mul",
-                                "Div" => "core/div",
-                                "Eq" => "core/eq",
-                                "Ord" => "core/ord",
-                                _ => unreachable!("ICE: unknown numeric op trait: {tn}"),
-                            };
-                            callback(TraitName::new(module.into(), tn.into()), vec![v]);
+                            callback(tn, vec![v]);
                         }
                     }
                 }

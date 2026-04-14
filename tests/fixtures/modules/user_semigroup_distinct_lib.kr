@@ -1,0 +1,11 @@
+pub type MaxInt = { val: Int }
+
+# User-module trait: semantically "pick the larger", not the core Semigroup's +.
+# Distinct qualified identity from core/semigroup::Semigroup.
+pub trait MaxSemigroup[a] {
+  fun pick(x: a, y: a) -> a
+}
+
+impl MaxSemigroup[MaxInt] {
+  fun pick(x, y) = if x.val > y.val { x } else { y }
+}
