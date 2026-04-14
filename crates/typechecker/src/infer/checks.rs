@@ -306,9 +306,13 @@ pub(super) fn check_constrained_function_refs(
             }
             TypedExprKind::Do(exprs)
             | TypedExprKind::Tuple(exprs)
-            | TypedExprKind::Recur(exprs)
             | TypedExprKind::VecLit(exprs) => {
                 for expr in exprs {
+                    work.push(expr);
+                }
+            }
+            TypedExprKind::Recur { args, .. } => {
+                for expr in args {
                     work.push(expr);
                 }
             }
@@ -662,10 +666,13 @@ fn walk_trait_method_calls(
                     work.push(e);
                 }
             }
-            TypedExprKind::Tuple(elems)
-            | TypedExprKind::Recur(elems)
-            | TypedExprKind::VecLit(elems) => {
+            TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
                 for e in elems {
+                    work.push(e);
+                }
+            }
+            TypedExprKind::Recur { args, .. } => {
+                for e in args {
                     work.push(e);
                 }
             }
@@ -1069,10 +1076,13 @@ pub(super) fn check_trait_instances(
                 }
             }
             TypedExprKind::FieldAccess { expr: inner, .. } => work.push(inner),
-            TypedExprKind::Tuple(elems)
-            | TypedExprKind::Recur(elems)
-            | TypedExprKind::VecLit(elems) => {
+            TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
                 for e in elems {
+                    work.push(e);
+                }
+            }
+            TypedExprKind::Recur { args, .. } => {
+                for e in args {
                     work.push(e);
                 }
             }

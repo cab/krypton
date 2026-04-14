@@ -1,0 +1,6 @@
+# expect: ok
+# Borrowed binding forwarded through a borrow recur slot.
+type File = MkFile(String)
+
+fun loop(&f: ~File, n: Int) -> Unit =
+    if n == 0 { () } else { recur(f, n - 1) }

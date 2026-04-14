@@ -1,0 +1,14 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+assertion_line: 884
+expression: output
+---
+[E0111] Error: `f` is a borrowed binding and cannot be consumed or returned
+   ╭─[ ../../tests/fixtures/linear/recur_mode_mismatch_diagnostic.kr:5:44 ]
+   │
+ 5 │ fun bad(b: ~Buf, &f: ~Buf) -> Unit = recur(f, f)
+   │                                            ┬  
+   │                                            ╰── E0111: `f` is a borrowed binding and cannot be consumed or returned
+   │ 
+   │ Help: borrowed bindings may only be reborrowed into `&` slots; rebind the owner at the caller to consume it
+───╯

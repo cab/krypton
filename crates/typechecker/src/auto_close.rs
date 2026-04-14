@@ -939,7 +939,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 }
             }
 
-            TypedExprKind::Recur(args) => {
+            TypedExprKind::Recur { args, .. } => {
                 // Walk args first so any linear forwarded through `recur(b, ...)`
                 // is removed from `live` before the back-edge leak check runs.
                 // Mirrors the QuestionMark handler.

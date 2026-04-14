@@ -1,0 +1,10 @@
+# expect: ok
+# Owned local (a fresh constructor) into consume recur slot.
+type Buf = MkBuf(String)
+
+fun take(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun loop(b: ~Buf, n: Int) -> Unit = {
+    take(b);
+    if n == 0 { () } else { recur(MkBuf("x"), n - 1) }
+}

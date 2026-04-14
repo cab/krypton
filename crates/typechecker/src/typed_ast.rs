@@ -289,7 +289,10 @@ pub enum TypedExprKind {
         field: String,
         resolved_type_ref: Option<ResolvedTypeRef>,
     },
-    Recur(Vec<TypedExpr>),
+    Recur {
+        args: Vec<TypedExpr>,
+        param_modes: Vec<crate::types::ParamMode>,
+    },
     Tuple(Vec<TypedExpr>),
     BinaryOp {
         op: BinOp,
@@ -669,9 +672,10 @@ pub fn apply_subst(expr: &mut TypedExpr, subst: &Substitution) {
             }
             TypedExprKind::Lambda { body, .. } => work.push(body),
             TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::Recur(args)
-            | TypedExprKind::Tuple(args)
-            | TypedExprKind::VecLit(args) => {
+            TypedExprKind::Recur { args, .. } => {
+                work.extend(args.iter_mut());
+            }
+            TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
                 work.extend(args.iter_mut());
             }
             TypedExprKind::BinaryOp { lhs, rhs, .. } => {

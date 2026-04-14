@@ -1,0 +1,5 @@
+# expect: error E0111
+# Minimal reproducer that locks diagnostic wording.
+type Buf = MkBuf(String)
+
+fun bad(b: ~Buf, &f: ~Buf) -> Unit = recur(f, f)

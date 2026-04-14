@@ -1,0 +1,5 @@
+# expect: error E0111
+# Borrowed binding passed into a consume recur slot.
+type Buf = MkBuf(String)
+
+fun bad(b: ~Buf, &f: ~Buf) -> Unit = recur(f, f)

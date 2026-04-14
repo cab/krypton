@@ -26,7 +26,7 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) subst: &'a mut Substitution,
     pub(super) gen: &'a mut TypeVarGen,
     pub(super) registry: Option<&'a TypeRegistry>,
-    pub(super) recur_params: Option<Vec<Type>>,
+    pub(super) recur_params: Option<Vec<(ParamMode, Type)>>,
     pub(super) let_own_spans: Option<&'a mut HashSet<Span>>,
     pub(super) lambda_own_captures: Option<&'a mut HashMap<Span, String>>,
     pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
@@ -1225,7 +1225,13 @@ impl<'a> InferenceContext<'a> {
         let fn_ret_expected = expected_return.unwrap_or_else(|| Type::Var(self.fresh()));
         self.env.fn_return_type = Some(fn_ret_expected.clone());
         let saved_recur = self.recur_params.take();
-        self.recur_params = Some(param_types.clone());
+        self.recur_params = Some(
+            params
+                .iter()
+                .zip(&param_types)
+                .map(|(p, t)| (p.mode, t.clone()))
+                .collect(),
+        );
         let body_typed = self.infer_expr_inner(body, Some(&fn_ret_expected))?;
         self.recur_params = saved_recur;
         self.env.fn_return_type = prev_fn_return_type;
@@ -2271,6 +2277,7 @@ impl<'a> InferenceContext<'a> {
 
             Expr::Recur { args, span, .. } => {
                 let mut typed_args = Vec::new();
+                let mut param_modes: Vec<ParamMode> = Vec::new();
                 match &self.recur_params {
                     Some(params) => {
                         if args.len() != params.len() {
@@ -2282,23 +2289,28 @@ impl<'a> InferenceContext<'a> {
                                 *span,
                             ));
                         }
-                        let params_owned: Vec<Type> = params.to_vec();
-                        for (a, p) in args.iter().zip(params_owned.iter()) {
+                        let params_owned: Vec<(ParamMode, Type)> = params.to_vec();
+                        for (a, (mode, p)) in args.iter().zip(params_owned.iter()) {
                             let a_typed = self.infer_expr_inner(a, Some(p))?;
                             self.coerce_unify_spanned(&a_typed.ty, p, *span)?;
                             typed_args.push(a_typed);
+                            param_modes.push(*mode);
                         }
                     }
                     None => {
                         for a in args {
                             let a_typed = self.infer_expr_inner(a, None)?;
                             typed_args.push(a_typed);
+                            param_modes.push(ParamMode::Consume);
                         }
                     }
                 }
                 let ty = Type::Named("Never".into(), vec![]);
                 Ok(TypedExpr {
-                    kind: TypedExprKind::Recur(typed_args),
+                    kind: TypedExprKind::Recur {
+                        args: typed_args,
+                        param_modes,
+                    },
                     ty,
                     span: *span,
                     resolved_ref: None,
@@ -2464,9 +2476,8 @@ fn collect_trait_constraints_on_vars(
                     stack.push(&arm.body);
                 }
             }
-            TypedExprKind::Tuple(es) | TypedExprKind::VecLit(es) | TypedExprKind::Recur(es) => {
-                stack.extend(es.iter())
-            }
+            TypedExprKind::Tuple(es) | TypedExprKind::VecLit(es) => stack.extend(es.iter()),
+            TypedExprKind::Recur { args, .. } => stack.extend(args.iter()),
             TypedExprKind::FieldAccess { expr, .. }
             | TypedExprKind::TypeApp { expr, .. }
             | TypedExprKind::UnaryOp { operand: expr, .. }

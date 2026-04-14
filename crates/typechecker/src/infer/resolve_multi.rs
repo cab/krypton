@@ -305,10 +305,13 @@ fn collect_entries(
                     work.push(e);
                 }
             }
-            TypedExprKind::Tuple(elems)
-            | TypedExprKind::Recur(elems)
-            | TypedExprKind::VecLit(elems) => {
+            TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
                 for e in elems {
+                    work.push(e);
+                }
+            }
+            TypedExprKind::Recur { args, .. } => {
+                for e in args {
                     work.push(e);
                 }
             }

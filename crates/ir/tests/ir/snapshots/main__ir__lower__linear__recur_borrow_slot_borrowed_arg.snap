@@ -1,0 +1,36 @@
+---
+source: crates/ir/tests/ir/lower.rs
+assertion_line: 80
+expression: ir_module.to_string()
+---
+module linear__recur_borrow_slot_borrowed_arg
+
+type File = MkFile#0(String)
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+
+fn loop(v0: ~File, v1: Int) -> Unit =
+  let_join [recur] v2(v3: ~File, v4: Int) =
+    let_join v9(v7: Bool) =
+      if v7 {
+        ()
+      } else {
+        let v8: Int = sub_int(v4, 1)
+        jump v2(v3, v8)
+      }
+    in
+    let v5: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v6: Bool = trait_call core/eq.Eq.eq(v5, v4, 0)
+    jump v9(v6)
+  in
+  jump v2(v0, v1)

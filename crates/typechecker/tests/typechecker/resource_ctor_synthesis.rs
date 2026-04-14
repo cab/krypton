@@ -87,7 +87,7 @@ fn find_let_type(expr: &TypedExpr, let_name: &str) -> Option<String> {
             }
             TypedExprKind::QuestionMark { expr, .. } => stack.push(expr),
             TypedExprKind::TypeApp { expr, .. } => stack.push(expr),
-            TypedExprKind::Recur(args) => stack.extend(args.iter()),
+            TypedExprKind::Recur { args, .. } => stack.extend(args.iter()),
             _ => {}
         }
     }

@@ -239,10 +239,13 @@ fn patch_deferred_app(
                 patch_deferred_app(val, target_span, resolved_ref, func_ty, param_modes);
             }
         }
-        TypedExprKind::Tuple(elems)
-        | TypedExprKind::VecLit(elems)
-        | TypedExprKind::Recur(elems) => {
+        TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
             for e in elems {
+                patch_deferred_app(e, target_span, resolved_ref, func_ty, param_modes);
+            }
+        }
+        TypedExprKind::Recur { args, .. } => {
+            for e in args {
                 patch_deferred_app(e, target_span, resolved_ref, func_ty, param_modes);
             }
         }

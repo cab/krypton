@@ -285,7 +285,7 @@ fn free_vars_inner(
                 free_vars_inner(e, bound, free, seen);
             }
         }
-        TypedExprKind::Recur(args) => {
+        TypedExprKind::Recur { args, .. } => {
             for a in args {
                 free_vars_inner(a, bound, free, seen);
             }
@@ -393,7 +393,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
         TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
             elems.iter().any(|e| contains_expr_kind(e, pred))
         }
-        TypedExprKind::Recur(args) => args.iter().any(|a| contains_expr_kind(a, pred)),
+        TypedExprKind::Recur { args, .. } => args.iter().any(|a| contains_expr_kind(a, pred)),
         TypedExprKind::LetPattern { value, body, .. } => {
             contains_expr_kind(value, pred)
                 || body.as_deref().is_some_and(|b| contains_expr_kind(b, pred))
@@ -402,7 +402,7 @@ fn contains_expr_kind(expr: &TypedExpr, pred: &dyn Fn(&TypedExprKind) -> bool) -
 }
 
 fn contains_recur(expr: &TypedExpr) -> bool {
-    contains_expr_kind(expr, &|kind| matches!(kind, TypedExprKind::Recur(_)))
+    contains_expr_kind(expr, &|kind| matches!(kind, TypedExprKind::Recur { .. }))
 }
 
 fn contains_question_mark(expr: &TypedExpr) -> bool {
@@ -2006,7 +2006,7 @@ impl LowerCtx {
                     std::mem::discriminant(&expr.kind)
                 )))
             }
-            TypedExprKind::Recur(_) | TypedExprKind::QuestionMark { .. } => {
+            TypedExprKind::Recur { .. } | TypedExprKind::QuestionMark { .. } => {
                 // These are compound expressions — must go through lower_expr
                 Err(LowerError::InternalError(format!(
                     "lower_to_simple called on compound expr {:?}",
@@ -2665,7 +2665,7 @@ impl LowerCtx {
                 }
             }
 
-            TypedExprKind::Recur(args) => {
+            TypedExprKind::Recur { args, .. } => {
                 let (join_name, _join_params) = self.recur_join.clone().ok_or_else(|| {
                     LowerError::InternalError(
                         "recur outside of a recur-enabled function".to_string(),
@@ -2888,7 +2888,7 @@ impl LowerCtx {
             | TypedExprKind::Match { .. }
             | TypedExprKind::LetPattern { .. }
             | TypedExprKind::StructUpdate { .. }
-            | TypedExprKind::Recur(_)
+            | TypedExprKind::Recur { .. }
             | TypedExprKind::QuestionMark { .. }
             | TypedExprKind::BinaryOp {
                 op: BinOp::And | BinOp::Or,

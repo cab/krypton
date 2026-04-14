@@ -1068,9 +1068,12 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
                     is_capture(val, capture_name) || capture_demands_own(val, capture_name, subst)
                 })
         }
-        TypedExprKind::Tuple(elements)
-        | TypedExprKind::VecLit(elements)
-        | TypedExprKind::Recur(elements) => elements.iter().any(|elem| {
+        TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
+            elements.iter().any(|elem| {
+                is_capture(elem, capture_name) || capture_demands_own(elem, capture_name, subst)
+            })
+        }
+        TypedExprKind::Recur { args, .. } => args.iter().any(|elem| {
             is_capture(elem, capture_name) || capture_demands_own(elem, capture_name, subst)
         }),
         TypedExprKind::LetPattern { value, body, .. } => {
@@ -5010,7 +5013,13 @@ fn infer_function_bodies<'a>(
                         subst: &mut state.subst,
                         gen: &mut state.gen,
                         registry: Some(&state.registry),
-                        recur_params: Some(param_types.clone()),
+                        recur_params: Some(
+                            decl.params
+                                .iter()
+                                .zip(&param_types)
+                                .map(|(p, t)| (p.mode, t.clone()))
+                                .collect(),
+                        ),
                         let_own_spans: Some(&mut state.let_own_spans),
                         lambda_own_captures: Some(&mut state.lambda_own_captures),
                         type_param_map: &type_param_map,
@@ -5874,7 +5883,14 @@ where
             subst: &mut state.subst,
             gen: &mut state.gen,
             registry: Some(&state.registry),
-            recur_params: Some(param_types_inferred.clone()),
+            recur_params: Some(
+                method
+                    .params
+                    .iter()
+                    .zip(&param_types_inferred)
+                    .map(|(p, t)| (p.mode, t.clone()))
+                    .collect(),
+            ),
             let_own_spans: Some(&mut state.let_own_spans),
             lambda_own_captures: Some(&mut state.lambda_own_captures),
             type_param_map: &impl_method_tpm,

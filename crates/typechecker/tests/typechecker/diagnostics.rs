@@ -877,6 +877,15 @@ fn e0108_recur_back() {
 }
 
 #[test]
+fn e0111_recur_borrowed_to_consume() {
+    let output = render_fixture_error(
+        "../../tests/fixtures/linear/recur_mode_mismatch_diagnostic.kr",
+    );
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0111"), "expected E0111 in:\n{output}");
+}
+
+#[test]
 fn e0108_early_return_via_question() {
     let output =
         render_fixture_error("../../tests/fixtures/linear/linear_early_return_question_mark.kr");

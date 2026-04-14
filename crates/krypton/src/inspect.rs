@@ -576,7 +576,7 @@ impl<'a> TypedFormatter<'a> {
                 self.fmt_expr_prec(inner, 7);
                 self.buf.push('?');
             }
-            TypedExprKind::Recur(args) => {
+            TypedExprKind::Recur { args, .. } => {
                 // Emit recur closes before the recur call
                 self.emit_close_comments_for_span(&expr.span, "recur");
                 self.buf.push_str("recur(");

@@ -776,10 +776,13 @@ fn collect_free_owned(
                 collect_free_owned(e, owned, bound, acc);
             }
         }
-        TypedExprKind::Tuple(elements)
-        | TypedExprKind::Recur(elements)
-        | TypedExprKind::VecLit(elements) => {
+        TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
             for e in elements {
+                collect_free_owned(e, owned, bound, acc);
+            }
+        }
+        TypedExprKind::Recur { args, .. } => {
+            for e in args {
                 collect_free_owned(e, owned, bound, acc);
             }
         }
@@ -1746,9 +1749,42 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            TypedExprKind::Tuple(elements)
-            | TypedExprKind::Recur(elements)
-            | TypedExprKind::VecLit(elements) => self.check_exprs(elements),
+            TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
+                self.check_exprs(elements)
+            }
+            TypedExprKind::Recur { args, param_modes } => {
+                for (i, arg) in args.iter().enumerate() {
+                    let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
+                    let is_borrow =
+                        matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
+                    if is_borrow {
+                        if let Some(root) = place_root(arg) {
+                            if self.owned.contains(root) {
+                                self.check_not_consumed(root, arg.span, None)?;
+                            }
+                        } else {
+                            return Err(SpannedTypeError {
+                                error: Box::new(TypeError::CannotBorrowTemporary {
+                                    span: arg.span,
+                                }),
+                                span: arg.span,
+                                note: None,
+                                secondary_span: None,
+                                source_file: None,
+                                var_names: None,
+                            });
+                        }
+                    } else {
+                        self.check_not_borrow_place(
+                            arg,
+                            BorrowMisuseContext::ConsumedOrReturned,
+                            None,
+                        )?;
+                        self.check_expr(arg)?;
+                    }
+                }
+                Ok(())
+            }
             TypedExprKind::QuestionMark { expr, .. } => self.check_expr(expr),
             TypedExprKind::Discharge(inner) => self.check_expr(inner),
             TypedExprKind::Lit(_) => Ok(()),

@@ -122,7 +122,12 @@ fn walk(expr: &mut TypedExpr, gen: &mut ScopeIdGen) {
                 walk(e, gen);
             }
         }
-        TypedExprKind::Recur(args) | TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+        TypedExprKind::Tuple(args) | TypedExprKind::VecLit(args) => {
+            for a in args {
+                walk(a, gen);
+            }
+        }
+        TypedExprKind::Recur { args, .. } => {
             for a in args {
                 walk(a, gen);
             }
