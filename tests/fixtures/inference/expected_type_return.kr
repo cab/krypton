@@ -1,0 +1,8 @@
+# expect: ok
+# Locks in `expected_type` threading at return positions / fn body
+# tail (`infer/expr.rs:1229`, inside `infer_lambda`). The body `Nil`
+# is polymorphic `List[a]`; the element type is supplied only by the
+# declared return type `List[Int]`.
+fun empty_ints() -> List[Int] = Nil
+
+fun main() = ()

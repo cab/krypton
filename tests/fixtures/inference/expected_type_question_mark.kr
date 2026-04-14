@@ -1,0 +1,17 @@
+# expect: ok
+# Proves `expected_type` is threaded into `?`'s inner expression.
+# The `?` operator derives a Result/Option *skeleton* (with fresh args)
+# from the enclosing fn return type and hands it down to the inner
+# expression; this biases free-variable binding without pinning the
+# payload.
+fun lookup(x) -> Option[Int] = Some(x)
+
+fun process(x) -> Option[Int] = {
+  let a = lookup(x)?;
+  Some(a * 2)
+}
+
+fun main() = match process(21) {
+  Some(v) => println(v),
+  None => println(0),
+}

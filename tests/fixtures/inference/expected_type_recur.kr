@@ -1,0 +1,11 @@
+# expect: ok
+# Locks in `expected_type` threading into `recur` args
+# (`infer/expr.rs:2259`). The `recur` call passes `Nil` (polymorphic
+# `List[a]`); the element type is supplied only by the parameter's
+# declared `List[Int]`.
+fun drain(xs: List[Int]) -> Int = match xs {
+  Nil => 0,
+  Cons(_, _) => recur(Nil),
+}
+
+fun main() = ()

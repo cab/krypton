@@ -1,0 +1,11 @@
+# expect: ok
+# Locks in `expected_type` threading into match arm bodies
+# (`infer/expr.rs:1639`). Each arm returns `Nil` (polymorphic
+# `List[a]`); the arm's element type is pinned only by the outer
+# `List[Int]` annotation propagated through the match.
+fun pick(flag: Bool) -> List[Int] = match flag {
+  true => Nil,
+  false => Nil,
+}
+
+fun main() = ()

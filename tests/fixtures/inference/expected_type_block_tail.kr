@@ -1,0 +1,11 @@
+# expect: ok
+# Locks in `expected_type` threading into block-tail expressions
+# (`infer/expr.rs:2204`). The block's tail `Nil` is polymorphic
+# `List[a]`; the element type is supplied only by the outer
+# `List[Int]` annotation.
+fun build() -> List[Int] = {
+  let _ = 0;
+  Nil
+}
+
+fun main() = ()

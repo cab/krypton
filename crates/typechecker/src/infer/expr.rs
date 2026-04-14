@@ -1876,8 +1876,30 @@ impl<'a> InferenceContext<'a> {
         &mut self,
         expr: &Expr,
         span: Span,
+        _expected_type: Option<&Type>,
     ) -> Result<TypedExpr, SpannedTypeError> {
-        let inner_typed = self.infer_expr_inner(expr, None)?;
+        // Thread a Result/Option *skeleton* (derived from the enclosing fn
+        // return type, with fresh args) into the inner expression so a
+        // fully-unconstrained operand binds to the right shape. Passing the
+        // fn return type directly would incorrectly pin the Ok/Some payload;
+        // fresh args keep this a bias, not a gate (see DESIGN §1).
+        let fn_ret_applied = self
+            .env
+            .fn_return_type
+            .clone()
+            .map(|t| self.subst.apply(&t));
+        let inner_hint: Option<Type> = match fn_ret_applied.as_ref().map(super::strip_own) {
+            Some(Type::Named(name, _)) if name == "Option" => Some(Type::Named(
+                "Option".to_string(),
+                vec![Type::Var(self.fresh())],
+            )),
+            Some(Type::Named(name, _)) if name == "Result" => Some(Type::Named(
+                "Result".to_string(),
+                vec![Type::Var(self.fresh()), Type::Var(self.fresh())],
+            )),
+            _ => None,
+        };
+        let inner_typed = self.infer_expr_inner(expr, inner_hint.as_ref())?;
         let inner_ty = self.subst.apply(&inner_typed.ty);
         // strip_own: structural — we need to read the Option/Result shape of
         // the operand regardless of whether it is wrapped in `~`. This is not
@@ -2038,6 +2060,12 @@ impl<'a> InferenceContext<'a> {
         })
     }
 
+    /// Core expression checker with an optional `expected_type` hint.
+    ///
+    /// See `conner/typechecker_DESIGN.md` §1 for the invariants that govern
+    /// the hint: it biases free-variable binding but never replaces the
+    /// `coerce_unify` gate, and §2 lists the subset of expression forms that
+    /// actually consume it.
     pub(crate) fn infer_expr_inner(
         &mut self,
         expr: &Expr,
@@ -2362,7 +2390,9 @@ impl<'a> InferenceContext<'a> {
                     scope_id: None,
                 })
             }
-            Expr::QuestionMark { expr, span } => self.infer_question_mark(expr, *span),
+            Expr::QuestionMark { expr, span } => {
+                self.infer_question_mark(expr, *span, expected_type)
+            }
         }
     }
 }
