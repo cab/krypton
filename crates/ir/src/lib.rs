@@ -37,6 +37,12 @@ pub enum Type {
     FnHole,
 }
 
+impl Type {
+    pub fn is_never(&self) -> bool {
+        matches!(self, Type::Named(name, args) if name == "Never" && args.is_empty())
+    }
+}
+
 impl From<krypton_typechecker::types::Type> for Type {
     fn from(tc: krypton_typechecker::types::Type) -> Self {
         use krypton_typechecker::types::Type as TcType;

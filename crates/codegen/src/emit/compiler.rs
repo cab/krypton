@@ -514,7 +514,7 @@ impl<'link> Compiler<'link> {
     pub(super) fn type_to_jvm(&self, ty: &Type) -> Result<JvmType, CodegenError> {
         match ty {
             Type::Named(name, _) => {
-                if name == "Never" || name == "Dict" {
+                if name == "Dict" {
                     return Ok(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 if let Some(info) = self.types.struct_info.get(name) {
@@ -757,11 +757,14 @@ impl<'link> Compiler<'link> {
         {
             self.builder.box_if_needed(actual);
         } else if !matches!(target, JvmType::StructRef(_))
-            && matches!(actual, JvmType::StructRef(idx) if idx == obj)
+            && matches!(actual, JvmType::StructRef(_))
         {
+            // StructRef → primitive: unbox. This handles both Object and
+            // concrete types like Never (dead code after athrow).
             self.builder.unbox_if_needed(target);
-        } else if matches!(actual, JvmType::StructRef(idx) if idx == obj)
+        } else if matches!(actual, JvmType::StructRef(_))
             && matches!(target, JvmType::StructRef(idx) if idx != obj)
+            && actual != target
         {
             let cast_class = match target {
                 JvmType::StructRef(idx) => idx,

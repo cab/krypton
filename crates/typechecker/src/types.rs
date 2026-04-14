@@ -87,6 +87,10 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_never(&self) -> bool {
+        matches!(self, Type::Named(name, args) if name == "Never" && args.is_empty())
+    }
+
     /// Build a function type whose parameter slots are all consume-mode.
     /// Use this at internal construction sites that synthesize function types
     /// (HKT machinery, intrinsic registry, type registry, partial application,

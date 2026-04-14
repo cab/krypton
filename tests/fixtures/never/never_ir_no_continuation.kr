@@ -1,0 +1,3 @@
+# expect: panic "boom"
+fun f(x: Int) -> Int = { panic("boom"); x }
+fun main() = f(1)

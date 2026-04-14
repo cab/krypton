@@ -1277,3 +1277,86 @@ fun main() = 0
         "NoMessages should have PermittedSubclasses"
     );
 }
+
+#[test]
+fn test_never_no_trailing_return() {
+    let src = r#"
+fun diverge() -> Never = panic("boom")
+fun main() = diverge()
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let dir = compile_typed_modules(&typed_modules, &link_ctx);
+    let javap_out = javap_output(&dir.path().join("Test.class"), true);
+
+    // diverge() should use Never descriptor, not Object
+    assert!(
+        javap_out.contains("Lcore/never/Never;"),
+        "diverge() descriptor should use core/never/Never, got:\n{javap_out}"
+    );
+    // Should contain athrow (from panic)
+    assert!(
+        javap_out.contains("athrow"),
+        "diverge() should contain athrow, got:\n{javap_out}"
+    );
+}
+
+#[test]
+fn test_never_int_return_panic() {
+    let src = r#"
+fun diverge() -> Int = panic("boom")
+fun main() = diverge()
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let dir = compile_typed_modules(&typed_modules, &link_ctx);
+    let javap_out = javap_output(&dir.path().join("Test.class"), true);
+
+    // diverge() returns Int, body panics — should contain athrow
+    assert!(
+        javap_out.contains("athrow"),
+        "diverge() -> Int with panic body should contain athrow, got:\n{javap_out}"
+    );
+}
+
+#[test]
+fn test_never_recur_has_goto() {
+    let src = r#"
+fun counter(n: Int) -> Never = if n > 1000 { panic("done") } else { recur(n + 1) }
+fun main() = counter(0)
+"#;
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty());
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let dir = compile_typed_modules(&typed_modules, &link_ctx);
+    let javap_out = javap_output(&dir.path().join("Test.class"), true);
+
+    // counter() should contain goto (for recur)
+    assert!(
+        javap_out.contains("goto"),
+        "counter() should contain goto for recur, got:\n{javap_out}"
+    );
+}

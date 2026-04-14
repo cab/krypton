@@ -1509,6 +1509,20 @@ impl LowerCtx {
         match self.try_lower_as_simple(expr)? {
             LoweredValue::Simple(bindings, simple) => {
                 let var = self.fresh_var();
+                if expr.ty.is_never() {
+                    let never_ty: IrType = expr.ty.clone().into();
+                    let let_expr = expr_at(
+                        expr.span,
+                        never_ty.clone(),
+                        ExprKind::Let {
+                            bind: var,
+                            ty: never_ty.clone(),
+                            value: simple,
+                            body: Box::new(atom_expr_at(expr.span, never_ty, Atom::Var(var))),
+                        },
+                    );
+                    return Ok(Self::wrap_bindings(bindings, let_expr));
+                }
                 let body = cont(self, Atom::Var(var))?;
                 let let_expr = expr_at(
                     expr.span,
@@ -1523,6 +1537,9 @@ impl LowerCtx {
                 Ok(Self::wrap_bindings(bindings, let_expr))
             }
             LoweredValue::Expr(compound) => {
+                if expr.ty.is_never() {
+                    return Ok(compound);
+                }
                 let var = self.fresh_var();
                 let body = cont(self, Atom::Var(var))?;
                 Ok(self.inline_compound_let(var, expr.ty.clone(), compound, body))
