@@ -1560,13 +1560,12 @@ impl<'a> OwnershipChecker<'a> {
                 }
 
                 let captured = free_owned_vars(body, self.owned, &lambda_params);
-                // A lambda consumes its owned captures only if it's classified as own
-                // (`~fn`). A plain `fn` closure that only borrows its captures does not
-                // consume them. `lambda_own_captures` is populated during inference by
-                // `first_own_capture`, which uses `capture_demands_own` to detect
-                // own-demanding uses (including borrow-slot awareness).
-                let is_own_lambda = self.lambda_own_captures.contains_key(&expr.span)
-                    || matches!(&expr.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
+                // `lambda_own_captures` is the single source of truth for whether a
+                // lambda is `~fn`: it is written once during inference by
+                // `first_own_capture` (which uses `capture_demands_own` for
+                // borrow-slot-aware own-demand detection) and consulted here. A plain
+                // `fn` closure that only borrows its captures does not consume them.
+                let is_own_lambda = self.lambda_own_captures.contains_key(&expr.span);
                 for name in &captured {
                     if let Some(&first_span) = self
                         .consumed
