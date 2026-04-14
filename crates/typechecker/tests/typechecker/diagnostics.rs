@@ -1030,3 +1030,15 @@ fn e0001_facade_private_not_exported_diagnostic() {
         render_fixture_module_error("../../tests/fixtures/modules/facade_private_no_match.kr");
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn e0307_deriving_unknown_trait_diagnostic() {
+    let src = "type Foo = Foo deriving (Bogus)\n";
+    let output = parse_and_infer_module_error(src);
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0307"), "expected E0307 in:\n{output}");
+    assert!(
+        output.contains("unknown trait `Bogus`"),
+        "expected `unknown trait \\`Bogus\\`` in:\n{output}"
+    );
+}

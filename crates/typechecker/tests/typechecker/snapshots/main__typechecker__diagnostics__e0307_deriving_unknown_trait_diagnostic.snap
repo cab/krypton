@@ -1,0 +1,11 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0307] Error: unknown trait `Bogus`
+   ╭─[ test.kr:1:1 ]
+   │
+ 1 │ type Foo = Foo deriving (Bogus)
+   │ ───────────────┬───────────────  
+   │                ╰───────────────── E0307: unknown trait `Bogus`
+───╯

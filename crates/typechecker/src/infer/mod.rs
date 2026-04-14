@@ -4012,12 +4012,8 @@ fn process_deriving(
             for trait_name in &type_decl.deriving {
                 if trait_registry.lookup_trait_by_name(trait_name).is_none() {
                     return Err(spanned(
-                        TypeError::NoInstance {
-                            trait_name: trait_name.clone(),
-                            ty: type_decl.name.clone(),
-                            cause: crate::type_error::NoInstanceCause::MethodCall {
-                                method_name: "deriving".to_string(),
-                            },
+                        TypeError::UnknownTrait {
+                            name: trait_name.clone(),
                         },
                         type_decl.span,
                     ));
