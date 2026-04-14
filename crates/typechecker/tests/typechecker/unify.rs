@@ -168,32 +168,25 @@ fn unify_transitive_vars() {
 // --- coerce_unify tests ---
 
 #[test]
-fn coerce_own_to_var_defers_then_defaults_shared() {
+fn coerce_own_to_var_binds_eagerly() {
     let mut gen = TypeVarGen::new();
     let a = fresh_var(&mut gen);
     let mut subst = Substitution::new();
-    // coerce_unify(Own(Int), Var(a)) in bare position → a = MaybeOwn(q, Int) (deferred)
-    let snap = subst.push_qual_scope();
+    // coerce_unify(Own(Int), Var(a)) binds a := Own(Int) directly; no MaybeOwn
+    // metavariable is introduced for the non-`(x, x)` shape.
     assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst, None).is_ok());
-    // Before scope resolution: still MaybeOwn
-    let before = subst.apply(&a);
-    assert!(matches!(&before, Type::MaybeOwn(_, inner) if **inner == Type::Int));
-    // After scope resolution: qualifier defaults to Shared → bare Int
-    subst.commit_qual_scope(snap);
-    assert_eq!(subst.apply(&a), Type::Int);
+    assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
 }
 
 #[test]
-fn coerce_own_to_var_confirms_affine_when_expected_own() {
+fn coerce_own_to_var_then_own_own_structural() {
     let mut gen = TypeVarGen::new();
     let a = fresh_var(&mut gen);
     let mut subst = Substitution::new();
-    let snap = subst.push_qual_scope();
-    // coerce_unify(Own(Int), Var(a)) → a = MaybeOwn(q, Int)
+    // coerce_unify(Own(Int), Var(a)) → a = Own(Int)
     assert!(coerce_unify(&Type::Own(Box::new(Type::Int)), &a, &mut subst, None).is_ok());
-    // Now coerce MaybeOwn(q, Int) against Own(Int) → confirms q = Affine
+    // A follow-up coerce against Own(Int) succeeds via the (Own, Own) structural arm.
     assert!(coerce_unify(&a, &Type::Own(Box::new(Type::Int)), &mut subst, None).is_ok());
-    subst.commit_qual_scope(snap);
     assert_eq!(subst.apply(&a), Type::Own(Box::new(Type::Int)));
 }
 

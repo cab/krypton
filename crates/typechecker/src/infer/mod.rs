@@ -20,7 +20,7 @@ use crate::types::{
     type_to_canonical_name, BindingSource, ConstructorBindingKind, ParamMode, Substitution, Type,
     TypeEnv, TypeScheme, TypeVarGen, TypeVarId,
 };
-use crate::unify::{coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
+use crate::unify::{self, coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
 /// Error from `infer_module`, bundling the error with enough context
 /// to render diagnostics against the correct file.
@@ -161,6 +161,44 @@ pub(super) fn retarget_bare_var_owned_arg(
         param_ty: raw.clone(),
         arg_ty: resolved_arg,
     });
+}
+
+/// Proactive companion to `retarget_bare_var_owned_arg`. Fires at arg-coerce
+/// time when the slot is a still-unbound bare type variable and the argument
+/// resolves to `~T`, so the `shape a` hint surfaces even when `coerce_unify`
+/// succeeds via eager binding. If downstream pressure has already pinned the
+/// slot (walk resolves past `Var`), we stay silent.
+pub(super) fn check_bare_var_owned_arg(
+    raw_param_ty: Option<&Type>,
+    arg_ty: &Type,
+    subst: &Substitution,
+    callee_name: Option<&str>,
+    param_index: usize,
+    span: krypton_parser::ast::Span,
+) -> Result<(), SpannedTypeError> {
+    let Some(raw) = raw_param_ty else {
+        return Ok(());
+    };
+    if !matches!(raw, Type::Var(_)) {
+        return Ok(());
+    }
+    let walked = unify::walk(raw, subst);
+    if !matches!(walked, Type::Var(_)) {
+        return Ok(());
+    }
+    let resolved_arg = subst.apply(arg_ty);
+    if !matches!(resolved_arg, Type::Own(_)) {
+        return Ok(());
+    }
+    Err(spanned(
+        TypeError::BareTypeVarResourceArg {
+            callee_name: callee_name.map(|s| s.to_string()),
+            param_index,
+            param_ty: raw.clone(),
+            arg_ty: resolved_arg,
+        },
+        span,
+    ))
 }
 
 #[derive(Clone)]

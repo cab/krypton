@@ -1,0 +1,6 @@
+# expect: error E0104
+fun identity[a](x: a) -> a = x
+fun test(s: ~String) -> String = {
+  let x: String = identity(s)
+  x
+}

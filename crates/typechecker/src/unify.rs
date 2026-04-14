@@ -35,7 +35,7 @@ fn is_empty_sum_type(ty: &Type, registry: Option<&TypeRegistry>) -> bool {
 }
 
 /// Resolve type variable chains through the substitution.
-fn walk(ty: &Type, subst: &Substitution) -> Type {
+pub(crate) fn walk(ty: &Type, subst: &Substitution) -> Type {
     let mut visiting = HashSet::new();
     let mut chain = Vec::new();
     walk_inner(ty, subst, &mut visiting, &mut chain)
@@ -297,9 +297,13 @@ fn resolve_maybe_own(ty: Type, subst: &Substitution) -> Type {
 /// to move from `~T` to `T`. The only preserved Own rules are `(Own, Own)`
 /// structural recursion and the function-arrow `fn → ~fn` effect-polarity rule.
 ///
-/// When expected is an unbound Var and actual is Own(T):
-/// - If in_constructor position: absorb Own directly, bind var = ~T
-/// - Otherwise: defer via MaybeOwn(fresh_q, T)
+/// When expected is an unbound Var and actual is Own(T), bind β := Own(T)
+/// eagerly regardless of constructor context (see `typechecker_DESIGN.md` §4.2).
+/// The prior split that deferred via `MaybeOwn(fresh_q, T)` outside constructor
+/// position is no longer needed for the four `let_*_{owned,shared}` shapes —
+/// they are subsumed by eager binding plus the downstream coerce rules. The
+/// `(x, x)` duplicate-use case still flows through the pre-existing `MaybeOwn`
+/// consumer arms below, which remain intact.
 pub fn coerce_unify(
     actual: &Type,
     expected: &Type,
@@ -351,29 +355,26 @@ fn coerce_unify_inner(
         if subst.get(*b).is_none() {
             match &actual {
                 Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
-                    if in_constructor {
-                        // Inside constructor: absorb ~T directly (no MaybeOwn)
-                        if occurs_in(*b, &actual, subst) {
-                            return Err(TypeError::InfiniteType {
-                                var: *b,
-                                ty: actual,
-                            });
+                    // Eager Own-preserving binding: bind `β := Own(T)`
+                    // regardless of `in_constructor`. See
+                    // `typechecker_DESIGN.md` §4.2. The `(x, x)` case is the
+                    // only shape that still needs `MaybeOwn` deferral (§5);
+                    // that path is retained at the consumer arms below but no
+                    // longer populated from this site. `~β → β` (scheme shape
+                    // `fun view[t](x: ~t) -> t`) is the one self-reference that
+                    // stays silent — binding would trip occurs-check.
+                    if let Type::Var(s) = inner.as_ref() {
+                        if s == b {
+                            return Ok(());
                         }
-                        subst.insert(*b, actual.clone());
-                    } else {
-                        // Bare position: defer via MaybeOwn
-                        let q = subst.fresh_qual();
-                        let base = *inner.clone();
-                        if let Type::Var(s) = &base {
-                            if s == b {
-                                return Ok(());
-                            }
-                        }
-                        if occurs_in(*b, &base, subst) {
-                            return Err(TypeError::InfiniteType { var: *b, ty: base });
-                        }
-                        subst.insert(*b, Type::MaybeOwn(q, Box::new(base)));
                     }
+                    if occurs_in(*b, &actual, subst) {
+                        return Err(TypeError::InfiniteType {
+                            var: *b,
+                            ty: actual,
+                        });
+                    }
+                    subst.insert(*b, actual.clone());
                     return Ok(());
                 }
                 _ => {
