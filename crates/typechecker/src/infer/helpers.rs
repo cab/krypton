@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use krypton_parser::ast::{Span, TypeConstraint, TypeDecl, TypeDeclKind, TypeParam};
 
 use crate::trait_registry::TraitRegistry;
-use crate::type_registry::{self, TypeRegistry};
+use crate::type_registry;
 use crate::typed_ast::{
     self, ConstructorKind, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
     ResolvedTraitMethodRef, ResolvedTypeRef, TraitName,

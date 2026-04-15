@@ -4,7 +4,7 @@ use krypton_parser::ast::{Expr, Pattern, Span};
 
 use crate::type_registry;
 use crate::typed_ast::TypedExpr;
-use crate::types::{ParamMode, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen};
+use crate::types::{ParamMode, Substitution, Type, TypeEnv, TypeVarGen};
 use crate::unify::SpannedTypeError;
 
 use super::expr::InferenceContext;

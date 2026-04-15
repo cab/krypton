@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use krypton_parser::ast::{
-    Decl, Expr, ExternMethod, ExternTarget, FnDecl, Module, Pattern, Span, TypeConstraint,
-    TypeDecl, TypeDeclKind, TypeParam, Visibility,
+    Decl, Expr, ExternMethod, ExternTarget, FnDecl, Module, Span, TypeConstraint, TypeDeclKind,
+    Visibility,
 };
 
 use crate::overload::{fn_param_types, types_overlap};
@@ -10,17 +10,15 @@ use crate::scc;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    self, ConstructorKind, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTraitInfo,
-    ExternTraitMethodInfo, ExternTypeInfo, InstanceDefInfo, ResolvedBindingRef,
-    ResolvedCallableRef, ResolvedConstraint, ResolvedConstructorRef, ResolvedTraitMethodRef,
-    ResolvedTypeRef, StructDecl, SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl,
-    TypedModule,
+    self, ExportedTraitDef, ExportedTraitMethod, ExternFnInfo, ExternTraitInfo,
+    ExternTraitMethodInfo, ExternTypeInfo, InstanceDefInfo, ResolvedConstraint, StructDecl,
+    SumDecl, TraitDefInfo, TraitName, TypedExpr, TypedFnDecl, TypedModule,
 };
 use crate::types::{
-    type_to_canonical_name, BindingSource, ConstructorBindingKind, ParamMode, Substitution, Type,
-    TypeEnv, TypeScheme, TypeVarGen, TypeVarId,
+    type_to_canonical_name, BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv,
+    TypeScheme, TypeVarGen, TypeVarId,
 };
-use crate::unify::{self, coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
+use crate::unify::{coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
 /// Error from `infer_module`, bundling the error with enough context
 /// to render diagnostics against the correct file.
