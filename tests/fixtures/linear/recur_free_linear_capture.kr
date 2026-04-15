@@ -1,0 +1,16 @@
+# expect: error E0108
+# D.3: a lambda whose body uses `recur` may not capture a free linear
+# value. The lambda body cannot consume the capture exactly once across an
+# arbitrary number of iterations; thread `s` through the recur arg list
+# instead (see `recur_threaded_linear.kr`).
+type Session = MkSession(String)
+
+fun rollback(x: ~Session) -> Unit = match x { MkSession(_) => () }
+
+fun bad(s: ~Session) -> Unit = {
+    let f = (n: Int) -> {
+        if n == 0 { rollback(s) }
+        else { recur(n - 1) }
+    }
+    f(3)
+}

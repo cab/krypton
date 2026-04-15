@@ -117,6 +117,25 @@ impl TraitRegistry {
     }
 
     pub fn register_instance(&mut self, info: InstanceInfo) -> Result<(), Box<(TypeError, Span)>> {
+        // D.2: `~fn` is structurally Linear and consumed by being called; there
+        // is no separate `dispose` step to define. Reject `impl Disposable[…]`
+        // when any target type is a function. See `disposable.md` §D.2.
+        if info.trait_name == TraitName::core_disposable() {
+            for target in &info.target_types {
+                let inner = match target {
+                    Type::Own(inner) => inner.as_ref(),
+                    other => other,
+                };
+                if matches!(inner, Type::Fn(_, _)) {
+                    return Err(Box::new((
+                        TypeError::InvalidDisposableInstance {
+                            ty: format!("{}", target),
+                        },
+                        info.span,
+                    )));
+                }
+            }
+        }
         // Check for overlapping (trait, type tuple) pairs via positionwise unification
         // (only same-trait instances)
         let trait_indices = self

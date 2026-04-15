@@ -1248,6 +1248,29 @@ impl<'a> InferenceContext<'a> {
         let ty = if let Some(cap_name) =
             super::first_own_capture(body, &param_names, self.env, self.subst, &body_typed)
         {
+            // D.3: a lambda whose body recurs may not capture free linear
+            // (`~T`) values. The body cannot consume the capture exactly once
+            // across an arbitrary number of loop iterations; thread the value
+            // through the recur argument list instead. See `disposable.md` §D.3.
+            if let Some(recur_span) = super::find_first_recur_span(&body_typed) {
+                let cap_ty = self
+                    .env
+                    .lookup(&cap_name)
+                    .map(|s| self.subst.apply(&s.ty))
+                    .unwrap_or(Type::Unit);
+                let type_name = match &cap_ty {
+                    Type::Own(inner) => format!("{}", inner),
+                    other => format!("{}", other),
+                };
+                return Err(super::spanned(
+                    TypeError::LinearValueNotConsumed {
+                        name: cap_name,
+                        type_name,
+                        reason: crate::type_error::LeakReason::RecurCapture,
+                    },
+                    recur_span,
+                ));
+            }
             if let Some(ref mut captures) = self.lambda_own_captures {
                 captures.insert(span, cap_name);
             }

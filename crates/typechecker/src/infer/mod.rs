@@ -1203,6 +1203,48 @@ pub(super) fn first_own_capture(
     }
 }
 
+/// Walk a typed lambda body and return the span of the first `Recur` node
+/// that targets THIS lambda. Stops at nested `Lambda` bodies because those
+/// rebind `recur` to themselves (the inner lambda's params).
+pub(super) fn find_first_recur_span(body: &TypedExpr) -> Option<Span> {
+    use crate::typed_ast::TypedExprKind as K;
+    match &body.kind {
+        K::Recur { .. } => Some(body.span),
+        K::Lambda { .. } => None,
+        K::Lit(_) | K::Var(_) => None,
+        K::App { func, args, .. } => find_first_recur_span(func)
+            .or_else(|| args.iter().find_map(find_first_recur_span)),
+        K::TypeApp { expr, .. } => find_first_recur_span(expr),
+        K::If { cond, then_, else_ } => find_first_recur_span(cond)
+            .or_else(|| find_first_recur_span(then_))
+            .or_else(|| find_first_recur_span(else_)),
+        K::Let { value, body, .. } => find_first_recur_span(value)
+            .or_else(|| body.as_deref().and_then(find_first_recur_span)),
+        K::Do(exprs) => exprs.iter().find_map(find_first_recur_span),
+        K::Match { scrutinee, arms } => find_first_recur_span(scrutinee).or_else(|| {
+            arms.iter().find_map(|arm| {
+                arm.guard
+                    .as_deref()
+                    .and_then(find_first_recur_span)
+                    .or_else(|| find_first_recur_span(&arm.body))
+            })
+        }),
+        K::FieldAccess { expr, .. } => find_first_recur_span(expr),
+        K::Tuple(elems) | K::VecLit(elems) => elems.iter().find_map(find_first_recur_span),
+        K::BinaryOp { lhs, rhs, .. } => {
+            find_first_recur_span(lhs).or_else(|| find_first_recur_span(rhs))
+        }
+        K::UnaryOp { operand, .. } => find_first_recur_span(operand),
+        K::StructLit { fields, .. } => fields.iter().find_map(|(_, v)| find_first_recur_span(v)),
+        K::StructUpdate { base, fields } => find_first_recur_span(base)
+            .or_else(|| fields.iter().find_map(|(_, v)| find_first_recur_span(v))),
+        K::LetPattern { value, body, .. } => find_first_recur_span(value)
+            .or_else(|| body.as_deref().and_then(find_first_recur_span)),
+        K::QuestionMark { expr, .. } => find_first_recur_span(expr),
+        K::Discharge(inner) => find_first_recur_span(inner),
+    }
+}
+
 /// Format an inferred type for display, renaming type variables to a, b, c, ...
 /// and wrapping polymorphic types in `forall`.
 pub fn display_type(ty: &Type, subst: &Substitution, env: &TypeEnv) -> String {
@@ -4420,6 +4462,26 @@ fn register_impl_instances(
                     .map_err(|e| spanned(e, *span))?
                 };
                 resolved_targets.push(resolved);
+            }
+
+            // D.2: reject `impl Disposable[<fn type>]` before orphan/well-formedness
+            // so the user sees a targeted diagnostic. `~fn` is structurally Linear
+            // and consumed by calling it; no separate `dispose` step exists.
+            if trait_name == "Disposable" {
+                for rt in &resolved_targets {
+                    let inner = match rt {
+                        Type::Own(inner) => inner.as_ref(),
+                        other => other,
+                    };
+                    if matches!(inner, Type::Fn(_, _)) {
+                        return Err(spanned(
+                            TypeError::InvalidDisposableInstance {
+                                ty: format!("{}", rt),
+                            },
+                            *span,
+                        ));
+                    }
+                }
             }
 
             // Classify each arg for orphan checking: determine whether the arg's

@@ -1,0 +1,47 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module linear__recur_threaded_linear
+
+type Session = MkSession#0(String)
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+
+fn rollback(v0: ~Session) -> Unit =
+  switch v0 {
+    0 (v1: String) ->
+      ()
+  }
+
+fn loop(v2: ~Session, v3: Int) -> Unit =
+  let_join [recur] v4(v5: ~Session, v6: Int) =
+    let_join v12(v9: Bool) =
+      if v9 {
+        let v10: Unit = call rollback(v5)
+        v10
+      } else {
+        let v11: Int = sub_int(v6, 1)
+        jump v4(v5, v11)
+      }
+    in
+    let v7: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+    let v8: Bool = trait_call core/eq.Eq.eq(v7, v6, 0)
+    jump v12(v8)
+  in
+  jump v4(v2, v3)
+
+fn main() -> Unit =
+  let v13: ~Session = construct Session::MkSession#0("x")
+  let v14: Unit = call loop(v13, 3)
+  v14

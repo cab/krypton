@@ -1,0 +1,12 @@
+# expect: error E0108
+# D.1: a closure that captures a `~Buffer` is itself `~fn`. Never calling
+# the closure leaves a linear value unconsumed at scope exit.
+type Buffer = MkBuffer(String)
+
+fun take(x: ~Buffer) -> Unit = match x { MkBuffer(_) => () }
+
+fun main() -> Unit = {
+    let b: ~Buffer = MkBuffer("x")
+    let f = () -> take(b)
+    ()
+}

@@ -1,0 +1,12 @@
+# expect: ok
+# D.1: calling the captured-`~Buffer` closure exactly once consumes it
+# and discharges its linear obligation.
+type Buffer = MkBuffer(String)
+
+fun take(x: ~Buffer) -> Unit = match x { MkBuffer(_) => () }
+
+fun main() -> Unit = {
+    let b: ~Buffer = MkBuffer("x")
+    let f = () -> take(b)
+    f()
+}

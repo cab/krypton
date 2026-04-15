@@ -135,6 +135,7 @@ pub enum TypeErrorCode {
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
     E0017, // Cannot construct uninhabited type
+    E0112, // `Disposable` cannot be implemented for a function type (`~fn` is consumed by calling it)
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -148,6 +149,11 @@ pub enum LeakReason {
     RecurBack,
     /// Binding was live at a `?` early-return point.
     EarlyReturnViaQuestion,
+    /// Linear `~T` value was captured by a closure that contains a `recur`.
+    /// The lambda body cannot consume the capture exactly once across an
+    /// arbitrary number of loop iterations; thread it through the recur
+    /// argument list instead. See `disposable.md` §D.3.
+    RecurCapture,
 }
 
 impl fmt::Display for TypeErrorCode {
@@ -558,6 +564,12 @@ pub enum TypeError {
     /// of a `shape` parameter but not the other. The failing form is
     /// captured in `failing_form` (e.g. "a = ~T (owned)") and the nested
     /// error is the root cause from that fork.
+    /// `impl Disposable[T]` was elaborated for a function type. Per
+    /// `disposable.md` §D.2, every `~fn` is structurally linear and consumed
+    /// by calling it; there is no separate `dispose` step to define.
+    InvalidDisposableInstance {
+        ty: String,
+    },
     ShapeImplDualCheckFailure {
         trait_name: String,
         method_name: String,
@@ -678,6 +690,7 @@ impl TypeError {
             TypeError::TooManyShapeParameters { .. } => TypeErrorCode::E0320,
             TypeError::ShapeImplDualCheckFailure { .. } => TypeErrorCode::E0319,
             TypeError::BareTypeVarResourceArg { .. } => TypeErrorCode::E0104,
+            TypeError::InvalidDisposableInstance { .. } => TypeErrorCode::E0112,
         }
     }
 
@@ -1030,10 +1043,19 @@ impl TypeError {
                     LeakReason::EarlyReturnViaQuestion => format!(
                         "`~{type_name}` value `{name}` is still live at this early return (`?`)"
                     ),
+                    LeakReason::RecurCapture => format!(
+                        "linear `~{type_name}` value `{name}` is captured by a `recur` body; thread it through the recur arguments instead"
+                    ),
                 };
-                Some(format!(
-                    "{base}; consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"
-                ))
+                let suffix = match reason {
+                    LeakReason::RecurCapture => format!(
+                        "; pass `{name}` as a `recur` argument so the value is consumed exactly once per iteration (see `disposable.md` §D.3)"
+                    ),
+                    _ => format!(
+                        "; consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"
+                    ),
+                };
+                Some(format!("{base}{suffix}"))
             }
             TypeError::UnsupportedConstraint { reason, .. } => Some((*reason).to_string()),
             TypeError::CannotBorrowTemporary { .. } => {
@@ -1069,6 +1091,9 @@ impl TypeError {
             TypeError::ShapeImplDualCheckFailure { failing_form, inner, .. } => Some(format!(
                 "the impl body must typecheck for both plain and owned instantiations of the `shape` parameter; the fork with {failing_form} failed: {inner}"
             )),
+            TypeError::InvalidDisposableInstance { .. } => Some(
+                "remove the `impl Disposable[…]` block; Krypton already requires every `~fn` to be called exactly once".to_string(),
+            ),
             TypeError::BareTypeVarResourceArg { callee_name, param_index, param_ty, arg_ty } => {
                 let callee = callee_name
                     .as_deref()
@@ -1875,11 +1900,19 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::LinearValueNotConsumed { name, type_name, reason, .. } => {
+                if matches!(reason, LeakReason::RecurCapture) {
+                    return write!(
+                        f,
+                        "linear `~{}` value `{}` is captured by a `recur` body; thread it through the recur arguments instead",
+                        type_name, name
+                    );
+                }
                 let where_ = match reason {
                     LeakReason::ScopeExit => "at scope exit",
                     LeakReason::BranchMissing => "in some branches",
                     LeakReason::RecurBack => "before `recur`",
                     LeakReason::EarlyReturnViaQuestion => "at `?` early return",
+                    LeakReason::RecurCapture => unreachable!(),
                 };
                 write!(
                     f,
@@ -1962,6 +1995,12 @@ impl fmt::Display for TypeError {
                 write!(
                     f,
                     "impl of trait `{trait_name}` method `{method_name}` failed to typecheck for {failing_form}: {inner}"
+                )
+            }
+            TypeError::InvalidDisposableInstance { ty } => {
+                write!(
+                    f,
+                    "`Disposable` cannot be implemented for a function type (`{ty}`). A closure value is consumed by calling it; there is no separate `dispose` step to define."
                 )
             }
         }

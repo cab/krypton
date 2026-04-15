@@ -1,0 +1,6 @@
+# expect: error E0112
+# D.2: `~fn` is structurally Linear and consumed by being called; there is
+# no separate `dispose` step to define for a function type.
+impl Disposable[() -> Unit] {
+    fun dispose(x: ~(() -> Unit)) -> Unit = ()
+}

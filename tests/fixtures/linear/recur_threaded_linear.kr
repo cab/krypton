@@ -1,0 +1,12 @@
+# expect: ok
+# D.3: linear state is threaded through the `recur` argument list; the
+# linear value never appears as a free capture.
+type Session = MkSession(String)
+
+fun rollback(x: ~Session) -> Unit = match x { MkSession(_) => () }
+
+fun loop(s: ~Session, n: Int) -> Unit =
+    if n == 0 { rollback(s) }
+    else { recur(s, n - 1) }
+
+fun main() -> Unit = loop(MkSession("x"), 3)
