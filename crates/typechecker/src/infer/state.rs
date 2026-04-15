@@ -259,7 +259,7 @@ impl ModuleInferenceState {
     }
 
     pub(super) fn resolve_fn_param_types_for_overlap(&self, f: &FnDecl) -> Option<Vec<Type>> {
-        super::resolve_fn_param_types_for_overlap(f, &self.registry)
+        super::traits_register::resolve_fn_param_types_for_overlap(f, &self.registry)
     }
 
     pub(super) fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {

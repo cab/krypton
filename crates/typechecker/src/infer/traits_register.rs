@@ -68,11 +68,15 @@ pub(super) fn process_traits_and_deriving(
     // derivation is checked. The hard-error on duplicate impls still
     // triggers: `DerivingConflictsWithImpl` is detected at the top of
     // `process_deriving` by scanning `module.decls` directly.
-    super::register_impl_instances(state, &mut trait_registry, module, module_path)?;
+    super::impls::register_impl_instances(state, &mut trait_registry, module, module_path)?;
 
     // Phase 5: Deriving pass
-    let derived_instance_defs =
-        super::process_deriving(&mut trait_registry, module, &state.registry, module_path)?;
+    let derived_instance_defs = super::deriving_pass::process_deriving(
+        &mut trait_registry,
+        module,
+        &state.registry,
+        module_path,
+    )?;
 
     // Compute trait_method_map between phases 5 and 6, with collision detection
     let mut trait_method_map: HashMap<String, TraitName> = HashMap::new();
