@@ -1,13 +1,24 @@
 use std::collections::HashMap;
 
-use krypton_parser::ast::{ExternMethod, ExternTarget, Span, Visibility};
+use krypton_parser::ast::{Decl, ExternMethod, ExternTarget, Module, Span, Visibility};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{ExternFnInfo, TraitName};
+use crate::typed_ast::{ExternFnInfo, ExternTypeInfo, TraitName};
 use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
+use super::display::build_type_param_map;
 use super::helpers::{require_param_vars, spanned};
+use super::state::ModuleInferenceState;
+
+/// Result of processing a module's local extern declarations.
+pub(crate) type LocalExternResult = (
+    Vec<ExternFnInfo>,
+    Vec<ExternTypeInfo>,
+    Vec<ExternBindingInfo>,
+    HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    Vec<PendingExternTrait>,
+);
 
 /// Result of processing extern methods: function info for codegen + dict requirements.
 pub(crate) struct ExternMethodsResult {
@@ -335,4 +346,139 @@ pub(crate) fn process_extern_methods(
         bindings,
         fn_constraints,
     })
+}
+
+impl ModuleInferenceState {
+    pub(super) fn process_local_externs(
+        &mut self,
+        module: &Module,
+        mod_path: &str,
+    ) -> Result<LocalExternResult, SpannedTypeError> {
+        let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
+        let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
+        let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
+        let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
+            HashMap::new();
+        let mut pending_extern_traits: Vec<PendingExternTrait> = Vec::new();
+
+        // Build trait name lookup from imported trait defs
+        let mut trait_name_lookup: HashMap<String, TraitName> = HashMap::new();
+        for td in &self.imported_trait_defs {
+            trait_name_lookup.insert(
+                td.name.clone(),
+                TraitName::new(td.module_path.clone(), td.name.clone()),
+            );
+        }
+
+        for decl in &module.decls {
+            if let Decl::Extern {
+                target,
+                module_path,
+                alias,
+                is_trait,
+                type_params,
+                lifts,
+                methods,
+                span,
+                ..
+            } = decl
+            {
+                // Extern traits are collected for registration in the trait phase
+                if *is_trait {
+                    if matches!(target, ExternTarget::Js) {
+                        return Err(spanned(
+                            TypeError::ExternTraitOnJsTarget {
+                                name: alias.clone().unwrap_or_default(),
+                            },
+                            *span,
+                        ));
+                    }
+                    if let Some(name) = alias {
+                        pending_extern_traits.push(PendingExternTrait {
+                            name: name.clone(),
+                            java_interface: module_path.clone(),
+                            type_params: type_params.clone(),
+                            methods: methods.clone(),
+                            span: *span,
+                        });
+                    }
+                    continue;
+                }
+
+                // Register type binding if `as Name[params]` is present
+                let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
+                let mut tp_arity: Option<HashMap<String, usize>> = None;
+                if let Some(name) = alias {
+                    // Check if already registered (e.g. Vec is a builtin)
+                    let type_param_vars = if let Some(existing) = self.registry.lookup_type(name) {
+                        existing.type_param_vars.clone()
+                    } else {
+                        let vars: Vec<_> = type_params.iter().map(|_| self.gen.fresh()).collect();
+                        self.registry
+                            .register_type(crate::type_registry::TypeInfo {
+                                name: name.clone(),
+                                type_params: type_params.clone(),
+                                type_param_vars: vars.clone(),
+                                kind: crate::type_registry::TypeKind::Record { fields: vec![] },
+                                lifts: lifts.clone(),
+                                is_prelude: false,
+                            })
+                            .map_err(|e| spanned(e, *span))?;
+                        vars
+                    };
+                    self.registry.mark_user_visible(name);
+                    extern_types.push(ExternTypeInfo {
+                        krypton_name: name.clone(),
+                        host_module: module_path.clone(),
+                        target: target.clone(),
+                        lifts: lifts.clone(),
+                    });
+
+                    // Build type_param_map for method resolution
+                    if !type_params.is_empty() {
+                        let (map, arity) =
+                            build_type_param_map(type_params, &type_param_vars, name);
+                        tp_map = Some(map);
+                        tp_arity = Some(arity);
+                    }
+                }
+
+                {
+                    let tp_names = type_params.as_slice();
+                    let result = process_extern_methods(
+                        module_path,
+                        target,
+                        methods,
+                        &mut self.env,
+                        &mut self.gen,
+                        &self.registry,
+                        &trait_name_lookup,
+                        mod_path,
+                        *span,
+                        tp_map.as_ref(),
+                        tp_arity.as_ref(),
+                        if tp_map.is_some() {
+                            Some(tp_names)
+                        } else {
+                            None
+                        },
+                        alias.as_deref(),
+                    )?;
+
+                    for (name, reqs) in result.fn_constraints {
+                        extern_fn_constraints.insert(name, reqs);
+                    }
+                    extern_bindings.extend(result.bindings);
+                    extern_fns.extend(result.extern_fns);
+                }
+            }
+        }
+        Ok((
+            extern_fns,
+            extern_types,
+            extern_bindings,
+            extern_fn_constraints,
+            pending_extern_traits,
+        ))
+    }
 }

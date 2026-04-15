@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
-use krypton_parser::ast::{Span, Visibility};
+use krypton_parser::ast::{Decl, Module, Span, Visibility};
 
+use crate::overload::{fn_param_types, types_overlap};
 use crate::typed_ast::{self, TraitName};
 use crate::types::{BindingSource, ConstructorBindingKind, TypeEnv, TypeScheme};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::helpers::spanned;
+use super::state::ModuleInferenceState;
 
 pub(crate) struct ImportContext {
     pub(super) imported_fn_types: Vec<typed_ast::ImportedFn>,
@@ -362,4 +364,96 @@ pub(crate) struct ImportBinding {
     pub(crate) original_name: String,
     pub(crate) is_prelude: bool,
     pub(crate) span: Span,
+}
+
+impl ModuleInferenceState {
+    pub(super) fn check_explicit_import_shadows(&self, module: &Module) -> Result<(), SpannedTypeError> {
+        for decl in &module.decls {
+            match decl {
+                Decl::DefFn(f) => {
+                    let non_prelude_imports: Vec<_> = self
+                        .imports
+                        .get_by_name(&f.name)
+                        .filter(|imp| !imp.is_prelude)
+                        .collect();
+                    if non_prelude_imports.is_empty() {
+                        continue;
+                    }
+                    // Try to resolve local param types for overload checking
+                    let local_params = match super::traits_register::resolve_fn_param_types_for_overlap(f, &self.registry) {
+                        Some(params) => params,
+                        None => {
+                            // Unannotated — keep current error behavior
+                            let imp = &non_prelude_imports[0];
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: f.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                f.span,
+                            ));
+                        }
+                    };
+                    for imp in &non_prelude_imports {
+                        let imp_params = match fn_param_types(&imp.scheme.ty) {
+                            Some(params) => params,
+                            None => {
+                                // Import is not a function — conflict
+                                return Err(spanned(
+                                    TypeError::DefinitionConflictsWithImport {
+                                        def_name: f.name.clone(),
+                                        source_module: imp.qualified_name.module_path.clone(),
+                                    },
+                                    f.span,
+                                ));
+                            }
+                        };
+                        if imp_params.len() != local_params.len() {
+                            return Err(spanned(
+                                TypeError::ImportOverloadArityMismatch {
+                                    name: f.name.clone(),
+                                    arities: vec![
+                                        ("(local)".to_string(), local_params.len()),
+                                        (
+                                            imp.qualified_name.module_path.clone(),
+                                            imp_params.len(),
+                                        ),
+                                    ],
+                                },
+                                f.span,
+                            ));
+                        }
+                        if types_overlap(&local_params, &imp_params) {
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: f.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                f.span,
+                            ));
+                        }
+                    }
+                }
+                Decl::Extern { methods, .. } => {
+                    for m in methods {
+                        if let Some(imp) = self
+                            .imports
+                            .get_by_name(&m.name)
+                            .find(|imp| !imp.is_prelude)
+                        {
+                            return Err(spanned(
+                                TypeError::DefinitionConflictsWithImport {
+                                    def_name: m.name.clone(),
+                                    source_module: imp.qualified_name.module_path.clone(),
+                                },
+                                m.span,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
 }
