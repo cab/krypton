@@ -253,7 +253,7 @@ fn infer_module_with_custom_resolver() {
 
     let src = r#"
         import mylib.{add}
-        fun main() -> Int = add(1, 2)
+        fun main() -> Unit = println(add(1, 2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -267,7 +267,7 @@ fn infer_module_with_custom_resolver() {
     let (modules, _) = result.unwrap();
     let info = &modules[0];
     let main_type = info.fn_types.iter().find(|e| e.name == "main").unwrap();
-    assert_eq!(format!("{}", main_type.scheme), "() -> Int");
+    assert_eq!(format!("{}", main_type.scheme), "() -> Unit");
 }
 
 #[test]
@@ -1474,7 +1474,7 @@ fn infer_module_returns_all_modules() {
 
     let src = r#"
         import mylib.{add}
-        fun main() -> Int = add(1, 2)
+        fun main() -> Unit = println(add(1, 2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -1516,7 +1516,7 @@ fn infer_module_provenance_on_bindings() {
 
     let src = r#"
         import mylib.{add}
-        fun main() -> Int = add(1, 2)
+        fun main() -> Unit = println(add(1, 2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -1556,7 +1556,7 @@ fn infer_module_cache_prevents_recheck() {
     RESOLVE_COUNT.store(0, Ordering::SeqCst);
     let src = r#"
         import mylib.{helper}
-        fun main() -> Int = helper()
+        fun main() -> Unit = println(helper())
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -1588,7 +1588,7 @@ fn infer_module_circular_import_detected() {
         }
     }
 
-    let src = "import a.{foo}\nfun main() -> Int = foo(1)";
+    let src = "import a.{foo}\nfun main() -> Unit = println(foo(1))";
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
     let result = infer::infer_module(
@@ -1681,7 +1681,7 @@ fn infer_module_private_by_default() {
     // Importing a private function should fail with E0503
     let src = r#"
         import mylib.{public_fn, internal_helper}
-        fun main() -> Int = public_fn() + internal_helper()
+        fun main() -> Unit = println(public_fn() + internal_helper())
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -1704,7 +1704,7 @@ fn infer_module_private_by_default() {
     // Importing only the public function should succeed
     let src2 = r#"
         import mylib.{public_fn}
-        fun main() -> Int = public_fn()
+        fun main() -> Unit = println(public_fn())
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
@@ -1735,7 +1735,7 @@ fn infer_module_bare_import_binds_qualifier() {
     }
     let src = r#"
         import mylib
-        fun main() -> Int = mylib.add(1, 2)
+        fun main() -> Unit = println(mylib.add(1, 2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -1766,7 +1766,7 @@ fn infer_module_import_alias_binds_only_alias() {
     }
     let src = r#"
         import mylib.{twice as double}
-        fun main() -> Int = double(2) + twice(2)
+        fun main() -> Unit = println(double(2) + twice(2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -1820,13 +1820,13 @@ fn imported_callable_alias_preserves_imported_provenance() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import helpers_b.{compute as mul}
-        fun main() -> Int = mul(2)
+        fun call_site() -> Int = mul(2)
         "#,
         &HelpersResolver,
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "mul"));
     assert_eq!(
         callee.resolved_ref,
@@ -1849,13 +1849,13 @@ fn local_extern_callable_preserves_local_provenance() {
             fun abs(n: Int) -> Int
         }
 
-        fun main() -> Int = abs(5)
+        fun call_site() -> Int = abs(5)
         "#,
         &CompositeResolver::stdlib_only(),
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "abs"));
     assert_eq!(
         callee.resolved_ref,
@@ -1892,13 +1892,13 @@ fn imported_extern_callable_alias_preserves_imported_provenance() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import extern_provenance_lib.{abs as magnitude}
-        fun main() -> Int = magnitude(5)
+        fun call_site() -> Int = magnitude(5)
         "#,
         &ExternResolver,
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "magnitude"));
     assert_eq!(
         callee.resolved_ref,
@@ -1941,13 +1941,13 @@ fn reexported_extern_callable_preserves_imported_provenance() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import extern_provenance_reexport.{magnitude}
-        fun main() -> Int = magnitude(5)
+        fun call_site() -> Int = magnitude(5)
         "#,
         &ExternResolver,
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "magnitude"));
     assert_eq!(
         callee.resolved_ref,
@@ -1974,13 +1974,13 @@ fn local_trait_method_call_preserves_resolved_trait_identity() {
             fun times(x: Int, y: Int) -> Int = x * y
         }
 
-        fun main() -> Int = times(2, 3)
+        fun call_site() -> Int = times(2, 3)
         "#,
         &CompositeResolver::stdlib_only(),
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert!(matches!(&callee.kind, TypedExprKind::Var(name) if name == "times"));
     assert_eq!(
         callee.resolved_ref,
@@ -2008,7 +2008,7 @@ fn infer_module_missing_qualified_export_errors_clearly() {
     }
     let src = r#"
         import mylib
-        fun main() -> Int = mylib.missing(1, 2)
+        fun main() -> Unit = println(mylib.missing(1, 2))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2043,7 +2043,7 @@ fn infer_module_qualifier_used_as_value_errors_clearly() {
     }
     let src = r#"
         import mylib
-        fun main() -> Int = { let m = mylib; 0 }
+        fun main() -> Unit = println({ let m = mylib; 0 })
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2078,7 +2078,7 @@ fn infer_module_qualified_nullary_constructor_value_resolves() {
     }
     let src = r#"
         import mylib
-        fun main() -> Option[Int] = mylib.None
+        fun use_it() = mylib.None
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2113,7 +2113,7 @@ fn infer_module_qualified_constructor_call_typechecks() {
     // the is_constructor check uses the exported name (not internal local_name).
     let src = r#"
         import mylib
-        fun main() -> Box[Int] = mylib.Box(42)
+        fun use_it() -> Box[Int] = mylib.Box(42)
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2129,13 +2129,13 @@ fn infer_module_qualified_constructor_call_typechecks() {
         result.err()
     );
     let (modules, _) = result.unwrap();
-    let main_ty = modules[0]
+    let use_it_ty = modules[0]
         .fn_types
         .iter()
-        .find(|e| e.name == "main")
+        .find(|e| e.name == "use_it")
         .map(|e| format!("{}", e.scheme))
-        .expect("main not found");
-    assert_eq!(main_ty, "() -> Box[Int]");
+        .expect("use_it not found");
+    assert_eq!(use_it_ty, "() -> Box[Int]");
 }
 
 #[test]
@@ -2152,7 +2152,7 @@ fn infer_module_constructor_alias_resolves() {
     }
     let src = r#"
         import mylib.{Box as MkBox}
-        fun main() = MkBox(1)
+        fun use_it() = MkBox(1)
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2177,13 +2177,13 @@ fn local_record_constructor_preserves_resolved_constructor_ref() {
     let typed = infer_typed_module_with_resolver(
         r#"
         type Point = { x: Int, y: Int }
-        fun main() = Point(1, 2)
+        fun call_site() = Point(1, 2)
         "#,
         &CompositeResolver::stdlib_only(),
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert_eq!(
         callee.resolved_ref,
         Some(ResolvedBindingRef::Constructor(ResolvedConstructorRef {
@@ -2215,13 +2215,13 @@ fn imported_constructor_alias_preserves_resolved_constructor_ref() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import mylib.{Box as MkBox}
-        fun main() = MkBox(1)
+        fun call_site() = MkBox(1)
         "#,
         &FakeResolver,
         "test",
     );
 
-    let callee = app_callee(function_body(&typed, "main"));
+    let callee = app_callee(function_body(&typed, "call_site"));
     assert_eq!(
         callee.resolved_ref,
         Some(ResolvedBindingRef::Constructor(ResolvedConstructorRef {
@@ -2259,13 +2259,13 @@ fn imported_field_access_carries_resolved_type_ref() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import mylib.{mk}
-        fun main() -> Int = mk().x
+        fun call_site() -> Int = mk().x
         "#,
         &FakeResolver,
         "test",
     );
 
-    let (_base, field, resolved_type_ref) = field_access(function_body(&typed, "main"));
+    let (_base, field, resolved_type_ref) = field_access(function_body(&typed, "call_site"));
     assert_eq!(field, "x");
     assert_eq!(
         resolved_type_ref,
@@ -2294,13 +2294,13 @@ fn imported_match_patterns_carry_resolved_variant_refs() {
     let typed = infer_typed_module_with_resolver(
         r#"
         import mylib.{Color, Red, Blue}
-        fun main(c: Color) -> Int = match c { Red => 1, Blue => 2 }
+        fun call_site(c: Color) -> Int = match c { Red => 1, Blue => 2 }
         "#,
         &FakeResolver,
         "test",
     );
 
-    let arms = match_arms(function_body(&typed, "main"));
+    let arms = match_arms(function_body(&typed, "call_site"));
     let expected_red = Some(ResolvedVariantRef {
         type_ref: ResolvedTypeRef {
             qualified_name: krypton_typechecker::typed_ast::QualifiedName::new(
@@ -2350,7 +2350,7 @@ fn infer_module_pub_import_reexport() {
     }
     let src = r#"
         import facade.{helper}
-        fun main() -> Int = helper(5)
+        fun main() -> Unit = println(helper(5))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2396,7 +2396,7 @@ fn infer_module_pub_import_reexport_private_error() {
     }
     let src = r#"
         import facade.{helper}
-        fun main() -> Int = helper(5)
+        fun main() -> Unit = println(helper(5))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2538,7 +2538,7 @@ fn cross_module_derived_instance_exports_constraint_metadata() {
     }
     let src = r#"
         import mylib.{Box}
-        fun main(x) = x
+        fun id_box(x) = x
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2596,7 +2596,7 @@ fn empty_impl_is_rejected() {
         impl Show[Player2] {
         }
 
-        fun main() = 0
+        fun main() = println(0)
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2654,7 +2654,7 @@ fn infer_module_private_trait() {
     // Explicitly importing a private trait should fail with E0503
     let src = r#"
         import traitlib.{Secret, public_fn}
-        fun main() -> Int = public_fn()
+        fun main() -> Unit = println(public_fn())
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -2677,7 +2677,7 @@ fn infer_module_private_trait() {
     // Wildcard import should silently skip private traits
     let src2 = r#"
         import traitlib.{public_fn}
-        fun main() -> Int = public_fn()
+        fun main() -> Unit = println(public_fn())
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
@@ -2720,7 +2720,7 @@ fn infer_module_pub_trait_methods_accessible() {
 
     let src = r#"
         import showlib.{Foo, MkFoo, Displayable, display}
-        fun main() -> String = display(MkFoo(1))
+        fun main() -> Unit = println(display(MkFoo(1)))
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -2765,7 +2765,7 @@ fn infer_module_trait_private_by_default() {
     // Can use public function but not the private trait's method
     let src = r#"
         import mylib.{visible}
-        fun main() -> Int = visible()
+        fun main() -> Unit = println(visible())
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -2784,7 +2784,7 @@ fn infer_module_trait_private_by_default() {
     // Trying to import the private trait by name should fail
     let src2 = r#"
         import mylib.{Hidden}
-        fun main() -> Int = 1
+        fun main() -> Unit = println(1)
     "#;
     let (module2, errors2) = parse(src2);
     assert!(errors2.is_empty());
@@ -2819,7 +2819,7 @@ fn infer_module_parse_error_produces_e0506() {
     }
     let src = r#"
         import broken.{bad}
-        fun main() -> Int = bad()
+        fun main() -> Unit = println(bad())
     "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
@@ -2954,7 +2954,7 @@ fn prelude_fn_shadow_removes_imported_metadata() {
 
 #[test]
 fn reserved_name_krypton_intrinsic_rejected() {
-    let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
+    let src = "fun __krypton_intrinsic() = 42\nfun main() = println(__krypton_intrinsic())";
     let module = parse_module(src);
     let result = infer::infer_module(
         &module,
@@ -2975,7 +2975,7 @@ fn reserved_name_krypton_intrinsic_rejected() {
 
 #[test]
 fn reserved_name_krypton_prefix_rejected() {
-    let src = "fun __krypton_foo() = 1\nfun main() = __krypton_foo()";
+    let src = "fun __krypton_foo() = 1\nfun main() = println(__krypton_foo())";
     let module = parse_module(src);
     let result = infer::infer_module(
         &module,
@@ -2998,7 +2998,7 @@ fn reserved_name_krypton_prefix_rejected() {
 fn non_reserved_name_allowed() {
     // A user function named "intrinsic" (without __krypton_ prefix) should be fine
     let result = infer_module_fn(
-        "fun intrinsic() = 42\nfun main() = intrinsic()",
+        "fun intrinsic() = 42\nfun main() = println(intrinsic())",
         "intrinsic",
     );
     assert_eq!(result, "() -> Int");

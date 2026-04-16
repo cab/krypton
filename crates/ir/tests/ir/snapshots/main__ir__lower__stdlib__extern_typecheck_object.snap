@@ -20,4 +20,5 @@ declare println: (x7) -> Unit
 
 fn main() -> Unit =
   let v0: Unit = call println(42)
-  v0
+  let v1: Unit = call println(v0)
+  v1

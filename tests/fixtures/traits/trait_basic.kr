@@ -5,4 +5,4 @@ impl Eq[Point] {
     fun eq(x, y) = if x.x == y.x { x.y == y.y } else { false }
 }
 
-fun main() = eq(Point(1, 2), Point(1, 2))
+fun main() = println(eq(Point(1, 2), Point(1, 2)))

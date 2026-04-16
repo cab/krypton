@@ -18,9 +18,10 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import custom_println/println as println(Int) -> Int
 declare println: (Int) -> Int
 
-fn main() -> Int =
+fn main() -> Unit =
   let v0: Int = call println(42)
-  v0
+  let v1: Int = call println(v0)
+  ()
 module core/eq
 
 trait Eq[c] { eq(c, c): Bool }

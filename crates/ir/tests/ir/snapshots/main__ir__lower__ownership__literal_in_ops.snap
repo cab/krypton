@@ -16,8 +16,12 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
-  let v0: Int = mul_int(2, 3)
-  let v1: Int = sub_int(10, 4)
-  let v2: Int = add_int(v0, v1)
-  v2
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: Int = mul_int(2, 3)
+  let v2: Int = sub_int(10, 4)
+  let v3: Int = add_int(v1, v2)
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v4: Unit = call println(v0, v3)
+  v4

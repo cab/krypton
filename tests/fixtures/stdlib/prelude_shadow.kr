@@ -2,4 +2,7 @@
 # User type declaration shadows prelude Option
 type Option[a] = MyVariant(a) | MyNone
 
-fun main() = MyVariant(42)
+fun main() = match MyVariant(42) {
+  MyVariant(n) => println(n),
+  MyNone => (),
+}

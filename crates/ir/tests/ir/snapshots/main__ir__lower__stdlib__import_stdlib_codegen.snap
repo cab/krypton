@@ -19,7 +19,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/string/split as split(String, String) -> Vec[String]
 declare println: (g) -> Unit
 
-fn main() -> Int =
+fn main() -> Unit =
   let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v1: Unit = call println(v0, "hello")
-  0
+  v1

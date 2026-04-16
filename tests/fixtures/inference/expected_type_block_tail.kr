@@ -8,4 +8,4 @@ fun build() -> List[Int] = {
   Nil
 }
 
-fun main() = ()
+fun main() = println(())

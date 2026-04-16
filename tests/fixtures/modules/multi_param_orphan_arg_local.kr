@@ -7,4 +7,4 @@ impl Convert[Bar, String] {
     fun convert(x: Bar) -> String = "bar"
 }
 
-fun main() = ()
+fun main() = println(())

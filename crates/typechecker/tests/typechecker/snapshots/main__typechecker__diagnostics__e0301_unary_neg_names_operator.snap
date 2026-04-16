@@ -3,11 +3,11 @@ source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
 [E0301] Error: cannot use `-` on `Bool` — `Bool` does not implement `Neg`
-   ╭─[ test.kr:1:22 ]
+   ╭─[ test.kr:1:30 ]
    │
- 1 │ fun main() -> Bool = -true
-   │                      ──┬──  
-   │                        ╰──── E0301: cannot use `-` on `Bool` — `Bool` does not implement `Neg`
+ 1 │ fun main() -> Unit = println(-true)
+   │                              ──┬──  
+   │                                ╰──── E0301: cannot use `-` on `Bool` — `Bool` does not implement `Neg`
    │ 
    │ Help: implement `Neg[Bool]` to enable `-` on `Bool`
 ───╯

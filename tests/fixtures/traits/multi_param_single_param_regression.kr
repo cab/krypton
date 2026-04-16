@@ -7,4 +7,4 @@ impl Shown[Int] {
     fun shown(x: Int) -> String = "int"
 }
 
-fun main() = ()
+fun main() = println(())

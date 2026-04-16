@@ -137,6 +137,7 @@ pub enum TypeErrorCode {
     E0017, // Cannot construct uninhabited type
     E0018, // Irrefutable if-let pattern
     E0112, // `Disposable` cannot be implemented for a function type (`~fn` is consumed by calling it)
+    E0321, // Invalid main function signature
 }
 
 /// Why a linear `~T` binding was flagged as unconsumed.
@@ -578,6 +579,9 @@ pub enum TypeError {
         inner: Box<TypeError>,
     },
     IrrefutableIfLet,
+    InvalidMainSignature {
+        reason: String,
+    },
 }
 
 /// How a borrowed binding was misused. Drives the diagnostic wording.
@@ -694,6 +698,7 @@ impl TypeError {
             TypeError::BareTypeVarResourceArg { .. } => TypeErrorCode::E0104,
             TypeError::InvalidDisposableInstance { .. } => TypeErrorCode::E0112,
             TypeError::IrrefutableIfLet => TypeErrorCode::E0018,
+            TypeError::InvalidMainSignature { .. } => TypeErrorCode::E0321,
         }
     }
 
@@ -1133,6 +1138,7 @@ impl TypeError {
             TypeError::IrrefutableIfLet => {
                 Some("use a plain `let` binding instead — `if let` is for refutable patterns like `Some(x)`, `Ok(v)`, or variant constructors".to_string())
             }
+            TypeError::InvalidMainSignature { .. } => None,
         }
     }
 
@@ -2011,6 +2017,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::IrrefutableIfLet => {
                 write!(f, "irrefutable `if let` pattern: this pattern always matches")
+            }
+            TypeError::InvalidMainSignature { reason } => {
+                write!(f, "{reason}")
             }
         }
     }

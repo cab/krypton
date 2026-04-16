@@ -16,5 +16,5 @@ fun origin() {
 fun main() {
     let p = origin();
     let s = Circle(5);
-    area(s)
+    println(area(s))
 }

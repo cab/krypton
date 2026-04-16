@@ -120,7 +120,7 @@ fn extract_multi(
 fn test_link_context_from_real_interfaces() {
     let libs = vec![("mylib", "pub fun helper() -> Int = 42")];
     let all = extract_multi(
-        "import mylib.{helper}\npub fun main() -> Int = helper()",
+        "import mylib.{helper}\npub fun main() -> Unit = println(helper())",
         "test",
         libs,
     );
@@ -177,7 +177,7 @@ impl Show[Color] {
 "#,
     )];
     let all = extract_multi(
-        "import mylib.{Color, Red, Green, Blue}\nimport core/show.{Show, show}\npub fun main() -> String = show(Red)",
+        "import mylib.{Color, Red, Green, Blue}\nimport core/show.{Show, show}\npub fun main() -> Unit = println(show(Red))",
         "test",
         libs,
     );

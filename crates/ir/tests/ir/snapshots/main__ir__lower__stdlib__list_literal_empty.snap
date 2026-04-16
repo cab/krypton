@@ -16,12 +16,19 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
-  let v0: List[l8] = construct List::Nil#1()
-  let v1: List[l8] = v0
-  switch v1 {
-    0 (v2: d, v3: List[d]) ->
-      1
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let_join v7(v5: Int) =
+    let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v6: Unit = call println(v0, v5)
+    v6
+  in
+  let v1: List[m8] = construct List::Nil#1()
+  let v2: List[m8] = v1
+  switch v2 {
+    0 (v3: d, v4: List[d]) ->
+      jump v7(1)
     1 ->
-      0
+      jump v7(0)
   }

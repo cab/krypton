@@ -304,7 +304,7 @@ fn circular_import_error() {
         }
     }
 
-    let src = "import a.{foo}\nfun main() -> Int = foo(1)";
+    let src = "import a.{foo}\nfun main() -> Unit = println(foo(1))";
     let output = render_module_error_with_resolver(src, &CircularResolver);
     assert!(output.contains("E0502"), "expected E0502 in:\n{output}");
     assert!(
@@ -327,7 +327,7 @@ fn module_qualifier_value_diagnostic() {
         }
     }
 
-    let src = "import helpers_a\nfun main() -> Int = { let m = helpers_a; 0 }";
+    let src = "import helpers_a\nfun main() -> Unit = println({ let m = helpers_a; 0 })";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(output.contains("E0504"), "expected E0504 in:\n{output}");
     assert!(
@@ -358,7 +358,7 @@ fn module_qualifier_value_diagnostic_noncallable_example_has_no_call_syntax() {
         }
     }
 
-    let src = "import choices\nfun main() -> Int = { let m = choices; 0 }";
+    let src = "import choices\nfun main() -> Unit = println({ let m = choices; 0 })";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(
         !output.contains("choices.None(...)"),
@@ -368,7 +368,7 @@ fn module_qualifier_value_diagnostic_noncallable_example_has_no_call_syntax() {
 
 #[test]
 fn module_qualifier_value_diagnostic_hides_internal_export_names() {
-    let src = "import core/option\nfun main() -> Int = { let m = option; 0 }";
+    let src = "import core/option\nfun main() -> Unit = println({ let m = option; 0 })";
     let output = render_module_error(src);
     assert!(
         !output.contains('$'),
@@ -391,7 +391,7 @@ fn qualified_export_table_has_no_mangled_names() {
     }
 
     // Use the module as a value to trigger a diagnostic that lists exports
-    let src = "import tlib\nfun main() -> Int = { let m = tlib; 0 }";
+    let src = "import tlib\nfun main() -> Unit = println({ let m = tlib; 0 })";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(
         !output.contains('$'),
@@ -401,7 +401,7 @@ fn qualified_export_table_has_no_mangled_names() {
 
 #[test]
 fn reserved_name_error() {
-    let src = "fun __krypton_intrinsic() = 42\nfun main() = __krypton_intrinsic()";
+    let src = "fun __krypton_intrinsic() = 42\nfun main() = println(__krypton_intrinsic())";
     let output = parse_and_infer_module_error(src);
     assert!(output.contains("E0012"), "expected E0012 in:\n{output}");
     assert!(
@@ -426,7 +426,7 @@ fn import_ctor_no_parent_type_in_annotation() {
 
     // Import only constructors — Shape should NOT be available in annotations
     let src =
-        "import shapes.{Circle, Square}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+        "import shapes.{Circle, Square}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Unit = println(0)";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(
         output.contains("E0011"),
@@ -450,7 +450,7 @@ fn import_ctor_expr_ok() {
     }
 
     // Import only constructors — using them in expressions (no annotation) should work
-    let src = "import shapes.{Circle}\nfun wrap(x) = Circle(x)\nfun main() -> Int = 0";
+    let src = "import shapes.{Circle}\nfun wrap(x) = Circle(x)\nfun main() -> Unit = println(0)";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(
@@ -483,7 +483,7 @@ fn import_type_explicitly_allows_annotation() {
 
     // Import the type explicitly — Shape should be available in annotations
     let src =
-        "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Int = 0";
+        "import shapes.{Shape, Circle}\nfun area(s: Shape) -> Float = 0.0\nfun main() -> Unit = println(0)";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {:?}", errors);
     let result = infer::infer_module(
@@ -513,7 +513,7 @@ fn parse_error_in_imported_module() {
         }
     }
 
-    let src = "import bad.{f}\nfun main() -> Int = f()";
+    let src = "import bad.{f}\nfun main() -> Unit = println(f())";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let errors = match infer::infer_module(
@@ -560,7 +560,7 @@ fn type_error_in_imported_module() {
         }
     }
 
-    let src = "import badmod.{f}\nfun main() -> Int = f()";
+    let src = "import badmod.{f}\nfun main() -> Unit = println(f())";
     let (module, errors) = parse(src);
     assert!(errors.is_empty(), "parse errors: {errors:?}");
     let errors = match infer::infer_module(
@@ -630,7 +630,7 @@ fn nullary_constructor_call_qualified_diagnostic() {
         }
     }
 
-    let src = "import core/option\nfun main() -> Int = option.None()";
+    let src = "import core/option\nfun main() -> Unit = println(option.None())";
     let output = render_module_error_with_resolver(src, &Resolver);
     assert!(
         output.contains("E0004"),
@@ -706,7 +706,7 @@ fn e0301_span_points_to_call_not_block() {
 fn e0301_method_call_names_method_and_type() {
     let src = "import core/show.{Show, show}\n\
                type Opaque = Opaque\n\
-               fun main() -> String = show(Opaque)\n";
+               fun main() -> Unit = println(show(Opaque))\n";
     let output = parse_and_infer_module_error(src);
     insta::assert_snapshot!(output);
     assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
@@ -745,7 +745,7 @@ fn e0301_operator_names_operator_and_type() {
 
 #[test]
 fn e0301_unary_neg_names_operator() {
-    let src = "fun main() -> Bool = -true\n";
+    let src = "fun main() -> Unit = println(-true)\n";
     let output = parse_and_infer_module_error(src);
     insta::assert_snapshot!(output);
     assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
@@ -1056,5 +1056,19 @@ fn e0307_deriving_unknown_trait_diagnostic() {
 fn ufcs_field_call_disambiguation_diagnostic() {
     insta::assert_snapshot!(parse_and_infer_module_error(
         "type Handler = { action: (Int) -> Int }\nfun main() -> Int = {\n  let h = Handler { action = x -> x + 1 };\n  h.action(42)\n}"
+    ));
+}
+
+#[test]
+fn main_with_params_diagnostic() {
+    insta::assert_snapshot!(parse_and_infer_module_error(
+        "fun main(x: Int) -> Unit = println(x)"
+    ));
+}
+
+#[test]
+fn main_wrong_return_type_diagnostic() {
+    insta::assert_snapshot!(parse_and_infer_module_error(
+        "fun main() -> Int = 42"
     ));
 }

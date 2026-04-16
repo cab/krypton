@@ -20,8 +20,11 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare abs: (Int) -> Int
 declare max: (Int, Int) -> Int
+declare println: (g) -> Unit
 
-fn main() -> Int =
-  let v0: Int = call abs(5)
-  let v1: Int = call max(v0, 3)
-  v1
+fn main() -> Unit =
+  let v1: Int = call abs(5)
+  let v2: Int = call max(v1, 3)
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v3: Unit = call println(v0, v2)
+  v3

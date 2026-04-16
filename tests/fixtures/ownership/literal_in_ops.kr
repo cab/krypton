@@ -1,2 +1,2 @@
 # expect: ok
-fun main() = 2 * 3 + (10 - 4)
+fun main() = println(2 * 3 + (10 - 4))

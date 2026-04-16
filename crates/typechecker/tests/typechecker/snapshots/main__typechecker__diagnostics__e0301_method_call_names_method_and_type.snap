@@ -3,11 +3,11 @@ source: crates/typechecker/tests/typechecker/diagnostics.rs
 expression: output
 ---
 [E0301] Error: no `show` function found for type `Opaque`
-   ╭─[ test.kr:3:24 ]
+   ╭─[ test.kr:3:30 ]
    │
- 3 │ fun main() -> String = show(Opaque)
-   │                        ──────┬─────  
-   │                              ╰─────── E0301: no `show` function found for type `Opaque`
+ 3 │ fun main() -> Unit = println(show(Opaque))
+   │                              ──────┬─────  
+   │                                    ╰─────── E0301: no `show` function found for type `Opaque`
    │ 
    │ Help: add `deriving (Show)` to `Opaque`, or write `impl Show[Opaque]`
 ───╯

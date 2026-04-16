@@ -6,4 +6,4 @@ type Box = { v: List[Int] }
 
 fun mk() -> Box = Box { v = Nil }
 
-fun main() = ()
+fun main() = println(())

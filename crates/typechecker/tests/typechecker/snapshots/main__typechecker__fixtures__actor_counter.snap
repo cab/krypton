@@ -36,4 +36,4 @@ Inc: CounterMsg
 Dec: CounterMsg
 Get: (Ref[Int]) -> CounterMsg
 counter: (Mailbox[CounterMsg], Int) -> Never
-main: () -> (Mailbox[CounterMsg], Int) -> Never
+main: () -> Unit

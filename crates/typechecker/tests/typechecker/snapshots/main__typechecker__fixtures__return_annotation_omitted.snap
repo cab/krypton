@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 id: forall a. (a) -> a
-main: () -> Int
+main: () -> Unit

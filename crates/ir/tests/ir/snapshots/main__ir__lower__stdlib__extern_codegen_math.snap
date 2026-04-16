@@ -20,8 +20,8 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare abs: (Int) -> Int
 declare println: (x7) -> Unit
 
-fn main() -> Int =
+fn main() -> Unit =
   let v0: Int = sub_int(0, 42)
   let v1: Int = call abs(v0)
   let v2: Unit = call println(v1)
-  0
+  v2

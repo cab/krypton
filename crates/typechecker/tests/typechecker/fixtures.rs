@@ -182,7 +182,7 @@ fn importing_map_functions_does_not_expose_map_as_value() {
     let snapshot = infer_module_snapshot(
         r#"
             import core/map.{empty, size}
-            fun main() = size(empty())
+            fun main() = println(size(empty()))
         "#,
     )
     .expect("typecheck should succeed");

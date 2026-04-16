@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 abs: (Int) -> Int
 max: (Int, Int) -> Int
-main: () -> Int
+main: () -> Unit

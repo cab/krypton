@@ -2787,7 +2787,7 @@ extern js "./extern/js/host.mjs" {
     fun render_key[a](x: String) -> String where a: Eq + Hash
 }
 
-fun main() = render_key[String]("hi")
+fun main() = { let _ = render_key[String]("hi"); () }
 "#,
             "test",
         );

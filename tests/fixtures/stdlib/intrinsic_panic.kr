@@ -1,2 +1,2 @@
 # expect: ok
-fun main() = if true { 42 } else { panic("oops") }
+fun main() = println(if true { 42 } else { panic("oops") })

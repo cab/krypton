@@ -15,6 +15,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn map(v0: Int, v1: (Int) -> Int) -> Int =
   let v2: Int = call_closure v1(v0)
   v2
@@ -23,14 +25,16 @@ fn double(v3: Int) -> Int =
   let v4: Int = add_int(v3, v3)
   v4
 
-fn main() -> Int =
-  let v7: (Int) -> Int = make_closure(lambda$27, [])
-  let v8: Int = call map(5, v7)
-  v8
+fn main() -> Unit =
+  let v8: (Int) -> Int = make_closure(lambda$27, [])
+  let v9: Int = call map(5, v8)
+  let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v10: Unit = call println(v5, v9)
+  v10
 
-fn lambda$27(v5: Int) -> Int =
-  let v6: Int = call double(v5)
-  v6
+fn lambda$27(v6: Int) -> Int =
+  let v7: Int = call double(v6)
+  v7
 module core/eq
 
 trait Eq[c] { eq(c, c): Bool }

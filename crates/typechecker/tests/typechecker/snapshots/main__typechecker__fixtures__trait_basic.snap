@@ -30,5 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Point: (Int, Int) -> Point
-main: () -> Bool
+main: () -> Unit
 Eq$$Point$$eq: (Point, Point) -> Bool

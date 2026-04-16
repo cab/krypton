@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 f: () -> String
-main: () -> String
+main: () -> Unit

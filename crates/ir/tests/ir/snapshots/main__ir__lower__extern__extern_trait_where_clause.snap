@@ -26,13 +26,15 @@ fn invoke(v0: Dict[extern__extern_trait_where_clause.Runnable, j8], v1: j8) -> U
 
 fn main() -> Unit =
   let v6: () -> Unit = make_closure(lambda$28, [])
-  let v3: Dict[extern__extern_trait_where_clause.Runnable, () -> Unit] = get_dict extern__extern_trait_where_clause.Runnable[() -> Unit]
-  let v7: Unit = call invoke(v3, v6)
-  v7
-
-fn Runnable$$$Fun0$Unit$$run(v8: () -> Unit) -> Unit =
-  let v9: Unit = call_closure v8()
+  let v7: Dict[extern__extern_trait_where_clause.Runnable, () -> Unit] = get_dict extern__extern_trait_where_clause.Runnable[() -> Unit]
+  let v8: Unit = call invoke(v7, v6)
+  let v3: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v9: Unit = call println(v3, v8)
   v9
+
+fn Runnable$$$Fun0$Unit$$run(v10: () -> Unit) -> Unit =
+  let v11: Unit = call_closure v10()
+  v11
 
 fn lambda$28() -> Unit =
   let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]

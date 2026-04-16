@@ -10,4 +10,4 @@ impl Callback[MyHandler] {
   fun on_response(h, body) = println(body)
 }
 fun handle[a](handler: a) -> Unit where a: Callback = on_failure(handler, "test")
-fun main() = handle(MyHandler { name = "h1" })
+fun main() = println(handle(MyHandler { name = "h1" }))

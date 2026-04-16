@@ -3,4 +3,4 @@ type Point = { x: Int, y: Int }
 
 fun f() -> ~Point = Point { x = 1, y = 2 }
 
-fun main() = f().x
+fun main() = println(f().x)

@@ -147,6 +147,48 @@ pub fn infer_module(
             .collect::<Vec<_>>()
     })?;
 
+    // Validate main function signature (root module only)
+    if let Some(&idx) = main.fn_types_by_name.get("main") {
+        let main_span = module
+            .decls
+            .iter()
+            .find_map(|d| {
+                if let Decl::DefFn(f) = d {
+                    if f.name == "main" {
+                        return Some(f.span);
+                    }
+                }
+                None
+            })
+            .unwrap_or((0, 0));
+
+        let scheme = &main.fn_types[idx].scheme;
+        if let Type::Fn(params, ret) = &scheme.ty {
+            if !params.is_empty() {
+                return Err(vec![InferError::TypeError {
+                    error: spanned(
+                        TypeError::InvalidMainSignature {
+                            reason: "main must take no parameters".to_string(),
+                        },
+                        main_span,
+                    ),
+                    error_source: None,
+                }]);
+            }
+            if !matches!(ret.as_ref(), Type::Unit) && !ret.is_never() {
+                return Err(vec![InferError::TypeError {
+                    error: spanned(
+                        TypeError::InvalidMainSignature {
+                            reason: format!("main must return Unit, found {ret}"),
+                        },
+                        main_span,
+                    ),
+                    error_source: None,
+                }]);
+            }
+        }
+    }
+
     let root_iface = crate::module_interface::extract_interface(&main, &root_dep_paths);
 
     let mut result = vec![main];

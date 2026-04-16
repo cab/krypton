@@ -29,4 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-main: () -> Bool
+main: () -> Unit

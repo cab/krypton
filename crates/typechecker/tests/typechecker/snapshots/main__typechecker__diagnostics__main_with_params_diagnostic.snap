@@ -1,0 +1,11 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: "parse_and_infer_module_error(\"fun main(x: Int) -> Unit = println(x)\")"
+---
+[E0321] Error: main must take no parameters
+   ╭─[ test.kr:1:1 ]
+   │
+ 1 │ fun main(x: Int) -> Unit = println(x)
+   │ ──────────────────┬──────────────────  
+   │                   ╰──────────────────── E0321: main must take no parameters
+───╯

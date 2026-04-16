@@ -16,7 +16,11 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
+declare println: (g) -> Unit
+
+fn main() -> Unit =
   let v0: Int = 1
   let v1: Int = add_int(v0, 2)
-  v1
+  let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v3: Unit = call println(v2, v1)
+  v3

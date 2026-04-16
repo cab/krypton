@@ -1,0 +1,2 @@
+# expect: error E0321
+fun main() -> Int = 42

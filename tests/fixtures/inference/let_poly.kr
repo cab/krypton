@@ -3,5 +3,5 @@ fun main() {
     let id = x -> x;
     let a = id(1);
     let b = id(true);
-    b
+    println(b)
 }

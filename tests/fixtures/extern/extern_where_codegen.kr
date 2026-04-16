@@ -3,4 +3,4 @@
 extern java "java.lang.String" {
     fun valueOf[a](x: a) -> String where a: Show
 }
-fun main() = println(valueOf(42))
+fun main() = println(println(valueOf(42)))

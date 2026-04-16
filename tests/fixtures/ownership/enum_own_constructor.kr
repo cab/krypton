@@ -3,4 +3,4 @@ type Option[a] = Some(a) | None
 
 fun f() -> ~Option[Int] = Some(42)
 
-fun main() = match f() { Some(x) => x, None => 0 }
+fun main() = println(match f() { Some(x) => x, None => 0 })

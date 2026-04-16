@@ -8,4 +8,4 @@ fun drain(xs: List[Int]) -> Int = match xs {
   Cons(_, _) => recur(Nil),
 }
 
-fun main() = ()
+fun main() = println(())

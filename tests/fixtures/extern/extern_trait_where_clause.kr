@@ -7,4 +7,4 @@ impl Runnable[() -> Unit] {
   fun run(f) = f()
 }
 fun invoke[a](r: a) -> Unit where a: Runnable = run(r)
-fun main() = invoke(() -> println("hi"))
+fun main() = println(invoke(() -> println("hi")))

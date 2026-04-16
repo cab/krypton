@@ -32,4 +32,4 @@ GT: Ordering
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
 f: () -> ~Option[Int]
-main: () -> Int
+main: () -> Unit

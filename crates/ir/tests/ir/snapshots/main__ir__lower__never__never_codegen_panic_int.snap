@@ -22,6 +22,6 @@ fn diverge() -> Int =
   let v0: Never = call panic("boom")
   v0
 
-fn main() -> Int =
+fn main() -> Unit =
   let v1: Int = call diverge()
-  v1
+  ()

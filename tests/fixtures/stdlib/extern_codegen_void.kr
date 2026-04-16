@@ -9,5 +9,5 @@ extern js "./runtime.mjs" {
 
 fun main() {
     gc();
-    0
+    println(0)
 }

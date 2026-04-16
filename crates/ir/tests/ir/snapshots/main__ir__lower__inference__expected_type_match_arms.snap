@@ -16,6 +16,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn pick(v0: Bool) -> List[Int] =
   let v4: Bool = eq_int(v0, true)
   if v4 {
@@ -32,4 +34,6 @@ fn pick(v0: Bool) -> List[Int] =
   }
 
 fn main() -> Unit =
-  ()
+  let v5: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v6: Unit = call println(v5, ())
+  v6

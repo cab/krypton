@@ -9,4 +9,7 @@ fun echo(mb: Mailbox[Int]) {
 
 fun use_ref(r: Ref[Int]) -> Unit = send(r, 42)
 
-fun main() = echo
+fun main() = {
+  let _ = echo
+  ()
+}

@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 length: (List[Int]) -> Int
-main: () -> Int
+main: () -> Unit

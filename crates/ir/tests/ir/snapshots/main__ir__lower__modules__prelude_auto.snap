@@ -16,6 +16,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn test_option() -> Option[Int] =
   let v0: Option[Int] = construct Option::Some#0(42)
   v0
@@ -34,6 +36,9 @@ fn test_ordering() -> Ordering =
   let v5: Ordering = construct Ordering::LT#0()
   v5
 
-fn main() -> Option[Int] =
-  let v6: Option[Int] = call test_option()
-  v6
+fn main() -> Unit =
+  let v8: Option[Int] = call test_option()
+  let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v7: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v6)
+  let v9: Unit = call println(v7, v8)
+  v9

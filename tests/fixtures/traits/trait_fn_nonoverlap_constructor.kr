@@ -5,4 +5,4 @@ trait MyTrait[a] {
 
 fun length(l: List[Int]) -> Int = 0
 
-fun main() = length(Nil)
+fun main() = println(length(Nil))

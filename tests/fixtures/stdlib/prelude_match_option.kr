@@ -5,4 +5,4 @@ fun unwrap_or(opt, default) = match opt {
     None => default,
 }
 
-fun main() = unwrap_or(Some(42), 0)
+fun main() = println(unwrap_or(Some(42), 0))

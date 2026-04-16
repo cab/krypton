@@ -9,6 +9,5 @@ extern java "java.lang.Math" {
 }
 
 fun main() {
-    println(abs(0 - 42));
-    0
+    println(abs(0 - 42))
 }

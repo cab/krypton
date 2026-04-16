@@ -7,4 +7,4 @@ trait Bar[a] {
     fun convert(_0: List[a]) -> a
 }
 
-fun main() = 0
+fun main() = println(0)

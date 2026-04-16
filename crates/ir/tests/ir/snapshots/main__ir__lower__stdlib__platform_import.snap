@@ -19,6 +19,8 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v1: Unit = call println(v0, "no crash")
-  v1
+  let v1: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v2: Unit = call println(v1, "no crash")
+  let v0: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v3: Unit = call println(v0, v2)
+  v3

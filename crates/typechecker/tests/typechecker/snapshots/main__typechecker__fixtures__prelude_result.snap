@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 ok_val: forall a. () -> Result[a, Int]
 err_val: forall a. () -> Result[String, a]
-main: () -> Int
+main: () -> Unit

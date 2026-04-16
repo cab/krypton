@@ -2,4 +2,4 @@
 @platform([jvm, js])
 fun universal() -> Int = 42
 
-fun main() = println(show(universal()))
+fun main() = println(println(show(universal())))

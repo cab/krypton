@@ -31,4 +31,4 @@ EQ: Ordering
 GT: Ordering
 Point: (Int, Int) -> Point
 f: () -> ~Point
-main: () -> Int
+main: () -> Unit

@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 gc: () -> Unit
-main: () -> Int
+main: () -> Unit

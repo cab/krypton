@@ -8,4 +8,4 @@ fun pick(flag: Bool) -> List[Int] = match flag {
   false => Nil,
 }
 
-fun main() = ()
+fun main() = println(())

@@ -4,7 +4,7 @@ fun ok_val() = Ok(42)
 
 fun err_val() = Err("oops")
 
-fun main() = match ok_val() {
+fun main() = println(match ok_val() {
     Ok(x) => x,
     Err(_) => 0,
-}
+})

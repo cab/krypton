@@ -200,28 +200,28 @@ fn stdlib_modules_compile_to_js() {
             "string",
             r#"
                 import core/string.{length}
-                fun main() = length("hello")
+                fun main() = { let _ = length("hello"); () }
             "#,
         ),
         (
             "vec",
             r#"
                 import core/vec.{len}
-                fun main() = len
+                fun main() = { let _ = len; () }
             "#,
         ),
         (
             "map",
             r#"
                 import core/map.{empty, size}
-                fun main() = size(empty())
+                fun main() = { let _ = size(empty()); () }
             "#,
         ),
         (
             "json",
             r#"
                 import core/json.{parse_json}
-                fun main() = parse_json("{}")
+                fun main() = { let _ = parse_json("{}"); () }
             "#,
         ),
     ];
@@ -242,7 +242,7 @@ fn generated_map_import_omits_opaque_map_type() {
     let files = compile_js_result_with_resolver(
         r#"
             import core/map.{empty, size}
-            fun main() = size(empty())
+            fun main() = { let _ = size(empty()); () }
         "#,
         &CompositeResolver::stdlib_only(),
         "map_no_type_import",
@@ -266,7 +266,7 @@ fn actor_module_compiles_to_js() {
     let source = r#"
         import core/actor.{Mailbox, spawn}
 
-        fun main() = spawn((mb) -> ())
+        fun main() = { let _ = spawn((mb) -> ()); () }
     "#;
 
     let resolver = CompositeResolver::stdlib_only();

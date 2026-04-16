@@ -18,8 +18,12 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Unit =
-  ()
+declare println: (g) -> Unit
 
-fn Convert$$Int$$String$$convert(v0: Int) -> String =
+fn main() -> Unit =
+  let v0: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v1: Unit = call println(v0, ())
+  v1
+
+fn Convert$$Int$$String$$convert(v2: Int) -> String =
   "int"

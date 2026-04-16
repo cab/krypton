@@ -25,6 +25,8 @@ fn main() -> Unit =
   let v1: Int = call universal()
   let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v3: String = trait_call core/show.Show.show(v2, v1)
-  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v4: Unit = call println(v0, v3)
-  v4
+  let v4: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v5: Unit = call println(v4, v3)
+  let v0: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v6: Unit = call println(v0, v5)
+  v6

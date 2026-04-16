@@ -5,4 +5,4 @@ fun handle(r) = match r {
     Err(_) => 0,
 }
 
-fun main() = handle(Ok(10))
+fun main() = println(handle(Ok(10)))

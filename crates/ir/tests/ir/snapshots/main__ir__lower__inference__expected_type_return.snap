@@ -16,9 +16,13 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn empty_ints() -> List[Int] =
   let v0: List[Int] = construct List::Nil#1()
   v0
 
 fn main() -> Unit =
-  ()
+  let v1: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v2: Unit = call println(v1, ())
+  v2

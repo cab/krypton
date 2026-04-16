@@ -19,23 +19,29 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
 
-fn main() -> Int =
+fn main() -> Unit =
   let v0: Box[Int] = construct Box::Box#0(42)
   let v4: (Int) -> Int = make_closure(lambda$28, [])
   let v5: Dict[traits__hkt_multi_method.Functor, Box] = get_dict traits__hkt_multi_method.Functor[Box]
   let v1: Box[Int] = trait_call traits__hkt_multi_method.Functor.fmap(v5, v0, v4)
+  let_join v10(v8: Int) =
+    let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v9: Unit = call println(v6, v8)
+    v9
+  in
   switch v1 {
-    0 (v6: Int) ->
-      v6
+    0 (v7: Int) ->
+      jump v10(v7)
   }
 
-fn Functor$$Box$$fmap(v7: Box[a9], v8: (a9) -> c9) -> Box[c9] =
-  switch v7 {
-    0 (v9: a9) ->
-      let v10: c9 = call_closure v8(v9)
-      let v11: Box[c9] = construct Box::Box#0(v10)
-      v11
+fn Functor$$Box$$fmap(v11: Box[c9], v12: (c9) -> e9) -> Box[e9] =
+  switch v11 {
+    0 (v13: c9) ->
+      let v14: e9 = call_closure v12(v13)
+      let v15: Box[e9] = construct Box::Box#0(v14)
+      v15
   }
 
 fn lambda$28(v2: Int) -> Int =

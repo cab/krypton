@@ -16,6 +16,11 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Option[Int] =
-  let v0: Option[Int] = construct Option::Some#0(42)
-  v0
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v2: Option[Int] = construct Option::Some#0(42)
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v1: Dict[core/show.Show, Option[Int]] = make_dict core/show.Show[Option[Int]](v0)
+  let v3: Unit = call println(v1, v2)
+  v3

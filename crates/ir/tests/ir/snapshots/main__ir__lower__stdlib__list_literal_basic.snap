@@ -16,14 +16,21 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
-  let v0: List[Int] = construct List::Nil#1()
-  let v1: List[Int] = construct List::Cons#0(3, v0)
-  let v2: List[Int] = construct List::Cons#0(2, v1)
-  let v3: List[Int] = construct List::Cons#0(1, v2)
-  switch v3 {
-    0 (v4: Int, v5: List[d]) ->
-      v4
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let_join v9(v7: Int) =
+    let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v8: Unit = call println(v0, v7)
+    v8
+  in
+  let v1: List[Int] = construct List::Nil#1()
+  let v2: List[Int] = construct List::Cons#0(3, v1)
+  let v3: List[Int] = construct List::Cons#0(2, v2)
+  let v4: List[Int] = construct List::Cons#0(1, v3)
+  switch v4 {
+    0 (v5: Int, v6: List[d]) ->
+      jump v9(v5)
     1 ->
-      0
+      jump v9(0)
   }

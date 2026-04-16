@@ -14,4 +14,7 @@ fun counter(mb: Mailbox[CounterMsg], state: Int) {
   }
 }
 
-fun main() = counter
+fun main() = {
+  let _ = counter
+  ()
+}

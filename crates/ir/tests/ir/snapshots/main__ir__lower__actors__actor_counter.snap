@@ -40,6 +40,7 @@ fn counter(v0: Mailbox[CounterMsg], v1: Int) -> Never =
   in
   jump v2(v0, v1)
 
-fn main() -> (Mailbox[CounterMsg], Int) -> Never =
+fn main() -> Unit =
   let v10: (Mailbox[CounterMsg], Int) -> Never = make_closure(counter, [])
-  v10
+  let v11: (Mailbox[CounterMsg], Int) -> Never = v10
+  ()

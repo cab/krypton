@@ -16,6 +16,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn unwrap_or(v0: Option[j8], v1: j8) -> j8 =
   switch v0 {
     0 (v2: j8) ->
@@ -24,7 +26,9 @@ fn unwrap_or(v0: Option[j8], v1: j8) -> j8 =
       v1
   }
 
-fn main() -> Int =
-  let v3: Option[Int] = construct Option::Some#0(42)
-  let v4: Int = call unwrap_or(v3, 0)
-  v4
+fn main() -> Unit =
+  let v4: Option[Int] = construct Option::Some#0(42)
+  let v5: Int = call unwrap_or(v4, 0)
+  let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v6: Unit = call println(v3, v5)
+  v6

@@ -2,6 +2,5 @@
 import core/string.{split}
 
 fun main() {
-    println("hello");
-    0
+    println("hello")
 }

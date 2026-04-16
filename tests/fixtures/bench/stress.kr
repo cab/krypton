@@ -249,7 +249,7 @@ fun option2_describe(o: Option2[Int]) -> Int =
 
 # --- Entry point ---
 
-fun main() -> Int = {
+fun main() -> Unit = {
     let p1 = make_point(1, 2);
     let p2 = translate(p1, 3, 4);
     let d = distance_sq(p1, p2);
@@ -283,5 +283,5 @@ fun main() -> Int = {
     let ts = tree_size(t);
     let td = tree_depth(t);
 
-    d + a1 + a2 + a3 + c + ra + sum + res + nm + p + ll + ls + ts + td
+    println(d + a1 + a2 + a3 + c + ra + sum + res + nm + p + ll + ls + ts + td)
 }

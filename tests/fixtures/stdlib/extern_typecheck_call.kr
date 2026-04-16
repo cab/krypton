@@ -9,4 +9,4 @@ extern js "./runtime.mjs" {
     fun max(a: Int, b: Int) -> Int
 }
 
-fun main() = max(abs(5), 3)
+fun main() = println(max(abs(5), 3))

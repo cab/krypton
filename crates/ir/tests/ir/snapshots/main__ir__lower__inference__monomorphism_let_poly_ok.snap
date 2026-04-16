@@ -16,14 +16,21 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
+declare println: (g) -> Unit
+
+fn main() -> Unit =
   let v0: (i8) -> i8 = make_closure(lambda$26, [])
   let v2: Int = call_closure v0(42)
   let v3: Bool = call_closure v0(true)
+  let_join v7(v5: Int) =
+    let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v6: Unit = call println(v4, v5)
+    v6
+  in
   if v3 {
-    v2
+    jump v7(v2)
   } else {
-    0
+    jump v7(0)
   }
 
 fn lambda$26(v1: i8) -> i8 =

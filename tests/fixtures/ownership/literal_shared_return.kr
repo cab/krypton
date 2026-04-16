@@ -1,4 +1,4 @@
 # expect: ok
 fun f() -> String = "hello"
 
-fun main() = f()
+fun main() = println(f())

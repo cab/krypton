@@ -19,4 +19,4 @@ impl Hoist[Int] {
 }
 
 fun apply[f[_], a](fa: f[a]) -> f[a] where f: Functor = fmap(fa, x -> x)
-fun main(x: Box[Int]) -> Box[Int] = apply(x)
+fun main() -> Unit = match apply(Box(42)) { Box(n) => println(n) }

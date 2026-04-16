@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 unwrap_or: forall a. (Option[a], a) -> a
-main: () -> Int
+main: () -> Unit

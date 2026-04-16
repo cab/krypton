@@ -1,4 +1,4 @@
 # expect: ok
 fun id(x) = x
 
-fun main() = id(42)
+fun main() = println(id(42))

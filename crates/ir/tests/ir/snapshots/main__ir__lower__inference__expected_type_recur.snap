@@ -16,6 +16,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn drain(v0: List[Int]) -> Int =
   let_join [recur] v1(v2: List[Int]) =
     switch v2 {
@@ -30,4 +32,6 @@ fn drain(v0: List[Int]) -> Int =
   jump v1(v0)
 
 fn main() -> Unit =
-  ()
+  let v7: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v8: Unit = call println(v7, ())
+  v8

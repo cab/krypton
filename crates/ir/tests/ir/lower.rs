@@ -143,7 +143,7 @@ type Opt[a] = Some(a) | None
 fun main() = {
     let x = None
     let _ = match x { Some(_) => 0, None => 0 }
-    0
+    ()
 }
 "#;
     let name = "nullary_ctor_no_fn_id";

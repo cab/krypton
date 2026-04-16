@@ -7,4 +7,4 @@ extern js "./runtime.mjs" {
     fun println[a](x: a) -> Unit
 }
 
-fun main() = println("hello")
+fun main() = println(println("hello"))

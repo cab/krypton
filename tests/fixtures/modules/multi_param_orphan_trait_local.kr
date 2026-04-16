@@ -7,4 +7,4 @@ impl MyConvert[Int, String] {
     fun my_convert(x: Int) -> String = "ok"
 }
 
-fun main() = ()
+fun main() = println(())

@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 handle: forall a. (Result[a, Int]) -> Int
-main: () -> Int
+main: () -> Unit

@@ -1,4 +1,7 @@
 # expect: ok
 import custom_println.{println}
 
-fun main() = println(42)
+fun main() = {
+  let _ = println(println(42))
+  ()
+}

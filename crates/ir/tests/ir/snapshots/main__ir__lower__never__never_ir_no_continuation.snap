@@ -22,6 +22,6 @@ fn f(v0: Int) -> Int =
   let v1: Never = call panic("boom")
   v0
 
-fn main() -> Int =
+fn main() -> Unit =
   let v2: Int = call f(1)
-  v2
+  ()

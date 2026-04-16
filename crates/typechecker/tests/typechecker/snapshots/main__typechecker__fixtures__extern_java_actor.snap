@@ -35,4 +35,4 @@ receive: forall m. (Mailbox[m]) -> m
 actor_ref: forall m. (Mailbox[m]) -> Ref[m]
 echo: (Mailbox[Int]) -> Unit
 use_ref: (Ref[Int]) -> Unit
-main: () -> (Mailbox[Int]) -> Unit
+main: () -> Unit

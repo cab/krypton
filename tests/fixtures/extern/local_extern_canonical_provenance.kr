@@ -7,4 +7,4 @@ extern js "./runtime.mjs" {
     fun abs(n: Int) -> Int
 }
 
-fun main() = abs(5)
+fun main() = println(abs(5))

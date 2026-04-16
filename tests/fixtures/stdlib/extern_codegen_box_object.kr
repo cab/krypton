@@ -4,6 +4,5 @@ extern java "krypton.runtime.KryptonIO" {
 }
 
 fun main() {
-    println(42);
-    0
+    println(42)
 }

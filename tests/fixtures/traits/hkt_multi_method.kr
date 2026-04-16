@@ -10,8 +10,8 @@ impl Functor[Box] {
     match fa { Box(x) => Box(g(x)) }
 }
 
-fun main() -> Int {
+fun main() -> Unit {
   let b = Box(42)
   let b2 = fmap(b, x -> x + 1)
-  match b2 { Box(n) => n }
+  println(match b2 { Box(n) => n })
 }

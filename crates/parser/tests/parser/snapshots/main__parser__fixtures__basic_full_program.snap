@@ -262,23 +262,35 @@ decls:
             - App:
                 func:
                   Var:
-                    name: area
+                    name: println
                     span:
                       - 266
-                      - 270
+                      - 273
                 args:
-                  - Var:
-                      name: s
+                  - App:
+                      func:
+                        Var:
+                          name: area
+                          span:
+                            - 274
+                            - 278
+                      args:
+                        - Var:
+                            name: s
+                            span:
+                              - 279
+                              - 280
+                      is_ufcs: false
                       span:
-                        - 271
-                        - 272
+                        - 274
+                        - 281
                 is_ufcs: false
                 span:
                   - 266
-                  - 273
+                  - 282
           span:
             - 215
-            - 275
+            - 284
       span:
         - 204
-        - 275
+        - 284

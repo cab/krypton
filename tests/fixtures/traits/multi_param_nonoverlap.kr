@@ -11,4 +11,4 @@ impl Convert[Int, Float] {
     fun convert(x: Int) -> Float = 1.0
 }
 
-fun main() = ()
+fun main() = println(())

@@ -1,3 +1,6 @@
 # expect: panic "boom"
 fun diverge() -> Int = panic("boom")
-fun main() = diverge()
+fun main() = {
+  let _ = diverge()
+  ()
+}

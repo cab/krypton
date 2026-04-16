@@ -5,4 +5,4 @@
 # declared return type `List[Int]`.
 fun empty_ints() -> List[Int] = Nil
 
-fun main() = ()
+fun main() = println(())

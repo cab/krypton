@@ -16,10 +16,14 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn main() -> Int =
+declare println: (g) -> Unit
+
+fn main() -> Unit =
   let v0: (Int) -> Int = make_closure(lambda$26, [])
-  let v3: Int = call_closure v0(5)
-  v3
+  let v4: Int = call_closure v0(5)
+  let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v5: Unit = call println(v3, v4)
+  v5
 
 fn lambda$26(v1: Int) -> Int =
   let v2: Int = mul_int(v1, v1)

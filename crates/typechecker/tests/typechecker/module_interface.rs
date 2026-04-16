@@ -373,7 +373,7 @@ impl Show[Color] {
 #[test]
 fn extract_interface_no_transitive_deps() {
     let iface = extract_multi(
-        "import mylib.{helper}\nfun main() = helper()",
+        "import mylib.{helper}\nfun main() = println(helper())",
         vec![
             (
                 "mylib",
@@ -478,7 +478,7 @@ fn extract_interface_reexported_type_preserves_origin() {
 #[test]
 fn extract_interface_direct_deps() {
     let iface = extract_multi(
-        "import mylib_a.{a_fn}\nimport mylib_b.{b_fn}\nfun main() = a_fn() + b_fn()",
+        "import mylib_a.{a_fn}\nimport mylib_b.{b_fn}\nfun main() = println(a_fn() + b_fn())",
         vec![
             ("mylib_a", "pub fun a_fn() -> Int = 1"),
             ("mylib_b", "pub fun b_fn() -> Int = 2"),

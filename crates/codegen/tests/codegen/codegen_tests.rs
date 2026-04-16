@@ -492,7 +492,7 @@ fun main() = println(sum(100, 0))
 
 #[test]
 fn test_java_21_classfile_version() {
-    let (module, errors) = parse("fun main() = 42");
+    let (module, errors) = parse("fun main() = println(42)");
     assert!(errors.is_empty());
     let (typed_modules, interfaces) = infer_module(
         &module,
@@ -561,7 +561,7 @@ fun main() = { let s = Some(42); let n = None; let _ = match n { Some(_) => 0, N
 fn test_sum_type_sealed_interface_structure() {
     let src = r#"
 type Option[a] = Some(a) | None
-fun main() = None
+fun main() = match None { Some(_) => (), None => () }
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -1248,7 +1248,7 @@ fun main() = diverge()
 fn test_user_empty_sum_sealed_interface() {
     let src = r#"
 type NoMessages = |
-fun main() = 0
+fun main() = println(0)
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());
@@ -1313,7 +1313,7 @@ fun main() = diverge()
 fn test_never_int_return_panic() {
     let src = r#"
 fun diverge() -> Int = panic("boom")
-fun main() = diverge()
+fun main() = { let _ = diverge(); () }
 "#;
     let (module, errors) = parse(src);
     assert!(errors.is_empty());

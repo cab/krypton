@@ -17,11 +17,14 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
 fn length(v0: List[Int]) -> Int =
   0
 
-fn main() -> Int =
-  let v1: List[Int] = construct List::Nil#1()
-  let v2: List[Int] = v1
+fn main() -> Unit =
+  let v2: List[Int] = construct List::Nil#1()
   let v3: Int = call length(v2)
-  v3
+  let v1: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v4: Unit = call println(v1, v3)
+  v4

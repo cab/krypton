@@ -149,7 +149,7 @@ fn ok_type_show_and_fn_show() {
         r#"
             type Show = X
             fun show() -> Int = 0
-            fun main() -> Int = show()
+            fun main() -> Unit = println(show())
         "#,
     );
 }
@@ -160,7 +160,7 @@ fn ok_type_r_and_fn_r() {
         r#"
             type R = A
             fun r() -> Int = 0
-            fun main() -> Int = r()
+            fun main() -> Unit = println(r())
         "#,
     );
 }
@@ -174,7 +174,7 @@ fn ok_shadow_prelude_option_type() {
     expect_ok(
         r#"
             type Option = MyOpt(Int)
-            fun main() -> Option = MyOpt(42)
+            fun main() -> Unit = match MyOpt(42) { MyOpt(n) => println(n) }
         "#,
     );
 }
@@ -198,7 +198,10 @@ fn ok_shadow_prelude_list_with_same_constructors() {
     expect_ok(
         r#"
             type List[a] = Nil | Cons(a, List[a])
-            fun main() -> List[Int] = Cons(1, Nil)
+            fun main() -> Unit = match Cons(1, Nil) {
+                Cons(n, _) => println(n),
+                Nil => (),
+            }
         "#,
     );
 }
@@ -214,7 +217,7 @@ fn ok_local_overload_non_overlapping() {
         r#"
             fun length(v: Vec[Int]) -> Int = 0
             fun length(l: List[Int]) -> Int = 0
-            fun main() -> Int = 0
+            fun main() -> Unit = println(0)
         "#,
     );
 }
@@ -225,7 +228,7 @@ fn e0514_local_overload_overlapping() {
         r#"
             fun id[a](x: a) -> a = x
             fun id[b](y: b) -> b = y
-            fun main() -> Int = 0
+            fun main() -> Unit = println(0)
         "#,
         "E0514",
     );
@@ -237,7 +240,7 @@ fn e0516_local_overload_arity_mismatch() {
         r#"
             fun foo(x: Int) -> Int = x
             fun foo(x: Int, y: Int) -> Int = x
-            fun main() -> Int = 0
+            fun main() -> Unit = println(0)
         "#,
         "E0516",
     );
@@ -249,7 +252,7 @@ fn e0514_local_overload_unannotated() {
         r#"
             fun foo(x) = x
             fun foo(y) = y
-            fun main() -> Int = 0
+            fun main() -> Unit = println(0)
         "#,
         "E0514",
     );
@@ -263,7 +266,7 @@ fn ok_user_type_named_after_prelude_constructor_name() {
     expect_ok(
         r#"
             type Box = Some(Int)
-            fun main() -> Box = Some(7)
+            fun main() -> Unit = match Some(7) { Some(n) => println(n) }
         "#,
     );
 }

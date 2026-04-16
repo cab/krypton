@@ -1,6 +1,5 @@
 ---
-source: crates/parser/tests/fixture_test.rs
-assertion_line: 28
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
@@ -13,12 +12,24 @@ decls:
       constraints: []
       return_type: ~
       body:
-        Lit:
-          value:
-            Int: 42
+        App:
+          func:
+            Var:
+              name: println
+              span:
+                - 26
+                - 33
+          args:
+            - Lit:
+                value:
+                  Int: 42
+                span:
+                  - 34
+                  - 36
+          is_ufcs: false
           span:
             - 26
-            - 28
+            - 37
       span:
         - 13
-        - 28
+        - 37

@@ -17,11 +17,17 @@ import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare panic
+declare println: (g) -> Unit
 
-fn main() -> Int =
+fn main() -> Unit =
+  let_join v4(v2: Int) =
+    let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v3: Unit = call println(v0, v2)
+    v3
+  in
   if true {
-    42
+    jump v4(42)
   } else {
-    let v0: Never = call panic("oops")
-    v0
+    let v1: Never = call panic("oops")
+    jump v4(v1)
   }

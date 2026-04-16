@@ -2,6 +2,5 @@
 import core/string.{concat, trim}
 
 fun main() {
-    println(trim(concat("  hello", " world  ")));
-    0
+    println(trim(concat("  hello", " world  ")))
 }

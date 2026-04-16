@@ -5,4 +5,4 @@ trait MyTrait[a] {
 
 fun process(x: String, y: List[Int]) -> String = x
 
-fun main() = ""
+fun main() = println("")

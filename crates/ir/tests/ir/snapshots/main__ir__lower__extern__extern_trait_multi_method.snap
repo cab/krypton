@@ -27,16 +27,18 @@ fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, j8], v1: j8) -> U
 
 fn main() -> Unit =
   let v4: MyHandler = construct MyHandler("h1")
-  let v3: Dict[extern__extern_trait_multi_method.Callback, MyHandler] = get_dict extern__extern_trait_multi_method.Callback[MyHandler]
-  let v5: Unit = call handle(v3, v4)
-  v5
+  let v5: Dict[extern__extern_trait_multi_method.Callback, MyHandler] = get_dict extern__extern_trait_multi_method.Callback[MyHandler]
+  let v6: Unit = call handle(v5, v4)
+  let v3: Dict[core/show.Show, Unit] = get_dict core/show.Show[Unit]
+  let v7: Unit = call println(v3, v6)
+  v7
 
-fn Callback$$MyHandler$$on_failure(v6: MyHandler, v7: String) -> Unit =
-  let v8: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v9: Unit = call println(v8, v7)
-  v9
+fn Callback$$MyHandler$$on_failure(v8: MyHandler, v9: String) -> Unit =
+  let v10: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v11: Unit = call println(v10, v9)
+  v11
 
-fn Callback$$MyHandler$$on_response(v10: MyHandler, v11: String) -> Unit =
-  let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-  let v13: Unit = call println(v12, v11)
-  v13
+fn Callback$$MyHandler$$on_response(v12: MyHandler, v13: String) -> Unit =
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v15: Unit = call println(v14, v13)
+  v15

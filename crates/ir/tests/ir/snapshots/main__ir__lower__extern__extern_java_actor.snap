@@ -34,6 +34,7 @@ fn use_ref(v4: Ref[Int]) -> Unit =
   let v5: Unit = call send(v4, 42)
   v5
 
-fn main() -> (Mailbox[Int]) -> Unit =
+fn main() -> Unit =
   let v6: (Mailbox[Int]) -> Unit = make_closure(echo, [])
-  v6
+  let v7: (Mailbox[Int]) -> Unit = v6
+  ()
