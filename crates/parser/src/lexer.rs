@@ -79,6 +79,8 @@ pub enum Token<'src> {
     At,
     // Error recovery
     Error,
+    // Doc comment (`## text`)
+    DocComment(String),
 }
 
 impl fmt::Display for Token<'_> {
@@ -150,6 +152,7 @@ impl fmt::Display for Token<'_> {
             Token::Tilde => write!(f, "~"),
             Token::At => write!(f, "@"),
             Token::Error => write!(f, "<error>"),
+            Token::DocComment(s) => write!(f, "## {s}"),
         }
     }
 }
@@ -286,14 +289,41 @@ pub fn lexer<'src>(
     // Significant newlines are emitted as tokens. Horizontal whitespace and comments are trivia.
     let newline = just('\n').to(Token::Newline);
 
-    // Comments: # to end of line, but do not consume the newline itself.
+    // Doc comments: `## text`, bare `##` before newline/EOF. `###...` and `##no-space` are
+    // *regular* comments (trivia). The body excludes any trailing `\r` so `## foo\r\n` yields
+    // `DocComment("foo")`.
+    let doc_comment = just("##").ignore_then(choice((
+        just(' ')
+            .ignore_then(any().and_is(just('\n').not()).repeated().to_slice())
+            .map(|s: &str| Token::DocComment(s.trim_end_matches('\r').to_string())),
+        just('\n').rewind().to(Token::DocComment(String::new())),
+        end().to(Token::DocComment(String::new())),
+    )));
+
+    // Regular comments: `#` to end of line. Must not eat doc-comment patterns (`## `, `##\n`,
+    // `##<EOF>`), so the doc_comment parser wins those.
+    let doc_comment_start = choice((
+        just("# ").ignored(),
+        just("#\n").ignored(),
+        just('#').then_ignore(end()).ignored(),
+    ));
     let comment = just('#')
-        .then(any().and_is(just('\n').not()).repeated())
+        .then_ignore(doc_comment_start.not())
+        .then_ignore(any().and_is(just('\n').not()).repeated())
         .ignored();
 
     let trivia = choice((one_of(" \t\r").ignored(), comment)).repeated();
 
-    let token = choice((newline, num, string, multi_op, ident, single_op, delim));
+    let token = choice((
+        newline,
+        doc_comment,
+        num,
+        string,
+        multi_op,
+        ident,
+        single_op,
+        delim,
+    ));
 
     token
         .map_with(|tok, e| (tok, e.span()))

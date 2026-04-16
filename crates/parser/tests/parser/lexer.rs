@@ -133,6 +133,74 @@ fn test_comment_after_token() {
     assert_yaml_snapshot!(surface_lex("42 # trailing comment"));
 }
 
+// --- Doc comments ---
+
+#[test]
+fn test_doc_comment_single_line() {
+    assert_eq!(
+        surface_lex("## hello world\n"),
+        vec![Token::DocComment("hello world".to_string()), Token::Newline]
+    );
+}
+
+#[test]
+fn test_doc_comment_bare() {
+    assert_eq!(
+        surface_lex("##\n"),
+        vec![Token::DocComment(String::new()), Token::Newline]
+    );
+}
+
+#[test]
+fn test_doc_comment_eof_no_newline() {
+    assert_eq!(
+        surface_lex("## trailing"),
+        vec![Token::DocComment("trailing".to_string())]
+    );
+}
+
+#[test]
+fn test_doc_comment_bare_eof() {
+    assert_eq!(surface_lex("##"), vec![Token::DocComment(String::new())]);
+}
+
+#[test]
+fn test_doc_comment_triple_hash_is_regular() {
+    assert_eq!(
+        surface_lex("### not a doc\n42"),
+        vec![Token::Newline, Token::Int(42)]
+    );
+}
+
+#[test]
+fn test_doc_comment_no_space_is_regular() {
+    assert_eq!(
+        surface_lex("##nospace\n42"),
+        vec![Token::Newline, Token::Int(42)]
+    );
+}
+
+#[test]
+fn test_regular_comment_still_trivia() {
+    assert_eq!(
+        surface_lex("# this is a comment\n42"),
+        vec![Token::Newline, Token::Int(42)]
+    );
+}
+
+#[test]
+fn test_doc_comment_attached_to_decl() {
+    assert_eq!(
+        surface_lex("## doc\nfun foo"),
+        vec![
+            Token::DocComment("doc".to_string()),
+            Token::Newline,
+            Token::Fun,
+            Token::Ident("foo"),
+        ]
+    );
+}
+
 // --- Edge cases: operator disambiguation ---
 
 #[test]
