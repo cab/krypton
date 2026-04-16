@@ -1,0 +1,18 @@
+# expect: error E0108
+type Inner = MkInner
+
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+
+type RR = AFC(~Inner)
+
+impl Disposable[Inner] {
+    fun dispose(i: ~Inner) -> Unit = match i {
+        MkInner => ()
+    }
+}
+
+impl Disposable[RR] {
+    fun dispose(r: ~RR) -> Unit = ()
+}

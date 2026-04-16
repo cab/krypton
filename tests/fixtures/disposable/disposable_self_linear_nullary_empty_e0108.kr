@@ -1,0 +1,6 @@
+# expect: error E0108
+type RR = AFC
+
+impl Disposable[RR] {
+    fun dispose(r: ~RR) -> Unit = ()
+}

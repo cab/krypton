@@ -1,0 +1,8 @@
+# expect: ok
+type RR = AFC
+
+impl Disposable[RR] {
+    fun dispose(r: ~RR) -> Unit = match r {
+        AFC => ()
+    }
+}

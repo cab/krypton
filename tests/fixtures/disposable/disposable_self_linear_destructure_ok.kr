@@ -1,0 +1,15 @@
+# skip: js(java-only extern)
+# expect: ok
+extern java "native.Inner" as pub Inner lifts always {}
+
+extern java "native.Inner" {
+    fun inner_close(i: ~Inner) -> Unit
+}
+
+type RR = AFC(~Inner)
+
+impl Disposable[RR] {
+    fun dispose(r: ~RR) -> Unit = match r {
+        AFC(i) => inner_close(i),
+    }
+}
