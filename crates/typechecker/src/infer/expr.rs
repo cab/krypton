@@ -1793,6 +1793,51 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn infer_if_let(
+        &mut self,
+        pattern: &Pattern,
+        scrutinee: &Expr,
+        guard: Option<&Expr>,
+        then_: &Expr,
+        else_: Option<&Expr>,
+        expected_type: Option<&Type>,
+        span: Span,
+    ) -> Result<TypedExpr, SpannedTypeError> {
+        // Check for irrefutable patterns — those should use plain `let`
+        if crate::exhaustiveness::is_irrefutable(pattern, self.registry) {
+            return Err(SpannedTypeError {
+                error: Box::new(TypeError::IrrefutableIfLet),
+                span,
+                note: None,
+                secondary_span: None,
+                source_file: None,
+                var_names: None,
+            });
+        }
+
+        // Desugar to a two-arm match and delegate to infer_match
+        let else_body = else_.cloned().unwrap_or(Expr::Lit {
+            value: Lit::Unit,
+            span,
+        });
+        let arms = vec![
+            MatchArm {
+                pattern: pattern.clone(),
+                guard: guard.map(|g| Box::new(g.clone())),
+                body: then_.clone(),
+                span,
+            },
+            MatchArm {
+                pattern: Pattern::Wildcard { span },
+                guard: None,
+                body: else_body,
+                span,
+            },
+        ];
+        self.infer_match(scrutinee, &arms, expected_type, span)
+    }
+
     fn infer_struct_lit(
         &mut self,
         name: &str,
@@ -2398,6 +2443,15 @@ impl<'a> InferenceContext<'a> {
                 body,
                 span,
             } => self.infer_let_pattern(pattern, ty_ann.as_ref(), value, body.as_deref(), *span),
+
+            Expr::IfLet {
+                pattern,
+                scrutinee,
+                guard,
+                then_,
+                else_,
+                span,
+            } => self.infer_if_let(pattern, scrutinee, guard.as_deref(), then_, else_.as_deref(), expected_type, *span),
 
             Expr::StructLit { name, fields, span } => {
                 self.infer_struct_lit(name, fields, expected_type, *span)

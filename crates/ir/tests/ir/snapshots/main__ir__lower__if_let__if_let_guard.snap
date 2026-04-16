@@ -1,0 +1,66 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module if_let__if_let_guard
+
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn describe(v0: Option[Int]) -> String =
+  switch v0 {
+    0 (v1: Int) ->
+      let_join v10(v5: Bool) =
+        if v5 {
+          let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+          let v7: String = trait_call core/show.Show.show(v6, v1)
+          let v8: String = concat_string("big: ", v7)
+          v8
+        } else {
+          switch v0 {
+            0 (v9: a) ->
+              "small"
+            _ ->
+              "none"
+          }
+        }
+      in
+      let v2: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+      let v3: Bool = trait_call core/ord.Ord.lt(v2, v1, 50)
+      let v4: Bool = not(v3)
+      jump v10(v4)
+    _ ->
+      switch v0 {
+        0 (v11: a) ->
+          "small"
+        _ ->
+          "none"
+      }
+  }
+
+fn main() -> Unit =
+  let v12: Option[Int] = construct Option::Some#0(100)
+  let v13: String = call describe(v12)
+  let v14: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v15: Unit = call println(v14, v13)
+  let v16: Option[Int] = construct Option::Some#0(3)
+  let v17: String = call describe(v16)
+  let v18: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v19: Unit = call println(v18, v17)
+  let v21: Option[Int] = construct Option::None#1()
+  let v22: String = call describe(v21)
+  let v20: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v23: Unit = call println(v20, v22)
+  v23

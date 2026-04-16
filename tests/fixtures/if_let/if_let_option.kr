@@ -1,0 +1,15 @@
+# expect: output "got 42\nnone"
+
+type Option[a] = Some(a) | None
+
+fun show_opt(o: Option[Int]) -> String =
+    if let Some(x) = o {
+        "got " + show(x)
+    } else {
+        "none"
+    }
+
+fun main() -> Unit = {
+    println(show_opt(Some(42)));
+    println(show_opt(None))
+}

@@ -1,0 +1,42 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module if_let__if_let_option
+
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn show_opt(v0: Option[Int]) -> String =
+  switch v0 {
+    0 (v1: Int) ->
+      let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v3: String = trait_call core/show.Show.show(v2, v1)
+      let v4: String = concat_string("got ", v3)
+      v4
+    _ ->
+      "none"
+  }
+
+fn main() -> Unit =
+  let v5: Option[Int] = construct Option::Some#0(42)
+  let v6: String = call show_opt(v5)
+  let v7: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v8: Unit = call println(v7, v6)
+  let v10: Option[Int] = construct Option::None#1()
+  let v11: String = call show_opt(v10)
+  let v9: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v12: Unit = call println(v9, v11)
+  v12

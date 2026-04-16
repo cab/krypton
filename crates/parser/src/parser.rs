@@ -503,6 +503,24 @@ where
                 })
         };
 
+        // If-let expression: if let Pattern = scrutinee [if guard] { body } [else { ... }]
+        let if_let_expr = symbol(Token::If)
+            .ignore_then(symbol(Token::Let))
+            .ignore_then(pattern.clone())
+            .then_ignore(symbol(Token::Assign))
+            .then(expr.clone())
+            .then(symbol(Token::If).ignore_then(expr.clone()).or_not())
+            .then(expr.clone())
+            .then(symbol(Token::Else).ignore_then(expr.clone()).or_not())
+            .map_with(|((((pat, scrutinee), guard), then_), else_), e| Expr::IfLet {
+                pattern: pat,
+                scrutinee: Box::new(scrutinee),
+                guard: guard.map(Box::new),
+                then_: Box::new(then_),
+                else_: else_.map(Box::new),
+                span: to_span(e.span()),
+            });
+
         // If expression: if cond { then } else { else }
         let if_expr = symbol(Token::If)
             .ignore_then(expr.clone())
@@ -704,6 +722,7 @@ where
             unit_lit,
             lit,
             recur_expr,
+            if_let_expr,
             if_expr,
             match_expr,
             struct_update,
@@ -968,7 +987,8 @@ fn get_span(expr: &Expr) -> Span {
         | Expr::UnaryOp { span, .. }
         | Expr::StructLit { span, .. }
         | Expr::StructUpdate { span, .. }
-        | Expr::LetPattern { span, .. } => *span,
+        | Expr::LetPattern { span, .. }
+        | Expr::IfLet { span, .. } => *span,
     }
 }
 

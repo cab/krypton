@@ -1,0 +1,8 @@
+# expect: error E0018
+
+fun test(x: Int) -> Int =
+    if let y = x {
+        y
+    } else {
+        0
+    }

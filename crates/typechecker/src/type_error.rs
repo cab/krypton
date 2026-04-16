@@ -135,6 +135,7 @@ pub enum TypeErrorCode {
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
     E0017, // Cannot construct uninhabited type
+    E0018, // Irrefutable if-let pattern
     E0112, // `Disposable` cannot be implemented for a function type (`~fn` is consumed by calling it)
 }
 
@@ -576,6 +577,7 @@ pub enum TypeError {
         failing_form: String,
         inner: Box<TypeError>,
     },
+    IrrefutableIfLet,
 }
 
 /// How a borrowed binding was misused. Drives the diagnostic wording.
@@ -691,6 +693,7 @@ impl TypeError {
             TypeError::ShapeImplDualCheckFailure { .. } => TypeErrorCode::E0319,
             TypeError::BareTypeVarResourceArg { .. } => TypeErrorCode::E0104,
             TypeError::InvalidDisposableInstance { .. } => TypeErrorCode::E0112,
+            TypeError::IrrefutableIfLet => TypeErrorCode::E0018,
         }
     }
 
@@ -1126,6 +1129,9 @@ impl TypeError {
             TypeError::AmbiguousOverload { .. } => None,
             TypeError::UnresolvedOverload { .. } => {
                 Some("add a type annotation to disambiguate".to_string())
+            }
+            TypeError::IrrefutableIfLet => {
+                Some("use a plain `let` binding instead — `if let` is for refutable patterns like `Some(x)`, `Ok(v)`, or variant constructors".to_string())
             }
         }
     }
@@ -2002,6 +2008,9 @@ impl fmt::Display for TypeError {
                     f,
                     "`Disposable` cannot be implemented for a function type (`{ty}`). A closure value is consumed by calling it; there is no separate `dispose` step to define."
                 )
+            }
+            TypeError::IrrefutableIfLet => {
+                write!(f, "irrefutable `if let` pattern: this pattern always matches")
             }
         }
     }

@@ -238,6 +238,15 @@ type RGB = { r: Int, g: Int, b: Int } deriving (Eq)
 
 type Direction = North | South | East | West deriving (Eq)
 
+# --- If-let ---
+
+fun option2_describe(o: Option2[Int]) -> Int =
+    if let Some2(x) = o {
+        x
+    } else {
+        0
+    }
+
 # --- Entry point ---
 
 fun main() -> Int = {

@@ -1,0 +1,73 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module if_let__if_let_chain
+
+type Option[a] = Some#0(a) | None#1
+type Result[b, c] = Ok#0(c) | Err#1(b)
+type Input = OptVal#0(Option[Int]) | ResVal#1(Result[String, Int])
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn classify(v0: Input) -> String =
+  switch v0 {
+    0 (v1: Option[Int]) ->
+      switch v1 {
+        0 (v2: a) ->
+          "first"
+        _ ->
+          switch v0 {
+            1 (v3: Result[String, Int]) ->
+              switch v3 {
+                0 (v4: c) ->
+                  "second"
+                _ ->
+                  "neither"
+              }
+            _ ->
+              "neither"
+          }
+      }
+    _ ->
+      switch v0 {
+        1 (v5: Result[String, Int]) ->
+          switch v5 {
+            0 (v6: c) ->
+              "second"
+            _ ->
+              "neither"
+          }
+        _ ->
+          "neither"
+      }
+  }
+
+fn main() -> Unit =
+  let v7: Option[Int] = construct Option::Some#0(1)
+  let v8: Input = construct Input::OptVal#0(v7)
+  let v9: String = call classify(v8)
+  let v10: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v11: Unit = call println(v10, v9)
+  let v12: Result[String, Int] = construct Result::Ok#0(2)
+  let v13: Input = construct Input::ResVal#1(v12)
+  let v14: String = call classify(v13)
+  let v15: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v16: Unit = call println(v15, v14)
+  let v18: Option[Int] = construct Option::None#1()
+  let v19: Input = construct Input::OptVal#0(v18)
+  let v20: String = call classify(v19)
+  let v17: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v21: Unit = call println(v17, v20)
+  v21

@@ -940,6 +940,31 @@ impl<'a> Formatter<'a> {
                 }
                 self.buf.push_str(" }");
             }
+            Expr::IfLet {
+                pattern,
+                scrutinee,
+                guard,
+                then_,
+                else_,
+                ..
+            } => {
+                self.buf.push_str("if let ");
+                self.fmt_pattern(pattern);
+                self.buf.push_str(" = ");
+                self.fmt_expr(scrutinee);
+                if let Some(guard) = guard {
+                    self.buf.push_str(" if ");
+                    self.fmt_expr(guard);
+                }
+                self.buf.push_str(" { ");
+                self.fmt_expr(then_);
+                self.buf.push_str(" }");
+                if let Some(else_) = else_ {
+                    self.buf.push_str(" else { ");
+                    self.fmt_expr(else_);
+                    self.buf.push_str(" }");
+                }
+            }
             Expr::StructUpdate { base, fields, .. } => {
                 self.buf.push_str("{ ");
                 self.fmt_expr(base);

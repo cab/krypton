@@ -1,0 +1,10 @@
+# expect: output "found: 42"
+
+type Option[a] = Some(a) | None
+
+fun main() -> Unit = {
+    let x = Some(42);
+    if let Some(v) = x {
+        println("found: " + show(v))
+    }
+}

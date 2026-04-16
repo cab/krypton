@@ -327,6 +327,21 @@ fn zero_spans_expr(expr: &Expr) -> Expr {
             body: body.as_ref().map(|b| Box::new(zero_spans_expr(b))),
             span: (0, 0),
         },
+        Expr::IfLet {
+            pattern,
+            scrutinee,
+            guard,
+            then_,
+            else_,
+            ..
+        } => Expr::IfLet {
+            pattern: zero_spans_pattern(pattern),
+            scrutinee: Box::new(zero_spans_expr(scrutinee)),
+            guard: guard.as_ref().map(|g| Box::new(zero_spans_expr(g))),
+            then_: Box::new(zero_spans_expr(then_)),
+            else_: else_.as_ref().map(|e| Box::new(zero_spans_expr(e))),
+            span: (0, 0),
+        },
         Expr::StructUpdate { base, fields, .. } => Expr::StructUpdate {
             base: Box::new(zero_spans_expr(base)),
             fields: fields
@@ -1043,6 +1058,25 @@ fn fn_type_observational_borrow_slot() {
 #[test]
 fn fn_type_observational_borrow_roundtrip() {
     assert_surface_roundtrip("fun apply(f: (&String) -> Int) -> Int = 0");
+}
+
+#[test]
+fn roundtrip_if_let() {
+    assert_surface_roundtrip(
+        "fun f(x: Option[Int]) -> Int = if let Some(v) = x { v } else { 0 }",
+    );
+}
+
+#[test]
+fn roundtrip_if_let_no_else() {
+    assert_surface_roundtrip("fun f(x: Option[Int]) = if let Some(v) = x { println(v) }");
+}
+
+#[test]
+fn roundtrip_if_let_guard() {
+    assert_surface_roundtrip(
+        "fun f(x: Option[Int]) -> Int = if let Some(v) = x if v > 0 { v } else { 0 }",
+    );
 }
 
 #[test]

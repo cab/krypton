@@ -1,0 +1,17 @@
+# expect: output "ok: 1\nerr: bad"
+
+type Result[e, a] = Ok(a) | Err(e)
+
+fun describe(r: Result[String, Int]) -> String =
+    if let Ok(x) = r {
+        "ok: " + show(x)
+    } else if let Err(e) = r {
+        "err: " + e
+    } else {
+        "unknown"
+    }
+
+fun main() -> Unit = {
+    println(describe(Ok(1)));
+    println(describe(Err("bad")))
+}

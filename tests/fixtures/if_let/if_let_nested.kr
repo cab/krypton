@@ -1,0 +1,13 @@
+# expect: output "inner: 5"
+
+type Option[a] = Some(a) | None
+
+fun extract(o: Option[(Int, Int)]) -> String =
+    if let Some((_, y)) = o {
+        "inner: " + show(y)
+    } else {
+        "none"
+    }
+
+fun main() -> Unit =
+    println(extract(Some((3, 5))))

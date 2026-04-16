@@ -293,6 +293,14 @@ pub enum Expr {
         body: Option<Box<Expr>>,
         span: Span,
     },
+    IfLet {
+        pattern: Pattern,
+        scrutinee: Box<Expr>,
+        guard: Option<Box<Expr>>,
+        then_: Box<Expr>,
+        else_: Option<Box<Expr>>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

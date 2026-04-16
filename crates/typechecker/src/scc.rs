@@ -90,6 +90,22 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
                 collect_refs(e, names, refs);
             }
         }
+        Expr::IfLet {
+            scrutinee,
+            guard,
+            then_,
+            else_,
+            ..
+        } => {
+            collect_refs(scrutinee, names, refs);
+            if let Some(guard) = guard {
+                collect_refs(guard, names, refs);
+            }
+            collect_refs(then_, names, refs);
+            if let Some(else_) = else_ {
+                collect_refs(else_, names, refs);
+            }
+        }
     }
 }
 

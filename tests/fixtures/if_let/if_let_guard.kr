@@ -1,0 +1,20 @@
+# expect: output "big: 100\nsmall\nnone"
+
+type Option[a] = Some(a) | None
+
+fun describe(o: Option[Int]) -> String =
+    if let Some(x) = o if x >= 50 {
+        "big: " + show(x)
+    } else {
+        if let Some(_) = o {
+            "small"
+        } else {
+            "none"
+        }
+    }
+
+fun main() -> Unit = {
+    println(describe(Some(100)));
+    println(describe(Some(3)));
+    println(describe(None))
+}

@@ -1,0 +1,34 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module if_let__if_let_statement
+
+type Option[a] = Some#0(a) | None#1
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v0: Option[Int] = construct Option::Some#0(42)
+  switch v0 {
+    0 (v1: Int) ->
+      let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v4: String = trait_call core/show.Show.show(v3, v1)
+      let v5: String = concat_string("found: ", v4)
+      let v2: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v6: Unit = call println(v2, v5)
+      v6
+    _ ->
+      ()
+  }

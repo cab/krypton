@@ -1,0 +1,21 @@
+# expect: output "first\nsecond\nneither"
+
+type Option[a] = Some(a) | None
+type Result[e, a] = Ok(a) | Err(e)
+
+type Input = OptVal(Option[Int]) | ResVal(Result[String, Int])
+
+fun classify(input: Input) -> String =
+    if let OptVal(Some(_)) = input {
+        "first"
+    } else if let ResVal(Ok(_)) = input {
+        "second"
+    } else {
+        "neither"
+    }
+
+fun main() -> Unit = {
+    println(classify(OptVal(Some(1))));
+    println(classify(ResVal(Ok(2))));
+    println(classify(OptVal(None)))
+}

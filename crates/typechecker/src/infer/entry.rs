@@ -339,6 +339,34 @@ pub(crate) fn first_own_capture(
         Expr::List { elements, .. } => elements
             .iter()
             .find_map(|e| first_own_capture(e, params, env, subst, typed_body)),
+        Expr::IfLet {
+            pattern,
+            scrutinee,
+            guard,
+            then_,
+            else_,
+            ..
+        } => {
+            if let Some(found) = first_own_capture(scrutinee, params, env, subst, typed_body) {
+                return Some(found);
+            }
+            let mut inner = params.clone();
+            for name in collect_parser_pattern_bindings(pattern) {
+                inner.insert(name);
+            }
+            if let Some(guard) = guard {
+                if let Some(found) = first_own_capture(guard, &inner, env, subst, typed_body) {
+                    return Some(found);
+                }
+            }
+            if let Some(found) = first_own_capture(then_, &inner, env, subst, typed_body) {
+                return Some(found);
+            }
+            if let Some(else_) = else_ {
+                return first_own_capture(else_, params, env, subst, typed_body);
+            }
+            None
+        }
         Expr::Lit { .. } => None,
     }
 }

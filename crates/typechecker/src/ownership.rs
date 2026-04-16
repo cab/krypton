@@ -436,6 +436,29 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
             .map(|e| count_max_uses(e, name, bound))
             .sum(),
 
+        Expr::IfLet {
+            pattern,
+            scrutinee,
+            guard,
+            then_,
+            else_,
+            ..
+        } => {
+            let s = count_max_uses(scrutinee, name, bound);
+            let mut inner_bound = bound.clone();
+            for binding in crate::infer::collect_parser_pattern_bindings(pattern) {
+                inner_bound.insert(binding.to_string());
+            }
+            let guard_uses = guard
+                .as_ref()
+                .map_or(0, |g| count_max_uses(g, name, &inner_bound));
+            let t = guard_uses + count_max_uses(then_, name, &inner_bound);
+            let e = else_
+                .as_ref()
+                .map_or(0, |e| count_max_uses(e, name, bound));
+            s + t.max(e)
+        }
+
         Expr::Lit { .. } => 0,
     }
 }
