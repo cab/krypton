@@ -1,0 +1,15 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: "parse_and_infer_module_error(\"type Handler = { action: (Int) -> Int }\\nfun main() -> Int = {\\n  let h = Handler { action = x -> x + 1 };\\n  h.action(42)\\n}\")"
+---
+[E0003] Error: unknown variable: action
+   ╭─[ test.kr:4:4 ]
+   │
+ 4 │   h.action(42)
+   │    ─────┬─────  
+   │         ╰─────── E0003: unknown variable: action
+   │ 
+   │ Help: did you mean to define `action` first?
+   │ 
+   │ Note: `h.action(...)` is interpreted as UFCS call `action(h, ...)`; to call the `action` field, use `(h.action)(...)`
+───╯

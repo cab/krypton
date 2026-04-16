@@ -1051,3 +1051,10 @@ fn e0307_deriving_unknown_trait_diagnostic() {
         "expected `unknown trait \\`Bogus\\`` in:\n{output}"
     );
 }
+
+#[test]
+fn ufcs_field_call_disambiguation_diagnostic() {
+    insta::assert_snapshot!(parse_and_infer_module_error(
+        "type Handler = { action: (Int) -> Int }\nfun main() -> Int = {\n  let h = Handler { action = x -> x + 1 };\n  h.action(42)\n}"
+    ));
+}

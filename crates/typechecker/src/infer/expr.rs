@@ -40,6 +40,14 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) owning_fn_idx: usize,
 }
 
+fn is_callable_type(ty: &Type) -> bool {
+    match ty {
+        Type::Fn(_, _) => true,
+        Type::Own(inner) => matches!(inner.as_ref(), Type::Fn(_, _)),
+        _ => false,
+    }
+}
+
 /// True iff `ty` contains any free `Type::Var`.
 pub(super) fn contains_type_var(ty: &Type) -> bool {
     match ty {
@@ -74,6 +82,36 @@ impl<'a> InferenceContext<'a> {
         span: Span,
     ) -> Result<(), SpannedTypeError> {
         coerce_unify(actual, expected, self.subst, self.registry).map_err(|e| super::spanned(e, span))
+    }
+
+    /// When a UFCS call `name(receiver, ...)` fails, check whether the
+    /// receiver has a callable field named `name` and suggest parenthesized syntax.
+    fn ufcs_field_call_note(
+        &mut self,
+        func: &Expr,
+        args: &[Expr],
+        span: Span,
+    ) -> Option<String> {
+        let func_name = match func {
+            Expr::Var { name, .. } => name.as_str(),
+            _ => return None,
+        };
+        let receiver = args.first()?;
+        let receiver_typed = self.infer_expr_inner(receiver, None).ok()?;
+        let resolved = self.subst.apply(&receiver_typed.ty);
+        let resolved = super::strip_own(&resolved);
+        let field_ty = self.resolve_field_access(&resolved, func_name, span).ok()?;
+        if !is_callable_type(&field_ty) {
+            return None;
+        }
+        let receiver_text = match receiver {
+            Expr::Var { name, .. } => name.clone(),
+            _ => String::from("<expr>"),
+        };
+        Some(format!(
+            "`{receiver_text}.{func_name}(...)` is interpreted as UFCS call `{func_name}({receiver_text}, ...)`; \
+             to call the `{func_name}` field, use `({receiver_text}.{func_name})(...)`"
+        ))
     }
 
     fn add_shadowed_prelude_note(&self, err: &mut SpannedTypeError, is_ufcs: bool) {
@@ -622,7 +660,17 @@ impl<'a> InferenceContext<'a> {
                 );
             }
         }
-        let func_typed = self.infer_expr_inner(func, None)?;
+        let func_typed = match self.infer_expr_inner(func, None) {
+            Ok(t) => t,
+            Err(mut err) => {
+                if is_ufcs {
+                    if let Some(note) = self.ufcs_field_call_note(func, args, span) {
+                        err.note = Some(note);
+                    }
+                }
+                return Err(err);
+            }
+        };
         let is_constructor = if let Expr::Var { name, .. } = func {
             self.registry.is_some_and(|r| r.is_constructor(name))
         } else {

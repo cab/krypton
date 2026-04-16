@@ -1,0 +1,6 @@
+# expect: ok
+type Handler = { action: (Int) -> Int }
+fun main() -> Int = {
+  let h = Handler { action = x -> x + 1 };
+  (h.action)(42)
+}
