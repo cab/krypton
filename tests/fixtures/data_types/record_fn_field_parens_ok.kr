@@ -1,6 +1,6 @@
-# expect: ok
+# expect: output 43
 type Handler = { action: (Int) -> Int }
-fun main() -> Int = {
+fun main() -> Unit = {
   let h = Handler { action = x -> x + 1 };
-  (h.action)(42)
+  println((h.action)(42))
 }

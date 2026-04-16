@@ -17,13 +17,16 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
 
-fn main() -> Int =
+fn main() -> Unit =
   let v3: (Int) -> Int = make_closure(lambda$27, [])
   let v0: Handler = construct Handler(v3)
-  let v4: (Int) -> Int = project v0.0
-  let v5: Int = call_closure v4(42)
-  v5
+  let v5: (Int) -> Int = project v0.0
+  let v6: Int = call_closure v5(42)
+  let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v7: Unit = call println(v4, v6)
+  v7
 
 fn lambda$27(v1: Int) -> Int =
   let v2: Int = add_int(v1, 1)
