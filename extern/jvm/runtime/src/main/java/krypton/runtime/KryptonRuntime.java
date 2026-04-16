@@ -34,12 +34,14 @@ public final class KryptonRuntime {
 
     public <M> Ref<M> spawn(Consumer<Mailbox<M>> actorFn) {
         Mailbox<M> mailbox = new Mailbox<>();
-        new ActorThread(() -> actorFn.accept(mailbox), mailbox, this);
+        ActorThread actor = new ActorThread(() -> actorFn.accept(mailbox), mailbox, this);
+        actor.start();
         return mailbox.ref();
     }
 
     public <M> Ref<M> spawn(Mailbox<M> mailbox, Runnable body) {
-        new ActorThread(body, mailbox, this);
+        ActorThread actor = new ActorThread(body, mailbox, this);
+        actor.start();
         return mailbox.ref();
     }
 

@@ -70,4 +70,57 @@ class ActorTest {
     void shutdownTerminatesRuntime() {
         assertDoesNotThrow(runtime::shutdown);
     }
+
+    @Test
+    void linkCrashNotifiesCaller() throws Exception {
+        Mailbox<Object> callerMb = new Mailbox<>();
+        Mailbox<Object> startGate = new Mailbox<>();
+        Ref<Object> target = runtime.spawn((Mailbox<Object> mb) -> {
+            startGate.enqueue("started");
+            mb.receive();
+            throw new RuntimeException("boom");
+        });
+        startGate.receive();
+        KryptonActors.raw_link(
+                callerMb, target,
+                (Fun1<Long, Object>) id -> "normal-" + id,
+                (Fun2<Long, String, Object>) (id, msg) -> "crashed-" + id + "-" + msg);
+        KryptonActors.raw_send(target, "go");
+        Object received = callerMb.receiveTimeout(2000);
+        assertNotNull(received);
+        assertTrue(((String) received).startsWith("crashed-"));
+        assertTrue(((String) received).endsWith("-boom"));
+    }
+
+    @Test
+    void monitorNormalExitDelivers() throws Exception {
+        Mailbox<Object> callerMb = new Mailbox<>();
+        Ref<String> target = runtime.spawn((Mailbox<String> mb) -> {
+            mb.receive();
+        });
+        KryptonActors.raw_monitor(
+                callerMb, target,
+                (Fun1<Long, Object>) id -> "normal-" + id,
+                (Fun2<Long, String, Object>) (id, msg) -> "crashed-" + id + "-" + msg);
+        target.send("stop");
+        Object received = callerMb.receiveTimeout(2000);
+        assertNotNull(received);
+        assertTrue(((String) received).startsWith("normal-"));
+    }
+
+    @Test
+    void linkToAlreadyDeadActor() throws Exception {
+        Mailbox<Object> callerMb = new Mailbox<>();
+        Ref<String> target = runtime.spawn((Mailbox<String> mb) -> {
+            // returns immediately
+        });
+        runtime.awaitAll();
+        KryptonActors.raw_link(
+                callerMb, target,
+                (Fun1<Long, Object>) id -> "normal-" + id,
+                (Fun2<Long, String, Object>) (id, msg) -> "crashed-" + id + "-" + msg);
+        Object received = callerMb.receiveTimeout(2000);
+        assertNotNull(received);
+        assertTrue(((String) received).startsWith("normal-"));
+    }
 }

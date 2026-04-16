@@ -1,0 +1,23 @@
+# expect: output "normal exit"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, send, receive, monitor, mailbox, ActorId, ExitReason, Normal, Crashed}
+
+type WorkerMsg = Stop
+
+fun worker(mb: Mailbox[WorkerMsg]) =
+  match receive(mb) { Stop => () }
+
+type MainMsg = Exit(ActorId, ExitReason)
+
+fun main() {
+  let mb: Mailbox[MainMsg] = mailbox()
+  let child = spawn(worker)
+  monitor(mb, child, Exit)
+  send(child, Stop)
+  match receive(mb) {
+    Exit(_, Normal)       => println("normal exit"),
+    Exit(_, Crashed(msg)) => println("crashed: " + msg),
+  }
+}

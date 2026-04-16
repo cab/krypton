@@ -15,6 +15,19 @@ extern java "krypton.runtime.KryptonActors" {
     fun raw_create_mailbox[m]() -> Mailbox[m]
     fun raw_adapter[m, r](target: Ref[m], wrapper: (r) -> m) -> Ref[r]
     @nullable fun raw_ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Option[r]
+    fun raw_link[m, n](
+        mb: Mailbox[m], target: Ref[n],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Unit
+    fun raw_monitor[m, n](
+        mb: Mailbox[m], target: Ref[n],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Unit
+    fun raw_spawn_link[m, n](
+        f: (Mailbox[n]) -> Unit, mb: Mailbox[m],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Ref[n]
+    fun raw_self_id[m](mb: Mailbox[m]) -> Int
 }
 
 extern js "../extern/js/actor.mjs" as Mailbox[m] {}
@@ -30,9 +43,24 @@ extern js "../extern/js/actor.mjs" {
     fun raw_create_mailbox[m]() -> Mailbox[m]
     fun raw_adapter[m, r](target: Ref[m], wrapper: (r) -> m) -> Ref[r]
     @nullable fun raw_ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Option[r]
+    fun raw_link[m, n](
+        mb: Mailbox[m], target: Ref[n],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Unit
+    fun raw_monitor[m, n](
+        mb: Mailbox[m], target: Ref[n],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Unit
+    fun raw_spawn_link[m, n](
+        f: (Mailbox[n]) -> Unit, mb: Mailbox[m],
+        normal_fn: (Int) -> m, crash_fn: (Int, String) -> m
+    ) -> Ref[n]
+    fun raw_self_id[m](mb: Mailbox[m]) -> Int
 }
 
 pub type Timeout = Timeout
+pub type ActorId = ActorId(Int) deriving (Eq)
+pub type ExitReason = Normal | Crashed(String)
 
 pub fun spawn[m](f: (Mailbox[m]) -> Unit) -> Ref[m] = raw_spawn(f)
 pub fun send[m](r: Ref[m], msg: m) -> Unit = raw_send(r, msg)
@@ -47,3 +75,22 @@ pub fun ask[m, r](target: Ref[m], wrapper: (Ref[r]) -> m, timeout: Int) -> Resul
     Some(v) => Ok(v),
     None => Err(Timeout),
   }
+
+pub fun link[m, n](mb: Mailbox[m], target: Ref[n], exit_fn: (ActorId, ExitReason) -> m) -> Unit =
+  raw_link(mb, target,
+    (id: Int) -> exit_fn(ActorId(id), Normal),
+    (id: Int, msg: String) -> exit_fn(ActorId(id), Crashed(msg)))
+
+pub fun monitor[m, n](mb: Mailbox[m], target: Ref[n], exit_fn: (ActorId, ExitReason) -> m) -> Unit =
+  raw_monitor(mb, target,
+    (id: Int) -> exit_fn(ActorId(id), Normal),
+    (id: Int, msg: String) -> exit_fn(ActorId(id), Crashed(msg)))
+
+pub fun spawn_link[m, n](
+  f: (Mailbox[n]) -> Unit, mb: Mailbox[m], exit_fn: (ActorId, ExitReason) -> m
+) -> Ref[n] =
+  raw_spawn_link(f, mb,
+    (id: Int) -> exit_fn(ActorId(id), Normal),
+    (id: Int, msg: String) -> exit_fn(ActorId(id), Crashed(msg)))
+
+pub fun self_id[m](mb: Mailbox[m]) -> ActorId = ActorId(raw_self_id(mb))

@@ -1,0 +1,64 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module actors__send_dead_noop
+
+type Msg = Stop#0
+type MainMsg = Exit#0(ActorId, ExitReason)
+extern java "krypton.runtime.KryptonIO" println(r12) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/actor/ActorId as ActorId(Int) -> ActorId
+import core/actor/Crashed as Crashed(String) -> ExitReason
+import core/actor/spawn as spawn((Mailbox[e9]) -> Unit) -> Ref[e9]
+import core/actor/send as send(Ref[h9], h9) -> Unit
+import core/actor/receive as receive(Mailbox[q9]) -> q9
+import core/actor/mailbox as mailbox() -> Mailbox[j10]
+import core/actor/monitor as monitor(Mailbox[q12], Ref[d12], (ActorId, ExitReason) -> q12) -> Unit
+declare mailbox: () -> Mailbox[j10]
+declare monitor: (Mailbox[q12], Ref[d12], (ActorId, ExitReason) -> q12) -> Unit
+declare println: (r12) -> Unit
+declare receive: (Mailbox[q9]) -> q9
+declare send: (Ref[h9], h9) -> Unit
+declare spawn: ((Mailbox[e9]) -> Unit) -> Ref[e9]
+
+fn worker(v0: Mailbox[Msg]) -> Unit =
+  let v1: Msg = call receive(v0)
+  switch v1 {
+    0 ->
+      ()
+  }
+
+fn main() -> Unit =
+  let v2: Mailbox[MainMsg] = call mailbox()
+  let v4: (Mailbox[Msg]) -> Unit = make_closure(worker, [])
+  let v3: Ref[Msg] = call spawn(v4)
+  let v8: (ActorId, ExitReason) -> MainMsg = make_closure(ctor$Exit$35, [])
+  let v9: Unit = call monitor(v2, v3, v8)
+  let v10: Msg = construct Msg::Stop#0()
+  let v11: Unit = call send(v3, v10)
+  let_join v19(v15: Unit) =
+    let v16: Msg = construct Msg::Stop#0()
+    let v17: Unit = call send(v3, v16)
+    let v18: Unit = call println("ok")
+    v18
+  in
+  let v12: MainMsg = call receive(v2)
+  switch v12 {
+    0 (v13: ActorId, v14: ExitReason) ->
+      jump v19(())
+  }
+
+fn ctor$Exit$35(v5: ActorId, v6: ExitReason) -> MainMsg =
+  let v7: MainMsg = construct MainMsg::Exit#0(v5, v6)
+  v7

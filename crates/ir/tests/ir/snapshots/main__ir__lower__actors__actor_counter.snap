@@ -17,11 +17,11 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[x8]) -> Unit) -> Ref[x8]
-import core/actor/send as send(Ref[a9], a9) -> Unit
-import core/actor/receive as receive(Mailbox[j9]) -> j9
-declare receive: (Mailbox[j9]) -> j9
-declare send: (Ref[a9], a9) -> Unit
+import core/actor/spawn as spawn((Mailbox[e9]) -> Unit) -> Ref[e9]
+import core/actor/send as send(Ref[h9], h9) -> Unit
+import core/actor/receive as receive(Mailbox[q9]) -> q9
+declare receive: (Mailbox[q9]) -> q9
+declare send: (Ref[h9], h9) -> Unit
 
 fn counter(v0: Mailbox[CounterMsg], v1: Int) -> Never =
   let_join [recur] v2(v3: Mailbox[CounterMsg], v4: Int) =

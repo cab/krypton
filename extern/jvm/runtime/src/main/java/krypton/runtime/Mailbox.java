@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 public final class Mailbox<M> {
     private final LinkedTransferQueue<M> queue = new LinkedTransferQueue<>();
     private volatile boolean closed = false;
+    volatile ActorThread ownerActor;
 
     void enqueue(M msg) {
         if (closed) return;
@@ -38,7 +39,7 @@ public final class Mailbox<M> {
     }
 
     public Ref<M> ref() {
-        return new Ref<>(this);
+        return new Ref<>(this, ownerActor);
     }
 
     public int size() {

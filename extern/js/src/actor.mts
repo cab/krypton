@@ -1,6 +1,7 @@
 let _liveCount = 0;
 let _resolveQuiescent: (() => void) | null = null;
 let _keepAlive: ReturnType<typeof setInterval> | null = null;
+let _actorIdCounter = 0;
 
 export { _liveCount };
 
@@ -11,6 +12,62 @@ function _updateKeepAlive() {
     clearInterval(_keepAlive);
     _keepAlive = null;
   }
+}
+
+type ExitHandlerEntry = {
+  target: Mailbox;
+  normal: (id: number) => unknown;
+  crash: (id: number, msg: string) => unknown;
+  fired: boolean;
+};
+
+type ActorState = {
+  id: number;
+  exitHandlers: ExitHandlerEntry[];
+  exiting: boolean;
+  crashMessage: string | null;
+};
+
+const _actorByMailbox: WeakMap<Mailbox, ActorState> = new WeakMap();
+
+function _fireHandler(entry: ExitHandlerEntry, state: ActorState) {
+  if (entry.fired) return;
+  entry.fired = true;
+  try {
+    const msg =
+      state.crashMessage === null
+        ? entry.normal(state.id)
+        : entry.crash(state.id, state.crashMessage);
+    entry.target.enqueue(msg);
+  } catch {
+    // never propagate handler-side failure
+  }
+}
+
+function _runActor(
+  f: (mb: Mailbox) => unknown,
+  mb: Mailbox,
+  state: ActorState,
+) {
+  _liveCount += 1;
+  _updateKeepAlive();
+  Promise.resolve()
+    .then(() => f(mb))
+    .catch((err: Error) => {
+      state.crashMessage = err && err.message ? err.message : "unknown error";
+      console.error(`[krypton] actor-${state.id} crashed: ${state.crashMessage}`);
+    })
+    .finally(() => {
+      state.exiting = true;
+      for (const entry of state.exitHandlers) _fireHandler(entry, state);
+      mb.close();
+      _liveCount -= 1;
+      _updateKeepAlive();
+      if (_liveCount === 0 && _resolveQuiescent) {
+        _resolveQuiescent();
+        _resolveQuiescent = null;
+      }
+    });
 }
 
 export class Mailbox {
@@ -77,12 +134,17 @@ export class Mailbox {
 
 export class Ref {
   _send: (msg: unknown) => void;
+  _targetMailbox: Mailbox | null;
 
   constructor(targetOrFn: Mailbox | ((msg: unknown) => void)) {
-    this._send =
-      targetOrFn instanceof Mailbox
-        ? (msg) => targetOrFn.enqueue(msg)
-        : targetOrFn;
+    if (targetOrFn instanceof Mailbox) {
+      const target = targetOrFn;
+      this._send = (msg) => target.enqueue(msg);
+      this._targetMailbox = target;
+    } else {
+      this._send = targetOrFn;
+      this._targetMailbox = null;
+    }
   }
 
   send(msg: unknown) {
@@ -92,22 +154,14 @@ export class Ref {
 
 export function raw_spawn(f: (mb: Mailbox) => unknown) {
   const mb = new Mailbox();
-  _liveCount += 1;
-  _updateKeepAlive();
-  Promise.resolve()
-    .then(() => f(mb))
-    .catch((err: Error) => {
-      console.error(`[krypton] actor crashed: ${err.message}`);
-    })
-    .finally(() => {
-      mb.close();
-      _liveCount -= 1;
-      _updateKeepAlive();
-      if (_liveCount === 0 && _resolveQuiescent) {
-        _resolveQuiescent();
-        _resolveQuiescent = null;
-      }
-    });
+  const state: ActorState = {
+    id: _actorIdCounter++,
+    exitHandlers: [],
+    exiting: false,
+    crashMessage: null,
+  };
+  _actorByMailbox.set(mb, state);
+  _runActor(f, mb, state);
   return mb.ref();
 }
 
@@ -152,6 +206,73 @@ export function raw_ask(
     replyMb.close();
     return reply;
   });
+}
+
+function _stateForRef(ref: Ref): ActorState | null {
+  if (!ref._targetMailbox) return null;
+  return _actorByMailbox.get(ref._targetMailbox) ?? null;
+}
+
+function _registerExitHandler(
+  callerMb: Mailbox,
+  targetRef: Ref,
+  normal: (id: number) => unknown,
+  crash: (id: number, msg: string) => unknown,
+): ActorState | null {
+  const state = _stateForRef(targetRef);
+  if (!state) return null;
+  const entry: ExitHandlerEntry = {
+    target: callerMb,
+    normal,
+    crash,
+    fired: false,
+  };
+  state.exitHandlers.push(entry);
+  if (state.exiting) _fireHandler(entry, state);
+  return state;
+}
+
+export function raw_link(
+  callerMb: Mailbox,
+  targetRef: Ref,
+  normal: (id: number) => unknown,
+  crash: (id: number, msg: string) => unknown,
+) {
+  _registerExitHandler(callerMb, targetRef, normal, crash);
+}
+
+export function raw_monitor(
+  callerMb: Mailbox,
+  targetRef: Ref,
+  normal: (id: number) => unknown,
+  crash: (id: number, msg: string) => unknown,
+) {
+  _registerExitHandler(callerMb, targetRef, normal, crash);
+}
+
+export function raw_spawn_link(
+  f: (mb: Mailbox) => unknown,
+  callerMb: Mailbox,
+  normal: (id: number) => unknown,
+  crash: (id: number, msg: string) => unknown,
+) {
+  const mb = new Mailbox();
+  const state: ActorState = {
+    id: _actorIdCounter++,
+    exitHandlers: [
+      { target: callerMb, normal, crash, fired: false },
+    ],
+    exiting: false,
+    crashMessage: null,
+  };
+  _actorByMailbox.set(mb, state);
+  _runActor(f, mb, state);
+  return mb.ref();
+}
+
+export function raw_self_id(mb: Mailbox) {
+  const state = _actorByMailbox.get(mb);
+  return state ? state.id : -1;
 }
 
 export async function runMain(fn: () => Promise<unknown> | unknown) {

@@ -1,0 +1,77 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module actors__link_crash
+
+type WorkerMsg = Die#0(String)
+type SupervisorMsg = ChildRef#0(Ref[WorkerMsg]) | Exit#1(ActorId, ExitReason)
+extern java "krypton.runtime.KryptonIO" println(a12) -> Unit
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[p3]) -> Option[p3]
+import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/actor/ActorId as ActorId(Int) -> ActorId
+import core/actor/Crashed as Crashed(String) -> ExitReason
+import core/actor/spawn as spawn((Mailbox[e9]) -> Unit) -> Ref[e9]
+import core/actor/send as send(Ref[h9], h9) -> Unit
+import core/actor/receive as receive(Mailbox[q9]) -> q9
+import core/actor/link as link(Mailbox[z11], Ref[m11], (ActorId, ExitReason) -> z11) -> Unit
+declare link: (Mailbox[z11], Ref[m11], (ActorId, ExitReason) -> z11) -> Unit
+declare panic
+declare println: (a12) -> Unit
+declare receive: (Mailbox[q9]) -> q9
+declare send: (Ref[h9], h9) -> Unit
+declare spawn: ((Mailbox[e9]) -> Unit) -> Ref[e9]
+
+fn worker(v0: Mailbox[WorkerMsg]) -> Never =
+  let v1: WorkerMsg = call receive(v0)
+  switch v1 {
+    0 (v2: String) ->
+      let v3: Never = call panic(v2)
+      v3
+  }
+
+fn supervisor(v4: Mailbox[SupervisorMsg]) -> Unit =
+  let_join [recur] v5(v6: Mailbox[SupervisorMsg]) =
+    let v7: SupervisorMsg = call receive(v6)
+    switch v7 {
+      0 (v8: Ref[WorkerMsg]) ->
+        let v12: (ActorId, ExitReason) -> SupervisorMsg = make_closure(ctor$Exit$37, [])
+        let v13: Unit = call link(v6, v8, v12)
+        let v14: WorkerMsg = construct WorkerMsg::Die#0("boom")
+        let v15: Unit = call send(v8, v14)
+        jump v5(v6)
+      1 (v16: ActorId, v17: ExitReason) ->
+        switch v17 {
+          1 (v18: String) ->
+            let v19: String = concat_string("crashed: ", v18)
+            let v20: Unit = call println(v19)
+            v20
+          0 ->
+            let v21: Unit = call println("normal exit")
+            v21
+        }
+    }
+  in
+  jump v5(v4)
+
+fn main() -> Unit =
+  let v23: (Mailbox[WorkerMsg]) -> Never = make_closure(worker, [])
+  let v22: Ref[WorkerMsg] = call spawn(v23)
+  let v25: (Mailbox[SupervisorMsg]) -> Unit = make_closure(supervisor, [])
+  let v24: Ref[SupervisorMsg] = call spawn(v25)
+  let v26: SupervisorMsg = construct SupervisorMsg::ChildRef#0(v22)
+  let v27: Unit = call send(v24, v26)
+  v27
+
+fn ctor$Exit$37(v9: ActorId, v10: ExitReason) -> SupervisorMsg =
+  let v11: SupervisorMsg = construct SupervisorMsg::Exit#1(v9, v10)
+  v11

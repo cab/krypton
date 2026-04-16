@@ -1,0 +1,29 @@
+# expect: output "crashed: boom"
+extern java "krypton.runtime.KryptonIO" {
+    fun println[a](x: a) -> Unit
+}
+import core/actor.{Mailbox, Ref, spawn, send, receive, link, ActorId, ExitReason, Normal, Crashed}
+
+type WorkerMsg = Die(String)
+
+fun worker(mb: Mailbox[WorkerMsg]) =
+  match receive(mb) { Die(msg) => panic(msg) }
+
+type SupervisorMsg = ChildRef(Ref[WorkerMsg]) | Exit(ActorId, ExitReason)
+
+fun supervisor(mb: Mailbox[SupervisorMsg]) =
+  match receive(mb) {
+    ChildRef(child) => {
+      link(mb, child, Exit)
+      send(child, Die("boom"))
+      recur(mb)
+    },
+    Exit(_, Crashed(msg)) => println("crashed: " + msg),
+    Exit(_, Normal) => println("normal exit"),
+  }
+
+fun main() {
+  let child = spawn(worker)
+  let sup = spawn(supervisor)
+  send(sup, ChildRef(child))
+}
