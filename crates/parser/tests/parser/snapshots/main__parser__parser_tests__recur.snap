@@ -94,6 +94,7 @@ decls:
           span:
             - 23
             - 64
+      doc: ~
       span:
         - 0
         - 64

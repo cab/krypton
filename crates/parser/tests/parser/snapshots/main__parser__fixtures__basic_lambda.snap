@@ -23,6 +23,7 @@ decls:
           span:
             - 31
             - 32
+      doc: ~
       span:
         - 13
         - 32
@@ -82,6 +83,7 @@ decls:
           span:
             - 61
             - 72
+      doc: ~
       span:
         - 34
         - 72
@@ -123,6 +125,7 @@ decls:
           span:
             - 99
             - 103
+      doc: ~
       span:
         - 74
         - 103
@@ -170,6 +173,7 @@ decls:
           span:
             - 122
             - 132
+      doc: ~
       span:
         - 105
         - 132

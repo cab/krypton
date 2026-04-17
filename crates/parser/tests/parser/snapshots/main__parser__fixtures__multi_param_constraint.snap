@@ -70,6 +70,7 @@ decls:
           span:
             - 107
             - 117
+      doc: ~
       span:
         - 48
         - 117
@@ -140,6 +141,7 @@ decls:
           span:
             - 223
             - 233
+      doc: ~
       span:
         - 163
         - 233
@@ -205,6 +207,7 @@ decls:
           span:
             - 348
             - 358
+      doc: ~
       span:
         - 285
         - 358
@@ -317,6 +320,7 @@ decls:
           span:
             - 557
             - 573
+      doc: ~
       span:
         - 477
         - 573
@@ -381,9 +385,11 @@ decls:
               span:
                 - 678
                 - 699
+          doc: ~
           span:
             - 678
             - 699
+      doc: ~
       span:
         - 636
         - 701
@@ -458,9 +464,11 @@ decls:
               span:
                 - 797
                 - 818
+          doc: ~
           span:
             - 797
             - 818
+      doc: ~
       span:
         - 743
         - 820
@@ -541,9 +549,11 @@ decls:
               span:
                 - 919
                 - 944
+          doc: ~
           span:
             - 919
             - 944
+      doc: ~
       span:
         - 875
         - 946
@@ -662,9 +672,11 @@ decls:
               span:
                 - 1108
                 - 1115
+          doc: ~
           span:
             - 1069
             - 1115
+      doc: ~
       span:
         - 999
         - 1117

@@ -533,3 +533,126 @@ impl[a] Convert[Array[a], String] where a: Show {
         other => panic!("expected DefImpl, got {:?}", other),
     }
 }
+
+// --- M31-T2: doc comment attachment ---
+
+#[test]
+fn test_doc_fun_single_line() {
+    let src = "## greet\nfun hello() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("greet"));
+}
+
+#[test]
+fn test_doc_fun_multiline() {
+    let src = "## line1\n## line2\nfun hello() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("line1\nline2"));
+}
+
+#[test]
+fn test_doc_fun_paragraph_break() {
+    let src = "## p1\n##\n## p2\nfun hello() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("p1\n\np2"));
+}
+
+#[test]
+fn test_doc_blank_line_drops_orphan() {
+    let src = "## orphan\n\nfun hello() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc, None);
+}
+
+#[test]
+fn test_doc_type_decl() {
+    let src = "## a point\ntype Point = { x: Int, y: Int }\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefType(t) = &module.decls[0] else {
+        panic!("expected DefType");
+    };
+    assert_eq!(t.doc.as_deref(), Some("a point"));
+}
+
+#[test]
+fn test_doc_trait_decl() {
+    let src = "## a trait\ntrait Foo[a] {\n    fun x(y: a) -> Int\n}\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefTrait { doc, .. } = &module.decls[0] else {
+        panic!("expected DefTrait");
+    };
+    assert_eq!(doc.as_deref(), Some("a trait"));
+}
+
+#[test]
+fn test_doc_impl_decl() {
+    let src = "## an impl\nimpl Foo[Int] {\n    fun x(y: Int) -> Int = y\n}\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefImpl { doc, .. } = &module.decls[0] else {
+        panic!("expected DefImpl");
+    };
+    assert_eq!(doc.as_deref(), Some("an impl"));
+}
+
+#[test]
+fn test_doc_extern_decl() {
+    let src = "## math bindings\nextern java \"java.lang.Math\" {\n    fun abs(x: Int) -> Int\n}\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::Extern { doc, .. } = &module.decls[0] else {
+        panic!("expected Extern");
+    };
+    assert_eq!(doc.as_deref(), Some("math bindings"));
+}
+
+#[test]
+fn test_doc_trait_method() {
+    let src = "trait Foo[a] {\n    ## method doc\n    fun x(y: a) -> Int\n}\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefTrait { methods, .. } = &module.decls[0] else {
+        panic!("expected DefTrait");
+    };
+    assert_eq!(methods[0].doc.as_deref(), Some("method doc"));
+}
+
+#[test]
+fn test_doc_impl_method() {
+    let src = "impl Foo[Int] {\n    ## method doc\n    fun x(y: Int) -> Int = y\n}\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefImpl { methods, .. } = &module.decls[0] else {
+        panic!("expected DefImpl");
+    };
+    assert_eq!(methods[0].doc.as_deref(), Some("method doc"));
+}
+
+#[test]
+fn test_doc_no_doc_is_none() {
+    let src = "fun f() = 1";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc, None);
+}

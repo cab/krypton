@@ -1,0 +1,5 @@
+# expect: ok
+## this doc block is orphaned (blank line follows)
+## and therefore dropped in M31-T2
+
+fun noop() -> Int = 0

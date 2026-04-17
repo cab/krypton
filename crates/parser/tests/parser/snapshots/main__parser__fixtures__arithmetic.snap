@@ -56,6 +56,7 @@ decls:
           span:
             - 46
             - 51
+      doc: ~
       span:
         - 13
         - 51
@@ -105,6 +106,7 @@ decls:
           span:
             - 78
             - 87
+      doc: ~
       span:
         - 52
         - 87
@@ -154,6 +156,7 @@ decls:
           span:
             - 110
             - 121
+      doc: ~
       span:
         - 88
         - 121
@@ -246,6 +249,7 @@ decls:
           span:
             - 159
             - 176
+      doc: ~
       span:
         - 122
         - 176

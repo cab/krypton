@@ -48,6 +48,7 @@ decls:
           span:
             - 47
             - 48
+      doc: ~
       span:
         - 13
         - 48

@@ -21,6 +21,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             type_params,
             superclasses,
             methods,
+            doc,
             ..
         } => Decl::DefTrait {
             platform: None,
@@ -43,6 +44,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 })
                 .collect(),
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
+            doc: doc.clone(),
             span: (0, 0),
         },
         Decl::DefImpl {
@@ -51,6 +53,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             type_params,
             type_constraints,
             methods,
+            doc,
             ..
         } => Decl::DefImpl {
             platform: None,
@@ -73,6 +76,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                 })
                 .collect(),
             methods: methods.iter().map(zero_spans_fn_decl).collect(),
+            doc: doc.clone(),
             span: (0, 0),
         },
         Decl::Import {
@@ -97,6 +101,7 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
             lifts,
             methods,
             deriving,
+            doc,
             ..
         } => Decl::Extern {
             platform: None,
@@ -132,10 +137,12 @@ fn zero_spans_decl(decl: &Decl) -> Decl {
                             span: (0, 0),
                         })
                         .collect(),
+                    doc: m.doc.clone(),
                     span: (0, 0),
                 })
                 .collect(),
             deriving: deriving.clone(),
+            doc: doc.clone(),
             span: (0, 0),
         },
     }
@@ -168,6 +175,7 @@ fn zero_spans_fn_decl(f: &FnDecl) -> FnDecl {
             .collect(),
         return_type: f.return_type.as_ref().map(zero_spans_type_expr),
         body: Box::new(zero_spans_expr(&f.body)),
+        doc: f.doc.clone(),
         span: (0, 0),
     }
 }
@@ -197,6 +205,7 @@ fn zero_spans_type_decl(t: &TypeDecl) -> TypeDecl {
             },
         },
         deriving: t.deriving.clone(),
+        doc: t.doc.clone(),
         span: (0, 0),
     }
 }

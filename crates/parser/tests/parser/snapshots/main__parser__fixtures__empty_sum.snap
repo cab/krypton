@@ -12,6 +12,7 @@ decls:
         Sum:
           variants: []
       deriving: []
+      doc: ~
       span:
         - 13
         - 29
@@ -24,6 +25,7 @@ decls:
         Sum:
           variants: []
       deriving: []
+      doc: ~
       span:
         - 29
         - 49

@@ -24,6 +24,7 @@ decls:
                     - 39
                     - 42
       deriving: []
+      doc: ~
       span:
         - 13
         - 44
@@ -50,6 +51,7 @@ decls:
       deriving:
         - Eq
         - Show
+      doc: ~
       span:
         - 46
         - 106
@@ -79,6 +81,7 @@ decls:
           span:
             - 123
             - 126
+      doc: ~
       span:
         - 108
         - 126

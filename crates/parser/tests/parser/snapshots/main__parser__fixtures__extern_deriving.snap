@@ -15,6 +15,7 @@ decls:
       methods: []
       deriving:
         - Disposable
+      doc: ~
       span:
         - 13
         - 81

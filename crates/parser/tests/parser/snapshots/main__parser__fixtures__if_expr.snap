@@ -69,6 +69,7 @@ decls:
           span:
             - 38
             - 64
+      doc: ~
       span:
         - 13
         - 64
@@ -134,6 +135,7 @@ decls:
           span:
             - 96
             - 128
+      doc: ~
       span:
         - 65
         - 128

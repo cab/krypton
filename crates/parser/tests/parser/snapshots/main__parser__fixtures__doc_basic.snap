@@ -1,12 +1,12 @@
 ---
-source: crates/parser/tests/parser/parser_tests.rs
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
   - DefFn:
       platform: ~
       name: add
-      visibility: Pub
+      visibility: Private
       type_params: []
       params:
         - name: a
@@ -14,30 +14,30 @@ decls:
             Named:
               name: Int
               span:
-                - 15
-                - 18
+                - 43
+                - 46
           mode: Consume
           span:
-            - 12
-            - 18
+            - 40
+            - 46
         - name: b
           ty:
             Named:
               name: Int
               span:
-                - 23
-                - 26
+                - 51
+                - 54
           mode: Consume
           span:
-            - 20
-            - 26
+            - 48
+            - 54
       constraints: []
       return_type:
         Named:
           name: Int
           span:
-            - 31
-            - 34
+            - 59
+            - 62
       body:
         BinaryOp:
           op: Add
@@ -45,18 +45,18 @@ decls:
             Var:
               name: a
               span:
-                - 37
-                - 38
+                - 65
+                - 66
           rhs:
             Var:
               name: b
               span:
-                - 41
-                - 42
+                - 69
+                - 70
           span:
-            - 37
-            - 42
-      doc: ~
+            - 65
+            - 70
+      doc: add two numbers
       span:
-        - 0
-        - 42
+        - 13
+        - 70

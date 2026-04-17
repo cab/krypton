@@ -55,9 +55,11 @@ decls:
               span:
                 - 19
                 - 52
+          doc: ~
           span:
             - 19
             - 52
+      doc: ~
       span:
         - 1
         - 54

@@ -26,6 +26,7 @@ pub enum Decl {
         type_params: Vec<TypeParam>,
         superclasses: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,
+        doc: Option<String>,
         span: Span,
     },
     DefImpl {
@@ -35,6 +36,7 @@ pub enum Decl {
         type_params: Vec<TypeParam>,
         type_constraints: Vec<TypeConstraint>,
         methods: Vec<FnDecl>,
+        doc: Option<String>,
         span: Span,
     },
     Import {
@@ -55,6 +57,7 @@ pub enum Decl {
         lifts: Option<Lifts>,
         methods: Vec<ExternMethod>,
         deriving: Vec<String>,
+        doc: Option<String>,
         span: Span,
     },
 }
@@ -84,6 +87,7 @@ pub struct ExternMethod {
     pub params: Vec<(String, TypeExpr)>,
     pub return_type: TypeExpr,
     pub where_clauses: Vec<TypeConstraint>,
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -108,6 +112,7 @@ pub struct TypeDecl {
     pub type_params: Vec<String>,
     pub kind: TypeDeclKind,
     pub deriving: Vec<String>,
+    pub doc: Option<String>,
     pub span: Span,
 }
 
@@ -134,6 +139,7 @@ pub struct FnDecl {
     pub constraints: Vec<TypeConstraint>,
     pub return_type: Option<TypeExpr>,
     pub body: Box<Expr>,
+    pub doc: Option<String>,
     pub span: Span,
 }
 

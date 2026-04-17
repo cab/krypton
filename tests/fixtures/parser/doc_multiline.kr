@@ -1,0 +1,5 @@
+# expect: ok
+## Greet someone by name.
+##
+## Prints the greeting to stdout and returns unit.
+fun greet(name: String) -> Unit = ()

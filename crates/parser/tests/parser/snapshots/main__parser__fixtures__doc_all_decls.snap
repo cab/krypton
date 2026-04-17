@@ -1,0 +1,216 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Point
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 55
+                    - 58
+            - - y
+              - Named:
+                  name: Int
+                  span:
+                    - 63
+                    - 66
+      deriving: []
+      doc: A point in 2D space.
+      span:
+        - 13
+        - 68
+  - DefTrait:
+      platform: ~
+      visibility: Private
+      name: Measurable
+      type_params:
+        - name: a
+          arity: 0
+          span:
+            - 119
+            - 120
+      superclasses: []
+      methods:
+        - platform: ~
+          name: measure
+          visibility: Private
+          type_params: []
+          params:
+            - name: x
+              ty:
+                Var:
+                  name: a
+                  span:
+                    - 175
+                    - 176
+              mode: Consume
+              span:
+                - 172
+                - 176
+          constraints: []
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 181
+                - 184
+          body:
+            Lit:
+              value: Unit
+              span:
+                - 128
+                - 184
+          doc: Returns the measurement.
+          span:
+            - 128
+            - 184
+      doc: Things that can be measured.
+      span:
+        - 70
+        - 186
+  - DefImpl:
+      platform: ~
+      trait_name: Measurable
+      type_args:
+        - Named:
+            name: Point
+            span:
+              - 254
+              - 259
+      type_params: []
+      type_constraints: []
+      methods:
+        - platform: ~
+          name: measure
+          visibility: Private
+          type_params: []
+          params:
+            - name: p
+              ty:
+                Named:
+                  name: Point
+                  span:
+                    - 305
+                    - 310
+              mode: Consume
+              span:
+                - 302
+                - 310
+          constraints: []
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 315
+                - 318
+          body:
+            BinaryOp:
+              op: Add
+              lhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 321
+                        - 322
+                  field: x
+                  span:
+                    - 321
+                    - 324
+              rhs:
+                FieldAccess:
+                  expr:
+                    Var:
+                      name: p
+                      span:
+                        - 327
+                        - 328
+                  field: y
+                  span:
+                    - 327
+                    - 330
+              span:
+                - 321
+                - 330
+          doc: Sum of x and y.
+          span:
+            - 267
+            - 330
+      doc: Measure a Point as the sum of its coordinates.
+      span:
+        - 188
+        - 332
+  - Extern:
+      platform: ~
+      target: Java
+      module_path: java.lang.Math
+      alias: ~
+      alias_visibility: ~
+      is_trait: false
+      type_params: []
+      lifts: ~
+      methods:
+        - nullable: false
+          throws: false
+          instance: false
+          constructor: false
+          visibility: Private
+          name: abs
+          type_params: []
+          params:
+            - - x
+              - Named:
+                  name: Int
+                  span:
+                    - 435
+                    - 438
+          return_type:
+            Named:
+              name: Int
+              span:
+                - 443
+                - 446
+          where_clauses: []
+          doc: Absolute value.
+          span:
+            - 401
+            - 446
+      deriving: []
+      doc: Bindings for java.lang.Math.
+      span:
+        - 334
+        - 448
+  - DefFn:
+      platform: ~
+      name: greet
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: Int
+          span:
+            - 486
+            - 489
+      body:
+        Lit:
+          value:
+            Int: 1
+          span:
+            - 492
+            - 493
+      doc: Main entry point.
+      span:
+        - 450
+        - 493

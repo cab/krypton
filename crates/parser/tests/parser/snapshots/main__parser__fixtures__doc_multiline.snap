@@ -1,0 +1,39 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefFn:
+      platform: ~
+      name: greet
+      visibility: Private
+      type_params: []
+      params:
+        - name: name
+          ty:
+            Named:
+              name: String
+              span:
+                - 109
+                - 115
+          mode: Consume
+          span:
+            - 103
+            - 115
+      constraints: []
+      return_type:
+        Named:
+          name: Unit
+          span:
+            - 120
+            - 124
+      body:
+        Lit:
+          value: Unit
+          span:
+            - 127
+            - 129
+      doc: "Greet someone by name.\n\nPrints the greeting to stdout and returns unit."
+      span:
+        - 13
+        - 129

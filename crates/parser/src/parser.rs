@@ -52,6 +52,46 @@ fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
 }
 
+/// Collects consecutive `##` doc lines directly preceding a declaration into
+/// `Option<String>`. Also swallows any number of *orphan* doc blocks (doc
+/// lines followed by ≥1 blank line) so the parser doesn't choke on them;
+/// M31-T3 will turn orphan blocks into a proper diagnostic.
+///
+/// A doc block joins its lines with `\n`. An empty line inside the block
+/// (bare `##`) becomes a blank line in the joined string.
+///
+/// Peeks the next token first: the hot path through `decl_parser`'s `choice`
+/// re-runs this combinator for every alternative, so a single token-tag check
+/// for the no-doc case avoids paying for the orphan+attached save/rewind
+/// machinery on every decl attempt.
+fn doc_prefix<'tokens, 'src: 'tokens, I>(
+) -> impl Parser<'tokens, I, Option<String>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
+{
+    let doc_line = select! { Token::DocComment(s) => s.clone() }
+        .then_ignore(just(Token::Newline).or_not());
+
+    let doc_block = doc_line
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map(|lines: Vec<String>| lines.join("\n"));
+
+    let orphan = doc_block
+        .clone()
+        .then_ignore(just(Token::Newline).repeated().at_least(1))
+        .ignored();
+
+    let full = orphan.repeated().ignore_then(doc_block.or_not());
+
+    select! { Token::DocComment(_) => () }
+        .rewind()
+        .ignore_then(full)
+        .or_not()
+        .map(Option::flatten)
+}
+
 const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
 const SHAPE_IN_FN_TYPE: &str = "`shape` is not permitted inside a function type";
 
@@ -1212,12 +1252,13 @@ where
         .map(|tp| tp.unwrap_or_default());
 
     let platform_attr = platform_attr_parser();
+    let doc = doc_prefix();
 
     // --- Function declaration ---
     // fun name[tparams](params) -> RetType where constraints = expr
     // fun name(params) { body }
-    let fun_decl = platform_attr
-        .clone()
+    let fun_decl = doc.clone()
+        .then(platform_attr.clone())
         .then(vis.clone())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1240,7 +1281,7 @@ where
         .map_with(
             |(
                 (
-                    (((((platform, visibility), name), type_params), params), return_type),
+                    ((((((doc, platform), visibility), name), type_params), params), return_type),
                     constraints,
                 ),
                 body,
@@ -1255,6 +1296,7 @@ where
                     constraints,
                     return_type,
                     body: Box::new(body),
+                    doc,
                     span: to_span(e.span()),
                 })
             },
@@ -1335,8 +1377,8 @@ where
         })
         .or_not();
 
-    let type_decl = platform_attr
-        .clone()
+    let type_decl = doc.clone()
+        .then(platform_attr.clone())
         .then(type_vis)
         .then_ignore(symbol(Token::Type))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1346,7 +1388,7 @@ where
         .then(record_kind.or(sum_kind))
         .then(deriving)
         .map_with(
-            |(((((platform, visibility), name), type_params), kind), deriving), e| {
+            |((((((doc, platform), visibility), name), type_params), kind), deriving), e| {
                 Decl::DefType(TypeDecl {
                     platform,
                     name,
@@ -1354,6 +1396,7 @@ where
                     type_params,
                     kind,
                     deriving,
+                    doc,
                     span: to_span(e.span()),
                 })
             },
@@ -1390,10 +1433,13 @@ where
                 }
             });
 
-    let trait_method = symbol(Token::Pub)
-        .map_with(|_, e| Some(to_span(e.span())))
-        .or_not()
-        .map(|opt| opt.flatten())
+    let trait_method = doc.clone()
+        .then(
+            symbol(Token::Pub)
+                .map_with(|_, e| Some(to_span(e.span())))
+                .or_not()
+                .map(|opt| opt.flatten()),
+        )
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(fn_type_params.clone())
@@ -1412,7 +1458,11 @@ where
                 .or_not(),
         )
         .map_with(
-            |((((((pub_span, name), type_params), params), return_type), constraints), body), e| {
+            |(
+                ((((((doc, pub_span), name), type_params), params), return_type), constraints),
+                body,
+            ),
+             e| {
                 let warning = pub_span.map(|span| ParseError {
                     code: ErrorCode::P0004,
                     message:
@@ -1433,6 +1483,7 @@ where
                             value: Lit::Unit,
                             span: to_span(e.span()),
                         })),
+                        doc,
                         span: to_span(e.span()),
                     },
                     warning,
@@ -1451,8 +1502,8 @@ where
 
     let trait_superclasses = where_clause_parser().then(old_superclass_syntax.or_not());
 
-    let trait_decl = platform_attr
-        .clone()
+    let trait_decl = doc.clone()
+        .then(platform_attr.clone())
         .then(vis.clone())
         .then_ignore(symbol(Token::Trait))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1475,7 +1526,10 @@ where
         )
         .map_with(
             |(
-                ((((platform, visibility), name), type_params), (where_constraints, old_syntax)),
+                (
+                    ((((doc, platform), visibility), name), type_params),
+                    (where_constraints, old_syntax),
+                ),
                 method_pairs,
             ),
              e| {
@@ -1517,6 +1571,7 @@ where
                         type_params,
                         superclasses,
                         methods,
+                        doc,
                         span: to_span(e.span()),
                     },
                     warnings,
@@ -1526,8 +1581,9 @@ where
 
     // --- Impl declaration ---
     // impl Trait[Type] { methods } or impl Trait[Type] where constraints { methods }
-    let impl_method = symbol(Token::Fun)
-        .ignore_then(select! { Token::Ident(s) => s.to_string() })
+    let impl_method = doc.clone()
+        .then_ignore(symbol(Token::Fun))
+        .then(select! { Token::Ident(s) => s.to_string() })
         .then(fn_type_params.clone())
         .then(
             param
@@ -1543,23 +1599,26 @@ where
                 .or(expr.clone()),
         )
         .map_with(
-            |(((((name, type_params), params), return_type), constraints), body), e| FnDecl {
-                platform: None,
-                name,
-                visibility: Visibility::Private,
-                type_params,
-                params,
-                constraints,
-                return_type,
-                body: Box::new(body),
-                span: to_span(e.span()),
+            |((((((doc, name), type_params), params), return_type), constraints), body), e| {
+                FnDecl {
+                    platform: None,
+                    name,
+                    visibility: Visibility::Private,
+                    type_params,
+                    params,
+                    constraints,
+                    return_type,
+                    body: Box::new(body),
+                    doc,
+                    span: to_span(e.span()),
+                }
             },
         );
 
     let impl_constraints = where_clause_parser();
 
-    let impl_decl = platform_attr
-        .clone()
+    let impl_decl = doc.clone()
+        .then(platform_attr.clone())
         .then_ignore(symbol(Token::Impl))
         .then(fn_type_params.clone())
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1579,7 +1638,13 @@ where
                 .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
         )
         .map_with(
-            |(((((platform, type_params), trait_name), type_args), type_constraints), methods),
+            |(
+                (
+                    ((((doc, platform), type_params), trait_name), type_args),
+                    type_constraints,
+                ),
+                methods,
+            ),
              e| {
                 Decl::DefImpl {
                     platform,
@@ -1588,6 +1653,7 @@ where
                     type_params,
                     type_constraints,
                     methods,
+                    doc,
                     span: to_span(e.span()),
                 }
             },
@@ -1708,7 +1774,8 @@ where
             (nullable, throws, instance, constructor)
         });
 
-    let extern_method = extern_annotations
+    let extern_method = doc.clone()
+        .then(extern_annotations)
         .then(symbol(Token::Pub).or_not())
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
@@ -1721,7 +1788,10 @@ where
                 (
                     (
                         (
-                            (((nullable, throws, instance, constructor), pub_opt), name),
+                            (
+                                ((doc, (nullable, throws, instance, constructor)), pub_opt),
+                                name,
+                            ),
                             method_type_params,
                         ),
                         params,
@@ -1745,6 +1815,7 @@ where
                 params,
                 return_type,
                 where_clauses,
+                doc,
                 span: to_span(e.span()),
             },
         );
@@ -1800,8 +1871,8 @@ where
         )
         .or_not();
 
-    let extern_decl = platform_attr
-        .clone()
+    let extern_decl = doc.clone()
+        .then(platform_attr.clone())
         .then_ignore(symbol(Token::Extern))
         .then(extern_target)
         .then(select! { Token::String(s) => s.to_string() })
@@ -1826,7 +1897,8 @@ where
                 .map(|d| d.unwrap_or_default()),
         )
         .map_with(
-            |((((((platform, target), module_path), as_clause), lifts), methods), deriving), e| {
+            |(((((((doc, platform), target), module_path), as_clause), lifts), methods), deriving),
+             e| {
                 let (is_trait, alias, alias_visibility, type_params) = match as_clause {
                     Some((is_trait, is_pub, name, params)) => {
                         let vis = if !is_trait && is_pub {
@@ -1849,6 +1921,7 @@ where
                     lifts,
                     methods,
                     deriving,
+                    doc,
                     span: to_span(e.span()),
                 }
             },

@@ -1,11 +1,11 @@
 ---
-source: crates/parser/tests/parser/parser_tests.rs
+source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
   - DefFn:
       platform: ~
-      name: f
+      name: noop
       visibility: Private
       type_params: []
       params: []
@@ -14,16 +14,16 @@ decls:
         Named:
           name: Int
           span:
-            - 11
-            - 14
+            - 114
+            - 117
       body:
         Lit:
           value:
-            Int: 42
+            Int: 0
           span:
-            - 17
-            - 19
+            - 120
+            - 121
       doc: ~
       span:
-        - 0
-        - 19
+        - 13
+        - 121

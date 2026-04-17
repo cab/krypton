@@ -69,6 +69,7 @@ decls:
           span:
             - 23
             - 49
+      doc: ~
       span:
         - 0
         - 49

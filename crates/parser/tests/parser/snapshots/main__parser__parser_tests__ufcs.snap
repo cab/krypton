@@ -46,6 +46,7 @@ decls:
           span:
             - 25
             - 30
+      doc: ~
       span:
         - 0
         - 30
@@ -91,6 +92,7 @@ decls:
           span:
             - 54
             - 61
+      doc: ~
       span:
         - 31
         - 61

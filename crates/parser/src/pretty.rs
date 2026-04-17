@@ -58,6 +58,22 @@ impl<'a> Formatter<'a> {
         }
     }
 
+    fn fmt_doc(&mut self, doc: &Option<String>) {
+        let Some(doc) = doc else {
+            return;
+        };
+        for line in doc.split('\n') {
+            self.indent();
+            if line.is_empty() {
+                self.buf.push_str("##\n");
+            } else {
+                self.buf.push_str("## ");
+                self.buf.push_str(line);
+                self.buf.push('\n');
+            }
+        }
+    }
+
     fn fmt_platform(&mut self, platform: &Option<Vec<CompileTarget>>) {
         if let Some(targets) = platform {
             self.buf.push_str("@platform([");
@@ -77,10 +93,12 @@ impl<'a> Formatter<'a> {
     fn fmt_decl(&mut self, decl: &Decl) {
         match decl {
             Decl::DefFn(f) => {
+                self.fmt_doc(&f.doc);
                 self.fmt_platform(&f.platform);
                 self.fmt_fn_decl(f);
             }
             Decl::DefType(t) => {
+                self.fmt_doc(&t.doc);
                 self.fmt_platform(&t.platform);
                 self.fmt_type_decl(t);
             }
@@ -91,8 +109,10 @@ impl<'a> Formatter<'a> {
                 type_params,
                 superclasses,
                 methods,
+                doc,
                 ..
             } => {
+                self.fmt_doc(doc);
                 self.fmt_platform(platform);
                 self.fmt_visibility(visibility);
                 self.fmt_trait(name, type_params, superclasses, methods);
@@ -104,8 +124,10 @@ impl<'a> Formatter<'a> {
                 type_params,
                 type_constraints,
                 methods,
+                doc,
                 ..
             } => {
+                self.fmt_doc(doc);
                 self.fmt_platform(platform);
                 self.fmt_impl(
                     trait_name,
@@ -125,7 +147,8 @@ impl<'a> Formatter<'a> {
                 self.fmt_platform(platform);
                 self.fmt_import(*is_pub, path, names);
             }
-            Decl::Extern { platform, .. } => {
+            Decl::Extern { platform, doc, .. } => {
+                self.fmt_doc(doc);
                 self.fmt_platform(platform);
                 self.fmt_extern(decl);
             }
@@ -433,6 +456,7 @@ impl<'a> Formatter<'a> {
         self.indent_level += 1;
         for m in methods {
             self.buf.push('\n');
+            self.fmt_doc(&m.doc);
             self.indent();
             self.fmt_trait_method(m);
         }
@@ -510,6 +534,7 @@ impl<'a> Formatter<'a> {
         self.indent_level += 1;
         for m in methods {
             self.buf.push('\n');
+            self.fmt_doc(&m.doc);
             self.indent();
             self.fmt_impl_method(m);
         }
@@ -622,6 +647,7 @@ impl<'a> Formatter<'a> {
         self.indent_level += 1;
         for m in methods {
             self.buf.push('\n');
+            self.fmt_doc(&m.doc);
             self.indent();
             if m.nullable {
                 self.buf.push_str("@nullable ");

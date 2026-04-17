@@ -1,0 +1,24 @@
+# expect: ok
+## A point in 2D space.
+type Point = { x: Int, y: Int }
+
+## Things that can be measured.
+trait Measurable[a] {
+    ## Returns the measurement.
+    fun measure(x: a) -> Int
+}
+
+## Measure a Point as the sum of its coordinates.
+impl Measurable[Point] {
+    ## Sum of x and y.
+    fun measure(p: Point) -> Int = p.x + p.y
+}
+
+## Bindings for java.lang.Math.
+extern java "java.lang.Math" {
+    ## Absolute value.
+    fun abs(x: Int) -> Int
+}
+
+## Main entry point.
+fun greet() -> Int = 1

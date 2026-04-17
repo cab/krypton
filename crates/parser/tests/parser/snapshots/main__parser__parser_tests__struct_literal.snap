@@ -1,5 +1,5 @@
 ---
-source: crates/parser/tests/parser_test.rs
+source: crates/parser/tests/parser/parser_tests.rs
 expression: module
 ---
 decls:
@@ -24,6 +24,7 @@ decls:
                     - 26
                     - 29
       deriving: []
+      doc: ~
       span:
         - 0
         - 31
@@ -61,6 +62,7 @@ decls:
           span:
             - 51
             - 73
+      doc: ~
       span:
         - 32
         - 73

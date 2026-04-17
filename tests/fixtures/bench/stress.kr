@@ -5,6 +5,7 @@ import core/vec.{nth, len}
 
 # --- Records ---
 
+## A point in 2D space.
 type Point = { x: Int, y: Int }
 
 type Rect = { origin: Point, width: Int, height: Int }
@@ -27,7 +28,11 @@ type Tree[a] = Leaf(a) | Branch(Tree[a], a, Tree[a])
 
 # --- Traits ---
 
+## Things that can be measured into a scalar.
+##
+## `measure` returns an `Int`.
 trait Measurable[a] {
+    ## Measure the given value.
     fun measure(x: a) -> Int
 }
 
@@ -80,6 +85,7 @@ impl Functor[Pair] {
 
 # --- Generic functions ---
 
+## The identity function.
 fun identity[a](x: a) -> a = x
 
 fun const_fn[a, b](x: a, y: b) -> a = x

@@ -34,6 +34,7 @@ decls:
                 - 55
                 - 58
           where_clauses: []
+          doc: ~
           span:
             - 36
             - 58
@@ -64,10 +65,12 @@ decls:
                 - 90
                 - 93
           where_clauses: []
+          doc: ~
           span:
             - 63
             - 93
       deriving: []
+      doc: ~
       span:
         - 1
         - 95

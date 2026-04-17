@@ -52,6 +52,7 @@ decls:
                 - 66
                 - 95
       deriving: []
+      doc: ~
       span:
         - 13
         - 95
@@ -80,6 +81,7 @@ decls:
                 - 130
                 - 134
       deriving: []
+      doc: ~
       span:
         - 97
         - 134
