@@ -81,6 +81,9 @@ pub enum Token<'src> {
     Error,
     // Doc comment (`## text`)
     DocComment(String),
+    // Synthesized by post-lex pass: a run of DocComment lines attached to a
+    // declaration, joined by `\n`. Never emitted by the lexer itself.
+    DocBlock(String),
 }
 
 impl fmt::Display for Token<'_> {
@@ -153,6 +156,7 @@ impl fmt::Display for Token<'_> {
             Token::At => write!(f, "@"),
             Token::Error => write!(f, "<error>"),
             Token::DocComment(s) => write!(f, "## {s}"),
+            Token::DocBlock(s) => write!(f, "##{{{s}}}"),
         }
     }
 }

@@ -656,3 +656,82 @@ fn test_doc_no_doc_is_none() {
     };
     assert_eq!(f.doc, None);
 }
+
+// Exercises `fold_doc_blocks` post-lex pass through the public parse API.
+
+#[test]
+fn test_doc_orphan_at_eof_dropped() {
+    let src = "## orphan at eof\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert!(module.decls.is_empty());
+}
+
+#[test]
+fn test_doc_orphan_at_eof_no_newline() {
+    let src = "## orphan no nl";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    assert!(module.decls.is_empty());
+}
+
+#[test]
+fn test_doc_orphan_before_let_dropped() {
+    // `let` is not a decl-starter, so fold_doc_blocks drops the orphan run;
+    // the parser then errors on `let` (not on `##`).
+    let src = "## orphan\nlet x = 5\n";
+    let (_module, errors) = parse(src);
+    assert!(!errors.is_empty(), "expected parse error on `let`");
+    // The error should reference `let`, not `##`.
+    for e in &errors {
+        assert!(
+            !e.message.contains("##"),
+            "error mentions ## — orphan was not dropped: {}",
+            e.message
+        );
+    }
+}
+
+#[test]
+fn test_doc_multiple_orphans_interleaved() {
+    // Two orphan blocks, then an attached doc. Orphans must not leak onto the decl.
+    let src = "\
+## orphan1
+## orphan1b
+
+## orphan2
+
+## attached
+fun f() = 1
+";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("attached"));
+}
+
+#[test]
+fn test_doc_attached_to_pub_fun() {
+    // `pub` is a decl-starter; the fold must treat it as attached.
+    let src = "## docs\npub fun f() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("docs"));
+}
+
+#[test]
+fn test_doc_attached_to_platform_attr() {
+    // `@` is a decl-starter (platform attrs like `@platform([...])`).
+    let src = "## docs\n@platform([jvm])\nfun f() = 1\n";
+    let (module, errors) = parse(src);
+    assert!(errors.is_empty(), "errors: {errors:?}");
+    let krypton_parser::ast::Decl::DefFn(f) = &module.decls[0] else {
+        panic!("expected DefFn");
+    };
+    assert_eq!(f.doc.as_deref(), Some("docs"));
+}

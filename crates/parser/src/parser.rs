@@ -52,44 +52,16 @@ fn to_span(s: LexSpan) -> Span {
     (s.start, s.end)
 }
 
-/// Collects consecutive `##` doc lines directly preceding a declaration into
-/// `Option<String>`. Also swallows any number of *orphan* doc blocks (doc
-/// lines followed by ≥1 blank line) so the parser doesn't choke on them;
-/// M31-T3 will turn orphan blocks into a proper diagnostic.
-///
-/// A doc block joins its lines with `\n`. An empty line inside the block
-/// (bare `##`) becomes a blank line in the joined string.
-///
-/// Peeks the next token first: the hot path through `decl_parser`'s `choice`
-/// re-runs this combinator for every alternative, so a single token-tag check
-/// for the no-doc case avoids paying for the orphan+attached save/rewind
-/// machinery on every decl attempt.
-fn doc_prefix<'tokens, 'src: 'tokens, I>(
+/// Matches a pre-folded `Token::DocBlock` (synthesized by `fold_doc_blocks`
+/// from `##` comment runs that precede a declaration). Orphan handling and
+/// line-joining happen during the post-lex pass, so this combinator is a
+/// single-token `select!` — no rewind, no loop, no flatten.
+fn doc_block<'tokens, 'src: 'tokens, I>(
 ) -> impl Parser<'tokens, I, Option<String>, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = LexSpan>,
 {
-    let doc_line = select! { Token::DocComment(s) => s.clone() }
-        .then_ignore(just(Token::Newline).or_not());
-
-    let doc_block = doc_line
-        .repeated()
-        .at_least(1)
-        .collect::<Vec<_>>()
-        .map(|lines: Vec<String>| lines.join("\n"));
-
-    let orphan = doc_block
-        .clone()
-        .then_ignore(just(Token::Newline).repeated().at_least(1))
-        .ignored();
-
-    let full = orphan.repeated().ignore_then(doc_block.or_not());
-
-    select! { Token::DocComment(_) => () }
-        .rewind()
-        .ignore_then(full)
-        .or_not()
-        .map(Option::flatten)
+    select! { Token::DocBlock(s) => s.clone() }.or_not()
 }
 
 const SLOT_NOT_A_TYPE: &str = "`&~T` is a parameter-slot calling convention, not a type";
@@ -1252,7 +1224,7 @@ where
         .map(|tp| tp.unwrap_or_default());
 
     let platform_attr = platform_attr_parser();
-    let doc = doc_prefix();
+    let doc = doc_block();
 
     // --- Function declaration ---
     // fun name[tparams](params) -> RetType where constraints = expr
@@ -1990,6 +1962,77 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
     ErrorCode::P0001
 }
 
+/// Post-lex pass: folds runs of `DocComment` (separated by `Newline`) into a
+/// single synthetic `Token::DocBlock(String)` iff the run is immediately
+/// followed by a declaration-starter token. Orphan runs (followed by a blank
+/// line, a non-decl token, or EOF) are discarded silently — matching the
+/// current M31-T2 parser behavior. M31-T3 will replace the discard with a
+/// diagnostic.
+///
+/// Moving this work out of the chumsky grammar collapses the per-arm prefix
+/// on `decl_parser`'s `choice(...)` from a seven-combinator chain (peek,
+/// orphan loop, doc_block collect, or_not, flatten) into a single-token
+/// `select!` check.
+///
+/// Fast path: when the token stream contains no `DocComment`, the input Vec
+/// is returned unchanged. Doc comments are rare, so the hot path is a single
+/// scan of the token tags.
+fn fold_doc_blocks<'src>(
+    tokens: Vec<(Token<'src>, LexSpan)>,
+) -> Vec<(Token<'src>, LexSpan)> {
+    if !tokens
+        .iter()
+        .any(|(t, _)| matches!(t, Token::DocComment(_)))
+    {
+        return tokens;
+    }
+
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut iter = tokens.into_iter().peekable();
+    while let Some((tok, span)) = iter.next() {
+        let first_line = match tok {
+            Token::DocComment(s) => s,
+            other => {
+                out.push((other, span));
+                continue;
+            }
+        };
+        let start_span = span;
+        let mut lines: Vec<String> = vec![first_line];
+        if matches!(iter.peek(), Some((Token::Newline, _))) {
+            iter.next();
+        }
+        while matches!(iter.peek(), Some((Token::DocComment(_), _))) {
+            let Some((Token::DocComment(s), _)) = iter.next() else {
+                unreachable!()
+            };
+            lines.push(s);
+            if matches!(iter.peek(), Some((Token::Newline, _))) {
+                iter.next();
+            } else {
+                break;
+            }
+        }
+        let is_attached = matches!(
+            iter.peek().map(|(t, _)| t),
+            Some(
+                Token::Pub
+                    | Token::Fun
+                    | Token::Type
+                    | Token::Trait
+                    | Token::Impl
+                    | Token::Extern
+                    | Token::Import
+                    | Token::At
+            )
+        );
+        if is_attached {
+            out.push((Token::DocBlock(lines.join("\n")), start_span));
+        }
+    }
+    out
+}
+
 #[tracing::instrument(skip(source), fields(len = source.len()))]
 pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
     // Chumsky uses stacker internally (64KB red zone), but in debug builds
@@ -2001,6 +2044,7 @@ pub fn parse(source: &str) -> (Module, Vec<ParseError>) {
 fn parse_inner(source: &str) -> (Module, Vec<ParseError>) {
     let (tokens, lex_errors) = lexer::lexer().parse(source).into_output_errors();
     let tokens = tokens.unwrap_or_default();
+    let tokens = fold_doc_blocks(tokens);
     tracing::debug!(
         tokens = tokens.len(),
         lex_errors = lex_errors.len(),

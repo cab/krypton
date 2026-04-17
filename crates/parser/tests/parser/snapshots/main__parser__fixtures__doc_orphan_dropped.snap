@@ -1,5 +1,6 @@
 ---
 source: crates/parser/tests/parser/fixtures.rs
+assertion_line: 28
 expression: module
 ---
 decls:
@@ -25,5 +26,5 @@ decls:
             - 121
       doc: ~
       span:
-        - 13
+        - 100
         - 121
