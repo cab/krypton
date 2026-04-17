@@ -1,0 +1,9 @@
+# expect: ok
+type Buf = MkBuf(String)
+
+fun consume(x: ~Buf) -> Unit = match x { MkBuf(_) => () }
+
+fun loop(b: ~Buf, n: Int) -> Unit =
+    if n == 0 { consume(b) } else { loop(b, n - 1) }
+
+fun main() -> Unit = loop(MkBuf("x"), 3)

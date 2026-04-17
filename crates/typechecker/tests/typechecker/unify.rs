@@ -1,4 +1,4 @@
-use krypton_typechecker::types::{Substitution, Type, TypeVarGen};
+use krypton_typechecker::types::{QualifierState, Substitution, Type, TypeVarGen};
 use krypton_typechecker::unify::{coerce_unify, join_types, unify, TypeError};
 
 fn fresh_var(gen: &mut TypeVarGen) -> Type {
@@ -281,6 +281,72 @@ fn join_bare_bare_ok() {
     let mut subst = Substitution::new();
     // join_types(Int, Int) → OK
     assert!(join_types(&Type::Int, &Type::Int, &mut subst, None).is_ok());
+}
+
+#[test]
+fn join_own_maybeown_confirms_affine() {
+    let mut subst = Substitution::new();
+    let q = subst.fresh_qual();
+    // Before: q is Pending
+    assert_eq!(subst.get_qualifier(q), Some(&QualifierState::Pending));
+    // join_types(Own(Int), MaybeOwn(q, Int)) → commits q to Affine
+    assert!(join_types(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::MaybeOwn(q, Box::new(Type::Int)),
+        &mut subst,
+        None,
+    )
+    .is_ok());
+    assert_eq!(subst.get_qualifier(q), Some(&QualifierState::Affine));
+}
+
+#[test]
+fn join_maybeown_own_confirms_affine() {
+    let mut subst = Substitution::new();
+    let q = subst.fresh_qual();
+    assert_eq!(subst.get_qualifier(q), Some(&QualifierState::Pending));
+    // Symmetric: join_types(MaybeOwn(q, Int), Own(Int)) → commits q to Affine
+    assert!(join_types(
+        &Type::MaybeOwn(q, Box::new(Type::Int)),
+        &Type::Own(Box::new(Type::Int)),
+        &mut subst,
+        None,
+    )
+    .is_ok());
+    assert_eq!(subst.get_qualifier(q), Some(&QualifierState::Affine));
+}
+
+#[test]
+fn join_maybeown_maybeown_aliases() {
+    let mut subst = Substitution::new();
+    let q1 = subst.fresh_qual();
+    let q2 = subst.fresh_qual();
+    // join_types(MaybeOwn(q1, Int), MaybeOwn(q2, Int)) aliases q1/q2
+    assert!(join_types(
+        &Type::MaybeOwn(q1, Box::new(Type::Int)),
+        &Type::MaybeOwn(q2, Box::new(Type::Int)),
+        &mut subst,
+        None,
+    )
+    .is_ok());
+    // Now confirming q1 as Affine must propagate to q2 via alias.
+    assert!(subst.confirm_affine(q1).is_ok());
+    assert_eq!(subst.get_qualifier(q1), Some(&QualifierState::Affine));
+    assert_eq!(subst.get_qualifier(q2), Some(&QualifierState::Affine));
+}
+
+#[test]
+fn join_own_bare_int_still_strips() {
+    // Regression guard: the new Own/MaybeOwn arms must not disturb the
+    // existing (Own, bare) literal-strip join.
+    let mut subst = Substitution::new();
+    assert!(join_types(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::Int,
+        &mut subst,
+        None,
+    )
+    .is_ok());
 }
 
 #[test]

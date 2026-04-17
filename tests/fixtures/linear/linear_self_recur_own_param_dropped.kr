@@ -1,0 +1,5 @@
+# expect: error E0108
+type Buf = MkBuf(String)
+
+fun loop(b: ~Buf, n: Int) -> Unit =
+    if n == 0 { () } else { loop(b, n - 1) }

@@ -1,0 +1,18 @@
+# expect: ok
+extern java "native.Foo" as pub Foo[a] lifts always {}
+extern js "./foo.mjs" as pub Foo[a] lifts always {}
+
+extern java "native.Foo" {
+    fun foo_new[a]() -> ~Foo[a]
+    fun foo_consume[a](f: ~Foo[a]) -> Unit
+}
+extern js "./foo.mjs" {
+    fun foo_new[a]() -> ~Foo[a]
+    fun foo_consume[a](f: ~Foo[a]) -> Unit
+}
+
+fun consume_loop[a](b: ~Foo[a], n: Int) -> Unit =
+    if n == 0 { foo_consume(b) } else { consume_loop(b, n - 1) }
+
+fun user[a]() -> Unit = consume_loop(foo_new(), 3)
+fun main() -> Unit = user()

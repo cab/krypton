@@ -628,6 +628,32 @@ pub fn join_types(
         return join_types(a_inner, b_inner, subst, registry);
     }
 
+    // MaybeOwn + MaybeOwn: alias qualifiers so a later commit propagates.
+    if let (Type::MaybeOwn(q1, a_inner), Type::MaybeOwn(q2, b_inner)) = (&a, &b) {
+        if !matches!(a_inner.as_ref(), Type::Fn(_, _))
+            && !matches!(b_inner.as_ref(), Type::Fn(_, _))
+        {
+            subst.unify_qualifiers(*q1, *q2)?;
+            return join_types(a_inner, b_inner, subst, registry);
+        }
+    }
+
+    // Own + MaybeOwn: confirm qualifier as Affine, then recurse on inners.
+    // Mirrors the unify arm so the annotation's `Own` wrapper is authoritative
+    // over the deferred qualifier introduced at self-recursive call sites.
+    if let (Type::Own(a_inner), Type::MaybeOwn(q, b_inner)) = (&a, &b) {
+        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
+            subst.confirm_affine(*q)?;
+            return join_types(a_inner, b_inner, subst, registry);
+        }
+    }
+    if let (Type::MaybeOwn(q, a_inner), Type::Own(b_inner)) = (&a, &b) {
+        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
+            subst.confirm_affine(*q)?;
+            return join_types(a_inner, b_inner, subst, registry);
+        }
+    }
+
     // One Own, one bare (non-fn): strip Own, join inner with bare.
     // This strips ownership from literals at join sites (e.g., match { Some(x) => x, None => 0 })
     // so that type vars are bound to bare types, not Own types.
