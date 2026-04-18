@@ -2,11 +2,12 @@
 var CustomType = class {
   toString() {
     const name = this.constructor.name;
-    const fields = Object.keys(this).filter((k) => k !== "$tag");
+    const self = this;
+    const fields = Object.keys(self).filter((k) => k !== "$tag");
     if (fields.length === 0) {
       return name;
     }
-    const parts = fields.map((k) => `${k}: ${formatValue(this[k])}`);
+    const parts = fields.map((k) => `${k}: ${formatValue(self[k])}`);
     return `${name} { ${parts.join(", ")} }`;
   }
 };

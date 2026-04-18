@@ -1,16 +1,17 @@
 export class CustomType {
-  toString() {
+  toString(): string {
     const name = this.constructor.name;
-    const fields = Object.keys(this).filter((k) => k !== '$tag');
+    const self = this as unknown as Record<string, unknown>;
+    const fields = Object.keys(self).filter((k) => k !== '$tag');
     if (fields.length === 0) {
       return name;
     }
-    const parts = fields.map((k) => `${k}: ${formatValue(this[k])}`);
+    const parts = fields.map((k) => `${k}: ${formatValue(self[k])}`);
     return `${name} { ${parts.join(', ')} }`;
   }
 }
 
-function formatValue(v: unknown) {
+function formatValue(v: unknown): string {
   if (v instanceof CustomType) {
     return v.toString();
   }
@@ -21,7 +22,7 @@ function formatValue(v: unknown) {
 }
 
 export class List extends CustomType {
-  map(f: (value: unknown) => unknown) {
+  map(f: (value: unknown) => unknown): List {
     let result: List = Empty.INSTANCE;
     const items: unknown[] = [];
     let cur: List = this;
@@ -35,7 +36,7 @@ export class List extends CustomType {
     return result;
   }
 
-  toArray() {
+  toArray(): unknown[] {
     const arr: unknown[] = [];
     let cur: List = this;
     while (cur instanceof NonEmpty) {
@@ -45,7 +46,7 @@ export class List extends CustomType {
     return arr;
   }
 
-  toString() {
+  override toString(): string {
     const items = this.toArray().map((v) => formatValue(v));
     return `[${items.join(', ')}]`;
   }
@@ -54,7 +55,7 @@ export class List extends CustomType {
 export class Empty extends List {
   static INSTANCE = new Empty();
 
-  get $tag() {
+  get $tag(): number {
     return 1;
   }
 }
@@ -69,12 +70,12 @@ export class NonEmpty extends List {
     this.tail = tail;
   }
 
-  get $tag() {
+  get $tag(): number {
     return 0;
   }
 }
 
-export function toList(array: unknown[]) {
+export function toList(array: unknown[]): List {
   let result: List = Empty.INSTANCE;
   for (let i = array.length - 1; i >= 0; i -= 1) {
     result = new NonEmpty(array[i], result);
