@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_constrained_vec
 
-trait Test[a9] { name(): String }
+trait Test[y10] { name(): String }
 instance traits__trait_zero_arg_constrained_vec.Test[Vec$$Var0] { name=Test$$Vec$$Var0$$name }
 instance traits__trait_zero_arg_constrained_vec.Test[Int] { name=Test$$Int$$name }
 import core/peek/peek as peek(d) -> d
@@ -13,7 +13,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -29,7 +29,7 @@ fn main() -> Unit =
   let v4: Unit = call println(v0, v3)
   v4
 
-fn Test$$Vec$$Var0$$name(v5: Dict[traits__trait_zero_arg_constrained_vec.Test, b9]) -> String =
+fn Test$$Vec$$Var0$$name(v5: Dict[traits__trait_zero_arg_constrained_vec.Test, z10]) -> String =
   let v6: String = trait_call traits__trait_zero_arg_constrained_vec.Test.name(v5)
   v6
 

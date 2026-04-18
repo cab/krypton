@@ -127,6 +127,7 @@ pub(super) fn synthesize_eq_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     let param_b = TypedExpr {
         kind: TypedExprKind::Var("__b".to_string()),
@@ -134,6 +135,7 @@ pub(super) fn synthesize_eq_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     let true_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(true)),
@@ -141,6 +143,7 @@ pub(super) fn synthesize_eq_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     let false_expr = || TypedExpr {
         kind: TypedExprKind::Lit(Lit::Bool(false)),
@@ -148,6 +151,7 @@ pub(super) fn synthesize_eq_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
 
     let body = match &type_info.kind {
@@ -168,6 +172,7 @@ pub(super) fn synthesize_eq_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     let rhs = TypedExpr {
                         kind: TypedExprKind::FieldAccess {
@@ -179,6 +184,7 @@ pub(super) fn synthesize_eq_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     let cmp = TypedExpr {
                         kind: TypedExprKind::BinaryOp {
@@ -190,6 +196,7 @@ pub(super) fn synthesize_eq_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     result = TypedExpr {
                         kind: TypedExprKind::If {
@@ -201,6 +208,7 @@ pub(super) fn synthesize_eq_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                 }
                 result
@@ -269,6 +277,7 @@ pub(super) fn synthesize_eq_body(
                                             span,
                                             resolved_ref: None,
                                             scope_id: None,
+                                            deferred_id: None,
                                         };
                                         let y = TypedExpr {
                                             kind: TypedExprKind::Var(format!("__y{}", i)),
@@ -276,6 +285,7 @@ pub(super) fn synthesize_eq_body(
                                             span,
                                             resolved_ref: None,
                                             scope_id: None,
+                                            deferred_id: None,
                                         };
                                         let cmp = TypedExpr {
                                             kind: TypedExprKind::BinaryOp {
@@ -287,6 +297,7 @@ pub(super) fn synthesize_eq_body(
                                             span,
                                             resolved_ref: None,
                                             scope_id: None,
+                                            deferred_id: None,
                                         };
                                         result = TypedExpr {
                                             kind: TypedExprKind::If {
@@ -298,6 +309,7 @@ pub(super) fn synthesize_eq_body(
                                             span,
                                             resolved_ref: None,
                                             scope_id: None,
+                                            deferred_id: None,
                                         };
                                     }
                                     TypedMatchArm {
@@ -329,6 +341,7 @@ pub(super) fn synthesize_eq_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
 
                     TypedMatchArm {
@@ -348,6 +361,7 @@ pub(super) fn synthesize_eq_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         }
     };
@@ -369,6 +383,7 @@ pub(super) fn synthesize_show_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
 
     let str_lit = |s: &str| -> TypedExpr {
@@ -378,6 +393,7 @@ pub(super) fn synthesize_show_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -392,6 +408,7 @@ pub(super) fn synthesize_show_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -407,6 +424,7 @@ pub(super) fn synthesize_show_body(
                         .clone()
                         .map(|trait_name| super::trait_method_binding_ref(trait_name, "show")),
                     scope_id: None,
+                    deferred_id: None,
                 }),
                 args: vec![expr],
                 param_modes: vec![ParamMode::Consume],
@@ -415,6 +433,7 @@ pub(super) fn synthesize_show_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -436,6 +455,7 @@ pub(super) fn synthesize_show_body(
                     span,
                     resolved_ref: None,
                     scope_id: None,
+                    deferred_id: None,
                 };
                 result = str_concat(result, show_call(field_access));
             }
@@ -479,6 +499,7 @@ pub(super) fn synthesize_show_body(
                                 span,
                                 resolved_ref: None,
                                 scope_id: None,
+                                deferred_id: None,
                             };
                             result = str_concat(result, show_call(var_expr));
                         }
@@ -502,6 +523,7 @@ pub(super) fn synthesize_show_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         }
     };
@@ -522,6 +544,7 @@ pub(super) fn synthesize_hash_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
 
     let int_lit = |n: i64| -> TypedExpr {
@@ -531,6 +554,7 @@ pub(super) fn synthesize_hash_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -546,6 +570,7 @@ pub(super) fn synthesize_hash_body(
                         .clone()
                         .map(|trait_name| super::trait_method_binding_ref(trait_name, "hash")),
                     scope_id: None,
+                    deferred_id: None,
                 }),
                 args: vec![expr],
                 param_modes: vec![ParamMode::Consume],
@@ -554,6 +579,7 @@ pub(super) fn synthesize_hash_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -569,6 +595,7 @@ pub(super) fn synthesize_hash_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         };
         TypedExpr {
             kind: TypedExprKind::BinaryOp {
@@ -580,6 +607,7 @@ pub(super) fn synthesize_hash_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -600,6 +628,7 @@ pub(super) fn synthesize_hash_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     hash_call(field_access)
                 };
@@ -614,6 +643,7 @@ pub(super) fn synthesize_hash_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     result = combine_hash(result, hash_call(field_access));
                 }
@@ -652,6 +682,7 @@ pub(super) fn synthesize_hash_body(
                             span,
                             resolved_ref: None,
                             scope_id: None,
+                            deferred_id: None,
                         };
                         result = combine_hash(result, hash_call(var_expr));
                     }
@@ -673,6 +704,7 @@ pub(super) fn synthesize_hash_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         }
     };
@@ -712,6 +744,7 @@ pub(super) fn synthesize_dispose_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
 
     let unit_expr = || TypedExpr {
@@ -720,6 +753,7 @@ pub(super) fn synthesize_dispose_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
 
     // Build `dispose(arg)` where arg has type `~U`.
@@ -735,6 +769,7 @@ pub(super) fn synthesize_dispose_body(
                         .clone()
                         .map(|trait_name| super::trait_method_binding_ref(trait_name, "dispose")),
                     scope_id: None,
+                    deferred_id: None,
                 }),
                 args: vec![arg],
                 param_modes: vec![ParamMode::Consume],
@@ -743,6 +778,7 @@ pub(super) fn synthesize_dispose_body(
             span,
             resolved_ref: None,
             scope_id: None,
+            deferred_id: None,
         }
     };
 
@@ -762,6 +798,7 @@ pub(super) fn synthesize_dispose_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             };
         }
         body
@@ -804,6 +841,7 @@ pub(super) fn synthesize_dispose_body(
                         span,
                         resolved_ref: None,
                         scope_id: None,
+                        deferred_id: None,
                     };
                     calls.push(dispose_call(binding));
                 }
@@ -823,6 +861,7 @@ pub(super) fn synthesize_dispose_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         }
         crate::type_registry::TypeKind::Sum { variants } => {
@@ -857,6 +896,7 @@ pub(super) fn synthesize_dispose_body(
                                 span,
                                 resolved_ref: None,
                                 scope_id: None,
+                                deferred_id: None,
                             };
                             calls.push(dispose_call(binding));
                         }
@@ -878,6 +918,7 @@ pub(super) fn synthesize_dispose_body(
                 span,
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         }
     };
@@ -902,6 +943,7 @@ pub(super) fn synthesize_extern_dispose_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     let body = TypedExpr {
         kind: TypedExprKind::Discharge(Box::new(param_a)),
@@ -909,6 +951,7 @@ pub(super) fn synthesize_extern_dispose_body(
         span,
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     let fn_ty = Type::fn_consuming(vec![owned_target], Type::Unit);
     (body, fn_ty)

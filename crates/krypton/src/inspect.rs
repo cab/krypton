@@ -942,6 +942,8 @@ pub fn render_inspect(
                                 body: im.body.clone(),
                                 close_self_type: None,
                                 fn_scope_id: krypton_typechecker::typed_ast::ScopeId(u32::MAX),
+                                def_span: m.span,
+                                exported_symbol: m.name.clone(),
                             };
                             formatter.fmt_impl_method(&m.name, &typed_fn, &im.scheme.ty);
                             output.push_str(&formatter.buf);

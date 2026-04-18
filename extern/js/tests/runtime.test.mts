@@ -69,7 +69,7 @@ import {
   staticValues,
 } from '../src/map.mjs';
 import { KryptonPanic } from '../src/panic.mjs';
-import { CustomType, Empty, List, NonEmpty, toList } from '../src/prelude.mjs';
+import { CustomType, KEmpty, KList, KNonEmpty, toList } from '../src/prelude.mjs';
 import {
   charAt,
   concat,
@@ -122,19 +122,19 @@ describe('prelude', () => {
 
   it('builds and maps lists', () => {
     const list = toList([1, 2, 3]);
-    expect(list).toBeInstanceOf(List);
-    expect(list).toBeInstanceOf(NonEmpty);
-    expect((list as NonEmpty).head).toBe(1);
-    expect(((list as NonEmpty).tail as NonEmpty).head).toBe(2);
-    expect((((list as NonEmpty).tail as NonEmpty).tail as NonEmpty).tail).toBeInstanceOf(
-      Empty,
+    expect(list).toBeInstanceOf(KList);
+    expect(list).toBeInstanceOf(KNonEmpty);
+    expect((list as KNonEmpty).head).toBe(1);
+    expect(((list as KNonEmpty).tail as KNonEmpty).head).toBe(2);
+    expect((((list as KNonEmpty).tail as KNonEmpty).tail as KNonEmpty).tail).toBeInstanceOf(
+      KEmpty,
     );
     expect(list.toArray()).toEqual([1, 2, 3]);
     expect(list.map((x) => (x as number) * 2).toArray()).toEqual([2, 4, 6]);
   });
 
   it('preserves list string formatting', () => {
-    expect(Empty.INSTANCE).toBeInstanceOf(Empty);
+    expect(KEmpty.INSTANCE).toBeInstanceOf(KEmpty);
     expect(toList([]).toString()).toBe('[]');
     expect(toList([1, 2]).toString()).toBe('[1, 2]');
   });
@@ -167,6 +167,12 @@ describe('array', () => {
     expect(arrayLength(empty)).toBe(0);
     expect(arrayLength(two)).toBe(2);
     expect(get(two, 1)).toBe(2);
+  });
+
+  it('staticGet throws on out-of-bounds access', () => {
+    const arr = staticPush(staticPush(builderFreeze(builderNew<number>()), 10), 20);
+    expect(() => get(arr, 2)).toThrow(/index out of bounds/);
+    expect(() => get(arr, -1)).toThrow(/index out of bounds/);
   });
 });
 

@@ -4645,11 +4645,22 @@ function setProp(prototype, name) {
   }
 }
 
+// src/panic.mts
+var KryptonPanic = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "KryptonPanic";
+  }
+};
+
 // src/array.mts
 function staticLength(list) {
   return list.size;
 }
 function staticGet(list, i) {
+  if (i < 0 || i >= list.size) {
+    throw new KryptonPanic(`index out of bounds: ${i} (size: ${list.size})`);
+  }
   return list.get(i);
 }
 function staticPush(list, item) {

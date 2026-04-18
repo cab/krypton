@@ -21,25 +21,25 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
-export class List extends CustomType {
-  map(f: (value: unknown) => unknown): List {
-    let result: List = Empty.INSTANCE;
+export class KList extends CustomType {
+  map(f: (value: unknown) => unknown): KList {
+    let result: KList = KEmpty.INSTANCE;
     const items: unknown[] = [];
-    let cur: List = this;
-    while (cur instanceof NonEmpty) {
+    let cur: KList = this;
+    while (cur instanceof KNonEmpty) {
       items.push(f(cur.head));
       cur = cur.tail;
     }
     for (let i = items.length - 1; i >= 0; i -= 1) {
-      result = new NonEmpty(items[i], result);
+      result = new KNonEmpty(items[i], result);
     }
     return result;
   }
 
   toArray(): unknown[] {
     const arr: unknown[] = [];
-    let cur: List = this;
-    while (cur instanceof NonEmpty) {
+    let cur: KList = this;
+    while (cur instanceof KNonEmpty) {
       arr.push(cur.head);
       cur = cur.tail;
     }
@@ -52,19 +52,19 @@ export class List extends CustomType {
   }
 }
 
-export class Empty extends List {
-  static INSTANCE = new Empty();
+export class KEmpty extends KList {
+  static INSTANCE = new KEmpty();
 
   get $tag(): number {
     return 1;
   }
 }
 
-export class NonEmpty extends List {
+export class KNonEmpty extends KList {
   head: unknown;
-  tail: List;
+  tail: KList;
 
-  constructor(head: unknown, tail: List) {
+  constructor(head: unknown, tail: KList) {
     super();
     this.head = head;
     this.tail = tail;
@@ -75,10 +75,10 @@ export class NonEmpty extends List {
   }
 }
 
-export function toList(array: unknown[]): List {
-  let result: List = Empty.INSTANCE;
+export function toList(array: unknown[]): KList {
+  let result: KList = KEmpty.INSTANCE;
   for (let i = array.length - 1; i >= 0; i -= 1) {
-    result = new NonEmpty(array[i], result);
+    result = new KNonEmpty(array[i], result);
   }
   return result;
 }

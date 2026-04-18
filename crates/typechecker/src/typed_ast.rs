@@ -261,6 +261,12 @@ impl fmt::Display for ScopeId {
     }
 }
 
+/// Unique identity for an `App` node whose overload resolution was deferred.
+/// Used to reliably locate the node during post-inference resolution even if
+/// span uniqueness ever breaks (e.g., desugaring that copies spans).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DeferredId(pub u32);
+
 #[derive(Debug, Clone)]
 pub struct TypedExpr {
     pub kind: TypedExprKind,
@@ -273,6 +279,10 @@ pub struct TypedExpr {
     /// LetPattern{body:Some}, and function body / Lambda body nodes.
     /// Stamped by the `scope_ids` pre-pass.
     pub scope_id: Option<ScopeId>,
+    /// Set on `App` nodes whose overload resolution was deferred to the
+    /// post-inference pass. The deferred entry stores the same id, and the
+    /// post-inference patcher matches on it rather than on spans.
+    pub deferred_id: Option<DeferredId>,
 }
 
 #[derive(Debug, Clone)]
@@ -377,6 +387,14 @@ pub struct TypedFnDecl {
     /// Allocated by `scope_ids::stamp_functions`. The sentinel `ScopeId(u32::MAX)`
     /// is used at construction time before stamping.
     pub fn_scope_id: ScopeId,
+    /// Definition span (start, end) of the `fun` declaration. Used as the
+    /// stable sort key that decides which overload sibling keeps the bare
+    /// mangled symbol.
+    pub def_span: Span,
+    /// Final mangled wire-format name used by codegen. Stamped at typechecking
+    /// time from the same shared mangler used for `ExportedFnSummary` so
+    /// IR/codegen cannot disagree. For non-overloaded fns this equals `name`.
+    pub exported_symbol: String,
 }
 
 /// A function exported from a module's public API, with optional definition span.

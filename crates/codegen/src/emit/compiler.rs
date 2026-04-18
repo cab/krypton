@@ -213,9 +213,23 @@ pub(super) struct CodegenTypeInfo {
 }
 
 impl CodegenTypeInfo {
-    /// Get the first (or only) function info for a name.
+    /// Get the (single) function info for a name.
+    ///
+    /// Panics in debug builds if `name` is overloaded — the correct dispatch
+    /// path for overloadable call sites is `get_function_by_id`, which keys
+    /// on the resolved `FnId` and therefore cannot collapse siblings. The
+    /// four remaining callers (extern-binding emit in
+    /// `registration.rs:1571/1685/1845` and the `main` lookup in
+    /// `registration.rs:1922`) only touch non-overloadable names.
     pub(super) fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
-        self.functions.get(name).and_then(|v| v.first())
+        let v = self.functions.get(name)?;
+        debug_assert!(
+            v.len() == 1,
+            "ICE: get_function called on overloaded name `{}` ({} candidates); use get_function_by_id",
+            name,
+            v.len(),
+        );
+        v.first()
     }
 
     /// Resolve a call site's `FnId` to its registered FunctionInfo.

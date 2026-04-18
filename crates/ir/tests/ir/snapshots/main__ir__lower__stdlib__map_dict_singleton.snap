@@ -10,25 +10,25 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[r9, s9]
-import core/map/put as put(Map[a10, b10], a10, b10) -> Map[a10, b10]
-import core/map/get as get(Map[e10, q10], e10) -> Option[q10]
-import core/map/contains as contains(Map[a11, b11], a11) -> Bool
-import core/map/from_list as from_list(List[(q13, r13)]) -> Map[q13, r13]
-import core/map/size as size(Map[v13, w13]) -> Int
-declare contains: (Map[a11, b11], a11) -> Bool
-declare empty: () -> Map[r9, s9]
-declare from_list: (List[(q13, r13)]) -> Map[q13, r13]
-declare get: (Map[e10, q10], e10) -> Option[q10]
+import core/map/empty as empty() -> Map[p11, q11]
+import core/map/put as put(Map[y11, z11], y11, z11) -> Map[y11, z11]
+import core/map/get as get(Map[c12, o12], c12) -> Option[o12]
+import core/map/contains as contains(Map[y12, z12], y12) -> Bool
+import core/map/from_list as from_list(List[(o15, p15)]) -> Map[o15, p15]
+import core/map/size as size(Map[t15, u15]) -> Int
+declare contains: (Map[y12, z12], y12) -> Bool
+declare empty: () -> Map[p11, q11]
+declare from_list: (List[(o15, p15)]) -> Map[o15, p15]
+declare get: (Map[c12, o12], c12) -> Option[o12]
 declare println: (g) -> Unit
-declare put: (Map[a10, b10], a10, b10) -> Map[a10, b10]
-declare size: (Map[v13, w13]) -> Int
+declare put: (Map[y11, z11], y11, z11) -> Map[y11, z11]
+declare size: (Map[t15, u15]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

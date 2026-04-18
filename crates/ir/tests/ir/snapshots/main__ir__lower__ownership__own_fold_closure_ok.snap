@@ -9,19 +9,19 @@ import core/list/last as last(List[n3]) -> Option[n3]
 import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn fold(v0: List[h9], v1: j9, v2: (j9, h9) -> j9) -> j9 =
+fn fold(v0: List[f11], v1: h11, v2: (h11, f11) -> h11) -> h11 =
   switch v0 {
     1 ->
       v1
-    0 (v3: h9, v4: List[h9]) ->
-      let v5: j9 = call_closure v2(v1, v3)
-      let v6: j9 = call fold(v4, v5, v2)
+    0 (v3: f11, v4: List[f11]) ->
+      let v5: h11 = call_closure v2(v1, v3)
+      let v6: h11 = call fold(v4, v5, v2)
       v6
   }
 

@@ -12,7 +12,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -32,13 +32,13 @@ fn main() -> Unit =
   let v8: Unit = call println(v0, v7)
   v8
 
-fn Show$$List$$show(v9: Dict[core/show.Show, q8], v10: List[q8]) -> String =
+fn Show$$List$$show(v9: Dict[core/show.Show, o10], v10: List[o10]) -> String =
   switch v10 {
-    0 (v11: q8, v12: List[q8]) ->
+    0 (v11: o10, v12: List[o10]) ->
       let v13: String = trait_call core/show.Show.show(v9, v11)
       let v14: String = concat_string("Cons(", v13)
       let v15: String = concat_string(v14, ", ")
-      let v16: Dict[core/show.Show, List[q8]] = make_dict core/show.Show[List[q8]](v9)
+      let v16: Dict[core/show.Show, List[o10]] = make_dict core/show.Show[List[o10]](v9)
       let v17: String = trait_call core/show.Show.show(v16, v12)
       let v18: String = concat_string(v15, v17)
       let v19: String = concat_string(v18, ")")

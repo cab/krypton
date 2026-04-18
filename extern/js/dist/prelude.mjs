@@ -20,24 +20,24 @@ function formatValue(v) {
   }
   return String(v);
 }
-var List = class extends CustomType {
+var KList = class extends CustomType {
   map(f) {
-    let result = Empty.INSTANCE;
+    let result = KEmpty.INSTANCE;
     const items = [];
     let cur = this;
-    while (cur instanceof NonEmpty) {
+    while (cur instanceof KNonEmpty) {
       items.push(f(cur.head));
       cur = cur.tail;
     }
     for (let i = items.length - 1; i >= 0; i -= 1) {
-      result = new NonEmpty(items[i], result);
+      result = new KNonEmpty(items[i], result);
     }
     return result;
   }
   toArray() {
     const arr = [];
     let cur = this;
-    while (cur instanceof NonEmpty) {
+    while (cur instanceof KNonEmpty) {
       arr.push(cur.head);
       cur = cur.tail;
     }
@@ -48,13 +48,13 @@ var List = class extends CustomType {
     return `[${items.join(", ")}]`;
   }
 };
-var Empty = class _Empty extends List {
-  static INSTANCE = new _Empty();
+var KEmpty = class _KEmpty extends KList {
+  static INSTANCE = new _KEmpty();
   get $tag() {
     return 1;
   }
 };
-var NonEmpty = class extends List {
+var KNonEmpty = class extends KList {
   head;
   tail;
   constructor(head, tail) {
@@ -67,16 +67,16 @@ var NonEmpty = class extends List {
   }
 };
 function toList(array) {
-  let result = Empty.INSTANCE;
+  let result = KEmpty.INSTANCE;
   for (let i = array.length - 1; i >= 0; i -= 1) {
-    result = new NonEmpty(array[i], result);
+    result = new KNonEmpty(array[i], result);
   }
   return result;
 }
 export {
   CustomType,
-  Empty,
-  List,
-  NonEmpty,
+  KEmpty,
+  KList,
+  KNonEmpty,
   toList
 };

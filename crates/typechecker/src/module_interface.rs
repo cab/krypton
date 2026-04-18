@@ -131,8 +131,11 @@ pub struct ModuleInterface {
 /// `exported_symbol` is the mangled wire-format name used by codegen to
 /// distinguish overload siblings at the module boundary. For non-overloaded
 /// functions it equals `name`. For a group of overloads sharing a name, the
-/// source-order mangling rule assigns the bare name to the earliest
-/// declaration and suffixes each subsequent one with `$2`, `$3`, ...
+/// earliest (by source order) keeps the bare name and each sibling is
+/// suffixed with `_<hash6>`, where `hash6` is the first six hex digits of
+/// an FNV-1a hash over the canonical parameter-type fingerprint. The hash
+/// keys on type structure rather than declaration position, so reordering
+/// or renaming existing overloads does not change wire names.
 #[derive(Clone, Debug)]
 pub struct ExportedFnSummary {
     pub key: LocalSymbolKey,
@@ -346,11 +349,11 @@ fn extract_exported_fns(
 }
 
 /// Assign source-order mangled symbol names to an exported-fn slice.
-/// Entries sharing a bare name form an overload group; within a group,
-/// entries are sorted by `def_span` start offset (entries without a span
-/// sort last, preserving their relative declaration order as a tiebreaker).
-/// The group's earliest entry keeps the bare name; subsequent entries get
-/// `name$2`, `name$3`, ... Returns a parallel vector keyed to `exported`.
+/// Entries sharing a bare name form an overload group; within a group the
+/// earliest (by `def_span` start offset) keeps the bare name and siblings
+/// are mangled with a 6-hex-digit FNV-1a hash of their canonical parameter
+/// type fingerprint. Delegates to `overload::mangle_group` so that AST-side
+/// mangling cannot diverge from this interface-side mangling.
 fn mangle_overload_symbols(exported: &[ExportedFn]) -> Vec<String> {
     let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, ef) in exported.iter().enumerate() {
@@ -358,23 +361,52 @@ fn mangle_overload_symbols(exported: &[ExportedFn]) -> Vec<String> {
     }
     let mut out = vec![String::new(); exported.len()];
     for (name, indices) in groups {
-        if indices.len() == 1 {
-            out[indices[0]] = name.to_string();
-            continue;
+        let params: Vec<Vec<Type>> = indices
+            .iter()
+            .map(|&i| match &exported[i].scheme.ty {
+                Type::Fn(ps, _) => ps.iter().map(|(_, t)| t.clone()).collect(),
+                _ => vec![],
+            })
+            .collect();
+        let def_spans: Vec<Option<Span>> =
+            indices.iter().map(|&i| exported[i].def_span).collect();
+        let mangled = crate::overload::mangle_group(name, &params, &def_spans);
+        for (pos, &idx) in indices.iter().enumerate() {
+            out[idx] = mangled[pos].clone();
         }
-        let mut sorted = indices;
-        sorted.sort_by_key(|&i| {
-            (
-                exported[i].def_span.map(|(start, _)| start).unwrap_or(usize::MAX),
-                i,
-            )
-        });
-        for (rank, idx) in sorted.iter().enumerate() {
-            out[*idx] = if rank == 0 {
-                name.to_string()
-            } else {
-                format!("{name}${}", rank + 1)
-            };
+    }
+    out
+}
+
+/// Mangle exported symbols for a slice of `TypedFnDecl`s using the same
+/// source-order hash-based mangler that `mangle_overload_symbols` uses for
+/// `ExportedFnSummary`. Call this once at end-of-typechecking to stamp
+/// `TypedFnDecl.exported_symbol` so IR/codegen can read the source-of-truth
+/// directly. `params_per_decl[i]` is the parameter-type fingerprint for
+/// `decls[i]`; the caller is responsible for building it from whatever the
+/// local source of truth is (`result_schemes`, instance-method schemes, etc.).
+pub fn mangle_typed_fn_decls(
+    decls: &[crate::typed_ast::TypedFnDecl],
+    params_per_decl: &[Vec<Type>],
+) -> Vec<String> {
+    assert_eq!(
+        decls.len(),
+        params_per_decl.len(),
+        "ICE: mangle_typed_fn_decls: decls and params_per_decl length mismatch",
+    );
+    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, d) in decls.iter().enumerate() {
+        groups.entry(d.name.as_str()).or_default().push(i);
+    }
+    let mut out = vec![String::new(); decls.len()];
+    for (name, indices) in groups {
+        let params: Vec<Vec<Type>> =
+            indices.iter().map(|&i| params_per_decl[i].clone()).collect();
+        let def_spans: Vec<Option<Span>> =
+            indices.iter().map(|&i| Some(decls[i].def_span)).collect();
+        let mangled = crate::overload::mangle_group(name, &params, &def_spans);
+        for (pos, &idx) in indices.iter().enumerate() {
+            out[idx] = mangled[pos].clone();
         }
     }
     out
@@ -861,6 +893,7 @@ pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
         span: (0, 0),
         resolved_ref: None,
         scope_id: None,
+        deferred_id: None,
     };
     InstanceDefInfo {
         trait_name: is.trait_name.clone(),

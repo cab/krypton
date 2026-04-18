@@ -1,4 +1,4 @@
-import core/list.{Cons, Nil, List, length as list_length, filter as list_filter, sort_by as list_sort_by, map as list_map, fold as list_fold}
+import core/list.{Cons, Nil, List, sort_by as list_sort_by}
 import core/option.{Option, Some, None}
 import core/semigroup.{Semigroup, combine}
 import core/sub.{sub}
@@ -73,25 +73,55 @@ pub fun nth[a](xs: Vec[a], index: Int) -> Option[a] = if index < 0 {
     }
 }
 
-fun vec_from_vec_go(xs, i, acc) = if i < 0 { acc } else { recur(xs, i - 1, Cons(staticGet(xs, i), acc)) }
-pub fun to_list[a](xs: Vec[a]) -> List[a] = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
+fun map_go[a, b](xs: Vec[a], i: Int, n: Int, b: ~VecBuilder[b], f: (a) -> b) -> Vec[b] =
+    if i < n {
+        recur(xs, i + 1, n, push(b, f(staticGet(xs, i))), f)
+    } else {
+        freeze(b)
+    }
 
-fun from_list_go[a](lst: List[a], b: ~VecBuilder[a]) -> Vec[a] = match lst {
+fun filter_go[a](xs: Vec[a], i: Int, n: Int, b: ~VecBuilder[a], f: (a) -> Bool) -> Vec[a] =
+    if i < n {
+        let x = staticGet(xs, i);
+        if f(x) {
+            recur(xs, i + 1, n, push(b, x), f)
+        } else {
+            recur(xs, i + 1, n, b, f)
+        }
+    } else {
+        freeze(b)
+    }
+
+fun fold_go[a, acc](xs: Vec[a], i: Int, n: Int, a: acc, f: (acc, a) -> acc) -> acc =
+    if i < n {
+        recur(xs, i + 1, n, f(a, staticGet(xs, i)), f)
+    } else {
+        a
+    }
+
+fun vec_to_list_go[a](xs: Vec[a], i: Int, acc: List[a]) -> List[a] =
+    if i < 0 { acc } else { recur(xs, i - 1, Cons(staticGet(xs, i), acc)) }
+
+fun list_to_vec_go[a](lst: List[a], b: ~VecBuilder[a]) -> Vec[a] = match lst {
     Nil => freeze(b),
     Cons(h, rest) => recur(rest, push(b, h)),
 }
 
-fun from_list[a](lst: List[a]) -> Vec[a] = from_list_go(lst, builder())
+pub fun to_list[a](xs: Vec[a]) -> List[a] = vec_to_list_go(xs, staticLength(xs) - 1, Nil)
 
 pub fun last[a](xs: Vec[a]) -> Option[a] = {
     let n = staticLength(xs);
     if n < 1 { None } else { Some(staticGet(xs, n - 1)) }
 }
 
-pub fun filter[a](xs: Vec[a], f: (a) -> Bool) -> Vec[a] = from_list(list_filter(to_list(xs), f))
+pub fun filter[a](xs: Vec[a], f: (a) -> Bool) -> Vec[a] =
+    filter_go(xs, 0, staticLength(xs), builder(), f)
 
-pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] = from_list(list_map(to_list(xs), f))
+pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] =
+    map_go(xs, 0, staticLength(xs), builder(), f)
 
-pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b = list_fold(to_list(xs), acc, f)
+pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b =
+    fold_go(xs, 0, staticLength(xs), acc, f)
 
-pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))
+pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord =
+    list_to_vec_go(list_sort_by(to_list(xs), key), builder())

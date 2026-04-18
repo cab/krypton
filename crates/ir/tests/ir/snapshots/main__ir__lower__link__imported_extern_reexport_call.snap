@@ -10,7 +10,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -344,10 +344,6 @@ extern java "krypton.runtime.KryptonArrayBuilder" builderFreeze(~VecBuilder[t5])
 extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonArrayBuilder" VecBuilder
 import core/list/Cons as Cons(d, List[d]) -> List[d]
-import core/list/length as list_length(List[l]) -> Int
-import core/list/map as list_map(List[u], (u) -> w) -> List[w]
-import core/list/filter as list_filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as list_fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/sort_by as list_sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/Cons as Cons(c, List[c]) -> List[c]
 import core/option/Some as Some(c) -> Option[c]
@@ -355,9 +351,6 @@ import core/option/Some as Some(d) -> Option[d]
 declare builderFreeze: (~VecBuilder[t5]) -> Vec[t5]
 declare builderNew: () -> ~VecBuilder[t5]
 declare builderPush: (~VecBuilder[t5], t5) -> ~VecBuilder[t5]
-declare list_filter: (List[f1], (f1) -> Bool) -> List[f1]
-declare list_fold: (List[s1], t1, (t1, s1) -> t1) -> t1
-declare list_map: (List[u], (u) -> w) -> List[w]
 declare list_sort_by: (List[s5], (s5) -> h5) -> List[s5]
 declare staticGet: (Vec[a], Int) -> a
 declare staticLength: (Vec[a]) -> Int
@@ -444,97 +437,156 @@ fn nth(v37: Vec[z7], v38: Int) -> Option[z7] =
   let v40: Bool = trait_call core/ord.Ord.lt(v39, v38, 0)
   jump v51(v40)
 
-fn vec_from_vec_go(v52: Vec[h8], v53: Int, v54: List[h8]) -> List[h8] =
-  let_join [recur] v55(v56: Vec[h8], v57: Int, v58: List[h8]) =
-    let_join v65(v61: Bool) =
-      if v61 {
-        v58
+fn map_go(v52: Vec[j8], v53: Int, v54: Int, v55: ~VecBuilder[n8], v56: (j8) -> n8) -> Vec[n8] =
+  let_join [recur] v57(v58: Vec[j8], v59: Int, v60: Int, v61: ~VecBuilder[n8], v62: (j8) -> n8) =
+    let_join v71(v65: Bool) =
+      if v65 {
+        let v66: Int = add_int(v59, 1)
+        let v67: j8 = call staticGet(v58, v59)
+        let v68: n8 = call_closure v62(v67)
+        let v69: ~VecBuilder[n8] = call push(v61, v68)
+        jump v57(v58, v66, v60, v69, v62)
       } else {
-        let v62: Int = sub_int(v57, 1)
-        let v63: h8 = call staticGet(v56, v57)
-        let v64: List[h8] = construct List::Cons#0(v63, v58)
-        jump v55(v56, v62, v64)
+        let v70: Vec[n8] = call freeze(v61)
+        v70
       }
     in
-    let v59: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-    let v60: Bool = trait_call core/ord.Ord.lt(v59, v57, 0)
-    jump v65(v60)
+    let v63: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v64: Bool = trait_call core/ord.Ord.lt(v63, v59, v60)
+    jump v71(v64)
   in
-  jump v55(v52, v53, v54)
+  jump v57(v52, v53, v54, v55, v56)
 
-fn to_list(v66: Vec[p8]) -> List[p8] =
-  let v67: Int = call staticLength(v66)
-  let v68: Int = sub_int(v67, 1)
-  let v69: List[p8] = construct List::Nil#1()
-  let v70: List[p8] = v69
-  let v71: List[p8] = call vec_from_vec_go(v66, v68, v70)
-  v71
+fn filter_go(v72: Vec[b9], v73: Int, v74: Int, v75: ~VecBuilder[b9], v76: (b9) -> Bool) -> Vec[b9] =
+  let_join [recur] v77(v78: Vec[b9], v79: Int, v80: Int, v81: ~VecBuilder[b9], v82: (b9) -> Bool) =
+    let_join v92(v85: Bool) =
+      if v85 {
+        let v86: b9 = call staticGet(v78, v79)
+        let v87: Bool = call_closure v82(v86)
+        if v87 {
+          let v88: Int = add_int(v79, 1)
+          let v89: ~VecBuilder[b9] = call push(v81, v86)
+          jump v77(v78, v88, v80, v89, v82)
+        } else {
+          let v90: Int = add_int(v79, 1)
+          jump v77(v78, v90, v80, v81, v82)
+        }
+      } else {
+        let v91: Vec[b9] = call freeze(v81)
+        v91
+      }
+    in
+    let v83: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v84: Bool = trait_call core/ord.Ord.lt(v83, v79, v80)
+    jump v92(v84)
+  in
+  jump v77(v72, v73, v74, v75, v76)
 
-fn from_list_go(v72: List[y8], v73: ~VecBuilder[y8]) -> Vec[y8] =
-  let_join [recur] v74(v75: List[y8], v76: ~VecBuilder[y8]) =
-    switch v75 {
+fn fold_go(v93: Vec[m9], v94: Int, v95: Int, v96: n9, v97: (n9, m9) -> n9) -> n9 =
+  let_join [recur] v98(v99: Vec[m9], v100: Int, v101: Int, v102: n9, v103: (n9, m9) -> n9) =
+    let_join v110(v106: Bool) =
+      if v106 {
+        let v107: Int = add_int(v100, 1)
+        let v108: m9 = call staticGet(v99, v100)
+        let v109: n9 = call_closure v103(v102, v108)
+        jump v98(v99, v107, v101, v109, v103)
+      } else {
+        v102
+      }
+    in
+    let v104: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v105: Bool = trait_call core/ord.Ord.lt(v104, v100, v101)
+    jump v110(v105)
+  in
+  jump v98(v93, v94, v95, v96, v97)
+
+fn vec_to_list_go(v111: Vec[v9], v112: Int, v113: List[v9]) -> List[v9] =
+  let_join [recur] v114(v115: Vec[v9], v116: Int, v117: List[v9]) =
+    let_join v124(v120: Bool) =
+      if v120 {
+        v117
+      } else {
+        let v121: Int = sub_int(v116, 1)
+        let v122: v9 = call staticGet(v115, v116)
+        let v123: List[v9] = construct List::Cons#0(v122, v117)
+        jump v114(v115, v121, v123)
+      }
+    in
+    let v118: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v119: Bool = trait_call core/ord.Ord.lt(v118, v116, 0)
+    jump v124(v119)
+  in
+  jump v114(v111, v112, v113)
+
+fn list_to_vec_go(v125: List[e10], v126: ~VecBuilder[e10]) -> Vec[e10] =
+  let_join [recur] v127(v128: List[e10], v129: ~VecBuilder[e10]) =
+    switch v128 {
       1 ->
-        let v77: Vec[y8] = call freeze(v76)
-        v77
-      0 (v78: y8, v79: List[y8]) ->
-        let v80: ~VecBuilder[y8] = call push(v76, v78)
-        jump v74(v79, v80)
+        let v130: Vec[e10] = call freeze(v129)
+        v130
+      0 (v131: e10, v132: List[e10]) ->
+        let v133: ~VecBuilder[e10] = call push(v129, v131)
+        jump v127(v132, v133)
     }
   in
-  jump v74(v72, v73)
+  jump v127(v125, v126)
 
-fn from_list(v81: List[f9]) -> Vec[f9] =
-  let v82: ~VecBuilder[f9] = call builder()
-  let v83: Vec[f9] = call from_list_go(v81, v82)
-  v83
+fn to_list(v134: Vec[n10]) -> List[n10] =
+  let v135: Int = call staticLength(v134)
+  let v136: Int = sub_int(v135, 1)
+  let v137: List[n10] = construct List::Nil#1()
+  let v138: List[n10] = v137
+  let v139: List[n10] = call vec_to_list_go(v134, v136, v138)
+  v139
 
-fn last(v84: Vec[q9]) -> Option[q9] =
-  let v85: Int = call staticLength(v84)
-  let_join v93(v88: Bool) =
-    if v88 {
-      let v89: Option[q9] = construct Option::None#1()
-      v89
+fn last(v140: Vec[x10]) -> Option[x10] =
+  let v141: Int = call staticLength(v140)
+  let_join v149(v144: Bool) =
+    if v144 {
+      let v145: Option[x10] = construct Option::None#1()
+      v145
     } else {
-      let v90: Int = sub_int(v85, 1)
-      let v91: q9 = call staticGet(v84, v90)
-      let v92: Option[q9] = construct Option::Some#0(v91)
-      v92
+      let v146: Int = sub_int(v141, 1)
+      let v147: x10 = call staticGet(v140, v146)
+      let v148: Option[x10] = construct Option::Some#0(v147)
+      v148
     }
   in
-  let v86: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-  let v87: Bool = trait_call core/ord.Ord.lt(v86, v85, 1)
-  jump v93(v87)
+  let v142: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v143: Bool = trait_call core/ord.Ord.lt(v142, v141, 1)
+  jump v149(v143)
 
-fn filter(v94: Vec[y9], v95: (y9) -> Bool) -> Vec[y9] =
-  let v96: List[y9] = call to_list(v94)
-  let v97: List[y9] = call list_filter(v96, v95)
-  let v98: Vec[y9] = call from_list(v97)
-  v98
+fn filter(v150: Vec[g11], v151: (g11) -> Bool) -> Vec[g11] =
+  let v152: Int = call staticLength(v150)
+  let v153: ~VecBuilder[g11] = call builder()
+  let v154: Vec[g11] = call filter_go(v150, 0, v152, v153, v151)
+  v154
 
-fn map(v99: Vec[d10], v100: (d10) -> j10) -> Vec[j10] =
-  let v101: List[d10] = call to_list(v99)
-  let v102: List[j10] = call list_map(v101, v100)
-  let v103: Vec[j10] = call from_list(v102)
-  v103
+fn map(v155: Vec[k11], v156: (k11) -> s11) -> Vec[s11] =
+  let v157: Int = call staticLength(v155)
+  let v158: ~VecBuilder[s11] = call builder()
+  let v159: Vec[s11] = call map_go(v155, 0, v157, v158, v156)
+  v159
 
-fn fold(v104: Vec[p10], v105: y10, v106: (y10, p10) -> y10) -> y10 =
-  let v107: List[p10] = call to_list(v104)
-  let v108: y10 = call list_fold(v107, v105, v106)
-  v108
+fn fold(v160: Vec[w11], v161: f12, v162: (f12, w11) -> f12) -> f12 =
+  let v163: Int = call staticLength(v160)
+  let v164: f12 = call fold_go(v160, 0, v163, v161, v162)
+  v164
 
-fn sort_by(v109: Dict[core/ord.Ord, b11], v110: Vec[h11], v111: (h11) -> b11) -> Vec[h11] =
-  let v112: List[h11] = call to_list(v110)
-  let v113: List[h11] = call list_sort_by(v109, v112, v111)
-  let v114: Vec[h11] = call from_list(v113)
-  v114
+fn sort_by(v165: Dict[core/ord.Ord, i12], v166: Vec[r12], v167: (r12) -> i12) -> Vec[r12] =
+  let v168: List[r12] = call to_list(v166)
+  let v169: List[r12] = call list_sort_by(v165, v168, v167)
+  let v170: ~VecBuilder[r12] = call builder()
+  let v171: Vec[r12] = call list_to_vec_go(v169, v170)
+  v171
 
-fn Show$$Vec$$Var0$$show(v115: Dict[core/show.Show, y5], v116: Vec[y5]) -> String =
-  let v118: String = call join_elems(v115, v116, 0, "")
-  let v119: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
-  let v120: String = trait_call core/semigroup.Semigroup.combine(v119, "[", v118)
-  let v117: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
-  let v121: String = trait_call core/semigroup.Semigroup.combine(v117, v120, "]")
-  v121
+fn Show$$Vec$$Var0$$show(v172: Dict[core/show.Show, y5], v173: Vec[y5]) -> String =
+  let v175: String = call join_elems(v172, v173, 0, "")
+  let v176: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+  let v177: String = trait_call core/semigroup.Semigroup.combine(v176, "[", v175)
+  let v174: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+  let v178: String = trait_call core/semigroup.Semigroup.combine(v174, v177, "]")
+  v178
 module core/ordering
 
 type Ordering = LT#0 | EQ#1 | GT#2
@@ -545,116 +597,116 @@ type Never =
 
 module core/map
 
-extern java "krypton.runtime.KryptonMap" staticEmpty() -> Map[s8, t8]
-extern java "krypton.runtime.KryptonMap" staticPut(Map[u8, v8], u8, v8) -> Map[u8, v8]
-extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Map[w8, x8], w8) -> x8
-extern java "krypton.runtime.KryptonMap" staticContainsKey(Map[y8, z8], y8) -> Bool
-extern java "krypton.runtime.KryptonMap" staticDelete(Map[a9, b9], a9) -> Map[a9, b9]
-extern java "krypton.runtime.KryptonMap" staticKeys(Map[c9, d9]) -> Vec[c9]
-extern java "krypton.runtime.KryptonMap" staticValues(Map[e9, f9]) -> Vec[f9]
-extern java "krypton.runtime.KryptonMap" staticSize(Map[g9, h9]) -> Int
-extern java "krypton.runtime.KryptonMap" staticMerge(Map[i9, j9], Map[i9, j9]) -> Map[i9, j9]
+extern java "krypton.runtime.KryptonMap" staticEmpty() -> Map[q10, r10]
+extern java "krypton.runtime.KryptonMap" staticPut(Map[s10, t10], s10, t10) -> Map[s10, t10]
+extern java "krypton.runtime.KryptonMap" staticGetUnsafe(Map[u10, v10], u10) -> v10
+extern java "krypton.runtime.KryptonMap" staticContainsKey(Map[w10, x10], w10) -> Bool
+extern java "krypton.runtime.KryptonMap" staticDelete(Map[y10, z10], y10) -> Map[y10, z10]
+extern java "krypton.runtime.KryptonMap" staticKeys(Map[a11, b11]) -> Vec[a11]
+extern java "krypton.runtime.KryptonMap" staticValues(Map[c11, d11]) -> Vec[d11]
+extern java "krypton.runtime.KryptonMap" staticSize(Map[e11, f11]) -> Int
+extern java "krypton.runtime.KryptonMap" staticMerge(Map[g11, h11], Map[g11, h11]) -> Map[g11, h11]
 extern type java "krypton.runtime.KryptonMap" Map
 import core/option/Some as Some(c) -> Option[c]
 import core/list/Cons as Cons(d, List[d]) -> List[d]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/vec/to_list as vec_to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as vec_to_list(Vec[n10]) -> List[n10]
 declare fold: (List[s1], t1, (t1, s1) -> t1) -> t1
-declare staticContainsKey: (Map[y8, z8], y8) -> Bool
-declare staticDelete: (Map[a9, b9], a9) -> Map[a9, b9]
-declare staticEmpty: () -> Map[s8, t8]
-declare staticGetUnsafe: (Map[w8, x8], w8) -> x8
-declare staticKeys: (Map[c9, d9]) -> Vec[c9]
-declare staticMerge: (Map[i9, j9], Map[i9, j9]) -> Map[i9, j9]
-declare staticPut: (Map[u8, v8], u8, v8) -> Map[u8, v8]
-declare staticSize: (Map[g9, h9]) -> Int
-declare staticValues: (Map[e9, f9]) -> Vec[f9]
-declare vec_to_list: (Vec[p8]) -> List[p8]
+declare staticContainsKey: (Map[w10, x10], w10) -> Bool
+declare staticDelete: (Map[y10, z10], y10) -> Map[y10, z10]
+declare staticEmpty: () -> Map[q10, r10]
+declare staticGetUnsafe: (Map[u10, v10], u10) -> v10
+declare staticKeys: (Map[a11, b11]) -> Vec[a11]
+declare staticMerge: (Map[g11, h11], Map[g11, h11]) -> Map[g11, h11]
+declare staticPut: (Map[s10, t10], s10, t10) -> Map[s10, t10]
+declare staticSize: (Map[e11, f11]) -> Int
+declare staticValues: (Map[c11, d11]) -> Vec[d11]
+declare vec_to_list: (Vec[n10]) -> List[n10]
 
-fn empty() -> Map[r9, s9] =
-  let v0: Map[r9, s9] = call staticEmpty()
+fn empty() -> Map[p11, q11] =
+  let v0: Map[p11, q11] = call staticEmpty()
   v0
 
-fn put(v1: Dict[core/eq.Eq, a10], v2: Dict[core/hash.Hash, a10], v3: Map[a10, b10], v4: a10, v5: b10) -> Map[a10, b10] =
-  let v6: Map[a10, b10] = call staticPut(v1, v2, v3, v4, v5)
+fn put(v1: Dict[core/eq.Eq, y11], v2: Dict[core/hash.Hash, y11], v3: Map[y11, z11], v4: y11, v5: z11) -> Map[y11, z11] =
+  let v6: Map[y11, z11] = call staticPut(v1, v2, v3, v4, v5)
   v6
 
-fn get(v7: Dict[core/eq.Eq, e10], v8: Dict[core/hash.Hash, e10], v9: Map[e10, q10], v10: e10) -> Option[q10] =
+fn get(v7: Dict[core/eq.Eq, c12], v8: Dict[core/hash.Hash, c12], v9: Map[c12, o12], v10: c12) -> Option[o12] =
   let v11: Bool = call staticContainsKey(v9, v10)
   if v11 {
-    let v12: q10 = call staticGetUnsafe(v9, v10)
-    let v13: Option[q10] = construct Option::Some#0(v12)
+    let v12: o12 = call staticGetUnsafe(v9, v10)
+    let v13: Option[o12] = construct Option::Some#0(v12)
     v13
   } else {
-    let v14: Option[q10] = construct Option::None#1()
+    let v14: Option[o12] = construct Option::None#1()
     v14
   }
 
-fn delete(v15: Dict[core/eq.Eq, w10], v16: Dict[core/hash.Hash, w10], v17: Map[w10, x10], v18: w10) -> Map[w10, x10] =
-  let v19: Map[w10, x10] = call staticDelete(v17, v18)
+fn delete(v15: Dict[core/eq.Eq, u12], v16: Dict[core/hash.Hash, u12], v17: Map[u12, v12], v18: u12) -> Map[u12, v12] =
+  let v19: Map[u12, v12] = call staticDelete(v17, v18)
   v19
 
-fn contains(v20: Dict[core/eq.Eq, a11], v21: Dict[core/hash.Hash, a11], v22: Map[a11, b11], v23: a11) -> Bool =
+fn contains(v20: Dict[core/eq.Eq, y12], v21: Dict[core/hash.Hash, y12], v22: Map[y12, z12], v23: y12) -> Bool =
   let v24: Bool = call staticContainsKey(v22, v23)
   v24
 
-fn keys(v25: Map[m11, j11]) -> List[m11] =
-  let v26: Vec[m11] = call staticKeys(v25)
-  let v27: List[m11] = call vec_to_list(v26)
+fn keys(v25: Map[k13, h13]) -> List[k13] =
+  let v26: Vec[k13] = call staticKeys(v25)
+  let v27: List[k13] = call vec_to_list(v26)
   v27
 
-fn values(v28: Map[r11, w11]) -> List[w11] =
-  let v29: Vec[w11] = call staticValues(v28)
-  let v30: List[w11] = call vec_to_list(v29)
+fn values(v28: Map[p13, u13]) -> List[u13] =
+  let v29: Vec[u13] = call staticValues(v28)
+  let v30: List[u13] = call vec_to_list(v29)
   v30
 
-fn zip_vecs(v31: List[g12], v32: List[h12]) -> List[(g12, h12)] =
-  let v33: (List[g12], List[h12]) = tuple(v31, v32)
-  let v34: List[g12] = tuple_project v33.0
-  let v35: List[h12] = tuple_project v33.1
+fn zip_vecs(v31: List[e14], v32: List[f14]) -> List[(e14, f14)] =
+  let v33: (List[e14], List[f14]) = tuple(v31, v32)
+  let v34: List[e14] = tuple_project v33.0
+  let v35: List[f14] = tuple_project v33.1
   switch v34 {
-    0 (v36: g12, v37: List[g12]) ->
+    0 (v36: e14, v37: List[e14]) ->
       switch v35 {
-        0 (v38: h12, v39: List[h12]) ->
-          let v40: (g12, h12) = tuple(v36, v38)
-          let v41: List[(g12, h12)] = call zip_vecs(v37, v39)
-          let v42: List[(g12, h12)] = construct List::Cons#0(v40, v41)
+        0 (v38: f14, v39: List[f14]) ->
+          let v40: (e14, f14) = tuple(v36, v38)
+          let v41: List[(e14, f14)] = call zip_vecs(v37, v39)
+          let v42: List[(e14, f14)] = construct List::Cons#0(v40, v41)
           v42
         _ ->
-          let v43: List[(g12, h12)] = construct List::Nil#1()
+          let v43: List[(e14, f14)] = construct List::Nil#1()
           v43
       }
     _ ->
-      let v44: List[(g12, h12)] = construct List::Nil#1()
+      let v44: List[(e14, f14)] = construct List::Nil#1()
       v44
   }
 
-fn entries(v45: Map[t12, z12]) -> List[(t12, z12)] =
-  let v46: Vec[t12] = call staticKeys(v45)
-  let v47: List[t12] = call vec_to_list(v46)
-  let v48: Vec[z12] = call staticValues(v45)
-  let v49: List[z12] = call vec_to_list(v48)
-  let v50: List[(t12, z12)] = call zip_vecs(v47, v49)
+fn entries(v45: Map[r14, x14]) -> List[(r14, x14)] =
+  let v46: Vec[r14] = call staticKeys(v45)
+  let v47: List[r14] = call vec_to_list(v46)
+  let v48: Vec[x14] = call staticValues(v45)
+  let v49: List[x14] = call vec_to_list(v48)
+  let v50: List[(r14, x14)] = call zip_vecs(v47, v49)
   v50
 
-fn from_list(v51: Dict[core/eq.Eq, q13], v52: Dict[core/hash.Hash, q13], v53: List[(q13, r13)]) -> Map[q13, r13] =
-  let v54: Map[q13, r13] = call empty()
-  let v62: (Map[q13, r13], (q13, r13)) -> Map[q13, r13] = make_closure(lambda$28, [v51, v52])
-  let v63: Map[q13, r13] = call fold(v53, v54, v62)
+fn from_list(v51: Dict[core/eq.Eq, o15], v52: Dict[core/hash.Hash, o15], v53: List[(o15, p15)]) -> Map[o15, p15] =
+  let v54: Map[o15, p15] = call empty()
+  let v62: (Map[o15, p15], (o15, p15)) -> Map[o15, p15] = make_closure(lambda$28, [v51, v52])
+  let v63: Map[o15, p15] = call fold(v53, v54, v62)
   v63
 
-fn size(v64: Map[v13, w13]) -> Int =
+fn size(v64: Map[t15, u15]) -> Int =
   let v65: Int = call staticSize(v64)
   v65
 
-fn merge(v66: Dict[core/eq.Eq, g14], v67: Dict[core/hash.Hash, g14], v68: Map[g14, h14], v69: Map[g14, h14]) -> Map[g14, h14] =
-  let v70: Map[g14, h14] = call staticMerge(v68, v69)
+fn merge(v66: Dict[core/eq.Eq, e16], v67: Dict[core/hash.Hash, e16], v68: Map[e16, f16], v69: Map[e16, f16]) -> Map[e16, f16] =
+  let v70: Map[e16, f16] = call staticMerge(v68, v69)
   v70
 
-fn lambda$28(v55: Dict[core/eq.Eq, q13], v56: Dict[core/hash.Hash, q13], v57: Map[q13, r13], v58: (q13, r13)) -> Map[q13, r13] =
-  let v59: q13 = tuple_project v58.0
-  let v60: r13 = tuple_project v58.1
-  let v61: Map[q13, r13] = call put(v55, v56, v57, v59, v60)
+fn lambda$28(v55: Dict[core/eq.Eq, o15], v56: Dict[core/hash.Hash, o15], v57: Map[o15, p15], v58: (o15, p15)) -> Map[o15, p15] =
+  let v59: o15 = tuple_project v58.0
+  let v60: p15 = tuple_project v58.1
+  let v61: Map[o15, p15] = call put(v55, v56, v57, v59, v60)
   v61
 module core/io
 
@@ -691,7 +743,7 @@ import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/last as last(List[n3]) -> Option[n3]
 import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 module extern_provenance_lib
 
@@ -702,7 +754,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -716,7 +768,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

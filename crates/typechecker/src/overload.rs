@@ -1,8 +1,201 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use crate::trait_registry::freshen_type;
-use crate::types::{Substitution, Type, TypeScheme, TypeVarGen, TypeVarId};
+use crate::types::{ParamMode, Substitution, Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, unify};
+
+/// Canonicalize a slice of parameter types into a stable string fingerprint.
+/// Type variables are renumbered by first-appearance to `α0`, `α1`, ... so that
+/// `Vec[a]` and `Vec[b]` produce the same fingerprint. No whitespace; every
+/// qualifier (`Own`, `MaybeOwn`, `Shape`) is serialized deterministically.
+///
+/// Used as the input to `short_hash` when mangling overload-sibling names.
+pub fn canonical_type_string(tys: &[Type]) -> String {
+    let mut vars: HashMap<TypeVarId, u32> = HashMap::new();
+    let mut qvars: HashMap<crate::types::QualVarId, u32> = HashMap::new();
+    let mut out = String::new();
+    out.push('(');
+    for (i, t) in tys.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        write_canonical(&mut out, t, &mut vars, &mut qvars);
+    }
+    out.push(')');
+    out
+}
+
+fn write_canonical(
+    out: &mut String,
+    ty: &Type,
+    vars: &mut HashMap<TypeVarId, u32>,
+    qvars: &mut HashMap<crate::types::QualVarId, u32>,
+) {
+    match ty {
+        Type::Int => out.push_str("I"),
+        Type::Float => out.push_str("F"),
+        Type::Bool => out.push_str("B"),
+        Type::String => out.push_str("S"),
+        Type::Unit => out.push_str("U"),
+        Type::FnHole => out.push_str("H"),
+        Type::Var(v) => {
+            let next = vars.len() as u32;
+            let n = *vars.entry(*v).or_insert(next);
+            let _ = write!(out, "α{}", n);
+        }
+        Type::Named(name, args) => {
+            out.push_str("N:");
+            out.push_str(name);
+            if !args.is_empty() {
+                out.push('[');
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    write_canonical(out, a, vars, qvars);
+                }
+                out.push(']');
+            }
+        }
+        Type::App(ctor, args) => {
+            out.push_str("A(");
+            write_canonical(out, ctor, vars, qvars);
+            out.push('|');
+            for (i, a) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(out, a, vars, qvars);
+            }
+            out.push(')');
+        }
+        Type::Tuple(elems) => {
+            out.push_str("T(");
+            for (i, e) in elems.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                write_canonical(out, e, vars, qvars);
+            }
+            out.push(')');
+        }
+        Type::Fn(params, ret) => {
+            out.push_str("Fn(");
+            for (i, (m, p)) in params.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                match m {
+                    ParamMode::Consume => out.push_str("c:"),
+                    ParamMode::Borrow => out.push_str("b:"),
+                    ParamMode::ObservationalBorrow => out.push_str("o:"),
+                }
+                write_canonical(out, p, vars, qvars);
+            }
+            out.push_str("->");
+            write_canonical(out, ret, vars, qvars);
+            out.push(')');
+        }
+        Type::Own(inner) => {
+            out.push('~');
+            write_canonical(out, inner, vars, qvars);
+        }
+        Type::Shape(inner) => {
+            out.push_str("Sh(");
+            write_canonical(out, inner, vars, qvars);
+            out.push(')');
+        }
+        Type::MaybeOwn(q, inner) => {
+            let next = qvars.len() as u32;
+            let n = *qvars.entry(*q).or_insert(next);
+            let _ = write!(out, "M{}:", n);
+            write_canonical(out, inner, vars, qvars);
+        }
+    }
+}
+
+/// FNV-1a 64-bit hash of UTF-8 bytes, rendered as the first 6 lowercase hex
+/// digits (24 bits). Used to mangle overload-sibling symbol names. 24 bits is
+/// sufficient for realistic sibling-count collision probability; the mangler
+/// escalates any duplicate into a hard ICE so we cannot silently collide at
+/// encode time.
+pub fn short_hash(bytes: &str) -> String {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut h: u64 = FNV_OFFSET;
+    for b in bytes.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    let truncated = (h >> 40) & 0x00FF_FFFF;
+    format!("{:06x}", truncated)
+}
+
+/// Assign stable mangled names to a group of overload siblings that share a
+/// bare `name`. Entries are sorted by `def_spans[i]` start offset (entries
+/// without a span sort last, preserving their declaration order as a
+/// tiebreaker). The earliest entry keeps the bare `name`; subsequent siblings
+/// are suffixed with `_<hash6>` where the hash is FNV-1a over the canonical
+/// type-string of the entry's parameter types.
+///
+/// Used by both `mangle_overload_symbols` (on `ExportedFnSummary`) and
+/// TypedFnDecl mangling at end-of-typechecking so interface-export mangling
+/// and AST mangling cannot diverge.
+///
+/// Panics on hash collision within a sibling set — overload-time collisions
+/// must not silently produce the same exported symbol.
+pub fn mangle_group(
+    name: &str,
+    params: &[Vec<Type>],
+    def_spans: &[Option<krypton_parser::ast::Span>],
+) -> Vec<String> {
+    assert_eq!(
+        params.len(),
+        def_spans.len(),
+        "ICE: mangle_group: params and def_spans length mismatch",
+    );
+    let n = params.len();
+    if n == 0 {
+        return vec![];
+    }
+    if n == 1 {
+        return vec![name.to_string()];
+    }
+
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by_key(|&i| {
+        (
+            def_spans[i].map(|(start, _)| start).unwrap_or(usize::MAX),
+            i,
+        )
+    });
+
+    let mut out = vec![String::new(); n];
+    let mut used_hashes: HashMap<String, usize> = HashMap::new();
+    for (rank, idx) in order.iter().enumerate() {
+        if rank == 0 {
+            out[*idx] = name.to_string();
+            continue;
+        }
+        let canon = canonical_type_string(&params[*idx]);
+        let h = short_hash(&canon);
+        if let Some(prev) = used_hashes.get(&h) {
+            panic!(
+                "ICE: overload hash collision for `{}` between siblings #{} and #{}: \
+                 canonical forms `{}` vs `{}`",
+                name,
+                prev,
+                idx,
+                canonical_type_string(&params[*prev]),
+                canon,
+            );
+        }
+        used_hashes.insert(h.clone(), *idx);
+        out[*idx] = format!("{name}_{h}");
+    }
+    out
+}
 
 /// Check whether two parameter type tuples structurally overlap — i.e., whether
 /// a substitution of type variables exists that makes them simultaneously equal.

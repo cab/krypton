@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_inferred
 
 type MyStruct = MyStruct#0(Int)
-trait Default[a9] { default(): a9 }
+trait Default[y10] { default(): y10 }
 instance traits__trait_zero_arg_inferred.Default[Int] { default=Default$$Int$$default }
 instance traits__trait_zero_arg_inferred.Default[MyStruct] { default=Default$$MyStruct$$default }
 instance core/show.Show[MyStruct] { show=Show$$MyStruct$$show }
@@ -15,7 +15,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

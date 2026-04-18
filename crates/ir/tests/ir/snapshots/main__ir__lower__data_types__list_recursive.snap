@@ -11,18 +11,18 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn length(v0: List[f9]) -> Int =
+fn length(v0: List[d11]) -> Int =
   switch v0 {
     1 ->
       0
-    0 (v1: a, v2: List[f9]) ->
+    0 (v1: a, v2: List[d11]) ->
       let v3: Int = call length(v2)
       let v4: Int = add_int(1, v3)
       v4

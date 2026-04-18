@@ -21,6 +21,7 @@ pub fn infer_expr(
     let empty_qm = HashMap::new();
     let empty_imported_types = HashMap::new();
     let mut deferred = Vec::new();
+    let mut deferred_id_counter: u32 = 0;
     let mut ctx = InferenceContext {
         env,
         subst,
@@ -38,6 +39,7 @@ pub fn infer_expr(
         self_type: None,
         deferred_overloads: &mut deferred,
         owning_fn_idx: 0,
+        deferred_id_counter: &mut deferred_id_counter,
     };
     ctx.infer_expr_inner(expr, None).map(|te| te.ty)
 }

@@ -185,6 +185,7 @@ where
 
     let impl_qual_snap = state.subst.push_qual_scope();
     let mut impl_deferred = Vec::new();
+    let mut impl_deferred_id_counter: u32 = 0;
     let body_result = {
         let fn_ret_expected = state.env.fn_return_type.clone();
         let mut ctx = InferenceContext {
@@ -211,6 +212,7 @@ where
             self_type: Some(resolved_target.clone()),
             deferred_overloads: &mut impl_deferred,
             owning_fn_idx: 0,
+            deferred_id_counter: &mut impl_deferred_id_counter,
         };
         ctx.infer_expr_inner(&method.body, fn_ret_expected.as_ref())
     };

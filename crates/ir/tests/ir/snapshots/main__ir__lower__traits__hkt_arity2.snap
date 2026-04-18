@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__hkt_arity2
 
 type Pair[a, b] = Pair#0(a, b)
-trait Bifunctor[c9] { bimap(c9[d9, e9], (d9) -> f9, (e9) -> g9): c9[f9, g9] }
+trait Bifunctor[a11] { bimap(a11[b11, c11], (b11) -> d11, (c11) -> e11): a11[d11, e11] }
 instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[n3]) -> Option[n3]
@@ -13,18 +13,18 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Bifunctor$$Pair$$bimap(v0: Pair[s9, t9], v1: (s9) -> w9, v2: (t9) -> x9) -> Pair[w9, x9] =
+fn Bifunctor$$Pair$$bimap(v0: Pair[q11, r11], v1: (q11) -> u11, v2: (r11) -> v11) -> Pair[u11, v11] =
   switch v0 {
-    0 (v3: s9, v4: t9) ->
-      let v5: w9 = call_closure v1(v3)
-      let v6: x9 = call_closure v2(v4)
-      let v7: Pair[w9, x9] = construct Pair::Pair#0(v5, v6)
+    0 (v3: q11, v4: r11) ->
+      let v5: u11 = call_closure v1(v3)
+      let v6: v11 = call_closure v2(v4)
+      let v7: Pair[u11, v11] = construct Pair::Pair#0(v5, v6)
       v7
   }

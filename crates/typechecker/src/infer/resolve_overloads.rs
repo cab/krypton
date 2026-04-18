@@ -1,6 +1,4 @@
-use krypton_parser::ast::Span;
-
-use crate::typed_ast::{OverloadSignature, ResolvedBindingRef, TypedExpr, TypedExprKind};
+use crate::typed_ast::{DeferredId, OverloadSignature, ResolvedBindingRef, TypedExpr, TypedExprKind};
 use crate::types::{ParamMode, Substitution, Type, TypeVarGen};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -25,13 +23,16 @@ fn make_overload_signature_from(fn_ty: &Type) -> Option<OverloadSignature> {
 ///
 /// Mirrors the fixed-point pattern of `resolve_multi_param_constraints`:
 /// repeatedly re-apply substitution and re-filter candidates until
-/// no more progress is made.
+/// no more progress is made. Returns every remaining-unresolved site as an
+/// independent error so the caller can surface all of them to the user in
+/// one pass — a file with three ambiguous call sites should not require
+/// three fix-compile-fix cycles.
 pub(super) fn resolve_deferred_overloads(
     deferred: &mut Vec<DeferredOverload>,
     fn_bodies: &mut [Option<TypedExpr>],
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
-) -> Result<(), SpannedTypeError> {
+) -> Result<(), Vec<SpannedTypeError>> {
     if deferred.is_empty() {
         return Ok(());
     }
@@ -89,7 +90,7 @@ pub(super) fn resolve_deferred_overloads(
                     if let Some(body) = &mut fn_bodies[entry.owning_fn] {
                         patch_deferred_app(
                             body,
-                            entry.span,
+                            entry.deferred_id,
                             &resolved_ref,
                             &subst.apply(&func_ty),
                             &param_modes,
@@ -107,14 +108,14 @@ pub(super) fn resolve_deferred_overloads(
                 0 => {
                     // Concrete args, no match → E0511
                     let entry = deferred.remove(i);
-                    return Err(super::spanned(
+                    return Err(vec![super::spanned(
                         TypeError::NoMatchingOverload {
                             name: entry.name,
                             candidates: entry.candidate_descriptions,
                             arg_types,
                         },
                         entry.span,
-                    ));
+                    )]);
                 }
                 _ => {
                     // Concrete args, multiple matches → E0518
@@ -123,13 +124,13 @@ pub(super) fn resolve_deferred_overloads(
                         .iter()
                         .map(|(ci, _)| entry.candidate_descriptions[*ci].clone())
                         .collect();
-                    return Err(super::spanned(
+                    return Err(vec![super::spanned(
                         TypeError::AmbiguousOverload {
                             name: entry.name,
                             candidates: ambiguous,
                         },
                         entry.span,
-                    ));
+                    )]);
                 }
             }
         }
@@ -139,15 +140,22 @@ pub(super) fn resolve_deferred_overloads(
         }
     }
 
-    // Any remaining entries have unsolved args → E0510
-    if let Some(entry) = deferred.drain(..).next() {
-        return Err(super::spanned(
-            TypeError::UnresolvedOverload {
-                name: entry.name,
-                candidates: entry.candidate_descriptions,
-            },
-            entry.span,
-        ));
+    // Any remaining entries have unsolved args → E0510. Emit one error per
+    // site so every ambiguous call appears in the compiler's output.
+    let remaining: Vec<SpannedTypeError> = deferred
+        .drain(..)
+        .map(|entry| {
+            super::spanned(
+                TypeError::UnresolvedOverload {
+                    name: entry.name,
+                    candidates: entry.candidate_descriptions,
+                },
+                entry.span,
+            )
+        })
+        .collect();
+    if !remaining.is_empty() {
+        return Err(remaining);
     }
 
     Ok(())
@@ -169,17 +177,18 @@ fn extract_param_modes(ty: &Type) -> Vec<ParamMode> {
     }
 }
 
-/// Walk the typed AST to find a deferred `App` node by matching span and
-/// `resolved_ref: None`, then patch it with the resolved reference,
-/// function type, and param modes.
+/// Walk the typed AST to find the deferred `App` node stamped with
+/// `target_id` and patch it with the resolved reference, function type, and
+/// param modes. Using a stable node id rather than span uniqueness keeps this
+/// correct under future desugarings that might reuse spans.
 fn patch_deferred_app(
     expr: &mut TypedExpr,
-    target_span: Span,
+    target_id: DeferredId,
     resolved_ref: &Option<ResolvedBindingRef>,
     func_ty: &Type,
     param_modes: &[ParamMode],
 ) {
-    if expr.span == target_span && expr.resolved_ref.is_none() {
+    if expr.deferred_id == Some(target_id) {
         if let TypedExprKind::App {
             func,
             param_modes: ref mut pm,
@@ -197,21 +206,21 @@ fn patch_deferred_app(
     // Recurse into children
     match &mut expr.kind {
         TypedExprKind::App { func, args, .. } => {
-            patch_deferred_app(func, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(func, target_id, resolved_ref, func_ty, param_modes);
             for arg in args {
-                patch_deferred_app(arg, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(arg, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::Do(exprs) => {
             for e in exprs {
-                patch_deferred_app(e, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(e, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::Let { value, body, .. }
         | TypedExprKind::LetPattern { value, body, .. } => {
-            patch_deferred_app(value, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(value, target_id, resolved_ref, func_ty, param_modes);
             if let Some(body) = body {
-                patch_deferred_app(body, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(body, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::If {
@@ -219,19 +228,19 @@ fn patch_deferred_app(
             then_,
             else_,
         } => {
-            patch_deferred_app(cond, target_span, resolved_ref, func_ty, param_modes);
-            patch_deferred_app(then_, target_span, resolved_ref, func_ty, param_modes);
-            patch_deferred_app(else_, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(cond, target_id, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(then_, target_id, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(else_, target_id, resolved_ref, func_ty, param_modes);
         }
         TypedExprKind::Lambda { body, .. } => {
-            patch_deferred_app(body, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(body, target_id, resolved_ref, func_ty, param_modes);
         }
         TypedExprKind::Match { scrutinee, arms } => {
-            patch_deferred_app(scrutinee, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(scrutinee, target_id, resolved_ref, func_ty, param_modes);
             for arm in arms {
-                patch_deferred_app(&mut arm.body, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(&mut arm.body, target_id, resolved_ref, func_ty, param_modes);
                 if let Some(guard) = &mut arm.guard {
-                    patch_deferred_app(guard, target_span, resolved_ref, func_ty, param_modes);
+                    patch_deferred_app(guard, target_id, resolved_ref, func_ty, param_modes);
                 }
             }
         }
@@ -240,31 +249,31 @@ fn patch_deferred_app(
         | TypedExprKind::TypeApp { expr: inner, .. }
         | TypedExprKind::QuestionMark { expr: inner, .. }
         | TypedExprKind::Discharge(inner) => {
-            patch_deferred_app(inner, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(inner, target_id, resolved_ref, func_ty, param_modes);
         }
         TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            patch_deferred_app(lhs, target_span, resolved_ref, func_ty, param_modes);
-            patch_deferred_app(rhs, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(lhs, target_id, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(rhs, target_id, resolved_ref, func_ty, param_modes);
         }
         TypedExprKind::StructLit { fields, .. } => {
             for (_, val) in fields {
-                patch_deferred_app(val, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(val, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::StructUpdate { base, fields } => {
-            patch_deferred_app(base, target_span, resolved_ref, func_ty, param_modes);
+            patch_deferred_app(base, target_id, resolved_ref, func_ty, param_modes);
             for (_, val) in fields {
-                patch_deferred_app(val, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(val, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
             for e in elems {
-                patch_deferred_app(e, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(e, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::Recur { args, .. } => {
             for e in args {
-                patch_deferred_app(e, target_span, resolved_ref, func_ty, param_modes);
+                patch_deferred_app(e, target_id, resolved_ref, func_ty, param_modes);
             }
         }
         TypedExprKind::Var(_) | TypedExprKind::Lit(_) => {}

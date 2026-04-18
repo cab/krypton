@@ -629,29 +629,26 @@ pub fn join_types(
     }
 
     // MaybeOwn + MaybeOwn: alias qualifiers so a later commit propagates.
+    // `Fn`-inner is handled the same way — joining two `~fn` branches of an
+    // `if` should preserve the deferred qualifier rather than falling through
+    // to structural join which would drop it.
     if let (Type::MaybeOwn(q1, a_inner), Type::MaybeOwn(q2, b_inner)) = (&a, &b) {
-        if !matches!(a_inner.as_ref(), Type::Fn(_, _))
-            && !matches!(b_inner.as_ref(), Type::Fn(_, _))
-        {
-            subst.unify_qualifiers(*q1, *q2)?;
-            return join_types(a_inner, b_inner, subst, registry);
-        }
+        subst.unify_qualifiers(*q1, *q2)?;
+        return join_types(a_inner, b_inner, subst, registry);
     }
 
     // Own + MaybeOwn: confirm qualifier as Affine, then recurse on inners.
     // Mirrors the unify arm so the annotation's `Own` wrapper is authoritative
     // over the deferred qualifier introduced at self-recursive call sites.
+    // Applies to `Fn`-inner as well — joining `~fn` with a deferred `fn`
+    // commits the qualifier before descending.
     if let (Type::Own(a_inner), Type::MaybeOwn(q, b_inner)) = (&a, &b) {
-        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
-            subst.confirm_affine(*q)?;
-            return join_types(a_inner, b_inner, subst, registry);
-        }
+        subst.confirm_affine(*q)?;
+        return join_types(a_inner, b_inner, subst, registry);
     }
     if let (Type::MaybeOwn(q, a_inner), Type::Own(b_inner)) = (&a, &b) {
-        if !matches!(a_inner.as_ref(), Type::Fn(_, _)) {
-            subst.confirm_affine(*q)?;
-            return join_types(a_inner, b_inner, subst, registry);
-        }
+        subst.confirm_affine(*q)?;
+        return join_types(a_inner, b_inner, subst, registry);
     }
 
     // One Own, one bare (non-fn): strip Own, join inner with bare.

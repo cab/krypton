@@ -1,0 +1,22 @@
+# expect: error
+# `~VecBuilder` is linear: it must not escape the owning scope across an actor
+# boundary, because the JVM runtime's `KryptonArrayBuilder` is explicitly not
+# thread-safe and relies on Krypton-level single-ownership to guarantee no
+# concurrent access. Sending the builder through a `Ref[~VecBuilder[Int]]`
+# would alias it — the typechecker must reject this at the call site.
+import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, mailbox}
+import core/vec.{VecBuilder, builder}
+
+type Msg = BuilderMsg(~VecBuilder[Int])
+
+fun worker(mb: Mailbox[Msg]) =
+    match receive(mb) {
+        BuilderMsg(_) => (),
+    }
+
+fun main() -> Unit = {
+    let target = spawn(worker);
+    let b: ~VecBuilder[Int] = builder();
+    send(target, BuilderMsg(b));
+    send(target, BuilderMsg(b))
+}

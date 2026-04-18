@@ -1,0 +1,39 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module linear__linear_join_own_fn_branches
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+fn pick(v0: Bool) -> ~(Int) -> Int =
+  if v0 {
+    let v3: (Int) -> Int = make_closure(lambda$27, [])
+    v3
+  } else {
+    let v6: (Int) -> Int = make_closure(lambda$28, [])
+    v6
+  }
+
+fn main() -> Unit =
+  let v7: ~(Int) -> Int = call pick(true)
+  let v8: Int = call_closure v7(7)
+  ()
+
+fn lambda$27(v1: Int) -> Int =
+  let v2: Int = add_int(v1, 1)
+  v2
+
+fn lambda$28(v4: Int) -> Int =
+  let v5: Int = mul_int(v4, 2)
+  v5

@@ -1,0 +1,18 @@
+# expect: ok
+# Joining two `~fn` branches of an `if` must preserve the ownership
+# qualifier so the follow-up use still observes the `~` wrapper and
+# calls the closure exactly once. Regression test for a bug where the
+# MaybeOwn+MaybeOwn / Own+MaybeOwn join arms excluded `Fn`-inner types,
+# dropping the deferred qualifier and producing a bare callable that
+# escaped linearity.
+fun pick(c: Bool) -> ~(Int) -> Int = if c {
+    x -> x + 1
+} else {
+    x -> x * 2
+}
+
+fun main() -> Unit = {
+    let f: ~(Int) -> Int = pick(true);
+    let _: Int = f(7);
+    ()
+}

@@ -12,7 +12,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -34,5 +34,5 @@ fn main() -> Unit =
   let v6: Bool = trait_call core/eq.Eq.eq(v1, v5, "ok")
   jump v9(v6)
 
-fn Show$$Option$$Var0$$show(v10: Dict[core/show.Show, b9], v11: Option[b9]) -> String =
+fn Show$$Option$$Var0$$show(v10: Dict[core/show.Show, z10], v11: Option[z10]) -> String =
   "ok"

@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__method_where_satisfied
 
-trait Default[a9] { default(): a9 }
-trait R[b9] { lol(b9[c9]): b9[c9] }
+trait Default[y10] { default(): y10 }
+trait R[z10] { lol(z10[a11]): z10[a11] }
 instance traits__method_where_satisfied.Default[Int] { default=Default$$Int$$default }
 instance traits__method_where_satisfied.R[List] { lol=R$$List$$lol }
 import core/peek/peek as peek(d) -> d
@@ -14,7 +14,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -23,7 +23,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v2: List[j9] = construct List::Nil#1()
+  let v2: List[h11] = construct List::Nil#1()
   let v3: List[Int] = construct List::Cons#0(1, v2)
   let v4: Dict[traits__method_where_satisfied.R, List] = get_dict traits__method_where_satisfied.R[List]
   let v5: Dict[traits__method_where_satisfied.Default, Int] = get_dict traits__method_where_satisfied.Default[Int]
@@ -36,7 +36,7 @@ fn main() -> Unit =
 fn Default$$Int$$default() -> Int =
   0
 
-fn R$$List$$lol(v8: Dict[traits__method_where_satisfied.Default, o9], v9: List[o9]) -> List[o9] =
-  let v10: o9 = trait_call traits__method_where_satisfied.Default.default(v8)
-  let v11: List[o9] = construct List::Cons#0(v10, v9)
+fn R$$List$$lol(v8: Dict[traits__method_where_satisfied.Default, m11], v9: List[m11]) -> List[m11] =
+  let v10: m11 = trait_call traits__method_where_satisfied.Default.default(v8)
+  let v11: List[m11] = construct List::Cons#0(v10, v9)
   v11

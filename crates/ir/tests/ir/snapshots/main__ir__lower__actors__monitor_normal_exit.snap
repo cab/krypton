@@ -6,31 +6,31 @@ module actors__monitor_normal_exit
 
 type WorkerMsg = Stop#0
 type MainMsg = Exit#0(ActorId, ExitReason)
-extern java "krypton.runtime.KryptonIO" println(k13) -> Unit
+extern java "krypton.runtime.KryptonIO" println(i15) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[n3]) -> Option[n3]
 import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/actor/ActorId as ActorId(Int) -> ActorId
 import core/actor/Crashed as Crashed(String) -> ExitReason
-import core/actor/spawn as spawn((Mailbox[x9]) -> Unit) -> Ref[x9]
-import core/actor/send as send(Ref[a10], a10) -> Unit
-import core/actor/receive as receive(Mailbox[j10]) -> j10
-import core/actor/mailbox as mailbox() -> Mailbox[c11]
-import core/actor/monitor as monitor(Mailbox[j13], Ref[w12], (ActorId, ExitReason) -> j13) -> Unit
-declare mailbox: () -> Mailbox[c11]
-declare monitor: (Mailbox[j13], Ref[w12], (ActorId, ExitReason) -> j13) -> Unit
-declare println: (k13) -> Unit
-declare receive: (Mailbox[j10]) -> j10
-declare send: (Ref[a10], a10) -> Unit
-declare spawn: ((Mailbox[x9]) -> Unit) -> Ref[x9]
+import core/actor/spawn as spawn((Mailbox[v11]) -> Unit) -> Ref[v11]
+import core/actor/send as send(Ref[y11], y11) -> Unit
+import core/actor/receive as receive(Mailbox[h12]) -> h12
+import core/actor/mailbox as mailbox() -> Mailbox[a13]
+import core/actor/monitor as monitor(Mailbox[h15], Ref[u14], (ActorId, ExitReason) -> h15) -> Unit
+declare mailbox: () -> Mailbox[a13]
+declare monitor: (Mailbox[h15], Ref[u14], (ActorId, ExitReason) -> h15) -> Unit
+declare println: (i15) -> Unit
+declare receive: (Mailbox[h12]) -> h12
+declare send: (Ref[y11], y11) -> Unit
+declare spawn: ((Mailbox[v11]) -> Unit) -> Ref[v11]
 
 fn worker(v0: Mailbox[WorkerMsg]) -> Unit =
   let v1: WorkerMsg = call receive(v0)

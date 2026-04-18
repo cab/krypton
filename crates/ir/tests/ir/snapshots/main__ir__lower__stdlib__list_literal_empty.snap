@@ -10,7 +10,7 @@ import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -24,8 +24,8 @@ fn main() -> Unit =
     let v6: Unit = call println(v0, v5)
     v6
   in
-  let v1: List[f9] = construct List::Nil#1()
-  let v2: List[f9] = v1
+  let v1: List[d11] = construct List::Nil#1()
+  let v2: List[d11] = v1
   switch v2 {
     0 (v3: d, v4: List[d]) ->
       jump v7(1)

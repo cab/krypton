@@ -560,10 +560,18 @@ impl ModuleInferenceState {
         }
 
         let mut functions: Vec<TypedFnDecl> = Vec::new();
+        // Parallel: params_per_decl[i] == parameter types for functions[i],
+        // for the shared overload mangler at end-of-typechecking.
+        let mut params_per_decl: Vec<Vec<Type>> = Vec::new();
         let mut fn_bodies = fn_bodies;
         for (i, decl) in fn_decls.iter().enumerate() {
             let mut body = fn_bodies[i].take().unwrap();
             typed_ast::apply_subst(&mut body, &self.subst);
+            let scheme = result_schemes[i].clone().unwrap();
+            let params_for_mangle: Vec<Type> = match &scheme.ty {
+                Type::Fn(ps, _) => ps.iter().map(|(_, t)| t.clone()).collect(),
+                _ => vec![],
+            };
             functions.push(TypedFnDecl {
                 name: decl.name.clone(),
                 visibility: decl.visibility,
@@ -578,7 +586,10 @@ impl ModuleInferenceState {
                 body,
                 close_self_type: None,
                 fn_scope_id: crate::typed_ast::ScopeId(u32::MAX),
+                def_span: decl.span,
+                exported_symbol: String::new(),
             });
+            params_per_decl.push(params_for_mangle);
         }
         // Build temporary flat list of instance method bodies for internal analysis passes
         for inst in &instance_defs {
@@ -594,6 +605,11 @@ impl ModuleInferenceState {
                     } else {
                         None
                     };
+                let method_span = m.body.span;
+                let params_for_mangle: Vec<Type> = match &m.scheme.ty {
+                    Type::Fn(ps, _) => ps.iter().map(|(_, t)| t.clone()).collect(),
+                    _ => vec![],
+                };
                 functions.push(TypedFnDecl {
                     name: qualified,
                     visibility: Visibility::Pub,
@@ -601,7 +617,10 @@ impl ModuleInferenceState {
                     body: m.body.clone(),
                     close_self_type,
                     fn_scope_id: crate::typed_ast::ScopeId(u32::MAX),
+                    def_span: method_span,
+                    exported_symbol: String::new(),
                 });
+                params_per_decl.push(params_for_mangle);
             }
         }
 
@@ -953,6 +972,19 @@ impl ModuleInferenceState {
             .enumerate()
             .map(|(i, e)| (e.name.clone(), i))
             .collect();
+
+        // Stamp `exported_symbol` on every TypedFnDecl using the shared
+        // overload mangler so IR/codegen can read it directly without
+        // re-implementing the rule. `params_per_decl` carries per-decl
+        // param-type fingerprints built alongside the decls so overloaded
+        // siblings can be distinguished by structure, not by name alone.
+        let mangled_symbols = crate::module_interface::mangle_typed_fn_decls(
+            &functions,
+            &params_per_decl,
+        );
+        for (f, m) in functions.iter_mut().zip(mangled_symbols.into_iter()) {
+            f.exported_symbol = m;
+        }
 
         Ok(TypedModule {
             module_path,

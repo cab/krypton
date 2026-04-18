@@ -1016,7 +1016,13 @@ impl LowerCtx {
                 return Some(*fn_id);
             }
         }
-        None
+        panic!(
+            "ICE: typechecker/IR disagree on overload dispatch for `{}`: \
+             no candidate matches signature {:?}; stored = {:?}",
+            qn.local_name,
+            sig.param_types,
+            candidates.iter().map(|(p, _)| p).collect::<Vec<_>>(),
+        );
     }
 
     /// Insert an FnId into `fn_ids` (by name) and `callable_ids` (by
@@ -3076,6 +3082,7 @@ impl LowerCtx {
                 span: (0, 0),
                 resolved_ref: None,
                 scope_id: None,
+                deferred_id: None,
             }
         };
 
@@ -4160,6 +4167,7 @@ impl LowerCtx {
                     // Synthetic grouping: not its own scope. The enclosing
                     // real Do already owns the scope identity for this slice.
                     scope_id: None,
+                    deferred_id: None,
                 }
             };
             return self.lower_let_pattern(pattern, value, Some(&rest_body), &rest_ty);
@@ -6654,22 +6662,13 @@ pub fn lower_module(
         })
         .collect();
 
-    // 6. Lower functions. Compute a per-decl `exported_symbol` by
-    // grouping local decls by bare name: each group keeps source-
-    // declaration order (decls appear in `typed.functions` in source
-    // order), so the first sibling gets the bare name and subsequent
-    // siblings get `name$2`, `name$3`, ... — matching the typechecker's
-    // `ExportedFnSummary::exported_symbol` rule so codegen agrees across
-    // module boundaries.
-    let exported_symbols = mangle_local_exported_symbols(&typed.functions);
+    // 6. Lower functions. Each TypedFnDecl carries an `exported_symbol`
+    // stamped by the typechecker's shared overload mangler — IR reads it
+    // directly so the two sides cannot diverge.
     let mut functions = vec![];
-    for ((decl, alloc), exported_symbol) in typed
-        .functions
-        .iter()
-        .zip(local_fn_allocs.into_iter())
-        .zip(exported_symbols.into_iter())
-    {
+    for (decl, alloc) in typed.functions.iter().zip(local_fn_allocs.into_iter()) {
         let (fn_id, param_types, return_type) = alloc;
+        let exported_symbol = decl.exported_symbol.clone();
         let fn_def = ctx.lower_fn(decl, fn_id, param_types, return_type, exported_symbol)?;
         functions.push(fn_def);
     }
@@ -6686,7 +6685,7 @@ pub fn lower_module(
     //     Constructed before Step 7 so `fn_identities` can read each
     //     import's `exported_symbol` when populating `FnIdentity::Imported`.
     let mut imported_fns = vec![];
-    let mut imported_fn_seen: HashSet<(String, String, Vec<String>)> = HashSet::new();
+    let mut imported_fn_seen: HashSet<(String, String, Vec<Type>)> = HashSet::new();
     for entry in &typed.fn_types {
         if entry.origin.is_some() {
             continue;
@@ -6701,15 +6700,13 @@ pub fn lower_module(
             unreachable!()
         };
         let sig_key: Vec<Type> = param_types_tc.iter().map(|(_, t)| t.clone()).collect();
-        // Stable textual fingerprint for dedup — Type doesn't implement
-        // Hash, but Debug is stable enough for set membership here (we
-        // only dedup exact structural matches; `types_overlap` is used
-        // for the actual overload dispatch in `lookup_callable`).
-        let sig_fingerprint: Vec<String> = sig_key.iter().map(|t| format!("{:?}", t)).collect();
+        // Dedup exact structural matches by (name, source_module, sig_key).
+        // `types_overlap` is used for the actual overload dispatch in
+        // `lookup_callable`; here we only need structural equality.
         let dedup_key = (
             entry.name.clone(),
             entry.qualified_name.module_path.clone(),
-            sig_fingerprint,
+            sig_key.clone(),
         );
         if !imported_fn_seen.insert(dedup_key) {
             continue;
@@ -7377,28 +7374,6 @@ fn convert_lit(lit: &Lit) -> Literal {
         Lit::String(s) => Literal::String(s.clone()),
         Lit::Unit => Literal::Unit,
     }
-}
-
-/// Assign source-order mangled `exported_symbol` names for local decls.
-/// Entries sharing a bare name form an overload group; within a group they
-/// appear in `typed.functions` in source order. The earliest keeps the
-/// bare name; subsequent siblings become `name$2`, `name$3`, ....
-/// Mirrors `mangle_overload_symbols` in typechecker/src/module_interface.rs
-/// so IR `FnDef::exported_symbol` agrees with
-/// `ExportedFnSummary::exported_symbol`.
-fn mangle_local_exported_symbols(decls: &[TypedFnDecl]) -> Vec<String> {
-    let mut out = vec![String::new(); decls.len()];
-    let mut rank_by_name: HashMap<&str, usize> = HashMap::new();
-    for (i, d) in decls.iter().enumerate() {
-        let rank = rank_by_name.entry(d.name.as_str()).or_insert(0);
-        out[i] = if *rank == 0 {
-            d.name.clone()
-        } else {
-            format!("{}${}", d.name, *rank + 1)
-        };
-        *rank += 1;
-    }
-    out
 }
 
 fn variant_ref_from_constructor(

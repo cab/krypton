@@ -1165,7 +1165,7 @@ impl<'a> JsEmitter<'a> {
                 exported_symbol, ..
             }) => js_safe_name(exported_symbol),
             Some(identity) => js_safe_name(identity.name()),
-            None => format!("fn_{}", id.0),
+            None => panic!("ICE: no identity registered for FnId {}", id.0),
         }
     }
 
