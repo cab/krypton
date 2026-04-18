@@ -4,7 +4,9 @@ use krypton_parser::ast::Visibility;
 use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
 
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
-use crate::typed_ast::{ResolvedTypeRef, TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{
+    OverloadSignature, ResolvedTypeRef, TypedExpr, TypedExprKind, TypedMatchArm,
+};
 use crate::types::{ParamMode, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{coerce_unify, join_types, unify, SecondaryLabel, SpannedTypeError, TypeError};
 
@@ -45,6 +47,20 @@ fn is_callable_type(ty: &Type) -> bool {
         Type::Fn(_, _) => true,
         Type::Own(inner) => matches!(inner.as_ref(), Type::Fn(_, _)),
         _ => false,
+    }
+}
+
+/// Build an `OverloadSignature` from a function type that has already had
+/// `Substitution` applied and any outer `Own` wrapper stripped. Returns `None`
+/// if the type is not a function. Used to tag resolved overload winners with
+/// a canonical signature that IR lowering can match against its known FnIds.
+pub(super) fn make_overload_signature(fn_ty: &Type) -> Option<OverloadSignature> {
+    match fn_ty {
+        Type::Fn(params, ret) => Some(OverloadSignature {
+            param_types: params.iter().map(|(_, t)| t.clone()).collect(),
+            return_type: (**ret).clone(),
+        }),
+        _ => None,
     }
 }
 
@@ -1088,7 +1104,13 @@ impl<'a> InferenceContext<'a> {
         };
 
         // 7. Build result
-        let resolved_ref = super::resolved_ref_from_binding_source(&winning.source);
+        let overload_sig = make_overload_signature(
+            &self.unwrap_own_fn(&self.subst.apply(&func_ty)),
+        );
+        let resolved_ref = super::resolved_ref_from_binding_source_with_overload(
+            &winning.source,
+            overload_sig,
+        );
         let ty = self.subst.apply(&func_ty);
         let ret_ty = match &ty {
             Type::Fn(_, ret) => self.subst.apply(ret),
@@ -1199,7 +1221,13 @@ impl<'a> InferenceContext<'a> {
         let winning = &candidates[winner_idx];
         self.subst.merge_type_bindings(winner_match.local_subst);
 
-        let resolved_ref = super::resolved_ref_from_binding_source(&winning.source);
+        let overload_sig = make_overload_signature(
+            &self.unwrap_own_fn(&self.subst.apply(&winner_match.instantiated_ty)),
+        );
+        let resolved_ref = super::resolved_ref_from_binding_source_with_overload(
+            &winning.source,
+            overload_sig,
+        );
         let ty = self.subst.apply(&winner_match.instantiated_ty);
 
         Ok(TypedExpr {

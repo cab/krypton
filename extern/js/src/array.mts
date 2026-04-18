@@ -1,26 +1,13 @@
-export function staticNew(size: number) {
-  return new Array(size).fill(undefined);
+import { List } from 'immutable';
+
+export function staticLength(list: List<unknown>): number {
+  return list.size;
 }
 
-export function staticGet<T>(arr: T[], i: number) {
-  return arr[i];
+export function staticGet<T>(list: List<T>, i: number): T | undefined {
+  return list.get(i);
 }
 
-export function staticSet<T>(arr: T[], i: number, v: T) {
-  arr[i] = v;
-}
-
-export function staticLength(arr: unknown[]) {
-  return arr.length;
-}
-
-export function staticFreeze<T>(arr: T[]) {
-  Object.freeze(arr);
-  return arr;
-}
-
-export function staticPush<T>(arr: T[], item: T) {
-  const clone = [...arr];
-  clone.push(item);
-  return clone;
+export function staticPush<T>(list: List<T>, item: T): List<T> {
+  return list.push(item);
 }

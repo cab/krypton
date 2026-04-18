@@ -10,13 +10,7 @@ public final class KryptonString {
         return s.substring(startOffset, endOffset);
     }
     public static KryptonArray split(String s, String delimiter) {
-        String[] parts = s.split(delimiter, -1);
-        KryptonArray arr = new KryptonArray(parts.length);
-        for (int i = 0; i < parts.length; i++) {
-            arr.set(i, parts[i]);
-        }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(java.util.Arrays.asList(s.split(delimiter, -1)));
     }
     public static String trim(String s) { return s.trim(); }
     public static String substring(String s, long start, long end) {

@@ -5,79 +5,46 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class KryptonArrayTest {
     @Test
-    void newArrayHasZeroLength() {
-        KryptonArray arr = new KryptonArray(10);
-        assertEquals(0, arr.length());
+    void builderRoundTrip() {
+        KryptonArrayBuilder b = KryptonArrayBuilder.builderNew();
+        KryptonArrayBuilder.builderPush(b, "hello");
+        KryptonArrayBuilder.builderPush(b, 42);
+        KryptonArray arr = KryptonArrayBuilder.builderFreeze(b);
+        assertEquals(2, KryptonArray.staticLength(arr));
+        assertEquals("hello", KryptonArray.staticGet(arr, 0));
+        assertEquals(42, KryptonArray.staticGet(arr, 1));
     }
 
     @Test
-    void getSetRoundTrip() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "hello");
-        arr.set(1, 42);
-        assertEquals("hello", arr.get(0));
-        assertEquals(42, arr.get(1));
+    void emptyBuilderProducesEmptyArray() {
+        KryptonArray arr = KryptonArrayBuilder.builderFreeze(KryptonArrayBuilder.builderNew());
+        assertEquals(0, KryptonArray.staticLength(arr));
     }
 
     @Test
-    void lengthTracksSetElements() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "a");
-        assertEquals(1, arr.length());
-        arr.set(1, "b");
-        assertEquals(2, arr.length());
-        arr.set(3, "d");
-        assertEquals(4, arr.length());
+    void staticPushReturnsPersistentCopy() {
+        KryptonArray a = KryptonArrayBuilder.builderFreeze(KryptonArrayBuilder.builderNew());
+        KryptonArray b = KryptonArray.staticPush(a, "x");
+        KryptonArray c = KryptonArray.staticPush(b, "y");
+        assertEquals(0, KryptonArray.staticLength(a));
+        assertEquals(1, KryptonArray.staticLength(b));
+        assertEquals(2, KryptonArray.staticLength(c));
+        assertEquals("x", KryptonArray.staticGet(c, 0));
+        assertEquals("y", KryptonArray.staticGet(c, 1));
     }
 
     @Test
-    void copyCreatesIndependentArray() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "original");
-        KryptonArray copy = arr.copy();
-        copy.set(0, "modified");
-        assertEquals("original", arr.get(0));
-        assertEquals("modified", copy.get(0));
-    }
-
-    @Test
-    void copyPreservesLength() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "a");
-        arr.set(1, "b");
-        KryptonArray copy = arr.copy();
-        assertEquals(2, copy.length());
-    }
-
-    @Test
-    void freezePreventsSet() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "a");
-        arr.freeze();
-        assertThrows(KryptonPanic.class, () -> arr.set(0, "b"));
-        assertThrows(KryptonPanic.class, () -> arr.set(1, "c"));
-    }
-
-    @Test
-    void getAfterFreezeStillWorks() {
-        KryptonArray arr = new KryptonArray(4);
-        arr.set(0, "a");
-        arr.freeze();
-        assertEquals("a", arr.get(0));
+    void fromIterableBuildsArray() {
+        KryptonArray arr = KryptonArray.fromIterable(java.util.List.of("a", "b", "c"));
+        assertEquals(3, KryptonArray.staticLength(arr));
+        assertEquals("a", KryptonArray.staticGet(arr, 0));
+        assertEquals("c", KryptonArray.staticGet(arr, 2));
     }
 
     @Test
     void outOfBoundsGetThrows() {
-        KryptonArray arr = new KryptonArray(4);
-        assertThrows(KryptonPanic.class, () -> arr.get(0));
-        assertThrows(KryptonPanic.class, () -> arr.get(-1));
-        assertThrows(KryptonPanic.class, () -> arr.get(4));
-    }
-
-    @Test
-    void outOfBoundsSetThrows() {
-        KryptonArray arr = new KryptonArray(4);
-        assertThrows(KryptonPanic.class, () -> arr.set(-1, "x"));
-        assertThrows(KryptonPanic.class, () -> arr.set(4, "x"));
+        KryptonArray arr = KryptonArrayBuilder.builderFreeze(KryptonArrayBuilder.builderNew());
+        assertThrows(KryptonPanic.class, () -> KryptonArray.staticGet(arr, 0));
+        assertThrows(KryptonPanic.class, () -> KryptonArray.staticGet(arr, -1));
     }
 }

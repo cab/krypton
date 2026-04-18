@@ -109,11 +109,34 @@ pub struct ImportedFn {
     pub is_prelude: bool,
 }
 
+/// Canonical signature of a winning overload candidate.
+///
+/// Populated only when an overload set had more than one candidate and a
+/// specific one was selected at a call site. `None` on `ResolvedCallableRef`
+/// means "no overload was involved" — IR/codegen can take the fast,
+/// name-keyed path. When set, `param_types` are stripped of `ParamMode` and
+/// have the committed `Substitution` applied (polymorphic type vars
+/// preserved); IR uses `crate::overload::types_overlap` to match this
+/// signature against each known overload's signature to pick the FnId.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OverloadSignature {
+    pub param_types: Vec<Type>,
+    pub return_type: Type,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedCallableRef {
-    LocalFunction { qualified_name: QualifiedName },
-    ImportedFunction { qualified_name: QualifiedName },
-    Intrinsic { name: String },
+    LocalFunction {
+        qualified_name: QualifiedName,
+        overload_signature: Option<OverloadSignature>,
+    },
+    ImportedFunction {
+        qualified_name: QualifiedName,
+        overload_signature: Option<OverloadSignature>,
+    },
+    Intrinsic {
+        name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -542,6 +565,10 @@ pub struct TypedModule {
     pub module_path: String,
     pub fn_types: Vec<FnTypeEntry>,
     /// Index: function name → index into `fn_types`, for O(1) provenance lookups.
+    /// Name-keyed is deliberate: this is only used to look up the module's
+    /// `main`, which is not permitted to be overloaded. For other functions —
+    /// which may be overloaded — scan `fn_types` directly or dispatch via the
+    /// typed-AST resolved_ref.
     pub fn_types_by_name: HashMap<String, usize>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.

@@ -1836,6 +1836,7 @@ fn imported_callable_alias_preserves_imported_provenance() {
                     "helpers_b".to_string(),
                     "compute".to_string(),
                 ),
+                overload_signature: None,
             }
         ))
     );
@@ -1865,6 +1866,7 @@ fn local_extern_callable_preserves_local_provenance() {
                     "test".to_string(),
                     "abs".to_string(),
                 ),
+                overload_signature: None,
             }
         ))
     );
@@ -1908,6 +1910,7 @@ fn imported_extern_callable_alias_preserves_imported_provenance() {
                     "extern_provenance_lib".to_string(),
                     "abs".to_string(),
                 ),
+                overload_signature: None,
             }
         ))
     );
@@ -1957,6 +1960,7 @@ fn reexported_extern_callable_preserves_imported_provenance() {
                     "extern_provenance_lib".to_string(),
                     "abs".to_string(),
                 ),
+                overload_signature: None,
             }
         ))
     );

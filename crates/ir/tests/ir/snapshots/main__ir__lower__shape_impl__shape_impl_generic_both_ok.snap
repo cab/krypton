@@ -4,19 +4,19 @@ expression: ir_module.to_string()
 ---
 module shape_impl__shape_impl_generic_both_ok
 
-trait Identity[h8] { identify(h8): h8 }
+trait Identity[a9] { identify(a9): a9 }
 instance shape_impl__shape_impl_generic_both_ok.Identity[$Var0] { identify=Identity$$$Var0$$identify }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn Identity$$$Var0$$identify(v0: j8) -> j8 =
+fn Identity$$$Var0$$identify(v0: c9) -> c9 =
   v0

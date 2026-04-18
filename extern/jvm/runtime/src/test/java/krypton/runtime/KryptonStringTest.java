@@ -64,24 +64,24 @@ class KryptonStringTest {
 
     @Test
     void splitBasic() {
-        KryptonArray result = (KryptonArray) KryptonString.split("a,b,c", ",");
-        assertEquals(3, result.length());
-        assertEquals("a", result.get(0));
-        assertEquals("b", result.get(1));
-        assertEquals("c", result.get(2));
+        KryptonArray result = KryptonString.split("a,b,c", ",");
+        assertEquals(3, KryptonArray.staticLength(result));
+        assertEquals("a", KryptonArray.staticGet(result, 0));
+        assertEquals("b", KryptonArray.staticGet(result, 1));
+        assertEquals("c", KryptonArray.staticGet(result, 2));
     }
 
     @Test
     void splitEmpty() {
-        KryptonArray result = (KryptonArray) KryptonString.split("", ",");
-        assertEquals(1, result.length());
-        assertEquals("", result.get(0));
+        KryptonArray result = KryptonString.split("", ",");
+        assertEquals(1, KryptonArray.staticLength(result));
+        assertEquals("", KryptonArray.staticGet(result, 0));
     }
 
     @Test
     void splitNoMatch() {
-        KryptonArray result = (KryptonArray) KryptonString.split("hello", ",");
-        assertEquals(1, result.length());
-        assertEquals("hello", result.get(0));
+        KryptonArray result = KryptonString.split("hello", ",");
+        assertEquals(1, KryptonArray.staticLength(result));
+        assertEquals("hello", KryptonArray.staticGet(result, 0));
     }
 }

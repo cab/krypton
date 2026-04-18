@@ -618,12 +618,6 @@ impl fmt::Display for Module {
         for func in &self.functions {
             collect_referenced_fns(&func.body, &mut referenced);
         }
-        let mut declares: Vec<_> = fn_names_map
-            .iter()
-            .filter(|(id, _)| !local_fn_ids.contains(id) && referenced.contains(id))
-            .map(|(id, name)| (name.as_str(), *id))
-            .collect();
-        declares.sort_by_key(|(name, _)| *name);
         // Build FnId → Type lookup from enriched extern_fns and imported_fns
         let mut fn_type_lookup: HashMap<FnId, String> = HashMap::new();
         for ext in &self.extern_fns {
@@ -640,6 +634,17 @@ impl fmt::Display for Module {
                 format!("({}) -> {}", params.join(", "), imp.return_type),
             );
         }
+        let mut declares: Vec<_> = fn_names_map
+            .iter()
+            .filter(|(id, _)| !local_fn_ids.contains(id) && referenced.contains(id))
+            .map(|(id, name)| (name.as_str(), *id))
+            .collect();
+        declares.sort_by(|(a_name, a_id), (b_name, b_id)| {
+            a_name
+                .cmp(b_name)
+                .then_with(|| fn_type_lookup.get(a_id).cmp(&fn_type_lookup.get(b_id)))
+                .then_with(|| a_id.cmp(b_id))
+        });
         for (name, id) in &declares {
             if let Some(ty) = fn_type_lookup.get(id) {
                 writeln!(f, "declare {name}: {ty}")?;
@@ -876,6 +881,7 @@ mod tests {
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "add".into(),
+            exported_symbol: "add".into(),
             params: vec![],
             return_type: Type::Int,
             body: expr,
@@ -906,6 +912,7 @@ mod tests {
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
+            exported_symbol: "test".into(),
             params: vec![],
             return_type: Type::Fn(vec![Type::Int], Box::new(Type::Int)),
             body: expr,
@@ -938,6 +945,7 @@ mod tests {
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
+            exported_symbol: "test".into(),
             params: vec![],
             return_type: Type::Int,
             body: expr,
@@ -970,6 +978,7 @@ mod tests {
         insta::assert_snapshot!(FnDef {
             id: FnId(0),
             name: "test".into(),
+            exported_symbol: "test".into(),
             params: vec![(VarId(0), Type::Named("Option".into(), vec![Type::Int]))],
             return_type: Type::Int,
             body: expr,
@@ -1068,6 +1077,7 @@ mod tests {
             functions: vec![FnDef {
                 id: FnId(0),
                 name: "main".into(),
+                exported_symbol: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),

@@ -1,0 +1,30 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module modules__overload_same_module_ok
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import overload_same_module_lib/push as push(Vec[Int], Int) -> Vec[Int]
+import overload_same_module_lib/push as push(List[Int], Int) -> List[Int]
+declare push: (List[Int], Int) -> List[Int]
+declare push: (Vec[Int], Int) -> Vec[Int]
+
+fn use_vec(v0: Vec[Int]) -> Vec[Int] =
+  let v1: Vec[Int] = call push(v0, 1)
+  v1
+
+fn use_list(v2: List[Int]) -> List[Int] =
+  let v3: List[Int] = call push(v2, 1)
+  v3

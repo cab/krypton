@@ -5,11 +5,11 @@ expression: ir_module.to_string()
 module modules__prelude_shadow_overload_fold
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -18,21 +18,22 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import vec_mod/fold as fold(Vec[Int], Int, (Int, Int) -> Int) -> Int
 import list_mod/fold as fold(List[Int], Int, (Int, Int) -> Int) -> Int
 declare fold: (List[Int], Int, (Int, Int) -> Int) -> Int
+declare fold: (Vec[Int], Int, (Int, Int) -> Int) -> Int
 
 fn test_vec(v0: Vec[Int]) -> Int =
-  let v4: (Int, Int) -> Int = make_closure(lambda$27, [])
+  let v4: (Int, Int) -> Int = make_closure(lambda$28, [])
   let v5: Int = call fold(v0, 0, v4)
   v5
 
 fn test_list(v6: List[Int]) -> Int =
-  let v10: (Int, Int) -> Int = make_closure(lambda$28, [])
+  let v10: (Int, Int) -> Int = make_closure(lambda$29, [])
   let v11: Int = call fold(v6, 0, v10)
   v11
 
-fn lambda$27(v1: Int, v2: Int) -> Int =
+fn lambda$28(v1: Int, v2: Int) -> Int =
   let v3: Int = add_int(v1, v2)
   v3
 
-fn lambda$28(v7: Int, v8: Int) -> Int =
+fn lambda$29(v7: Int, v8: Int) -> Int =
   let v9: Int = add_int(v7, v8)
   v9

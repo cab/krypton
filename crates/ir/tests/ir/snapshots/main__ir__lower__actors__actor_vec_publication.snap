@@ -1,0 +1,79 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module actors__actor_vec_publication
+
+type Msg = VecMsg#0(Vec[Int], Ref[Int])
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/actor/spawn as spawn((Mailbox[x9]) -> Unit) -> Ref[x9]
+import core/actor/send as send(Ref[a10], a10) -> Unit
+import core/actor/receive as receive(Mailbox[j10]) -> j10
+import core/actor/actor_ref as actor_ref(Mailbox[t10]) -> Ref[t10]
+import core/actor/mailbox as mailbox() -> Mailbox[c11]
+import core/vec/push as push(~VecBuilder[x6], x6) -> ~VecBuilder[x6]
+import core/vec/push as push(Vec[c7], c7) -> Vec[c7]
+import core/vec/fold as fold(Vec[p10], y10, (y10, p10) -> y10) -> y10
+declare actor_ref: (Mailbox[t10]) -> Ref[t10]
+declare fold: (Vec[p10], y10, (y10, p10) -> y10) -> y10
+declare mailbox: () -> Mailbox[c11]
+declare println: (g) -> Unit
+declare push: (Vec[c7], c7) -> Vec[c7]
+declare receive: (Mailbox[j10]) -> j10
+declare send: (Ref[a10], a10) -> Unit
+declare spawn: ((Mailbox[x9]) -> Unit) -> Ref[x9]
+
+fn build_vec(v0: Vec[Int], v1: Int, v2: Int) -> Vec[Int] =
+  let_join [recur] v3(v4: Vec[Int], v5: Int, v6: Int) =
+    let_join v12(v9: Bool) =
+      if v9 {
+        let v10: Vec[Int] = call push(v4, v5)
+        let v11: Int = add_int(v5, 1)
+        jump v3(v10, v11, v6)
+      } else {
+        v4
+      }
+    in
+    let v7: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v8: Bool = trait_call core/ord.Ord.lt(v7, v5, v6)
+    jump v12(v8)
+  in
+  jump v3(v0, v1, v2)
+
+fn worker(v13: Mailbox[Msg]) -> Unit =
+  let v14: Msg = call receive(v13)
+  switch v14 {
+    0 (v15: Vec[Int], v16: Ref[Int]) ->
+      let v20: (Int, Int) -> Int = make_closure(lambda$35, [])
+      let v21: Int = call fold(v15, 0, v20)
+      let v22: Unit = call send(v16, v21)
+      v22
+  }
+
+fn main() -> Unit =
+  let v24: (Mailbox[Msg]) -> Unit = make_closure(worker, [])
+  let v23: Ref[Msg] = call spawn(v24)
+  let v25: Mailbox[Int] = call mailbox()
+  let v27: Vec[Int] = make_vec()
+  let v26: Vec[Int] = call build_vec(v27, 0, 10000)
+  let v28: Ref[Int] = call actor_ref(v25)
+  let v29: Msg = construct Msg::VecMsg#0(v26, v28)
+  let v30: Unit = call send(v23, v29)
+  let v32: Int = call receive(v25)
+  let v31: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v33: Unit = call println(v31, v32)
+  v33
+
+fn lambda$35(v17: Int, v18: Int) -> Int =
+  let v19: Int = add_int(v17, v18)
+  v19

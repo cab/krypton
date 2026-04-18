@@ -605,6 +605,11 @@ impl ModuleInferenceState {
             }
         }
 
+        // Name-keyed: two local overloads share a name, so a later entry will
+        // overwrite an earlier one here. The consumers (constraint-propagation
+        // checks below and in `checks.rs`) only use this to look up "a scheme
+        // for this name" — no overload-specific disambiguation. Overload
+        // disambiguation is carried separately on resolved_ref.
         let fn_schemes: HashMap<String, TypeScheme> = results
             .iter()
             .map(|e| (e.name.clone(), e.scheme.clone()))

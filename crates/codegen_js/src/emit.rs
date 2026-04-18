@@ -899,9 +899,42 @@ pub(crate) struct JsEmitter<'a> {
     current_fn_is_async: bool,
 }
 
+fn expr_has_make_vec(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Let { value, body, .. } => {
+            simple_expr_has_make_vec(value) || expr_has_make_vec(body)
+        }
+        ExprKind::LetRec { body, .. } => expr_has_make_vec(body),
+        ExprKind::LetJoin {
+            join_body, body, ..
+        } => expr_has_make_vec(join_body) || expr_has_make_vec(body),
+        ExprKind::Jump { .. } => false,
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => expr_has_make_vec(true_body) || expr_has_make_vec(false_body),
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
+            branches.iter().any(|b| expr_has_make_vec(&b.body))
+                || default.as_ref().is_some_and(|e| expr_has_make_vec(e))
+        }
+        ExprKind::AutoClose { body, .. } => expr_has_make_vec(body),
+        ExprKind::Atom(_) => false,
+    }
+}
+
+fn simple_expr_has_make_vec(se: &SimpleExpr) -> bool {
+    matches!(se.kind, SimpleExprKind::MakeVec { .. })
+}
+
 impl<'a> JsEmitter<'a> {
     const NULLABLE_SOME_ALIAS: &'static str = "__krypton_nullable_Some";
     const NULLABLE_NONE_ALIAS: &'static str = "__krypton_nullable_None";
+    const VEC_BUILDER_NEW_ALIAS: &'static str = "__krypton_vec_builder_new";
+    const VEC_BUILDER_PUSH_ALIAS: &'static str = "__krypton_vec_builder_push";
+    const VEC_BUILDER_FREEZE_ALIAS: &'static str = "__krypton_vec_builder_freeze";
 
     // Emitter constructor: each arg is a borrowed input held for the lifetime
     // of emission. A builder would just forward each field, so the wide arg
@@ -1116,16 +1149,21 @@ impl<'a> JsEmitter<'a> {
             Some(FnIdentity::Imported {
                 canonical,
                 local_alias: _,
+                exported_symbol,
             }) => {
                 let source_module = canonical.module.as_str();
-                let original = canonical.symbol.local_name();
-                // Look up the binding allocated during import emission.
+                // BindingAllocator is keyed by upstream mangled symbol so
+                // overload siblings (shared `original_name`, distinct
+                // `exported_symbol`) resolve to distinct bindings.
                 self.binding_alloc
                     .bindings
-                    .get(&(source_module.to_string(), original.clone()))
+                    .get(&(source_module.to_string(), exported_symbol.clone()))
                     .cloned()
-                    .unwrap_or_else(|| js_safe_name(&original))
+                    .unwrap_or_else(|| js_safe_name(exported_symbol))
             }
+            Some(FnIdentity::Local {
+                exported_symbol, ..
+            }) => js_safe_name(exported_symbol),
             Some(identity) => js_safe_name(identity.name()),
             None => format!("fn_{}", id.0),
         }
@@ -1154,6 +1192,13 @@ impl<'a> JsEmitter<'a> {
         format!("__krypton_raw${}", js_safe_name(name))
     }
 
+    fn module_uses_vec_literals(&self) -> bool {
+        self.module
+            .functions
+            .iter()
+            .any(|f| expr_has_make_vec(&f.body))
+    }
+
     /// Extract the sum type name from an IR type, if it names a known sum type.
     /// Returns the qualified key used in variant_lookup (e.g. "core/option/Option").
     fn sum_type_name_from_type(&self, ty: &krypton_ir::Type) -> Option<String> {
@@ -1174,9 +1219,11 @@ impl<'a> JsEmitter<'a> {
 
     fn emit_imports(&mut self) {
         // ── 1. Collect locally-defined names to seed the allocator ──
+        // JS has no native overloading, so we export each overload sibling
+        // under its mangled `exported_symbol` (e.g. `push`, `push$2`).
         let mut local_names: HashSet<String> = HashSet::new();
         for f in &self.module.functions {
-            local_names.insert(f.name.clone());
+            local_names.insert(f.exported_symbol.clone());
         }
         for ext in &self.module.extern_fns {
             if matches!(ext.target, krypton_ir::ExternTarget::Js { .. }) {
@@ -1197,15 +1244,20 @@ impl<'a> JsEmitter<'a> {
         local_names.insert("runMain".to_string());
         local_names.insert(Self::NULLABLE_SOME_ALIAS.to_string());
         local_names.insert(Self::NULLABLE_NONE_ALIAS.to_string());
+        local_names.insert(Self::VEC_BUILDER_NEW_ALIAS.to_string());
+        local_names.insert(Self::VEC_BUILDER_PUSH_ALIAS.to_string());
+        local_names.insert(Self::VEC_BUILDER_FREEZE_ALIAS.to_string());
 
         self.binding_alloc = BindingAllocator::new(local_names);
 
         // ── 2. Gather all import entries for allocation ──
 
-        // 2a. Krypton function imports (sorted by source_module, then original_name)
-        let mut fn_imports: Vec<(&str, &str, &str)> = Vec::new(); // (source_module, original, local_alias)
+        // 2a. Krypton function imports (sorted by source_module, then
+        // exported_symbol). Key by `exported_symbol` — overload siblings
+        // share `original_name` but have distinct `exported_symbol`s.
+        let mut fn_imports: Vec<(&str, &str, &str)> = Vec::new(); // (source_module, exported_symbol, local_alias)
         for imp in &self.module.imported_fns {
-            fn_imports.push((&imp.source_module, &imp.original_name, &imp.name));
+            fn_imports.push((&imp.source_module, &imp.exported_symbol, &imp.name));
         }
         fn_imports.sort_by(|a, b| a.0.cmp(b.0).then(a.1.cmp(b.1)));
         fn_imports.dedup();
@@ -1413,6 +1465,18 @@ impl<'a> JsEmitter<'a> {
             self.writeln(&format!(
                 "import {{ KryptonPanic }} from '{}';",
                 runtime_path
+            ));
+        }
+
+        if self.module_uses_vec_literals() {
+            let builder_path =
+                self.resolve_extern_js_path("../extern/js/array-builder.mjs", "core/vec");
+            self.writeln(&format!(
+                "import {{ builderNew as {}, builderPush as {}, builderFreeze as {} }} from '{}';",
+                Self::VEC_BUILDER_NEW_ALIAS,
+                Self::VEC_BUILDER_PUSH_ALIAS,
+                Self::VEC_BUILDER_FREEZE_ALIAS,
+                builder_path,
             ));
         }
 
@@ -1668,7 +1732,7 @@ impl<'a> JsEmitter<'a> {
         let dict_count = self
             .module
             .fn_dict_requirements
-            .get(&ext.name)
+            .get(&ext.id)
             .map(|r| r.len())
             .unwrap_or(0);
         let dict_params: Vec<String> = (0..dict_count).map(|i| format!("dict{i}")).collect();
@@ -1711,7 +1775,7 @@ impl<'a> JsEmitter<'a> {
         let dict_count = self
             .module
             .fn_dict_requirements
-            .get(&ext.name)
+            .get(&ext.id)
             .map(|r| r.len())
             .unwrap_or(0);
         let dict_params: Vec<String> = (0..dict_count).map(|i| format!("dict{i}")).collect();
@@ -1777,7 +1841,7 @@ impl<'a> JsEmitter<'a> {
         let async_prefix = if is_async { "async " } else { "" };
         self.writeln(&format!(
             "export {async_prefix}function {}({}) {{",
-            js_safe_name(&func.name),
+            js_safe_name(&func.exported_symbol),
             param_names.join(", ")
         ));
         self.indent += 1;
@@ -2307,8 +2371,13 @@ impl<'a> JsEmitter<'a> {
                 self.write(&format!("{factory_name}({})", args.join(", ")));
             }
             SimpleExprKind::MakeVec { elements, .. } => {
-                let elems: Vec<String> = elements.iter().map(|a| self.emit_atom(a)).collect();
-                self.write(&format!("[{}]", elems.join(", ")));
+                let mut expr = format!("{}()", Self::VEC_BUILDER_NEW_ALIAS);
+                for elem in elements {
+                    let e = self.emit_atom(elem);
+                    expr = format!("{}({}, {})", Self::VEC_BUILDER_PUSH_ALIAS, expr, e);
+                }
+                expr = format!("{}({})", Self::VEC_BUILDER_FREEZE_ALIAS, expr);
+                self.write(&expr);
             }
         }
     }
@@ -2694,6 +2763,7 @@ mod tests {
         module.imported_fns.push(ImportedFnDef {
             id: FnId(2),
             name: "parse_int".to_string(),
+            exported_symbol: "parse_int".to_string(),
             source_module: "stringlib".to_string(),
             original_name: "parse_int".to_string(),
             param_types: vec![Type::String],
@@ -2805,6 +2875,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
             extern_fn,
             krypton_ir::FnIdentity::Local {
                 name: "println".to_string(),
+                exported_symbol: "println".to_string(),
             },
         );
         module.extern_fns.push(ExternFnDef {
@@ -2825,6 +2896,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
         module.functions.push(FnDef {
             id: FnId(0),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(
@@ -2857,6 +2929,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
             extern_fn,
             krypton_ir::FnIdentity::Local {
                 name: "println".to_string(),
+                exported_symbol: "println".to_string(),
             },
         );
         module.extern_fns.push(ExternFnDef {
@@ -2877,6 +2950,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
         module.functions.push(FnDef {
             id: FnId(0),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![],
             return_type: Type::Int,
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
@@ -2933,6 +3007,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
         module.imported_fns.push(ImportedFnDef {
             id: FnId(1),
             name: "compute".to_string(),
+            exported_symbol: "compute".to_string(),
             source_module: "helpers_a".to_string(),
             original_name: "compute".to_string(),
             param_types: vec![],
@@ -2941,6 +3016,7 @@ fun main() = { let _ = render_key[String]("hi"); () }
         module.imported_fns.push(ImportedFnDef {
             id: FnId(2),
             name: "compute_2".to_string(),
+            exported_symbol: "compute".to_string(),
             source_module: "helpers_b".to_string(),
             original_name: "compute".to_string(),
             param_types: vec![],

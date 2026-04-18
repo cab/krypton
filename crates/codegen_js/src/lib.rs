@@ -116,6 +116,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "add".to_string(),
+            exported_symbol: "add".to_string(),
             params: vec![(x, Type::Int), (y, Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -135,6 +136,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "add".to_string(),
+                exported_symbol: "add".to_string(),
             },
         );
 
@@ -280,6 +282,7 @@ mod tests {
         module.imported_fns.push(ImportedFnDef {
             id: FnId(10),
             name: "helper".to_string(),
+            exported_symbol: "helper".to_string(),
             source_module: "utils".to_string(),
             original_name: "helper".to_string(),
             param_types: vec![Type::Int],
@@ -288,6 +291,7 @@ mod tests {
         module.imported_fns.push(ImportedFnDef {
             id: FnId(11),
             name: "format".to_string(),
+            exported_symbol: "format".to_string(),
             source_module: "utils".to_string(),
             original_name: "format".to_string(),
             param_types: vec![Type::String],
@@ -309,6 +313,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "filter".to_string(),
+            exported_symbol: "filter".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
@@ -317,11 +322,13 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "filter".to_string(),
+                exported_symbol: "filter".to_string(),
             },
         );
         module.imported_fns.push(ImportedFnDef {
             id: FnId(1),
             name: "list_filter".to_string(),
+            exported_symbol: "filter".to_string(),
             source_module: "core/list".to_string(),
             original_name: "filter".to_string(),
             param_types: vec![],
@@ -331,6 +338,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "list_filter".to_string(),
+                exported_symbol: "list_filter".to_string(),
             },
         );
 
@@ -354,6 +362,7 @@ mod tests {
         module.imported_fns.push(ImportedFnDef {
             id: FnId(10),
             name: "Ok".to_string(),
+            exported_symbol: "Ok".to_string(),
             source_module: "core/result".to_string(),
             original_name: "Ok".to_string(),
             param_types: vec![],
@@ -375,6 +384,7 @@ mod tests {
         module.imported_fns.push(ImportedFnDef {
             id: FnId(10),
             name: "helper".to_string(),
+            exported_symbol: "helper".to_string(),
             source_module: "util".to_string(),
             original_name: "helper".to_string(),
             param_types: vec![],
@@ -396,6 +406,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "combine".to_string(),
+            exported_symbol: "combine".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
@@ -404,11 +415,13 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "combine".to_string(),
+                exported_symbol: "combine".to_string(),
             },
         );
         module.imported_fns.push(ImportedFnDef {
             id: FnId(0), // same FnId — IR lowerer reuses it
             name: "combine".to_string(),
+            exported_symbol: "combine".to_string(),
             source_module: "semigroup".to_string(),
             original_name: "combine".to_string(),
             param_types: vec![],
@@ -461,6 +474,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "answer".to_string(),
+            exported_symbol: "answer".to_string(),
             params: vec![],
             return_type: Type::Int,
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(42)))),
@@ -469,6 +483,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "answer".to_string(),
+                exported_symbol: "answer".to_string(),
             },
         );
 
@@ -485,6 +500,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "greeting".to_string(),
+            exported_symbol: "greeting".to_string(),
             params: vec![],
             return_type: Type::String,
             body: expr(
@@ -496,6 +512,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "greeting".to_string(),
+                exported_symbol: "greeting".to_string(),
             },
         );
 
@@ -512,6 +529,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "yes".to_string(),
+            exported_symbol: "yes".to_string(),
             params: vec![],
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
@@ -520,6 +538,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "yes".to_string(),
+                exported_symbol: "yes".to_string(),
             },
         );
 
@@ -536,6 +555,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "noop".to_string(),
+            exported_symbol: "noop".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
@@ -544,6 +564,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "noop".to_string(),
+                exported_symbol: "noop".to_string(),
             },
         );
 
@@ -591,6 +612,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![(x, Type::Int), (y, Type::Int)],
             return_type: Type::Bool,
             body: expr(
@@ -626,6 +648,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -652,6 +675,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(1),
             name: "Eq$$Point$$eq".to_string(),
+            exported_symbol: "Eq$$Point$$eq".to_string(),
             params: vec![],
             return_type: Type::Bool,
             body: expr(Type::Bool, ExprKind::Atom(Atom::Lit(Literal::Bool(true)))),
@@ -660,6 +684,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "Eq$$Point$$eq".to_string(),
+                exported_symbol: "Eq$$Point$$eq".to_string(),
             },
         );
         module.instances.push(InstanceDef {
@@ -679,6 +704,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![
                 (x, Type::Named("Point".to_string(), vec![])),
                 (y, Type::Named("Point".to_string(), vec![])),
@@ -717,6 +743,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -742,6 +769,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![
                 (
                     dict,
@@ -772,6 +800,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -791,6 +820,7 @@ mod tests {
             panic_fn,
             FnIdentity::Local {
                 name: "panic".to_string(),
+                exported_symbol: "panic".to_string(),
             },
         );
         let msg = VarId(0);
@@ -798,6 +828,7 @@ mod tests {
         module.functions.push(FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![(msg, Type::String)],
             return_type: Type::Unit,
             body: expr(
@@ -817,6 +848,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -841,6 +873,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(1),
             name: "Eq$$Point$$eq".to_string(),
+            exported_symbol: "Eq$$Point$$eq".to_string(),
             params: vec![],
             return_type: Type::Bool,
             body: expr(
@@ -852,6 +885,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "Eq$$Point$$eq".to_string(),
+                exported_symbol: "Eq$$Point$$eq".to_string(),
             },
         );
         module.instances.push(InstanceDef {
@@ -901,6 +935,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(2),
             name: "Show$$Option$$show".to_string(),
+            exported_symbol: "Show$$Option$$show".to_string(),
             params: vec![],
             return_type: Type::String,
             body: expr(
@@ -914,6 +949,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "Show$$Option$$show".to_string(),
+                exported_symbol: "Show$$Option$$show".to_string(),
             },
         );
         module.instances.push(InstanceDef {
@@ -955,6 +991,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(
@@ -981,6 +1018,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -1001,6 +1039,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(2),
             name: "Eq$$Pair$$eq".to_string(),
+            exported_symbol: "Eq$$Pair$$eq".to_string(),
             params: vec![],
             return_type: Type::Bool,
             body: expr(
@@ -1012,6 +1051,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "Eq$$Pair$$eq".to_string(),
+                exported_symbol: "Eq$$Pair$$eq".to_string(),
             },
         );
         module.instances.push(InstanceDef {
@@ -1028,6 +1068,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![],
             return_type: Type::Unit,
             body: expr(
@@ -1054,6 +1095,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -1081,6 +1123,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(2),
             name: "Show$$Option$$show".to_string(),
+            exported_symbol: "Show$$Option$$show".to_string(),
             params: vec![],
             return_type: Type::String,
             body: expr(
@@ -1094,6 +1137,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "Show$$Option$$show".to_string(),
+                exported_symbol: "Show$$Option$$show".to_string(),
             },
         );
         module.instances.push(InstanceDef {
@@ -1112,6 +1156,7 @@ mod tests {
         module.functions.push(krypton_ir::FnDef {
             id: FnId(0),
             name: "test_fn".to_string(),
+            exported_symbol: "test_fn".to_string(),
             params: vec![(d_var, Type::Unit)],
             return_type: Type::Unit,
             body: expr(
@@ -1136,6 +1181,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "test_fn".to_string(),
+                exported_symbol: "test_fn".to_string(),
             },
         );
 
@@ -1227,6 +1273,7 @@ mod tests {
         actor_mod.functions.push(FnDef {
             id: FnId(1),
             name: "receive".to_string(),
+            exported_symbol: "receive".to_string(),
             params: vec![(VarId(0), Type::Named("Mailbox".into(), vec![]))],
             return_type: Type::Int,
             body: expr(
@@ -1246,6 +1293,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "receive".to_string(),
+                exported_symbol: "receive".to_string(),
             },
         );
 
@@ -1254,6 +1302,7 @@ mod tests {
         app_mod.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "receive".to_string(),
+            exported_symbol: "receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "receive".to_string(),
             param_types: vec![Type::Named("Mailbox".into(), vec![])],
@@ -1267,12 +1316,14 @@ mod tests {
                     symbol: LocalSymbolKey::Function("receive".into()),
                 },
                 local_alias: "receive".to_string(),
+                exported_symbol: "receive".to_string(),
             },
         );
         // non_suspending() — a plain function
         app_mod.functions.push(FnDef {
             id: FnId(1),
             name: "non_suspending".to_string(),
+            exported_symbol: "non_suspending".to_string(),
             params: vec![],
             return_type: Type::Int,
             body: expr(Type::Int, ExprKind::Atom(Atom::Lit(Literal::Int(0)))),
@@ -1281,12 +1332,14 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "non_suspending".to_string(),
+                exported_symbol: "non_suspending".to_string(),
             },
         );
         // main(mb) calls receive(mb)
         app_mod.functions.push(FnDef {
             id: FnId(2),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![(VarId(0), Type::Named("Mailbox".into(), vec![]))],
             return_type: Type::Int,
             body: expr(
@@ -1306,6 +1359,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "main".to_string(),
+                exported_symbol: "main".to_string(),
             },
         );
 
@@ -1379,6 +1433,7 @@ mod tests {
         actor_mod.functions.push(FnDef {
             id: FnId(1),
             name: "recv".to_string(),
+            exported_symbol: "recv".to_string(),
             params: vec![(VarId(0), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1398,6 +1453,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "recv".to_string(),
+                exported_symbol: "recv".to_string(),
             },
         );
 
@@ -1406,6 +1462,7 @@ mod tests {
         app_mod.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "recv".to_string(),
+            exported_symbol: "recv".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "recv".to_string(),
             param_types: vec![Type::Int],
@@ -1419,6 +1476,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("recv".into()),
                 },
                 local_alias: "recv".to_string(),
+                exported_symbol: "recv".to_string(),
             },
         );
         // suspending_fn(cap, x) — local fn that calls imported recv
@@ -1426,6 +1484,7 @@ mod tests {
         app_mod.functions.push(FnDef {
             id: FnId(1),
             name: "suspending_fn".to_string(),
+            exported_symbol: "suspending_fn".to_string(),
             params: vec![(VarId(0), Type::Int), (VarId(1), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1445,12 +1504,14 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "suspending_fn".to_string(),
+                exported_symbol: "suspending_fn".to_string(),
             },
         );
         // wrapper(mb) { let cls = MakeClosure(suspending_fn, [mb]); let r = CallClosure(cls, [42]); r }
         app_mod.functions.push(FnDef {
             id: FnId(2),
             name: "wrapper".to_string(),
+            exported_symbol: "wrapper".to_string(),
             params: vec![(VarId(10), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1481,6 +1542,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "wrapper".to_string(),
+                exported_symbol: "wrapper".to_string(),
             },
         );
 
@@ -1543,6 +1605,7 @@ mod tests {
         actor_mod.functions.push(FnDef {
             id: FnId(1),
             name: "recv".to_string(),
+            exported_symbol: "recv".to_string(),
             params: vec![(VarId(0), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1562,6 +1625,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "recv".to_string(),
+                exported_symbol: "recv".to_string(),
             },
         );
 
@@ -1570,6 +1634,7 @@ mod tests {
         app_mod.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "recv".to_string(),
+            exported_symbol: "recv".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "recv".to_string(),
             param_types: vec![Type::Int],
@@ -1583,6 +1648,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("recv".into()),
                 },
                 local_alias: "recv".to_string(),
+                exported_symbol: "recv".to_string(),
             },
         );
         // main(x): LetJoin j(y) = recv(y); in Jump(j, x)
@@ -1590,6 +1656,7 @@ mod tests {
         app_mod.functions.push(FnDef {
             id: FnId(1),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![(VarId(0), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1624,6 +1691,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "main".to_string(),
+                exported_symbol: "main".to_string(),
             },
         );
 

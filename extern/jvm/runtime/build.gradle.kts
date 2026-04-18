@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     api("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    api("org.organicdesign:Paguro:3.10.3")
 }
 
 tasks.jar {

@@ -87,23 +87,15 @@ public class KryptonMap {
     }
 
     public static KryptonArray staticKeys(KryptonMap map) {
-        KryptonArray arr = new KryptonArray(map.data.size());
-        int i = 0;
+        java.util.ArrayList<Object> keys = new java.util.ArrayList<>(map.data.size());
         for (HashedKey k : map.data.keySet()) {
-            arr.set(i++, k.key);
+            keys.add(k.key);
         }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(keys);
     }
 
     public static KryptonArray staticValues(KryptonMap map) {
-        KryptonArray arr = new KryptonArray(map.data.size());
-        int i = 0;
-        for (Object v : map.data.values()) {
-            arr.set(i++, v);
-        }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(map.data.values());
     }
 
     public static long staticSize(KryptonMap map) {

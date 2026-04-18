@@ -816,16 +816,32 @@ impl ModuleInferenceState {
                     ));
                 }
                 if found_fn {
-                    let mut seen = std::collections::HashSet::new();
                     let candidates: Vec<_> = self
                         .imports
                         .get_by_name(&effective_name)
-                        .filter(|f| seen.insert(f.qualified_name.clone()))
                         .map(|f| (f.scheme.clone(), f.origin.clone(), f.qualified_name.clone()))
                         .collect();
                     let reexport_def_span =
                         self.env.get_def_span(&effective_name).map(|d| d.span);
                     for (scheme, origin, qualified_name) in candidates {
+                        // Dedup key is (qualified_name, normalized param types):
+                        // the param types distinguish overloads that share a
+                        // canonical qualified name, and the qualified name
+                        // distinguishes cross-module entries. A pure-name key
+                        // would collapse overloads; a pure-qualified-name key
+                        // would double-count when a single overload is reached
+                        // via multiple re-export statements in this module.
+                        let new_params = crate::overload::fn_param_types(&scheme.ty);
+                        let already_reexported =
+                            self.reexported_fn_types.iter().any(|ef| {
+                                ef.name == effective_name
+                                    && ef.qualified_name.as_ref() == Some(&qualified_name)
+                                    && crate::overload::fn_param_types(&ef.scheme.ty)
+                                        == new_params
+                            });
+                        if already_reexported {
+                            continue;
+                        }
                         self.reexported_fn_types.push(typed_ast::ExportedFn {
                             name: effective_name.clone(),
                             scheme,

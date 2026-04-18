@@ -199,6 +199,13 @@ pub(super) struct CodegenTypeInfo {
     pub(super) tuple_info: HashMap<usize, TupleInfo>,
     pub(super) functions: HashMap<String, Vec<FunctionInfo>>,
     pub(super) fn_tc_types: HashMap<String, (Vec<Type>, Type)>,
+    /// FnId-keyed function info — primary dispatch path for call sites.
+    /// Mirrors `functions` but avoids collapsing overload siblings that
+    /// share a name. Populated alongside `functions` during registration.
+    pub(super) fn_info_by_id: HashMap<krypton_ir::FnId, FunctionInfo>,
+    /// FnId-keyed typechecker parameter/return types. Mirrors `fn_tc_types`
+    /// with overload-safe keying.
+    pub(super) fn_tc_types_by_id: HashMap<krypton_ir::FnId, (Vec<Type>, Type)>,
     /// Cross-module sum type references: bare_name → class_index.
     /// These only carry the class index (no variant info) since the defining
     /// module emits the actual bytecode.
@@ -209,6 +216,16 @@ impl CodegenTypeInfo {
     /// Get the first (or only) function info for a name.
     pub(super) fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
         self.functions.get(name).and_then(|v| v.first())
+    }
+
+    /// Resolve a call site's `FnId` to its registered FunctionInfo.
+    /// Overload-safe — unlike `get_function`, this does not collapse
+    /// siblings sharing a bare name.
+    pub(super) fn get_function_by_id(
+        &self,
+        fn_id: krypton_ir::FnId,
+    ) -> Option<&FunctionInfo> {
+        self.fn_info_by_id.get(&fn_id)
     }
 
     pub(super) fn jvm_type_descriptor(&self, ty: JvmType) -> String {
@@ -251,7 +268,8 @@ pub(super) struct ExternTraitBridgeInfo {
 pub(super) struct TraitState {
     pub(super) trait_dispatch: HashMap<TraitName, TraitDispatchInfo>,
     pub(super) instance_singletons: HashMap<(TraitName, Vec<Type>), InstanceSingletonInfo>,
-    pub(super) impl_dict_requirements: HashMap<String, Vec<DictRequirement>>,
+    /// FnId-keyed: overload siblings track distinct constraint sets.
+    pub(super) impl_dict_requirements: HashMap<krypton_ir::FnId, Vec<DictRequirement>>,
     pub(super) dict_locals: HashMap<(TraitName, Vec<TypeVarId>), u16>,
     pub(super) parameterized_instances: HashMap<TraitName, Vec<ParameterizedInstanceInfo>>,
     pub(super) extern_trait_bridges: HashMap<TraitName, ExternTraitBridgeInfo>,
@@ -301,12 +319,13 @@ pub(super) struct ParameterizedInstanceInfo {
     pub(super) requirements: Vec<DictRequirement>,
 }
 
-/// Info about the Vec backing class (KryptonArray).
+/// Info about the VecBuilder backing class (KryptonArrayBuilder).
 #[derive(Clone)]
-pub(super) struct VecInfo {
-    pub(super) init_ref: u16,
-    pub(super) set_ref: u16,
-    pub(super) freeze_ref: u16,
+pub(super) struct VecBuilderInfo {
+    pub(super) builder_class_index: u16,
+    pub(super) builder_new_ref: u16,
+    pub(super) builder_push_ref: u16,
+    pub(super) builder_freeze_ref: u16,
 }
 
 /// Info about a join point (local continuation) for IR compilation.
@@ -325,7 +344,7 @@ pub(super) struct Compiler<'link> {
     pub(super) lambda: LambdaState,
     pub(super) types: CodegenTypeInfo,
     pub(super) traits: TraitState,
-    pub(super) vec_info: Option<VecInfo>,
+    pub(super) vec_builder_info: Option<VecBuilderInfo>,
     // IR compilation state
     pub(super) var_locals: HashMap<krypton_ir::VarId, (u16, JvmType)>,
     /// Slots pre-allocated for resource variables (null-initialized at function entry
@@ -480,6 +499,8 @@ impl<'link> Compiler<'link> {
                 extern_sum_class_indices: HashMap::new(),
                 functions: HashMap::new(),
                 fn_tc_types: HashMap::new(),
+                fn_info_by_id: HashMap::new(),
+                fn_tc_types_by_id: HashMap::new(),
             },
             traits: TraitState {
                 trait_dispatch: HashMap::new(),
@@ -489,7 +510,7 @@ impl<'link> Compiler<'link> {
                 parameterized_instances: HashMap::new(),
                 extern_trait_bridges: HashMap::new(),
             },
-            vec_info: None,
+            vec_builder_info: None,
             var_locals: HashMap::new(),
             pre_allocated_slots: HashMap::new(),
             var_types: HashMap::new(),
@@ -786,26 +807,6 @@ impl<'link> Compiler<'link> {
         self.pre_allocated_slots.clear();
         self.var_types.clear();
         self.join_points.clear();
-    }
-
-    pub(super) fn emit_int_const(&mut self, n: i32) -> Result<(), CodegenError> {
-        match n {
-            0 => self.builder.emit(Instruction::Iconst_0),
-            1 => self.builder.emit(Instruction::Iconst_1),
-            2 => self.builder.emit(Instruction::Iconst_2),
-            3 => self.builder.emit(Instruction::Iconst_3),
-            4 => self.builder.emit(Instruction::Iconst_4),
-            5 => self.builder.emit(Instruction::Iconst_5),
-            _ => {
-                let idx = self.cp.add_integer(n)?;
-                if idx <= 255 {
-                    self.builder.emit(Instruction::Ldc(idx as u8));
-                } else {
-                    self.builder.emit(Instruction::Ldc_w(idx));
-                }
-            }
-        }
-        Ok(())
     }
 
     // -----------------------------------------------------------------------
@@ -1234,6 +1235,13 @@ impl<'link> Compiler<'link> {
             SimpleExprKind::PrimOp { op, args } => self.compile_ir_primop(*op, args),
 
             SimpleExprKind::Call { func, args } => {
+                // Prefer FnIdentity (overload-safe) for the intrinsic check;
+                // fall back to fn_names for the struct/variant checks that
+                // legitimately key by bare name (those don't overload).
+                let is_intrinsic = matches!(
+                    _ir_module.fn_identities.get(func),
+                    Some(krypton_ir::FnIdentity::Intrinsic { .. })
+                );
                 let name = self
                     .fn_names
                     .get(func)
@@ -1246,7 +1254,9 @@ impl<'link> Compiler<'link> {
                     .clone();
 
                 // Intrinsics
-                if name == "panic" || name == "todo" || name == "unreachable" {
+                if is_intrinsic
+                    && (name == "panic" || name == "todo" || name == "unreachable")
+                {
                     let re_class = self.builder.refs.runtime_exception_class;
                     let re_init = self.builder.refs.runtime_exception_init;
                     self.builder.emit_new_dup(re_class);
@@ -1305,9 +1315,11 @@ impl<'link> Compiler<'link> {
                 // Static call (user-defined function)
                 // The IR already includes dict args at the front of the args list,
                 // so we just compile all args in order — no need for emit_dict_argument_for_type.
+                // FnId-keyed dispatch so overload siblings with the same bare
+                // name resolve to their own distinct FunctionInfo.
                 let info = self
                     .types
-                    .get_function(&name)
+                    .get_function_by_id(*func)
                     .ok_or_else(|| CodegenError::UndefinedVariable(name.clone(), None))?;
                 let param_types = info.param_types.clone();
                 let return_type = info.return_type;
@@ -1544,8 +1556,9 @@ impl<'link> Compiler<'link> {
                         });
                 }
 
-                // Check if the target function exists
-                if let Some(info) = self.types.get_function(&func_name) {
+                // Check if the target function exists (FnId-keyed to pick
+                // the right overload sibling).
+                if let Some(info) = self.types.get_function_by_id(*func) {
                     let target_param_types = info.param_types.clone();
                     let target_return_type = info.return_type;
                     let target_is_void = info.is_void;
@@ -1934,51 +1947,40 @@ impl<'link> Compiler<'link> {
                     })?
                     .class_index;
                 let info = self
-                    .vec_info
+                    .vec_builder_info
                     .as_ref()
                     .ok_or_else(|| {
-                        CodegenError::TypeError("Vec info not registered".to_string(), None)
+                        CodegenError::TypeError(
+                            "VecBuilder info not registered".to_string(),
+                            None,
+                        )
                     })?
                     .clone();
+                let builder_vtype = VerificationType::Object {
+                    cpool_index: info.builder_class_index,
+                };
                 let arr_vtype = VerificationType::Object {
                     cpool_index: vec_class,
                 };
 
-                let new_offset = self.builder.current_offset();
-                self.builder.emit(Instruction::New(vec_class));
                 self.builder
-                    .frame
-                    .push_type(VerificationType::Uninitialized { offset: new_offset });
-                self.builder.emit(Instruction::Dup);
-                self.builder
-                    .frame
-                    .push_type(VerificationType::Uninitialized { offset: new_offset });
-                self.emit_int_const(elements.len() as i32)?;
-                self.builder.frame.push_type(VerificationType::Integer);
-                self.builder.emit(Instruction::Invokespecial(info.init_ref));
-                self.builder.frame.pop_type();
-                self.builder.frame.pop_type();
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(arr_vtype.clone());
+                    .emit(Instruction::Invokestatic(info.builder_new_ref));
+                self.builder.frame.push_type(builder_vtype.clone());
 
-                for (i, elem) in elements.iter().enumerate() {
-                    self.builder.emit(Instruction::Dup);
-                    self.builder.frame.push_type(arr_vtype.clone());
-                    self.emit_int_const(i as i32)?;
-                    self.builder.frame.push_type(VerificationType::Integer);
+                for elem in elements.iter() {
                     let elem_type = self.compile_ir_atom(elem)?;
                     self.builder.box_if_needed(elem_type);
-                    self.builder.emit(Instruction::Invokevirtual(info.set_ref));
+                    self.builder
+                        .emit(Instruction::Invokestatic(info.builder_push_ref));
                     self.builder.frame.pop_type();
                     self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
+                    self.builder.frame.push_type(builder_vtype.clone());
                 }
 
-                self.builder.emit(Instruction::Dup);
-                self.builder.frame.push_type(arr_vtype);
                 self.builder
-                    .emit(Instruction::Invokevirtual(info.freeze_ref));
+                    .emit(Instruction::Invokestatic(info.builder_freeze_ref));
                 self.builder.frame.pop_type();
+                self.builder.frame.push_type(arr_vtype);
 
                 Ok(JvmType::StructRef(vec_class))
             }
@@ -2800,18 +2802,18 @@ impl<'link> Compiler<'link> {
 
         let info = self
             .types
-            .get_function(&fn_def.name)
+            .get_function_by_id(fn_def.id)
             .ok_or_else(|| CodegenError::UndefinedVariable(fn_def.name.clone(), None))?;
         let param_types = info.param_types.clone();
         let return_type = info.return_type;
 
-        let tc_types = self.types.fn_tc_types.get(&fn_def.name).cloned();
+        let tc_types = self.types.fn_tc_types_by_id.get(&fn_def.id).cloned();
 
         // Functions without trait constraints need no dict params
         let dict_requirements = self
             .traits
             .impl_dict_requirements
-            .get(&fn_def.name)
+            .get(&fn_def.id)
             .cloned()
             .unwrap_or_default();
         let num_dict_params = dict_requirements.len();
@@ -2897,7 +2899,7 @@ impl<'link> Compiler<'link> {
         // This ensures the JVM verifier sees valid Object types in these slots
         // at every PC in the exception table's protected range. Same pattern as
         // javac's try-with-resources: `R r = null; try { r = ...; } finally { ... }`
-        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
+        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.id) {
             for fc in finally_closes {
                 let slot = self
                     .builder
@@ -2934,7 +2936,7 @@ impl<'link> Compiler<'link> {
         self.builder.emit(ret_instr);
 
         // Emit finally handler for disposable auto-close on panic
-        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.name) {
+        if let Some(finally_closes) = ir_module.fn_exit_closes.get(&fn_def.id) {
             if !finally_closes.is_empty() {
                 self.emit_finally_handler(finally_closes, body_start, &handler_locals)?;
             }

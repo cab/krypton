@@ -19,13 +19,15 @@ import {
   runMain,
 } from '../src/actor.mjs';
 import {
-  staticFreeze as freeze,
   staticGet as get,
   staticLength as arrayLength,
-  staticNew as newArray,
   staticPush,
-  staticSet as set,
 } from '../src/array.mjs';
+import {
+  builderFreeze,
+  builderNew,
+  builderPush,
+} from '../src/array-builder.mjs';
 import { toFloat, toInt } from '../src/convert.mjs';
 import {
   raw_print,
@@ -90,6 +92,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const distDir = path.resolve(import.meta.dirname, '../dist');
 const stableDistFiles = [
   'actor.mjs',
+  'array-builder.mjs',
   'array.mjs',
   'convert.mjs',
   'io.mjs',
@@ -147,18 +150,23 @@ describe('panic', () => {
 });
 
 describe('array', () => {
-  it('supports mutable backing operations', () => {
-    const arr = newArray(3);
+  it('builds through the builder and freezes to immutable', () => {
+    const builder = builderNew<string>();
+    builderPush(builder, 'a');
+    builderPush(builder, 'b');
+    builderPush(builder, 'c');
+    const arr = builderFreeze(builder);
     expect(arrayLength(arr)).toBe(3);
-    set(arr, 0, 'a');
-    set(arr, 1, 'b');
-    set(arr, 2, 'c');
     expect(get(arr, 1)).toBe('b');
-    expect(freeze(arr)).toBe(arr);
   });
 
-  it('pushes immutably', () => {
-    expect(staticPush([1, 2], 3)).toEqual([1, 2, 3]);
+  it('push returns a persistent copy', () => {
+    const empty = builderFreeze(builderNew<number>());
+    const one = staticPush(empty, 1);
+    const two = staticPush(one, 2);
+    expect(arrayLength(empty)).toBe(0);
+    expect(arrayLength(two)).toBe(2);
+    expect(get(two, 1)).toBe(2);
   });
 });
 
@@ -180,7 +188,7 @@ describe('string', () => {
     expect(toUpper('HeLLo')).toBe('HELLO');
     expect(indexOf('banana', 'na')).toBe(2);
     expect(replaceStr('a-b-a', '-', ':')).toBe('a:b:a');
-    expect(split('a,b,c', ',')).toEqual(['a', 'b', 'c']);
+    expect(split('a,b,c', ',').toArray()).toEqual(['a', 'b', 'c']);
     expect(concat('a', 'b')).toBe('ab');
   });
 });
@@ -220,8 +228,8 @@ describe('io', () => {
 
 describe('json', () => {
   it('parses, serializes, and inspects values', () => {
-    expect(staticParse('{"ok":true}')).toEqual([true, { ok: true }]);
-    expect(staticParse('{')).toEqual([false, expect.any(String)]);
+    expect(staticParse('{"ok":true}').toArray()).toEqual([true, { ok: true }]);
+    expect(staticParse('{').toArray()).toEqual([false, expect.any(String)]);
     expect(staticSerialize({ ok: true })).toBe('{"ok":true}');
     expect(staticRawType(null)).toBe(0);
     expect(staticRawType(true)).toBe(1);
@@ -232,9 +240,9 @@ describe('json', () => {
     expect(staticRawBool(true)).toBe(true);
     expect(staticRawNum(4)).toBe(4);
     expect(staticRawStr('x')).toBe('x');
-    expect(staticRawArr([1, 2])).toEqual([1, 2]);
-    expect(staticRawEntryKeys({ a: 1, b: 2 })).toEqual(['a', 'b']);
-    expect(staticRawEntryValues({ a: 1, b: 2 })).toEqual([1, 2]);
+    expect(staticRawArr([1, 2]).toArray()).toEqual([1, 2]);
+    expect(staticRawEntryKeys({ a: 1, b: 2 }).toArray()).toEqual(['a', 'b']);
+    expect(staticRawEntryValues({ a: 1, b: 2 }).toArray()).toEqual([1, 2]);
   });
 
   it('builds raw values', () => {
@@ -262,8 +270,8 @@ describe('map', () => {
     expect(staticGetUnsafe(m3, 'a')).toBe(1);
     expect(staticContainsKey(m3, 'b')).toBe(true);
     expect(staticDelete(m3, 'a')).toEqual(new Map([['b', 2]]));
-    expect(staticKeys(m3)).toEqual(['a', 'b']);
-    expect(staticValues(m3)).toEqual([1, 2]);
+    expect(staticKeys(m3).toArray()).toEqual(['a', 'b']);
+    expect(staticValues(m3).toArray()).toEqual([1, 2]);
     expect(staticSize(m3)).toBe(2);
     expect(staticMerge(m2, new Map([['c', 3]]))).toEqual(
       new Map([
@@ -416,8 +424,16 @@ describe('dist artifacts', () => {
   });
 
   it('can be imported as esm runtime modules', async () => {
-    const prelude = await import('../dist/prelude.mjs');
-    const actor = await import('../dist/actor.mjs');
+    // @ts-expect-error — dist/ is a bundled artifact without .d.ts files
+    const prelude = (await import('../dist/prelude.mjs')) as Record<
+      string,
+      unknown
+    >;
+    // @ts-expect-error — dist/ is a bundled artifact without .d.ts files
+    const actor = (await import('../dist/actor.mjs')) as Record<
+      string,
+      unknown
+    >;
     expect(typeof prelude.toList).toBe('function');
     expect(typeof actor.runMain).toBe('function');
   });

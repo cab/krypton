@@ -127,10 +127,17 @@ pub struct ModuleInterface {
 }
 
 /// Summary of an exported function.
+///
+/// `exported_symbol` is the mangled wire-format name used by codegen to
+/// distinguish overload siblings at the module boundary. For non-overloaded
+/// functions it equals `name`. For a group of overloads sharing a name, the
+/// source-order mangling rule assigns the bare name to the earliest
+/// declaration and suffixes each subsequent one with `$2`, `$3`, ...
 #[derive(Clone, Debug)]
 pub struct ExportedFnSummary {
     pub key: LocalSymbolKey,
     pub name: String,
+    pub exported_symbol: String,
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
     pub def_span: Option<Span>,
@@ -313,9 +320,11 @@ fn extract_exported_fns(
     exported: &[ExportedFn],
     constructor_names: &HashMap<String, String>,
 ) -> Vec<ExportedFnSummary> {
+    let exported_symbols = mangle_overload_symbols(exported);
     exported
         .iter()
-        .map(|ef| {
+        .enumerate()
+        .map(|(i, ef)| {
             let key = if let Some(parent) = constructor_names.get(&ef.name) {
                 LocalSymbolKey::Constructor {
                     parent_type: parent.clone(),
@@ -327,12 +336,48 @@ fn extract_exported_fns(
             ExportedFnSummary {
                 key,
                 name: ef.name.clone(),
+                exported_symbol: exported_symbols[i].clone(),
                 scheme: ef.scheme.clone(),
                 origin: ef.origin.clone(),
                 def_span: ef.def_span,
             }
         })
         .collect()
+}
+
+/// Assign source-order mangled symbol names to an exported-fn slice.
+/// Entries sharing a bare name form an overload group; within a group,
+/// entries are sorted by `def_span` start offset (entries without a span
+/// sort last, preserving their relative declaration order as a tiebreaker).
+/// The group's earliest entry keeps the bare name; subsequent entries get
+/// `name$2`, `name$3`, ... Returns a parallel vector keyed to `exported`.
+fn mangle_overload_symbols(exported: &[ExportedFn]) -> Vec<String> {
+    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, ef) in exported.iter().enumerate() {
+        groups.entry(ef.name.as_str()).or_default().push(i);
+    }
+    let mut out = vec![String::new(); exported.len()];
+    for (name, indices) in groups {
+        if indices.len() == 1 {
+            out[indices[0]] = name.to_string();
+            continue;
+        }
+        let mut sorted = indices;
+        sorted.sort_by_key(|&i| {
+            (
+                exported[i].def_span.map(|(start, _)| start).unwrap_or(usize::MAX),
+                i,
+            )
+        });
+        for (rank, idx) in sorted.iter().enumerate() {
+            out[*idx] = if rank == 0 {
+                name.to_string()
+            } else {
+                format!("{name}${}", rank + 1)
+            };
+        }
+    }
+    out
 }
 
 fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {

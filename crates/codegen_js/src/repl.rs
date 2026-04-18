@@ -114,6 +114,7 @@ mod tests {
                     FnId(0),
                     FnIdentity::Local {
                         name: "__eval".into(),
+                        exported_symbol: "__eval".into(),
                     },
                 );
                 m
@@ -123,6 +124,7 @@ mod tests {
             functions: vec![FnDef {
                 id: FnId(0),
                 name: "__eval".into(),
+                exported_symbol: "__eval".into(),
                 params: vec![],
                 return_type: return_type.clone(),
                 body: Expr::new(

@@ -1,10 +1,25 @@
 use krypton_parser::ast::Span;
 
-use crate::typed_ast::{ResolvedBindingRef, TypedExpr, TypedExprKind};
+use crate::typed_ast::{OverloadSignature, ResolvedBindingRef, TypedExpr, TypedExprKind};
 use crate::types::{ParamMode, Substitution, Type, TypeVarGen};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
 use super::expr::{contains_type_var, DeferredOverload};
+
+/// Build an `OverloadSignature` from a (substitution-applied) function type,
+/// stripping any outer `Own` wrapper. Mirrors `expr::make_overload_signature`
+/// but without an inference context — deferred resolution operates on types
+/// that have already had the substitution applied.
+fn make_overload_signature_from(fn_ty: &Type) -> Option<OverloadSignature> {
+    match fn_ty {
+        Type::Fn(params, ret) => Some(OverloadSignature {
+            param_types: params.iter().map(|(_, t)| t.clone()).collect(),
+            return_type: (**ret).clone(),
+        }),
+        Type::Own(inner) => make_overload_signature_from(inner),
+        _ => None,
+    }
+}
 
 /// Resolve deferred overload calls after full body inference.
 ///
@@ -66,8 +81,11 @@ pub(super) fn resolve_deferred_overloads(
                     let param_modes = extract_param_modes(&resolved_func_ty);
 
                     // Patch the AST
-                    let resolved_ref =
-                        super::resolved_ref_from_binding_source(&winning.source);
+                    let overload_sig = make_overload_signature_from(&resolved_func_ty);
+                    let resolved_ref = super::resolved_ref_from_binding_source_with_overload(
+                        &winning.source,
+                        overload_sig,
+                    );
                     if let Some(body) = &mut fn_bodies[entry.owning_fn] {
                         patch_deferred_app(
                             body,

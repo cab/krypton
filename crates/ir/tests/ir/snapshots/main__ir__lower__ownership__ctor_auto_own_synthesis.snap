@@ -10,12 +10,12 @@ type ConnState = Open#0(~Socket) | Closed#1
 extern java "net.Socket" close_socket(~Socket) -> Unit
 extern type java "net.Socket" Socket
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -34,7 +34,7 @@ fn mk_closed() -> ~ConnState =
   let v4: ~ConnState = construct ConnState::Closed#1()
   v4
 
-fn identity(v5: o8) -> o8 =
+fn identity(v5: h9) -> h9 =
   v5
 
 fn mk_via_identity(v6: ~Socket) -> ~Conn =

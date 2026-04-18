@@ -7,12 +7,12 @@ module traits__constrained_instance_multi_bound_ok
 type Pair[a, b] = Pair#0(a, b)
 instance core/show.Show[Pair$$Var0$$Var1] { show=Show$$Pair$$Var0$$Var1$$show }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -35,5 +35,5 @@ fn main() -> Unit =
   let v7: Bool = trait_call core/eq.Eq.eq(v1, v6, "pair")
   jump v10(v7)
 
-fn Show$$Pair$$Var0$$Var1$$show(v11: Dict[core/eq.Eq, j8], v12: Dict[core/show.Show, k8], v13: Pair[j8, k8]) -> String =
+fn Show$$Pair$$Var0$$Var1$$show(v11: Dict[core/eq.Eq, c9], v12: Dict[core/show.Show, d9], v13: Pair[c9, d9]) -> String =
   "pair"

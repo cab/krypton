@@ -3,11 +3,12 @@ use std::rc::Rc;
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
 use krypton_typechecker::link_context::LinkContext;
+use krypton_typechecker::overload::types_overlap;
 use krypton_typechecker::typed_ast::{
     self as typed_ast, AutoCloseBinding, AutoCloseInfo, ExportedTypeKind, FnTypeEntry,
-    QualifiedName, ResolvedBindingRef, ResolvedCallableRef, ResolvedConstructorRef,
-    ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, ScopeId, TraitName, TypedExpr,
-    TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
+    OverloadSignature, QualifiedName, ResolvedBindingRef, ResolvedCallableRef,
+    ResolvedConstructorRef, ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, ScopeId,
+    TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
 use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
 
@@ -631,10 +632,16 @@ struct LowerCtx {
     type_var_gen: TypeVarGen,
     /// name → stack of VarIds (supports nested scopes)
     var_scope: HashMap<String, Vec<VarId>>,
-    /// top-level function name → FnId
-    fn_ids: HashMap<String, FnId>,
-    /// Canonical qualified name → FnId for resolved callable lookup.
-    callable_ids: HashMap<QualifiedName, FnId>,
+    /// top-level function name → overload candidates. Most names map to a
+    /// singleton vec; names with top-level overloading (e.g. two `push`
+    /// overloads in core/vec) map to multiple entries. The key in each tuple
+    /// is a canonical parameter-type list (ParamMode stripped, polymorphic
+    /// vars preserved) used with `types_overlap` to disambiguate. Lifted
+    /// synthetics have unique names and carry an empty key.
+    fn_ids: HashMap<String, Vec<(Vec<Type>, FnId)>>,
+    /// Canonical qualified name → overload candidates. Mirrors `fn_ids` but
+    /// keyed by the fully qualified name. Same shape/rules.
+    callable_ids: HashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
     /// Resolved type ref → ordered fields with resolved types
     struct_fields: HashMap<ResolvedTypeRef, Vec<(String, Type)>>,
     /// Resolved type ref → ordered declared type-parameter vars. Paired with
@@ -681,8 +688,9 @@ struct LowerCtx {
     /// accumulate into fn_exit_closes at function end so the function-wide
     /// finally handler pre-allocates slots and handles exception unwinds.
     fn_block_scoped_closes: Vec<FinallyClose>,
-    /// Accumulated fn_exit_closes for the module (fn_name → disposables to close on unwind)
-    fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
+    /// Accumulated fn_exit_closes for the module (FnId → disposables to close on unwind).
+    /// Keyed by FnId so overload siblings track independently.
+    fn_exit_closes: HashMap<FnId, Vec<FinallyClose>>,
     /// Module path of the module being lowered (for filtering local dict refs).
     module_path: String,
     /// All known instances with source module and target type info,
@@ -981,8 +989,66 @@ impl LowerCtx {
         self.var_scope.get(name).and_then(|s| s.last().copied())
     }
 
-    fn lookup_callable(&self, qn: &QualifiedName) -> Option<FnId> {
-        self.callable_ids.get(qn).copied()
+    /// Resolve a qualified callable ref to an FnId, using `sig` to pick
+    /// among overloads. Single-candidate groups resolve without consulting
+    /// `sig`. Multi-candidate groups require `sig` — an absent signature on
+    /// a multi-candidate group is an ICE because the typechecker must
+    /// publish `OverloadSignature` on `ResolvedCallableRef` whenever it
+    /// chose among overloads.
+    fn lookup_callable(
+        &self,
+        qn: &QualifiedName,
+        sig: Option<&OverloadSignature>,
+    ) -> Option<FnId> {
+        let candidates = self.callable_ids.get(qn)?;
+        if candidates.len() == 1 {
+            return Some(candidates[0].1);
+        }
+        let sig = sig.unwrap_or_else(|| {
+            panic!(
+                "ICE: callable `{}` has {} overload candidates but resolver provided no signature",
+                qn.local_name,
+                candidates.len()
+            )
+        });
+        for (stored_params, fn_id) in candidates {
+            if types_overlap(stored_params, &sig.param_types) {
+                return Some(*fn_id);
+            }
+        }
+        None
+    }
+
+    /// Insert an FnId into `fn_ids` (by name) and `callable_ids` (by
+    /// qualified name). `sig_key` is the canonical parameter-type list used
+    /// to disambiguate overloads. Singletons (externs, intrinsics, lifted
+    /// synthetics) pass an empty vec.
+    fn insert_fn_id(
+        &mut self,
+        name: String,
+        qn: QualifiedName,
+        sig_key: Vec<Type>,
+        fn_id: FnId,
+    ) {
+        self.fn_ids
+            .entry(name)
+            .or_default()
+            .push((sig_key.clone(), fn_id));
+        self.callable_ids
+            .entry(qn)
+            .or_default()
+            .push((sig_key, fn_id));
+    }
+
+    /// Insert a synthetic FnId under a unique generated name (lifted
+    /// lambdas, constructor wrappers, fn-ref wrappers, trait-ref wrappers).
+    /// The name is guaranteed unique by the lifting scheme so there's no
+    /// overload group to disambiguate.
+    fn insert_synthetic_fn_id(&mut self, name: String, fn_id: FnId) {
+        self.fn_ids
+            .entry(name)
+            .or_default()
+            .push((Vec::new(), fn_id));
     }
 
     /// Emit close() calls for a list of AutoCloseBindings, wrapping `inner`.
@@ -1627,11 +1693,12 @@ impl LowerCtx {
         self.lifted_fns.push(FnDef {
             id: fn_id,
             name: lifted_name.clone(),
+            exported_symbol: lifted_name.clone(),
             params,
             return_type: return_type.into(),
             body,
         });
-        self.fn_ids.insert(lifted_name, fn_id);
+        self.insert_synthetic_fn_id(lifted_name, fn_id);
 
         Ok((
             vec![],
@@ -1704,11 +1771,12 @@ impl LowerCtx {
         self.lifted_fns.push(FnDef {
             id: fn_id,
             name: lifted_name.clone(),
+            exported_symbol: lifted_name.clone(),
             params,
             return_type: return_type.into(),
             body,
         });
-        self.fn_ids.insert(lifted_name, fn_id);
+        self.insert_synthetic_fn_id(lifted_name, fn_id);
 
         Ok((
             vec![],
@@ -1812,7 +1880,8 @@ impl LowerCtx {
                 // Function reference as value — wrap in MakeClosure
                 if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
                     let qn = callable_qualified_name(callable_ref, &self.module_path);
-                    let Some(fn_id) = self.lookup_callable(&qn) else {
+                    let sig = callable_overload_signature(callable_ref);
+                    let Some(fn_id) = self.lookup_callable(&qn, sig) else {
                         return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
                     // Functions without trait constraints have no entry
@@ -1867,7 +1936,8 @@ impl LowerCtx {
                 if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
                     // Constrained function reference with explicit type args
                     let qn = callable_qualified_name(callable_ref, &self.module_path);
-                    if let Some(fn_id) = self.lookup_callable(&qn) {
+                    let sig = callable_overload_signature(callable_ref);
+                    if let Some(fn_id) = self.lookup_callable(&qn, sig) {
                         // Functions without trait constraints have no entry
                         let constraints = self.fn_constraints.get(&qn).cloned().unwrap_or_default();
                         if !constraints.is_empty() {
@@ -2270,7 +2340,8 @@ impl LowerCtx {
                     ))
                 } else if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
                     let qn = callable_qualified_name(callable_ref, &self.module_path);
-                    let Some(fn_id) = self.lookup_callable(&qn) else {
+                    let sig = callable_overload_signature(callable_ref);
+                    let Some(fn_id) = self.lookup_callable(&qn, sig) else {
                         return Err(LowerError::UnresolvedVar(name.to_string()));
                     };
                     // Top-level function used as value
@@ -4467,7 +4538,8 @@ impl LowerCtx {
             // Check if it's a resolved top-level/imported function.
             if let Some(ResolvedBindingRef::Callable(callable_ref)) = resolved_ref.as_ref() {
                 let qn = callable_qualified_name(callable_ref, &self.module_path);
-                let Some(fn_id) = self.lookup_callable(&qn) else {
+                let sig = callable_overload_signature(callable_ref);
+                let Some(fn_id) = self.lookup_callable(&qn, sig) else {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 // Resolve dict arguments for constrained functions
@@ -4773,7 +4845,8 @@ impl LowerCtx {
             // Known top-level/imported function
             if let Some(ResolvedBindingRef::Callable(callable_ref)) = resolved_ref.as_ref() {
                 let qn = callable_qualified_name(callable_ref, &self.module_path);
-                let Some(fn_id) = self.lookup_callable(&qn) else {
+                let sig = callable_overload_signature(callable_ref);
+                let Some(fn_id) = self.lookup_callable(&qn, sig) else {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 let (dict_bindings, dict_atoms) =
@@ -5424,11 +5497,12 @@ impl LowerCtx {
         self.lifted_fns.push(FnDef {
             id: wrapper_fn_id,
             name: wrapper_name.clone(),
+            exported_symbol: wrapper_name.clone(),
             params: lifted_params,
             return_type: return_type.into(),
             body,
         });
-        self.fn_ids.insert(wrapper_name, wrapper_fn_id);
+        self.insert_synthetic_fn_id(wrapper_name, wrapper_fn_id);
 
         // Return MakeClosure capturing the dicts
         Ok((
@@ -5529,11 +5603,12 @@ impl LowerCtx {
         self.lifted_fns.push(FnDef {
             id: wrapper_fn_id,
             name: wrapper_name.clone(),
+            exported_symbol: wrapper_name.clone(),
             params: lifted_params,
             return_type: return_type.into(),
             body,
         });
-        self.fn_ids.insert(wrapper_name, wrapper_fn_id);
+        self.insert_synthetic_fn_id(wrapper_name, wrapper_fn_id);
 
         // 7. Return MakeClosure capturing the dict
         Ok((
@@ -5787,13 +5862,14 @@ impl LowerCtx {
         self.lifted_fns.push(FnDef {
             id: fn_id,
             name: name.clone(),
+            exported_symbol: name.clone(),
             params: lifted_params,
             return_type: return_type.into(),
             body: lowered_body,
         });
 
         // 10. Register in fn_ids for fn_names resolution
-        self.fn_ids.insert(name, fn_id);
+        self.insert_synthetic_fn_id(name, fn_id);
 
         // 11. Return MakeClosure with capture atoms
         let mut all_captures = capture_atoms;
@@ -5818,16 +5894,11 @@ impl LowerCtx {
     fn lower_fn(
         &mut self,
         decl: &TypedFnDecl,
-        fn_types: &[FnTypeEntry],
+        fn_id: FnId,
+        param_types: Vec<Type>,
+        return_type: Type,
+        exported_symbol: String,
     ) -> Result<FnDef, LowerError> {
-        let fn_id = self
-            .fn_ids
-            .get(&decl.name)
-            .copied()
-            .ok_or_else(|| LowerError::InternalError(format!("no FnId for {}", decl.name)))?;
-
-        // Get param types from fn_types
-        let (param_types, return_type) = get_fn_param_types(&decl.name, fn_types)?;
 
         // Clear dict_params from any previous function
         self.dict_params.clear();
@@ -5950,8 +6021,7 @@ impl LowerCtx {
         // these into the function-wide exception-table finally handler.
         let finally_closes = std::mem::take(&mut self.fn_block_scoped_closes);
         if !finally_closes.is_empty() {
-            self.fn_exit_closes
-                .insert(decl.name.clone(), finally_closes);
+            self.fn_exit_closes.insert(fn_id, finally_closes);
         }
 
         // Restore tracking state
@@ -6036,6 +6106,7 @@ impl LowerCtx {
         Ok(FnDef {
             id: fn_id,
             name: decl.name.clone(),
+            exported_symbol,
             params,
             return_type: return_type.into(),
             body,
@@ -6365,53 +6436,124 @@ pub fn lower_module(
         }
     }
 
-    // 3. Allocate FnIds for all known functions
-    // Local function definitions
+    // 3. Allocate FnIds for all known functions.
+    //
+    // Overloads share a bare name and qualified_name, so `fn_ids` and
+    // `callable_ids` are vecs of (sig_key, FnId) with one entry per
+    // overload sibling. `sig_key` is the parameter-type list (ParamMode
+    // stripped); `types_overlap` picks the right FnId at lookup time.
+    //
+    // `local_fn_allocs` records per-decl allocation info so Step 6
+    // (lower_fn) knows which FnId / param types belong to which decl —
+    // critical when `typed.functions` contains overload siblings.
+
+    // Build per-name FIFO queue of local-function fn_types entries. Each
+    // `typed.functions[i]` pulls its corresponding entry from the queue
+    // for its name. Module_driver appends fn_decls to fn_types in order
+    // (module_driver.rs:475-488), so the i-th decl with name N pairs with
+    // the i-th local entry with name N.
+    let local_decl_names: HashSet<&str> =
+        typed.functions.iter().map(|d| d.name.as_str()).collect();
+    let mut local_decl_entries: HashMap<String, std::collections::VecDeque<&FnTypeEntry>> =
+        HashMap::new();
+    for entry in &typed.fn_types {
+        if entry.qualified_name.module_path == typed.module_path
+            && local_decl_names.contains(entry.name.as_str())
+        {
+            local_decl_entries
+                .entry(entry.name.clone())
+                .or_default()
+                .push_back(entry);
+        }
+    }
+
+    // Per-decl allocation (FnId + resolved param types + return type)
+    // aligned with `typed.functions`. Step 6 consumes this rather than
+    // re-scanning fn_types by name, which would collapse overloads.
+    let mut local_fn_allocs: Vec<(FnId, Vec<Type>, Type)> =
+        Vec::with_capacity(typed.functions.len());
     for decl in &typed.functions {
+        let entry = local_decl_entries
+            .get_mut(&decl.name)
+            .and_then(|q| q.pop_front())
+            .ok_or_else(|| {
+                LowerError::InternalError(format!(
+                    "no FnTypeEntry for local decl `{}` (overload queue empty)",
+                    decl.name
+                ))
+            })?;
+        let (param_types, return_type) = match &entry.scheme.ty {
+            Type::Fn(params, ret) => (
+                params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
+                (**ret).clone(),
+            ),
+            other => (Vec::new(), other.clone()),
+        };
+        let sig_key = param_types.clone();
         let fn_id = ctx.fresh_fn();
-        ctx.fn_ids.insert(decl.name.clone(), fn_id);
-        ctx.callable_ids.insert(
+        ctx.insert_fn_id(
+            decl.name.clone(),
             QualifiedName::new(typed.module_path.clone(), decl.name.clone()),
+            sig_key,
             fn_id,
         );
+        local_fn_allocs.push((fn_id, param_types, return_type));
     }
-    // Extern functions (local)
+
+    // Extern functions (local). Externs cannot overload (enforced by
+    // check_duplicate_function_names), so they are always singletons.
     for ext in &typed.extern_fns {
         if !ctx.fn_ids.contains_key(&ext.name) {
             let fn_id = ctx.fresh_fn();
-            ctx.fn_ids.insert(ext.name.clone(), fn_id);
-            ctx.callable_ids.insert(
+            ctx.insert_fn_id(
+                ext.name.clone(),
                 QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
+                Vec::new(),
                 fn_id,
             );
         }
     }
-    // Imported functions (from fn_types entries with provenance)
+
+    // Imported functions (from fn_types entries with cross-module
+    // provenance). Each entry gets its own FnId so overload siblings
+    // resolve independently — we no longer dedup by bare name.
     for entry in &typed.fn_types {
-        // Nullary constructors have Type::Named, not Type::Fn.
-        // They lower to ConstructVariant, never produce FnDefs.
         if !matches!(entry.scheme.ty, Type::Fn(..)) {
             continue;
         }
-        if !ctx.fn_ids.contains_key(&entry.name) {
-            let fn_id = ctx.fresh_fn();
-            ctx.fn_ids.insert(entry.name.clone(), fn_id);
-            ctx.callable_ids.insert(entry.qualified_name.clone(), fn_id);
-        } else if !ctx.callable_ids.contains_key(&entry.qualified_name) {
-            // The binding name already has a FnId (e.g., from an extern declaration).
-            // Ensure the canonical qualified_name also maps to the same FnId.
-            let fn_id = ctx.fn_ids[&entry.name];
-            ctx.callable_ids.insert(entry.qualified_name.clone(), fn_id);
+        if entry.qualified_name.module_path == typed.module_path {
+            // Local entries were handled above (decls) or will be below
+            // (constructors, instance methods) — skip here.
+            continue;
         }
+        let sig_key: Vec<Type> = match &entry.scheme.ty {
+            Type::Fn(params, _) => params.iter().map(|(_, t)| t.clone()).collect(),
+            _ => Vec::new(),
+        };
+        // If another overload sibling with the same qualified_name is
+        // already registered with a matching signature, skip (prevents
+        // duplicate entries when fn_types is visited twice for the same
+        // import path).
+        let already = ctx
+            .callable_ids
+            .get(&entry.qualified_name)
+            .map(|cands| cands.iter().any(|(ps, _)| types_overlap(ps, &sig_key)))
+            .unwrap_or(false);
+        if already {
+            continue;
+        }
+        let fn_id = ctx.fresh_fn();
+        ctx.insert_fn_id(entry.name.clone(), entry.qualified_name.clone(), sig_key, fn_id);
     }
 
-    // 3b. Register compiler intrinsics
+    // 3b. Register compiler intrinsics (always singleton)
     for &name in crate::COMPILER_INTRINSICS {
         if !ctx.fn_ids.contains_key(name) {
             let fn_id = ctx.fresh_fn();
-            ctx.fn_ids.insert(name.to_string(), fn_id);
-            ctx.callable_ids.insert(
+            ctx.insert_fn_id(
+                name.to_string(),
                 QualifiedName::new("__builtin__".to_string(), name.to_string()),
+                Vec::new(),
                 fn_id,
             );
         }
@@ -6512,60 +6654,180 @@ pub fn lower_module(
         })
         .collect();
 
-    // 6. Lower functions
+    // 6. Lower functions. Compute a per-decl `exported_symbol` by
+    // grouping local decls by bare name: each group keeps source-
+    // declaration order (decls appear in `typed.functions` in source
+    // order), so the first sibling gets the bare name and subsequent
+    // siblings get `name$2`, `name$3`, ... — matching the typechecker's
+    // `ExportedFnSummary::exported_symbol` rule so codegen agrees across
+    // module boundaries.
+    let exported_symbols = mangle_local_exported_symbols(&typed.functions);
     let mut functions = vec![];
-    for decl in &typed.functions {
-        let fn_def = ctx.lower_fn(decl, &typed.fn_types)?;
+    for ((decl, alloc), exported_symbol) in typed
+        .functions
+        .iter()
+        .zip(local_fn_allocs.into_iter())
+        .zip(exported_symbols.into_iter())
+    {
+        let (fn_id, param_types, return_type) = alloc;
+        let fn_def = ctx.lower_fn(decl, fn_id, param_types, return_type, exported_symbol)?;
         functions.push(fn_def);
     }
 
     // 6b. Append lifted lambdas
     functions.append(&mut ctx.lifted_fns);
 
-    // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids)
+    // 6c. Build imported_fns from fn_types entries with provenance.
+    //     Trait methods (origin.is_some()) are dispatched via TraitCall, never
+    //     via Call, so they are not imported as regular functions.
+    //     Deduplicate by (name, source_module, sig_key) so overload siblings
+    //     (which share name + source_module) both flow through — the sig_key
+    //     component distinguishes them.
+    //     Constructed before Step 7 so `fn_identities` can read each
+    //     import's `exported_symbol` when populating `FnIdentity::Imported`.
+    let mut imported_fns = vec![];
+    let mut imported_fn_seen: HashSet<(String, String, Vec<String>)> = HashSet::new();
+    for entry in &typed.fn_types {
+        if entry.origin.is_some() {
+            continue;
+        }
+        if !matches!(entry.scheme.ty, Type::Fn(..)) {
+            continue;
+        }
+        if entry.qualified_name.module_path == typed.module_path {
+            continue;
+        }
+        let Type::Fn(param_types_tc, ret) = &entry.scheme.ty else {
+            unreachable!()
+        };
+        let sig_key: Vec<Type> = param_types_tc.iter().map(|(_, t)| t.clone()).collect();
+        // Stable textual fingerprint for dedup — Type doesn't implement
+        // Hash, but Debug is stable enough for set membership here (we
+        // only dedup exact structural matches; `types_overlap` is used
+        // for the actual overload dispatch in `lookup_callable`).
+        let sig_fingerprint: Vec<String> = sig_key.iter().map(|t| format!("{:?}", t)).collect();
+        let dedup_key = (
+            entry.name.clone(),
+            entry.qualified_name.module_path.clone(),
+            sig_fingerprint,
+        );
+        if !imported_fn_seen.insert(dedup_key) {
+            continue;
+        }
+        let Some(fn_id) = ctx.callable_ids.get(&entry.qualified_name).and_then(|cands| {
+            if cands.len() == 1 {
+                Some(cands[0].1)
+            } else {
+                cands
+                    .iter()
+                    .find(|(stored, _)| types_overlap(stored, &sig_key))
+                    .map(|(_, id)| *id)
+            }
+        }) else {
+            continue;
+        };
+        // Upstream `exported_symbol` — read from the source module's
+        // `ExportedFnSummary` whose scheme matches this overload. Falls
+        // back to the bare local name when the interface doesn't publish
+        // it (e.g., synthetic bindings not routed through module export).
+        let source_path = ModulePath::new(entry.qualified_name.module_path.clone());
+        let exported_symbol = link_view
+            .exported_fns_for(&source_path)
+            .and_then(|fns| {
+                fns.iter()
+                    .filter(|s| s.name == entry.qualified_name.local_name)
+                    .find_map(|s| match &s.scheme.ty {
+                        Type::Fn(p, _) => {
+                            let stored: Vec<Type> =
+                                p.iter().map(|(_, t)| t.clone()).collect();
+                            if types_overlap(&stored, &sig_key) {
+                                Some(s.exported_symbol.clone())
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    })
+            })
+            .unwrap_or_else(|| entry.qualified_name.local_name.clone());
+        imported_fns.push(ImportedFnDef {
+            id: fn_id,
+            name: entry.name.clone(),
+            exported_symbol,
+            source_module: entry.qualified_name.module_path.clone(),
+            original_name: entry.qualified_name.local_name.clone(),
+            param_types: param_types_tc
+                .iter()
+                .map(|(_, t)| t.clone().into())
+                .collect(),
+            return_type: (**ret).clone().into(),
+        });
+    }
+
+    // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids).
+    // Populate `exported_symbol` for Local/Imported entries from the
+    // source-of-truth already computed earlier:
+    //   • Local fns → `functions[i].exported_symbol` (set by Step 6)
+    //   • Imported fns → `ImportedFnDef.exported_symbol` (set by Step 11)
+    //   • Lifted synthetics keep `name` (unique names, no overload)
     let callable_by_id: HashMap<FnId, &QualifiedName> = ctx
         .callable_ids
         .iter()
-        .map(|(qn, &fid)| (fid, qn))
+        .flat_map(|(qn, cands)| cands.iter().map(move |(_, fid)| (*fid, qn)))
+        .collect();
+    let local_exported_by_id: HashMap<FnId, &str> = functions
+        .iter()
+        .map(|f| (f.id, f.exported_symbol.as_str()))
+        .collect();
+    let imported_exported_by_id: HashMap<FnId, &str> = imported_fns
+        .iter()
+        .map(|f| (f.id, f.exported_symbol.as_str()))
         .collect();
     let mut fn_identities = HashMap::new();
-    for (name, &id) in &ctx.fn_ids {
-        if let Some(existing) = fn_identities.get(&id) {
-            let existing_name: &str = match existing {
-                FnIdentity::Local { name } => name,
-                FnIdentity::Imported { local_alias, .. } => local_alias,
-                FnIdentity::Extern { name, .. } => name,
-                FnIdentity::Intrinsic { name } => name,
-            };
-            assert_eq!(
-                existing_name, name,
-                "ICE: FnId {:?} maps to both '{}' and '{}'",
-                id, existing_name, name
-            );
-            continue;
-        }
-        // Determine identity variant
-        let identity = if crate::COMPILER_INTRINSICS.contains(&name.as_str()) {
-            FnIdentity::Intrinsic { name: name.clone() }
-        } else if let Some(qn) = callable_by_id.get(&id) {
-            if qn.module_path == "__builtin__" {
-                FnIdentity::Intrinsic { name: name.clone() }
-            } else if qn.module_path == ctx.module_path {
-                FnIdentity::Local { name: name.clone() }
-            } else {
-                FnIdentity::Imported {
-                    canonical: CanonicalRef {
-                        module: ModulePath::new(qn.module_path.clone()),
-                        symbol: LocalSymbolKey::Function(qn.local_name.clone()),
-                    },
-                    local_alias: name.clone(),
-                }
+    for (name, candidates) in &ctx.fn_ids {
+        for (_sig_key, id) in candidates {
+            let id = *id;
+            if fn_identities.contains_key(&id) {
+                continue;
             }
-        } else {
-            // Not in callable_ids: lifted synthetics (lambda$, ctor$, fn_ref$, trait_ref$).
-            FnIdentity::Local { name: name.clone() }
-        };
-        fn_identities.insert(id, identity);
+            let identity = if crate::COMPILER_INTRINSICS.contains(&name.as_str()) {
+                FnIdentity::Intrinsic { name: name.clone() }
+            } else if let Some(qn) = callable_by_id.get(&id) {
+                if qn.module_path == "__builtin__" {
+                    FnIdentity::Intrinsic { name: name.clone() }
+                } else if qn.module_path == ctx.module_path {
+                    let exported_symbol = local_exported_by_id
+                        .get(&id)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| name.clone());
+                    FnIdentity::Local {
+                        name: name.clone(),
+                        exported_symbol,
+                    }
+                } else {
+                    let exported_symbol = imported_exported_by_id
+                        .get(&id)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| qn.local_name.clone());
+                    FnIdentity::Imported {
+                        canonical: CanonicalRef {
+                            module: ModulePath::new(qn.module_path.clone()),
+                            symbol: LocalSymbolKey::Function(qn.local_name.clone()),
+                        },
+                        local_alias: name.clone(),
+                        exported_symbol,
+                    }
+                }
+            } else {
+                // Not in callable_ids: lifted synthetics (lambda$, ctor$,
+                // fn_ref$, trait_ref$). Unique name, no overload.
+                FnIdentity::Local {
+                    name: name.clone(),
+                    exported_symbol: name.clone(),
+                }
+            };
+            fn_identities.insert(id, identity);
+        }
     }
 
     // 8. Build extern_fns from local definitions only.
@@ -6602,7 +6864,11 @@ pub fn lower_module(
     }
     let mut extern_fns = vec![];
     for ext in &typed.extern_fns {
-        if let Some(&fn_id) = ctx.fn_ids.get(&ext.name) {
+        // Externs are singletons in fn_ids (check_duplicate_function_names
+        // rejects extern/extern and extern/local collisions), so taking the
+        // first entry is safe.
+        let extern_fn_id = ctx.fn_ids.get(&ext.name).and_then(|v| v.first()).map(|(_, id)| *id);
+        if let Some(fn_id) = extern_fn_id {
             let ir_target = match &ext.target {
                 krypton_parser::ast::ExternTarget::Java => ExternTarget::Java {
                     class: ext.module_path.clone(),
@@ -6693,42 +6959,6 @@ pub fn lower_module(
         }
     }
 
-    // 11. Build imported_fns from fn_types entries with provenance.
-    //     Trait methods (origin.is_some()) are dispatched via TraitCall, never
-    //     via Call, so they are not imported as regular functions.
-    //     Deduplicate by (name, source_module): constructors can appear in
-    //     fn_types from both exported_fn_types and type processing paths.
-    let mut imported_fns = vec![];
-    let mut imported_fn_seen: HashSet<(String, String)> = HashSet::new();
-    for entry in &typed.fn_types {
-        if entry.origin.is_some() {
-            continue;
-        }
-        // Nullary constructors lower to ConstructVariant, not imported function calls.
-        if !matches!(entry.scheme.ty, Type::Fn(..)) {
-            continue;
-        }
-        if entry.qualified_name.module_path != typed.module_path {
-            let key = (entry.name.clone(), entry.qualified_name.module_path.clone());
-            if !imported_fn_seen.insert(key) {
-                continue;
-            }
-            if let Some(&fn_id) = ctx.callable_ids.get(&entry.qualified_name) {
-                let Type::Fn(param_types, ret) = &entry.scheme.ty else {
-                    unreachable!()
-                };
-                imported_fns.push(ImportedFnDef {
-                    id: fn_id,
-                    name: entry.name.clone(),
-                    source_module: entry.qualified_name.module_path.clone(),
-                    original_name: entry.qualified_name.local_name.clone(),
-                    param_types: param_types.iter().map(|(_, t)| t.clone().into()).collect(),
-                    return_type: (**ret).clone().into(),
-                });
-            }
-        }
-    }
-
     // 12. Build trait definitions from typed_module trait_defs
     let mut traits = vec![];
     for trait_def in &typed.trait_defs {
@@ -6777,7 +7007,10 @@ pub fn lower_module(
     let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo,
                           is_imported: bool,
                           ctx: &LowerCtx| {
-        let method_fn_ids = if is_imported {
+        // Instance method mangled names are unique per (trait, type,
+        // method) — never overloaded — so the singleton entry in fn_ids
+        // is the only one.
+        let method_fn_ids: Vec<(String, FnId)> = if is_imported {
             inst.methods
                 .iter()
                 .filter_map(|m| {
@@ -6788,7 +7021,8 @@ pub fn lower_module(
                     );
                     ctx.fn_ids
                         .get(&mangled as &str)
-                        .map(|&fn_id| (m.name.clone(), fn_id))
+                        .and_then(|v| v.first())
+                        .map(|(_, fn_id)| (m.name.clone(), *fn_id))
                 })
                 .collect()
         } else {
@@ -6800,10 +7034,13 @@ pub fn lower_module(
                         &inst.target_type_name,
                         &m.name,
                     );
-                    let fn_id = ctx
+                    let (_, fn_id) = ctx
                         .fn_ids
                         .get(&mangled as &str)
-                        .unwrap_or_else(|| panic!("ICE: no FnId for instance method {mangled}"));
+                        .and_then(|v| v.first())
+                        .unwrap_or_else(|| {
+                            panic!("ICE: no FnId for instance method {mangled}")
+                        });
                     (m.name.clone(), *fn_id)
                 })
                 .collect()
@@ -6859,25 +7096,61 @@ pub fn lower_module(
         tuple_arities,
         module_path: ModulePath::new(typed.module_path.clone()),
         fn_dict_requirements: {
-            // Reconstruct string-keyed dict requirements for codegen:
-            // fn_types entries use binding name, instance methods use mangled name.
-            let mut reqs: HashMap<String, TraitConstraintList> = HashMap::new();
+            // FnId-keyed so overload siblings carry distinct constraints.
+            // Walks the same sources as before (fn_types + extern + instance-
+            // method fn_constraints) but resolves each entry to its FnId via
+            // `callable_ids` using the entry's parameter types as sig_key.
+            let mut reqs: HashMap<FnId, TraitConstraintList> = HashMap::new();
+            let resolve_fn_id =
+                |callable_ids: &HashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
+                 qn: &QualifiedName,
+                 sig_key: &[Type]|
+                 -> Option<FnId> {
+                    let cands = callable_ids.get(qn)?;
+                    if cands.len() == 1 {
+                        return Some(cands[0].1);
+                    }
+                    cands
+                        .iter()
+                        .find(|(stored, _)| types_overlap(stored, sig_key))
+                        .map(|(_, id)| *id)
+                };
             for entry in &typed.fn_types {
-                if !entry.scheme.constraints.is_empty() {
-                    reqs.insert(entry.name.clone(), entry.scheme.constraints.clone());
+                if entry.scheme.constraints.is_empty() {
+                    continue;
+                }
+                let sig_key: Vec<Type> = match &entry.scheme.ty {
+                    Type::Fn(p, _) => p.iter().map(|(_, t)| t.clone()).collect(),
+                    _ => Vec::new(),
+                };
+                if let Some(fn_id) =
+                    resolve_fn_id(&ctx.callable_ids, &entry.qualified_name, &sig_key)
+                {
+                    reqs.entry(fn_id)
+                        .or_insert_with(|| entry.scheme.constraints.clone());
                 }
             }
-            // Also include extern function constraints.
             for ext in &typed.extern_fns {
-                if !ext.constraints.is_empty() {
-                    reqs.entry(ext.name.clone())
-                        .or_insert_with(|| ext.constraints.clone());
+                if ext.constraints.is_empty() {
+                    continue;
+                }
+                // Externs are singletons; use the only entry in fn_ids.
+                if let Some(cands) = ctx.fn_ids.get(&ext.name) {
+                    if let Some((_, fn_id)) = cands.first() {
+                        reqs.entry(*fn_id).or_insert_with(|| ext.constraints.clone());
+                    }
                 }
             }
             for (qn, v) in &ctx.fn_constraints {
-                // Instance method mangled names are local to this module
-                if qn.module_path == typed.module_path && !reqs.contains_key(&qn.local_name) {
-                    reqs.insert(qn.local_name.clone(), v.clone());
+                if qn.module_path != typed.module_path {
+                    continue;
+                }
+                // Instance method mangled names map to a single FnId
+                // (mangled names are unique per (trait, type, method)).
+                if let Some(cands) = ctx.callable_ids.get(qn) {
+                    if let Some((_, fn_id)) = cands.first() {
+                        reqs.entry(*fn_id).or_insert_with(|| v.clone());
+                    }
                 }
             }
             reqs
@@ -7047,11 +7320,27 @@ fn resolved_constructor_ref(expr: &TypedExpr) -> Option<(&str, &ResolvedConstruc
 
 fn callable_qualified_name(r: &ResolvedCallableRef, _module_path: &str) -> QualifiedName {
     match r {
-        ResolvedCallableRef::LocalFunction { qualified_name } => qualified_name.clone(),
-        ResolvedCallableRef::ImportedFunction { qualified_name } => qualified_name.clone(),
+        ResolvedCallableRef::LocalFunction { qualified_name, .. } => qualified_name.clone(),
+        ResolvedCallableRef::ImportedFunction { qualified_name, .. } => qualified_name.clone(),
         ResolvedCallableRef::Intrinsic { name } => {
             QualifiedName::new("__builtin__".to_string(), name.clone())
         }
+    }
+}
+
+/// Extract the overload signature published by the typechecker, if any.
+/// `None` means single-candidate (no ambiguity to resolve). `Some(sig)`
+/// means the typechecker picked a specific overload at this call site and
+/// IR should match against it via `types_overlap`.
+fn callable_overload_signature(r: &ResolvedCallableRef) -> Option<&OverloadSignature> {
+    match r {
+        ResolvedCallableRef::LocalFunction {
+            overload_signature, ..
+        } => overload_signature.as_ref(),
+        ResolvedCallableRef::ImportedFunction {
+            overload_signature, ..
+        } => overload_signature.as_ref(),
+        ResolvedCallableRef::Intrinsic { .. } => None,
     }
 }
 
@@ -7088,6 +7377,28 @@ fn convert_lit(lit: &Lit) -> Literal {
         Lit::String(s) => Literal::String(s.clone()),
         Lit::Unit => Literal::Unit,
     }
+}
+
+/// Assign source-order mangled `exported_symbol` names for local decls.
+/// Entries sharing a bare name form an overload group; within a group they
+/// appear in `typed.functions` in source order. The earliest keeps the
+/// bare name; subsequent siblings become `name$2`, `name$3`, ....
+/// Mirrors `mangle_overload_symbols` in typechecker/src/module_interface.rs
+/// so IR `FnDef::exported_symbol` agrees with
+/// `ExportedFnSummary::exported_symbol`.
+fn mangle_local_exported_symbols(decls: &[TypedFnDecl]) -> Vec<String> {
+    let mut out = vec![String::new(); decls.len()];
+    let mut rank_by_name: HashMap<&str, usize> = HashMap::new();
+    for (i, d) in decls.iter().enumerate() {
+        let rank = rank_by_name.entry(d.name.as_str()).or_insert(0);
+        out[i] = if *rank == 0 {
+            d.name.clone()
+        } else {
+            format!("{}${}", d.name, *rank + 1)
+        };
+        *rank += 1;
+    }
+    out
 }
 
 fn variant_ref_from_constructor(
@@ -7165,28 +7476,6 @@ fn resolve_unaryop(op: &UnaryOp, operand_ty: &Type) -> Result<PrimOp, LowerError
     }
 }
 
-/// Get parameter types and return type for a function from fn_types.
-fn get_fn_param_types(
-    name: &str,
-    fn_types: &[FnTypeEntry],
-) -> Result<(Vec<Type>, Type), LowerError> {
-    for entry in fn_types {
-        if entry.name == name {
-            match &entry.scheme.ty {
-                Type::Fn(params, ret) => {
-                    return Ok((
-                        params.iter().map(|(_, t)| t.clone()).collect(),
-                        *ret.clone(),
-                    ))
-                }
-                other => return Ok((vec![], other.clone())),
-            }
-        }
-    }
-    Err(LowerError::InternalError(format!(
-        "no fn_types entry for function '{name}'"
-    )))
-}
 
 /// Build a TypeVarId map from type parameter names using a shared TypeVarGen.
 fn build_type_param_map(

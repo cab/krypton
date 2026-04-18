@@ -6,14 +6,39 @@ import core/ord.{Ord, lt}
 import core/show.{Show, show}
 import core/semigroup.{combine}
 
-# core/vec — Vec type (backed by KryptonArray)
+# core/vec — Persistent vector.
+#
+# Backed by Paguro's `PersistentVector` on JVM and Immutable.js's `List` on JS.
+# Both share a trie layout that gives O(log₃₂) `nth`/`push` and structural
+# sharing across updates. The JVM backing is a single `final` field, so actor
+# sends safely publish the Vec across threads via the JMM §17.5 final-field
+# guarantee — no synchronization, no torn reads.
+#
+# Bulk construction uses `~VecBuilder[a]` (a linear companion type) to route
+# through the backend's transient/mutable mode; see `builder`/`push`/`freeze`.
+# List literals lower through this path automatically.
 extern java "krypton.runtime.KryptonArray" as Vec[a] {
     fun staticLength(xs: Vec[a]) -> Int
     fun staticGet(xs: Vec[a], index: Int) -> a
-    fun staticNew(size: Int) -> Vec[a]
-    fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
-    fun staticFreeze(xs: Vec[a]) -> Vec[a]
     fun staticPush(xs: Vec[a], x: a) -> Vec[a]
+}
+
+extern java "krypton.runtime.KryptonArrayBuilder" as VecBuilder[a] lifts always {
+    fun builderNew() -> ~VecBuilder[a]
+    fun builderPush(b: ~VecBuilder[a], x: a) -> ~VecBuilder[a]
+    fun builderFreeze(b: ~VecBuilder[a]) -> Vec[a]
+}
+
+extern js "../extern/js/array.mjs" as Vec[a] {
+    fun staticLength(xs: Vec[a]) -> Int
+    fun staticGet(xs: Vec[a], index: Int) -> a
+    fun staticPush(xs: Vec[a], x: a) -> Vec[a]
+}
+
+extern js "../extern/js/array-builder.mjs" as VecBuilder[a] lifts always {
+    fun builderNew() -> ~VecBuilder[a]
+    fun builderPush(b: ~VecBuilder[a], x: a) -> ~VecBuilder[a]
+    fun builderFreeze(b: ~VecBuilder[a]) -> Vec[a]
 }
 
 fun join_elems[a](v: Vec[a], i: Int, acc: String) -> String where a: Show =
@@ -28,14 +53,13 @@ impl Show[Vec[a]] where a: Show {
     fun show(v) = combine(combine("[", join_elems(v, 0, "")), "]")
 }
 
-extern js "../extern/js/array.mjs" as Vec[a] {
-    fun staticLength(xs: Vec[a]) -> Int
-    fun staticGet(xs: Vec[a], index: Int) -> a
-    fun staticNew(size: Int) -> Vec[a]
-    fun staticSet(xs: Vec[a], index: Int, value: a) -> Unit
-    fun staticFreeze(xs: Vec[a]) -> Vec[a]
-    fun staticPush(xs: Vec[a], x: a) -> Vec[a]
-}
+pub fun builder[a]() -> ~VecBuilder[a] = builderNew()
+
+pub fun push[a](b: ~VecBuilder[a], x: a) -> ~VecBuilder[a] = builderPush(b, x)
+
+pub fun push[a](xs: Vec[a], x: a) -> Vec[a] = staticPush(xs, x)
+
+pub fun freeze[a](b: ~VecBuilder[a]) -> Vec[a] = builderFreeze(b)
 
 pub fun len[a](xs: Vec[a]) -> Int = staticLength(xs)
 
@@ -49,22 +73,15 @@ pub fun nth[a](xs: Vec[a], index: Int) -> Option[a] = if index < 0 {
     }
 }
 
-fun vec_from_vec_go(xs, i, acc)  = if i < 0 { acc } else { vec_from_vec_go(xs, i - 1, Cons(staticGet(xs, i), acc)) }
+fun vec_from_vec_go(xs, i, acc) = if i < 0 { acc } else { recur(xs, i - 1, Cons(staticGet(xs, i), acc)) }
 pub fun to_list[a](xs: Vec[a]) -> List[a] = vec_from_vec_go(xs, staticLength(xs) - 1, Nil)
 
-fun from_list_go(lst, arr, i) = match lst {
-    Nil => staticFreeze(arr),
-    Cons(h, rest) => {
-        staticSet(arr, i, h);
-        from_list_go(rest, arr, i + 1)
-    },
+fun from_list_go[a](lst: List[a], b: ~VecBuilder[a]) -> Vec[a] = match lst {
+    Nil => freeze(b),
+    Cons(h, rest) => recur(rest, push(b, h)),
 }
 
-fun from_list(lst) = {
-    let n = list_length(lst);
-    let arr = staticNew(n);
-    from_list_go(lst, arr, 0)
-}
+fun from_list[a](lst: List[a]) -> Vec[a] = from_list_go(lst, builder())
 
 pub fun last[a](xs: Vec[a]) -> Option[a] = {
     let n = staticLength(xs);
@@ -78,5 +95,3 @@ pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] = from_list(list_map(to_lis
 pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b = list_fold(to_list(xs), acc, f)
 
 pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord = from_list(list_sort_by(to_list(xs), key))
-
-pub fun push[a](xs: Vec[a], x: a) -> Vec[a] = staticPush(xs, x)

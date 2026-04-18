@@ -10,7 +10,7 @@ use ristretto_classfile::Method;
 use super::compiler::{
     CodegenError, Compiler, DictRequirement, FunctionInfo, InstanceSingletonInfo, JvmType,
     ParameterizedInstanceInfo, StructInfo, SumTypeInfo, TraitDispatchInfo, VariantField,
-    VariantInfo, VecInfo,
+    VariantInfo, VecBuilderInfo,
 };
 use super::data_class_gen::{
     generate_sealed_interface_class, generate_struct_class, generate_variant_class,
@@ -102,11 +102,13 @@ fn extern_return_info(
 }
 
 impl<'link> Compiler<'link> {
-    /// Number of dictionary parameters prepended to a function by where-clause dict passing.
-    fn dict_count_for(&self, name: &str) -> usize {
+    /// Number of dictionary parameters prepended to a function by
+    /// where-clause dict passing. Keyed by FnId so overload siblings with
+    /// distinct constraint sets resolve independently.
+    fn dict_count_for(&self, fn_id: krypton_ir::FnId) -> usize {
         self.traits
             .impl_dict_requirements
-            .get(name)
+            .get(&fn_id)
             .map(|r| r.len())
             .unwrap_or(0)
     }
@@ -602,11 +604,11 @@ impl<'link> Compiler<'link> {
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
-        // Populate dict requirements from IR
-        for (name, requirements) in &ir_module.fn_dict_requirements {
+        // Populate dict requirements from IR (FnId-keyed)
+        for (fn_id, requirements) in &ir_module.fn_dict_requirements {
             self.traits
                 .impl_dict_requirements
-                .entry(name.clone())
+                .entry(*fn_id)
                 .or_insert_with(|| {
                     requirements
                         .iter()
@@ -888,7 +890,7 @@ impl<'link> Compiler<'link> {
 
                 self.traits
                     .impl_dict_requirements
-                    .insert(mangled.clone(), dict_requirements.clone());
+                    .insert(*fn_id, dict_requirements.clone());
 
                 let mut all_param_jvm = Vec::new();
                 for _ in 0..dict_requirements.len() {
@@ -1042,19 +1044,31 @@ impl<'link> Compiler<'link> {
     }
 
     pub(super) fn register_vec(&mut self) -> Result<(), CodegenError> {
-        let Some(vec_struct) = self.types.struct_info.get("Vec") else {
+        if self.types.struct_info.get("Vec").is_none() {
+            return Ok(());
+        }
+        let Some(builder_struct) = self.types.struct_info.get("VecBuilder") else {
             return Ok(());
         };
-        let ka_class = vec_struct.class_index;
-        let ka_init = self.cp.add_method_ref(ka_class, "<init>", "(I)V")?;
-        let ka_set = self
+        let builder_class = builder_struct.class_index;
+        let builder_new = self
             .cp
-            .add_method_ref(ka_class, "set", "(ILjava/lang/Object;)V")?;
-        let ka_freeze = self.cp.add_method_ref(ka_class, "freeze", "()V")?;
-        self.vec_info = Some(VecInfo {
-            init_ref: ka_init,
-            set_ref: ka_set,
-            freeze_ref: ka_freeze,
+            .add_method_ref(builder_class, "builderNew", "()Lkrypton/runtime/KryptonArrayBuilder;")?;
+        let builder_push = self.cp.add_method_ref(
+            builder_class,
+            "builderPush",
+            "(Lkrypton/runtime/KryptonArrayBuilder;Ljava/lang/Object;)Lkrypton/runtime/KryptonArrayBuilder;",
+        )?;
+        let builder_freeze = self.cp.add_method_ref(
+            builder_class,
+            "builderFreeze",
+            "(Lkrypton/runtime/KryptonArrayBuilder;)Lkrypton/runtime/KryptonArray;",
+        )?;
+        self.vec_builder_info = Some(VecBuilderInfo {
+            builder_class_index: builder_class,
+            builder_new_ref: builder_new,
+            builder_push_ref: builder_push,
+            builder_freeze_ref: builder_freeze,
         });
         Ok(())
     }
@@ -1072,7 +1086,7 @@ impl<'link> Compiler<'link> {
             {
                 continue;
             }
-            let impl_dict_count = self.dict_count_for(name);
+            let impl_dict_count = self.dict_count_for(fn_def.id);
 
             // FnDef params already include dict params prepended by the lowerer.
             // We need to build the JVM descriptor from all params.
@@ -1083,6 +1097,10 @@ impl<'link> Compiler<'link> {
                 .collect::<Result<_, _>>()?;
             let return_type = self.type_to_jvm(&fn_def.return_type)?;
 
+            // JVM supports method-level overloading via descriptor, so the
+            // method name stays `fn_def.name` (not `exported_symbol`) —
+            // `javap` output stays readable and the verifier disambiguates
+            // via the descriptor.
             let jvm_name = if name == "main" {
                 "krypton_main"
             } else {
@@ -1099,19 +1117,25 @@ impl<'link> Compiler<'link> {
                 .map(|(_vid, ty)| ty.clone())
                 .collect();
 
+            let fn_info = FunctionInfo {
+                method_ref,
+                param_types: all_param_types,
+                return_type,
+                is_void: false,
+            };
             self.types
                 .functions
                 .entry(name.clone())
                 .or_default()
-                .push(FunctionInfo {
-                    method_ref,
-                    param_types: all_param_types,
-                    return_type,
-                    is_void: false,
-                });
+                .push(fn_info.clone());
             self.types
                 .fn_tc_types
-                .insert(name.clone(), (tc_param_types, fn_def.return_type.clone()));
+                .insert(name.clone(), (tc_param_types.clone(), fn_def.return_type.clone()));
+            // Overload-safe mirrors keyed by FnId.
+            self.types.fn_info_by_id.insert(fn_def.id, fn_info);
+            self.types
+                .fn_tc_types_by_id
+                .insert(fn_def.id, (tc_param_types, fn_def.return_type.clone()));
         }
 
         // Register wrapper method refs for all Java externs (nullable and non-nullable).
@@ -1121,7 +1145,7 @@ impl<'link> Compiler<'link> {
             .iter()
             .filter(|ext| matches!(ext.target, krypton_ir::ExternTarget::Java { .. }))
         {
-            let impl_dict_count = self.dict_count_for(&ext.name);
+            let impl_dict_count = self.dict_count_for(ext.id);
             let object_class = self.builder.refs.object_class;
             let mut wrapper_param_types: Vec<JvmType> = Vec::new();
             for _ in 0..impl_dict_count {
@@ -1140,17 +1164,20 @@ impl<'link> Compiler<'link> {
             let wrapper_ref = self
                 .cp
                 .add_method_ref(this_class, &ext.name, &wrapper_desc)?;
+            let wrapper_info = FunctionInfo {
+                method_ref: wrapper_ref,
+                param_types: wrapper_param_types,
+                return_type: wrapper_return_type,
+                is_void: false,
+            };
             self.types
                 .functions
                 .entry(ext.name.clone())
-                .or_insert_with(|| {
-                    vec![FunctionInfo {
-                        method_ref: wrapper_ref,
-                        param_types: wrapper_param_types,
-                        return_type: wrapper_return_type,
-                        is_void: false,
-                    }]
-                });
+                .or_insert_with(|| vec![wrapper_info.clone()]);
+            // Externs are singletons (check_duplicate_function_names
+            // forbids extern overloads), but the Call site dispatches by
+            // FnId — mirror into the FnId-keyed map so lookup succeeds.
+            self.types.fn_info_by_id.insert(ext.id, wrapper_info);
         }
 
         // Register raw extern method refs (pointing to the actual Java host class).
@@ -1197,7 +1224,7 @@ impl<'link> Compiler<'link> {
             let dict_requirements = self
                 .traits
                 .impl_dict_requirements
-                .get(&ext.name)
+                .get(&ext.id)
                 .cloned()
                 .unwrap_or_default();
             for dr in &dict_requirements {
@@ -1257,7 +1284,7 @@ impl<'link> Compiler<'link> {
             }
             let target_class = self.cp.add_class(&imp.source_module)?;
 
-            let impl_dict_count = self.dict_count_for(&imp.name);
+            let impl_dict_count = self.dict_count_for(imp.id);
             let mut all_param_types: Vec<JvmType> = Vec::new();
             for _ in 0..impl_dict_count {
                 all_param_types.push(JvmType::StructRef(self.builder.refs.object_class));
@@ -1280,20 +1307,26 @@ impl<'link> Compiler<'link> {
                 .cp
                 .add_method_ref(target_class, jvm_name, &descriptor)?;
 
+            let fn_info = FunctionInfo {
+                method_ref,
+                param_types: all_param_types,
+                return_type,
+                is_void: false,
+            };
             self.types
                 .functions
                 .entry(imp.name.clone())
                 .or_default()
-                .push(FunctionInfo {
-                    method_ref,
-                    param_types: all_param_types,
-                    return_type,
-                    is_void: false,
-                });
+                .push(fn_info.clone());
             self.types.fn_tc_types.insert(
                 imp.name.clone(),
                 (imp.param_types.clone(), imp.return_type.clone()),
             );
+            // Overload-safe FnId-keyed mirrors.
+            self.types.fn_info_by_id.insert(imp.id, fn_info);
+            self.types
+                .fn_tc_types_by_id
+                .insert(imp.id, (imp.param_types.clone(), imp.return_type.clone()));
         }
 
         Ok(())
@@ -1391,7 +1424,7 @@ impl<'link> Compiler<'link> {
         let dict_requirements = self
             .traits
             .impl_dict_requirements
-            .get(&ext.name)
+            .get(&ext.id)
             .cloned()
             .unwrap_or_default();
 
@@ -1566,7 +1599,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self.dict_count_for(&ext.name);
+        let dict_count = self.dict_count_for(ext.id);
         let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;
         let result_jvm = invoke_result.expect("ICE: @nullable extern must not return void");
 
@@ -1680,7 +1713,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self.dict_count_for(&ext.name);
+        let dict_count = self.dict_count_for(ext.id);
 
         // try_start:
         let try_start = self.builder.current_offset();
@@ -1845,7 +1878,7 @@ impl<'link> Compiler<'link> {
         self.builder.fn_params = param_slots.clone();
         self.builder.fn_return_type = Some(wrapper_info.return_type);
 
-        let dict_count = self.dict_count_for(&ext.name);
+        let dict_count = self.dict_count_for(ext.id);
 
         // Load params and invoke the raw extern
         let invoke_result = self.emit_extern_invoke(ext, &raw_info, &param_slots, dict_count)?;

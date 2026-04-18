@@ -124,17 +124,9 @@ public final class JsonRuntime {
     public static Object staticParse(String s) {
         try {
             JsonNode node = MAPPER.readTree(s);
-            KryptonArray result = new KryptonArray(2);
-            result.set(0, true);
-            result.set(1, fromNode(node));
-            result.freeze();
-            return result;
+            return KryptonArray.fromIterable(java.util.List.of(true, fromNode(node)));
         } catch (Exception e) {
-            KryptonArray result = new KryptonArray(2);
-            result.set(0, false);
-            result.set(1, e.getMessage());
-            result.freeze();
-            return result;
+            return KryptonArray.fromIterable(java.util.List.of(false, e.getMessage()));
         }
     }
 
@@ -171,35 +163,15 @@ public final class JsonRuntime {
     }
 
     public static KryptonArray staticRawArr(JavaJson j) {
-        ArrayList<JavaJson> elements = ((JavaJson.JArr) j).elements();
-        KryptonArray arr = new KryptonArray(elements.size());
-        for (int i = 0; i < elements.size(); i++) {
-            arr.set(i, elements.get(i));
-        }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(((JavaJson.JArr) j).elements());
     }
 
     public static KryptonArray staticRawEntryKeys(JavaJson j) {
-        LinkedHashMap<String, JavaJson> map = ((JavaJson.JObj) j).entries();
-        KryptonArray arr = new KryptonArray(map.size());
-        int i = 0;
-        for (String key : map.keySet()) {
-            arr.set(i++, key);
-        }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(((JavaJson.JObj) j).entries().keySet());
     }
 
     public static KryptonArray staticRawEntryValues(JavaJson j) {
-        LinkedHashMap<String, JavaJson> map = ((JavaJson.JObj) j).entries();
-        KryptonArray arr = new KryptonArray(map.size());
-        int i = 0;
-        for (JavaJson value : map.values()) {
-            arr.set(i++, value);
-        }
-        arr.freeze();
-        return arr;
+        return KryptonArray.fromIterable(((JavaJson.JObj) j).entries().values());
     }
 
     // ── Build methods (for to_java conversion) ────────────────────────

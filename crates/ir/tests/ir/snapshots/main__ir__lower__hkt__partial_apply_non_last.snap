@@ -5,28 +5,28 @@ expression: ir_module.to_string()
 module hkt__partial_apply_non_last
 
 struct Predicate[a, b] { check: (a) -> b }
-trait Contravariant[j8] { contramap(j8[k8], (l8) -> k8): j8[l8] }
+trait Contravariant[c9] { contramap(c9[d9], (e9) -> d9): c9[e9] }
 instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=Contravariant$$Predicate$$Var0$$Var1$$contramap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[y8, y8], v1: (y8) -> y8) -> Predicate[y8, y8] =
-  let v8: (y8) -> y8 = make_closure(lambda$27, [v0, v1])
-  let v9: Predicate[y8, y8] = construct Predicate(v8)
+fn Contravariant$$Predicate$$Var0$$Var1$$contramap(v0: Predicate[r9, r9], v1: (r9) -> r9) -> Predicate[r9, r9] =
+  let v8: (r9) -> r9 = make_closure(lambda$26, [v0, v1])
+  let v9: Predicate[r9, r9] = construct Predicate(v8)
   v9
 
-fn lambda$27(v2: Predicate[y8, y8], v3: (y8) -> y8, v4: y8) -> y8 =
-  let v5: (y8) -> y8 = project v2.0
-  let v6: y8 = call_closure v3(v4)
-  let v7: y8 = call_closure v5(v6)
+fn lambda$26(v2: Predicate[r9, r9], v3: (r9) -> r9, v4: r9) -> r9 =
+  let v5: (r9) -> r9 = project v2.0
+  let v6: r9 = call_closure v3(v4)
+  let v7: r9 = call_closure v5(v6)
   v7

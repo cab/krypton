@@ -518,6 +518,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -531,6 +532,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -538,6 +540,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "my_receive".to_string(),
+            exported_symbol: "my_receive".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -560,6 +563,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "my_receive".to_string(),
+                exported_symbol: "my_receive".to_string(),
             },
         );
 
@@ -579,6 +583,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -592,6 +597,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -599,6 +605,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "middle".to_string(),
+            exported_symbol: "middle".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -621,6 +628,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "middle".to_string(),
+                exported_symbol: "middle".to_string(),
             },
         );
 
@@ -628,6 +636,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "outer".to_string(),
+            exported_symbol: "outer".to_string(),
             params: vec![(
                 VarId(10),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -650,6 +659,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "outer".to_string(),
+                exported_symbol: "outer".to_string(),
             },
         );
 
@@ -667,6 +677,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_send".to_string(),
+            exported_symbol: "raw_send".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_send".to_string(),
             param_types: vec![Type::Named("Ref".to_string(), vec![Type::Int]), Type::Int],
@@ -680,6 +691,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_send".to_string()),
                 },
                 local_alias: "raw_send".to_string(),
+                exported_symbol: "raw_send".to_string(),
             },
         );
 
@@ -687,6 +699,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "sender".to_string(),
+            exported_symbol: "sender".to_string(),
             params: vec![
                 (VarId(0), Type::Named("Ref".to_string(), vec![Type::Int])),
                 (VarId(1), Type::Int),
@@ -709,6 +722,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "sender".to_string(),
+                exported_symbol: "sender".to_string(),
             },
         );
 
@@ -736,6 +750,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -749,6 +764,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -756,6 +772,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "recv_closure".to_string(),
+            exported_symbol: "recv_closure".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -778,6 +795,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "recv_closure".to_string(),
+                exported_symbol: "recv_closure".to_string(),
             },
         );
 
@@ -785,6 +803,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "caller".to_string(),
+            exported_symbol: "caller".to_string(),
             params: vec![(
                 VarId(10),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -821,6 +840,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "caller".to_string(),
+                exported_symbol: "caller".to_string(),
             },
         );
 
@@ -840,6 +860,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(0),
             name: "apply".to_string(),
+            exported_symbol: "apply".to_string(),
             params: vec![(VarId(0), Type::Fn(vec![Type::Unit], Box::new(Type::Int)))],
             return_type: Type::Int,
             body: expr(
@@ -859,6 +880,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "apply".to_string(),
+                exported_symbol: "apply".to_string(),
             },
         );
 
@@ -882,6 +904,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -895,6 +918,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -902,6 +926,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "recv_loop".to_string(),
+            exported_symbol: "recv_loop".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -924,6 +949,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "recv_loop".to_string(),
+                exported_symbol: "recv_loop".to_string(),
             },
         );
 
@@ -931,6 +957,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![(
                 VarId(10),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -967,6 +994,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "main".to_string(),
+                exported_symbol: "main".to_string(),
             },
         );
 
@@ -986,6 +1014,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -999,6 +1028,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -1006,6 +1036,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "fn_a".to_string(),
+            exported_symbol: "fn_a".to_string(),
             params: vec![(VarId(0), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1025,6 +1056,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "fn_a".to_string(),
+                exported_symbol: "fn_a".to_string(),
             },
         );
 
@@ -1032,6 +1064,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "fn_b".to_string(),
+            exported_symbol: "fn_b".to_string(),
             params: vec![(VarId(10), Type::Int)],
             return_type: Type::Int,
             body: expr(
@@ -1062,6 +1095,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "fn_b".to_string(),
+                exported_symbol: "fn_b".to_string(),
             },
         );
 
@@ -1089,6 +1123,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -1102,6 +1137,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -1109,6 +1145,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "with_join".to_string(),
+            exported_symbol: "with_join".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -1149,6 +1186,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "with_join".to_string(),
+                exported_symbol: "with_join".to_string(),
             },
         );
 
@@ -1172,6 +1210,7 @@ mod tests {
         user.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -1185,6 +1224,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
 
@@ -1194,6 +1234,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(1),
             name: "Handler$Int$handle".to_string(),
+            exported_symbol: "Handler$Int$handle".to_string(),
             params: vec![
                 (
                     VarId(0),
@@ -1225,6 +1266,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "Handler$Int$handle".to_string(),
+                exported_symbol: "Handler$Int$handle".to_string(),
             },
         );
 
@@ -1243,6 +1285,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(2),
             name: "caller".to_string(),
+            exported_symbol: "caller".to_string(),
             params: vec![(
                 VarId(10),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -1287,6 +1330,7 @@ mod tests {
             FnId(2),
             FnIdentity::Local {
                 name: "caller".to_string(),
+                exported_symbol: "caller".to_string(),
             },
         );
 
@@ -1311,6 +1355,7 @@ mod tests {
         user.functions.push(FnDef {
             id: FnId(0),
             name: "generic_call".to_string(),
+            exported_symbol: "generic_call".to_string(),
             params: vec![
                 (
                     VarId(0),
@@ -1340,6 +1385,7 @@ mod tests {
             FnId(0),
             FnIdentity::Local {
                 name: "generic_call".to_string(),
+                exported_symbol: "generic_call".to_string(),
             },
         );
 
@@ -1363,6 +1409,7 @@ mod tests {
         middle.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "raw_receive".to_string(),
+            exported_symbol: "raw_receive".to_string(),
             source_module: "core/actor".to_string(),
             original_name: "raw_receive".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -1376,11 +1423,13 @@ mod tests {
                     symbol: LocalSymbolKey::Function("raw_receive".to_string()),
                 },
                 local_alias: "raw_receive".to_string(),
+                exported_symbol: "raw_receive".to_string(),
             },
         );
         middle.functions.push(FnDef {
             id: FnId(1),
             name: "handle".to_string(),
+            exported_symbol: "handle".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -1403,6 +1452,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "handle".to_string(),
+                exported_symbol: "handle".to_string(),
             },
         );
 
@@ -1411,6 +1461,7 @@ mod tests {
         app.imported_fns.push(ImportedFnDef {
             id: FnId(0),
             name: "handle".to_string(),
+            exported_symbol: "handle".to_string(),
             source_module: "lib/handler".to_string(),
             original_name: "handle".to_string(),
             param_types: vec![Type::Named("Mailbox".to_string(), vec![Type::Int])],
@@ -1424,6 +1475,7 @@ mod tests {
                     symbol: LocalSymbolKey::Function("handle".to_string()),
                 },
                 local_alias: "handle".to_string(),
+                exported_symbol: "handle".to_string(),
             },
         );
 
@@ -1431,6 +1483,7 @@ mod tests {
         app.functions.push(FnDef {
             id: FnId(1),
             name: "main".to_string(),
+            exported_symbol: "main".to_string(),
             params: vec![(
                 VarId(0),
                 Type::Named("Mailbox".to_string(), vec![Type::Int]),
@@ -1453,6 +1506,7 @@ mod tests {
             FnId(1),
             FnIdentity::Local {
                 name: "main".to_string(),
+                exported_symbol: "main".to_string(),
             },
         );
 

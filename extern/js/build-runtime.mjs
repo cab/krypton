@@ -9,6 +9,7 @@ const distDir = path.join(rootDir, 'dist');
 const entryPoints = {
   actor: path.join(rootDir, 'src/actor.mts'),
   array: path.join(rootDir, 'src/array.mts'),
+  'array-builder': path.join(rootDir, 'src/array-builder.mts'),
   convert: path.join(rootDir, 'src/convert.mts'),
   io: path.join(rootDir, 'src/io.mts'),
   json: path.join(rootDir, 'src/json.mts'),

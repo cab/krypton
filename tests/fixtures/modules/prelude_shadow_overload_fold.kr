@@ -1,0 +1,6 @@
+# expect: ok
+import vec_mod.{fold}
+import list_mod.{fold}
+
+fun test_vec(v: Vec[Int]) -> Int = fold(v, 0, (acc: Int, x: Int) -> acc + x)
+fun test_list(l: List[Int]) -> Int = fold(l, 0, (acc: Int, x: Int) -> acc + x)

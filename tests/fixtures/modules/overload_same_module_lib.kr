@@ -1,0 +1,2 @@
+pub fun push(v: Vec[Int], x: Int) -> Vec[Int] = v
+pub fun push(l: List[Int], x: Int) -> List[Int] = l

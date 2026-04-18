@@ -5,15 +5,15 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[i8] { fmap(i8[j8], (j8) -> k8): i8[k8] }
+trait Functor[b9] { fmap(b9[c9], (c9) -> d9): b9[d9] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -23,7 +23,7 @@ declare println: (g) -> Unit
 
 fn main() -> Unit =
   let v0: Box[Int] = construct Box::Box#0(42)
-  let v4: (Int) -> Int = make_closure(lambda$28, [])
+  let v4: (Int) -> Int = make_closure(lambda$27, [])
   let v5: Dict[traits__hkt_multi_method.Functor, Box] = get_dict traits__hkt_multi_method.Functor[Box]
   let v1: Box[Int] = trait_call traits__hkt_multi_method.Functor.fmap(v5, v0, v4)
   let_join v10(v8: Int) =
@@ -36,14 +36,14 @@ fn main() -> Unit =
       jump v10(v7)
   }
 
-fn Functor$$Box$$fmap(v11: Box[c9], v12: (c9) -> e9) -> Box[e9] =
+fn Functor$$Box$$fmap(v11: Box[v9], v12: (v9) -> x9) -> Box[x9] =
   switch v11 {
-    0 (v13: c9) ->
-      let v14: e9 = call_closure v12(v13)
-      let v15: Box[e9] = construct Box::Box#0(v14)
+    0 (v13: v9) ->
+      let v14: x9 = call_closure v12(v13)
+      let v15: Box[x9] = construct Box::Box#0(v14)
       v15
   }
 
-fn lambda$28(v2: Int) -> Int =
+fn lambda$27(v2: Int) -> Int =
   let v3: Int = add_int(v2, 1)
   v3

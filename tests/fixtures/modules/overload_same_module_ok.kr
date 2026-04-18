@@ -1,0 +1,5 @@
+# expect: ok
+import overload_same_module_lib.{push}
+
+fun use_vec(v: Vec[Int]) -> Vec[Int] = push(v, 1)
+fun use_list(l: List[Int]) -> List[Int] = push(l, 1)

@@ -233,15 +233,37 @@ impl ImportContext {
                     entry.overload_candidates = None;
                 }
             } else {
-                // Only create overload candidates when the same name is imported
-                // from genuinely different source modules (validated as non-overlapping
-                // by register_import_binding). Trait method re-imports from the same
-                // module should not create overloads.
-                let distinct_modules: std::collections::HashSet<&str> = self
-                    .get_by_name(&name)
-                    .map(|f| f.qualified_name.module_path.as_str())
-                    .collect();
-                if distinct_modules.len() > 1 {
+                // Create an overload candidate whenever the same local name
+                // has more than one import entry with a genuinely distinct
+                // signature. Covers both cross-module and same-source-module
+                // overloads. The distinctness guard prevents a false overload
+                // when the same function reaches the environment via multiple
+                // import paths (e.g., repeated imports or a re-export that
+                // shadows an existing binding).
+                let new_params = crate::overload::fn_param_types(&scheme.ty);
+                let is_duplicate = env
+                    .lookup_entry(&name)
+                    .map(|entry| {
+                        let primary_match = binding_sources_share_identity(
+                            &entry.source,
+                            &binding_source,
+                        ) && crate::overload::fn_param_types(&entry.scheme.ty)
+                            == new_params;
+                        let candidate_match = entry
+                            .overload_candidates
+                            .as_ref()
+                            .map(|cs| {
+                                cs.iter().any(|c| {
+                                    binding_sources_share_identity(&c.source, &binding_source)
+                                        && crate::overload::fn_param_types(&c.scheme.ty)
+                                            == new_params
+                                })
+                            })
+                            .unwrap_or(false);
+                        primary_match || candidate_match
+                    })
+                    .unwrap_or(false);
+                if !is_duplicate && self.get_by_name(&name).count() > 1 {
                     if let Some(entry) = env.lookup_entry_mut(&name) {
                         entry.add_overload_candidate(scheme, binding_source.clone());
                     }
@@ -350,6 +372,62 @@ impl ImportContext {
         self.imported_fn_types
             .retain(|f| f.name != name || !f.is_prelude);
         self.rebuild_index();
+    }
+}
+
+/// Whether two `BindingSource` values refer to the same underlying symbol
+/// (same trait method, same imported function by qualified name, etc.).
+/// Used to detect duplicate imports that reach the environment through
+/// multiple paths, so a duplicate import does not fabricate a phantom
+/// overload candidate.
+fn binding_sources_share_identity(a: &BindingSource, b: &BindingSource) -> bool {
+    match (a, b) {
+        (
+            BindingSource::ImportedFunction {
+                qualified_name: qa, ..
+            },
+            BindingSource::ImportedFunction {
+                qualified_name: qb, ..
+            },
+        ) => qa == qb,
+        (
+            BindingSource::TraitMethod {
+                trait_module_path: tma,
+                trait_name: ta,
+                method_name: ma,
+                ..
+            },
+            BindingSource::TraitMethod {
+                trait_module_path: tmb,
+                trait_name: tb,
+                method_name: mb,
+                ..
+            },
+        ) => tma == tmb && ta == tb && ma == mb,
+        (
+            BindingSource::Constructor {
+                type_qualified_name: qa,
+                constructor_name: ca,
+                ..
+            },
+            BindingSource::Constructor {
+                type_qualified_name: qb,
+                constructor_name: cb,
+                ..
+            },
+        ) => qa == qb && ca == cb,
+        (
+            BindingSource::TopLevelLocalFunction {
+                qualified_name: qa,
+            },
+            BindingSource::TopLevelLocalFunction {
+                qualified_name: qb,
+            },
+        ) => qa == qb,
+        (BindingSource::IntrinsicFunction { name: a }, BindingSource::IntrinsicFunction { name: b }) => {
+            a == b
+        }
+        _ => false,
     }
 }
 

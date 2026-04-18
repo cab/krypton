@@ -48,6 +48,7 @@ fn well_formed_module_passes() {
     let func = FnDef {
         id: FnId(0),
         name: "main".into(),
+        exported_symbol: "main".into(),
         params: vec![],
         return_type: Type::Unit,
         body: unit_atom(),
@@ -58,6 +59,7 @@ fn well_formed_module_passes() {
             FnId(0),
             FnIdentity::Local {
                 name: "main".to_string(),
+                exported_symbol: "main".to_string(),
             },
         )]),
     );
@@ -69,6 +71,7 @@ fn well_formed_with_let_and_call() {
     let func = FnDef {
         id: FnId(0),
         name: "callee".into(),
+        exported_symbol: "callee".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
         body: expr(Type::Int, ExprKind::Atom(Atom::Var(VarId(0)))),
@@ -76,6 +79,7 @@ fn well_formed_with_let_and_call() {
     let main_fn = FnDef {
         id: FnId(1),
         name: "main".into(),
+        exported_symbol: "main".into(),
         params: vec![],
         return_type: Type::Int,
         body: expr(
@@ -98,12 +102,14 @@ fn well_formed_with_let_and_call() {
                 FnId(0),
                 FnIdentity::Local {
                     name: "callee".to_string(),
+                    exported_symbol: "callee".to_string(),
                 },
             ),
             (
                 FnId(1),
                 FnIdentity::Local {
                     name: "main".to_string(),
+                    exported_symbol: "main".to_string(),
                 },
             ),
         ]),
@@ -117,6 +123,7 @@ fn duplicate_var_id_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Int,
         body: expr(
@@ -149,6 +156,7 @@ fn duplicate_var_id_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -166,6 +174,7 @@ fn join_point_used_as_value_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
         body: expr(
@@ -185,6 +194,7 @@ fn join_point_used_as_value_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -198,6 +208,7 @@ fn jump_to_non_join_point_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![(VarId(0), Type::Unit)],
         return_type: Type::Unit,
         body: expr(
@@ -214,6 +225,7 @@ fn jump_to_non_join_point_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -230,6 +242,7 @@ fn call_to_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Int,
         body: expr(
@@ -251,6 +264,7 @@ fn call_to_unknown_fn_id_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -267,6 +281,7 @@ fn make_closure_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Fn(vec![], Box::new(Type::Unit)),
         body: expr(
@@ -291,6 +306,7 @@ fn make_closure_unknown_fn_id_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -307,6 +323,7 @@ fn letrec_unknown_fn_id_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
         body: expr(
@@ -328,6 +345,7 @@ fn letrec_unknown_fn_id_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -345,6 +363,7 @@ fn primop_type_mismatch_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Bool,
         body: expr(
@@ -366,6 +385,7 @@ fn primop_type_mismatch_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -382,6 +402,7 @@ fn well_formed_join_point_passes() {
     let func = FnDef {
         id: FnId(0),
         name: "good".into(),
+        exported_symbol: "good".into(),
         params: vec![],
         return_type: Type::Unit,
         body: expr(
@@ -407,6 +428,7 @@ fn well_formed_join_point_passes() {
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
+                exported_symbol: "good".to_string(),
             },
         )]),
     );
@@ -419,6 +441,7 @@ fn letjoin_param_varid_reusable_in_body() {
     let func = FnDef {
         id: FnId(0),
         name: "good".into(),
+        exported_symbol: "good".into(),
         params: vec![],
         return_type: Type::Int,
         body: expr(
@@ -455,6 +478,7 @@ fn letjoin_param_varid_reusable_in_body() {
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
+                exported_symbol: "good".to_string(),
             },
         )]),
     );
@@ -467,6 +491,7 @@ fn switch_branch_varid_reusable_across_branches() {
     let func = FnDef {
         id: FnId(0),
         name: "good".into(),
+        exported_symbol: "good".into(),
         params: vec![(VarId(0), Type::Int)],
         return_type: Type::Int,
         body: expr(
@@ -495,6 +520,7 @@ fn switch_branch_varid_reusable_across_branches() {
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
+                exported_symbol: "good".to_string(),
             },
         )]),
     );
@@ -506,6 +532,7 @@ fn getdict_unknown_trait_is_error() {
     let func = FnDef {
         id: FnId(0),
         name: "bad".into(),
+        exported_symbol: "bad".into(),
         params: vec![],
         return_type: Type::Unit,
         body: expr(
@@ -534,6 +561,7 @@ fn getdict_unknown_trait_is_error() {
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
+                exported_symbol: "bad".to_string(),
             },
         )]),
     );
@@ -559,6 +587,7 @@ fn getdict_valid_trait_and_instance_passes() {
     let func = FnDef {
         id: FnId(0),
         name: "good".into(),
+        exported_symbol: "good".into(),
         params: vec![],
         return_type: Type::Unit,
         body: expr(
@@ -587,6 +616,7 @@ fn getdict_valid_trait_and_instance_passes() {
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
+                exported_symbol: "good".to_string(),
             },
         )]),
     );

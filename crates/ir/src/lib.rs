@@ -453,7 +453,7 @@ pub fn bind_type_vars_many(
 pub const COMPILER_INTRINSICS: &[&str] = &["panic", "todo", "unreachable"];
 
 /// Unique function identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FnId(pub u32);
 
 /// Unique variable identifier. No shadowing exists in the IR.
@@ -479,14 +479,25 @@ pub struct FinallyClose {
 // ---------------------------------------------------------------------------
 
 /// Identity of a function known to the IR module.
+///
+/// `exported_symbol` is the module-boundary wire-format name used by codegen
+/// to distinguish overload siblings. For non-overloaded functions it equals
+/// `name`. For an overload group it follows source-order mangling: the
+/// earliest declaration keeps the bare name, subsequent ones get `name$2`,
+/// `name$3`, .... Intrinsics and externs cannot overload, so `exported_symbol
+/// == name` for them.
 #[derive(Debug, Clone)]
 pub enum FnIdentity {
     /// Defined in this module.
-    Local { name: String },
+    Local {
+        name: String,
+        exported_symbol: String,
+    },
     /// Imported from another Krypton module.
     Imported {
         canonical: CanonicalRef,
         local_alias: String,
+        exported_symbol: String,
     },
     /// Extern FFI binding (Java/JS).
     Extern {
@@ -502,8 +513,24 @@ impl FnIdentity {
     /// The bare name used by codegen (binding name / alias).
     pub fn name(&self) -> &str {
         match self {
-            FnIdentity::Local { name } => name,
+            FnIdentity::Local { name, .. } => name,
             FnIdentity::Imported { local_alias, .. } => local_alias,
+            FnIdentity::Extern { name, .. } => name,
+            FnIdentity::Intrinsic { name } => name,
+        }
+    }
+
+    /// The module-boundary wire-format name. For local/imported functions
+    /// this may be mangled (e.g., `push$2`) to disambiguate overload
+    /// siblings. Externs/intrinsics cannot overload — equals `name()`.
+    pub fn exported_symbol(&self) -> &str {
+        match self {
+            FnIdentity::Local {
+                exported_symbol, ..
+            } => exported_symbol,
+            FnIdentity::Imported {
+                exported_symbol, ..
+            } => exported_symbol,
             FnIdentity::Extern { name, .. } => name,
             FnIdentity::Intrinsic { name } => name,
         }
@@ -544,16 +571,18 @@ pub struct Module {
     pub tuple_arities: BTreeSet<usize>,
     /// Canonical module path.
     pub module_path: ModulePath,
-    /// Function name → dict parameter requirements (trait_name, type_var_id).
+    /// FnId → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
-    pub fn_dict_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
-    /// Function name → disposables that must be cleaned up at function exit.
+    /// Keyed by FnId (not name) so overload siblings resolve independently.
+    pub fn_dict_requirements: HashMap<FnId, Vec<(TraitName, Vec<TypeVarId>)>>,
+    /// FnId → disposables that must be cleaned up at function exit.
     /// Target-neutral metadata: each backend decides enforcement mechanism
     /// (JVM: exception table finally handlers, JS: try/finally, etc.).
+    /// Keyed by FnId (not name) so overload siblings resolve independently.
     ///
     /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
     /// rather than side metadata.
-    pub fn_exit_closes: HashMap<String, Vec<FinallyClose>>,
+    pub fn_exit_closes: HashMap<FnId, Vec<FinallyClose>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -581,6 +610,11 @@ pub struct VariantDef {
 pub struct FnDef {
     pub id: FnId,
     pub name: String,
+    /// Module-boundary symbol name. For non-overloaded functions this equals
+    /// `name`; for overloads the source-order rule produces `name`, `name$2`,
+    /// `name$3`, .... Used by codegen backends that can't natively
+    /// overload (e.g., JS) to emit distinct exports.
+    pub exported_symbol: String,
     pub params: Vec<(VarId, Type)>,
     pub return_type: Type,
     pub body: Expr,
@@ -659,6 +693,11 @@ pub struct ExternTraitBridge {
 pub struct ImportedFnDef {
     pub id: FnId,
     pub name: String,
+    /// Module-boundary symbol name at the source module — matches the
+    /// exporter's `FnDef::exported_symbol`. Non-overloaded imports have
+    /// `exported_symbol == original_name`; overload siblings follow the
+    /// source-order mangling (`original_name$2`, etc.).
+    pub exported_symbol: String,
     pub source_module: String,
     pub original_name: String,
     pub param_types: Vec<Type>,
@@ -926,6 +965,7 @@ mod tests {
             functions: vec![FnDef {
                 id: FnId(0),
                 name: "main".into(),
+                exported_symbol: "main".into(),
                 params: vec![],
                 return_type: Type::Unit,
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),

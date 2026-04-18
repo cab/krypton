@@ -127,6 +127,7 @@ pub(crate) fn imported_binding_ref(
 ) -> ResolvedBindingRef {
     ResolvedBindingRef::Callable(ResolvedCallableRef::ImportedFunction {
         qualified_name: typed_ast::QualifiedName::new(module_path.into(), local_name.into()),
+        overload_signature: None,
     })
 }
 
@@ -165,6 +166,18 @@ pub(crate) fn constructor_binding_ref(
 pub(crate) fn resolved_ref_from_binding_source(
     source: &BindingSource,
 ) -> Option<ResolvedBindingRef> {
+    resolved_ref_from_binding_source_with_overload(source, None)
+}
+
+/// Build a `ResolvedBindingRef` for a `BindingSource`, attaching the given
+/// `OverloadSignature` when the source is a callable function variant.
+/// Call sites that selected an overload winner use this to thread the
+/// concrete signature through to IR. `overload` is ignored for non-callable
+/// sources (constructors, trait methods, intrinsics).
+pub(crate) fn resolved_ref_from_binding_source_with_overload(
+    source: &BindingSource,
+    overload: Option<typed_ast::OverloadSignature>,
+) -> Option<ResolvedBindingRef> {
     match source {
         BindingSource::LocalValue => None,
         BindingSource::TopLevelLocalFunction { qualified_name } => Some(
@@ -173,6 +186,7 @@ pub(crate) fn resolved_ref_from_binding_source(
                     qualified_name.module_path.clone(),
                     qualified_name.local_name.clone(),
                 ),
+                overload_signature: overload,
             }),
         ),
         BindingSource::ImportedFunction { qualified_name, .. } => Some(
@@ -181,6 +195,7 @@ pub(crate) fn resolved_ref_from_binding_source(
                     qualified_name.module_path.clone(),
                     qualified_name.local_name.clone(),
                 ),
+                overload_signature: overload,
             }),
         ),
         BindingSource::Constructor {

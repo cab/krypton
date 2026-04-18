@@ -5,7 +5,7 @@ use krypton_modules::module_resolver::CompositeResolver;
 use krypton_parser::parser::parse;
 use krypton_typechecker::infer::infer_module;
 
-const TRIVIAL: &str = "fun main() -> Int = 42";
+const TRIVIAL: &str = "fun main() -> Unit = ()";
 
 fn stress_source() -> &'static str {
     static SOURCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();

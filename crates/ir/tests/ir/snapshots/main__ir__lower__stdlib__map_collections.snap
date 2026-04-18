@@ -5,28 +5,28 @@ expression: ir_module.to_string()
 module stdlib__map_collections
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[p3]) -> Option[p3]
-import core/list/sort_by as sort_by(List[u5], (u5) -> j5) -> List[u5]
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
 import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], u1, (u1, s1) -> u1) -> u1
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
 import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[w7]) -> List[w7]
+import core/vec/to_list as to_list(Vec[p8]) -> List[p8]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[y8, z8]
-import core/map/put as put(Map[h9, i9], h9, i9) -> Map[h9, i9]
-import core/map/from_list as from_list(List[(x12, y12)]) -> Map[x12, y12]
-import core/map/size as size(Map[c13, d13]) -> Int
-import core/map/merge as merge(Map[n13, o13], Map[n13, o13]) -> Map[n13, o13]
-declare empty: () -> Map[y8, z8]
-declare from_list: (List[(x12, y12)]) -> Map[x12, y12]
-declare merge: (Map[n13, o13], Map[n13, o13]) -> Map[n13, o13]
+import core/map/empty as empty() -> Map[r9, s9]
+import core/map/put as put(Map[a10, b10], a10, b10) -> Map[a10, b10]
+import core/map/from_list as from_list(List[(q13, r13)]) -> Map[q13, r13]
+import core/map/size as size(Map[v13, w13]) -> Int
+import core/map/merge as merge(Map[g14, h14], Map[g14, h14]) -> Map[g14, h14]
+declare empty: () -> Map[r9, s9]
+declare from_list: (List[(q13, r13)]) -> Map[q13, r13]
+declare merge: (Map[g14, h14], Map[g14, h14]) -> Map[g14, h14]
 declare println: (g) -> Unit
-declare put: (Map[h9, i9], h9, i9) -> Map[h9, i9]
-declare size: (Map[c13, d13]) -> Int
+declare put: (Map[a10, b10], a10, b10) -> Map[a10, b10]
+declare size: (Map[v13, w13]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

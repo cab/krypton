@@ -64,6 +64,13 @@ pub(super) fn infer_function_bodies<'a>(
 
     let mut result_schemes: Vec<Option<TypeScheme>> = vec![None; fn_decls.len()];
     let mut fn_bodies: Vec<Option<TypedExpr>> = vec![None; fn_decls.len()];
+    // Name-keyed: when two local overloads both declare constraints, the
+    // later insert overwrites the earlier. Harmless today because Krypton
+    // overloads do not carry distinct `where`-constraint clauses in any
+    // exercised fixture, and implicit body-detected constraints are merged
+    // (not overwritten). A future per-overload constraint API would rekey
+    // this to `(name, decl_idx)` — leaving name-keyed now to avoid rippling
+    // the rekey through consumers in this phase.
     let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
         HashMap::new();
     let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();

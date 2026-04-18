@@ -432,6 +432,20 @@ impl<'a> ModuleLinkView<'a> {
             .collect()
     }
 
+    /// Iterate a specific module's full exported_fns slice — needed when
+    /// the caller wants to enumerate overload siblings (which `lookup_fn_summary`
+    /// collapses to a single entry via its name-keyed index).
+    pub fn exported_fns_for(&self, path: &ModulePath) -> Option<&'a [ExportedFnSummary]> {
+        let id = self.ctx.interner.lookup(path)?;
+        if !self.reachable.contains(&id) {
+            return None;
+        }
+        self.ctx
+            .interfaces
+            .get(&id)
+            .map(|iface| iface.exported_fns.as_slice())
+    }
+
     pub fn all_exported_types(&self) -> Vec<(&'a ModulePath, &'a TypeSummary)> {
         self.ctx
             .interfaces
@@ -490,6 +504,7 @@ mod tests {
         ExportedFnSummary {
             key: LocalSymbolKey::Function(name.to_string()),
             name: name.to_string(),
+            exported_symbol: name.to_string(),
             scheme: TypeScheme {
                 vars: vec![],
                 var_names: HashMap::new(),
