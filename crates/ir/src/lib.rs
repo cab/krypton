@@ -363,17 +363,10 @@ pub fn bind_type_vars(
             }
         },
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
-            // Exact-arity or pattern-extra: a pattern with more slots than the
-            // actual matches the actual's prefix. This lets HKT instance patterns
-            // stored in full form (e.g. `Map[Var(k), Var(anon)]`) match partial
-            // dispatch types (e.g. `Map[String]`) produced by HKT method resolution.
-            // Trailing pattern slots stay unbound — consumers only care that the
-            // instance is identified, not what the hole slot resolves to.
             p_name == a_name
-                && p_args.len() >= a_args.len()
+                && p_args.len() == a_args.len()
                 && p_args
                     .iter()
-                    .take(a_args.len())
                     .zip(a_args.iter())
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
@@ -435,26 +428,50 @@ pub fn bind_type_vars(
     }
 }
 
-/// Zip two lists of types (patterns and concretes) and run `bind_type_vars`
-/// across them in lockstep. Returns `false` if the lengths differ or any
-/// position fails to match. Used by multi-parameter trait instance lookup.
+/// Match a single instance-target pattern against a dispatch type.
 ///
-/// On `false`, the input `bindings` is restored to its pre-call state, so
-/// callers that share a bindings map across candidate probes do not observe
-/// partial-binding leakage from a failed match.
-pub fn bind_type_vars_many(
-    patterns: &[Type],
-    concretes: &[Type],
+/// Instance patterns are stored in full form (e.g. `Map[Var(k), Var(anon)]`);
+/// dispatch types may be partial (e.g. `Map[String]`) when HKT method
+/// resolution binds the trait's type var to a partial constructor. At the
+/// top level of a target type, a pattern with more slots than the actual
+/// matches by zipping the prefix — trailing pattern slots stay unbound.
+/// Nested types use strict [`bind_type_vars`].
+fn bind_instance_target(
+    pattern: &Type,
+    actual: &Type,
     bindings: &mut HashMap<TypeVarId, Type>,
 ) -> bool {
-    if patterns.len() != concretes.len() {
+    match (pattern, actual) {
+        (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
+            if p_args.len() > a_args.len() =>
+        {
+            p_name == a_name
+                && p_args
+                    .iter()
+                    .take(a_args.len())
+                    .zip(a_args.iter())
+                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+        }
+        _ => bind_type_vars(pattern, actual, bindings),
+    }
+}
+
+/// Array-level counterpart to [`bind_instance_target`]: zips instance-target
+/// tuples with dispatch tuples. Restores `bindings` to its pre-call state on
+/// failure so callers can probe multiple candidates against a shared map.
+pub fn bind_instance_targets(
+    patterns: &[Type],
+    dispatch_tys: &[Type],
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> bool {
+    if patterns.len() != dispatch_tys.len() {
         return false;
     }
     let snapshot = bindings.clone();
     let ok = patterns
         .iter()
-        .zip(concretes.iter())
-        .all(|(p, a)| bind_type_vars(p, a, bindings));
+        .zip(dispatch_tys.iter())
+        .all(|(p, a)| bind_instance_target(p, a, bindings));
     if !ok {
         *bindings = snapshot;
     }

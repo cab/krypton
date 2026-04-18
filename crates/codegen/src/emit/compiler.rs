@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{bind_type_vars_many, SimpleExprKind, TraitName, Type, TypeVarId};
+use krypton_ir::{bind_instance_targets, SimpleExprKind, TraitName, Type, TypeVarId};
 use krypton_parser::ast::Span;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
@@ -1910,7 +1910,7 @@ impl<'link> Compiler<'link> {
                     .and_then(|instances| {
                         instances.iter().find(|inst| {
                             let mut bindings = HashMap::new();
-                            bind_type_vars_many(&inst.target_types, target_types, &mut bindings)
+                            bind_instance_targets(&inst.target_types, target_types, &mut bindings)
                         })
                     })
                     .cloned()

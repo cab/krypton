@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use krypton_ir::{bind_type_vars_many, TraitName, Type};
+use krypton_ir::{bind_instance_targets, TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{
@@ -40,7 +40,7 @@ impl<'link> Compiler<'link> {
         concrete_tys: &[Type],
     ) -> Option<Vec<Type>> {
         let mut bindings = HashMap::new();
-        if bind_type_vars_many(&instance_info.target_types, concrete_tys, &mut bindings) {
+        if bind_instance_targets(&instance_info.target_types, concrete_tys, &mut bindings) {
             requirement
                 .type_vars
                 .iter()
@@ -138,7 +138,7 @@ impl<'link> Compiler<'link> {
             .and_then(|instances| {
                 instances.iter().find(|inst| {
                     let mut bindings = HashMap::new();
-                    bind_type_vars_many(&inst.target_types, tys, &mut bindings)
+                    bind_instance_targets(&inst.target_types, tys, &mut bindings)
                 })
             })
             .cloned()

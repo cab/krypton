@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use krypton_ir::{
-    bind_type_vars_many, canonical_type_name, has_type_vars, head_type_name, Atom, CanonicalRef,
+    bind_instance_targets, canonical_type_name, has_type_vars, head_type_name, Atom, CanonicalRef,
     Expr, ExprKind, FnId, FnIdentity, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind,
     StructDef, SumTypeDef, Type, VarId,
 };
@@ -83,7 +83,7 @@ impl InstanceRegistry {
         // 2. Parametric structural match
         for inst in self.parametric_candidates(trait_name, tys) {
             let mut bindings = HashMap::new();
-            if bind_type_vars_many(&inst.target_types, tys, &mut bindings) {
+            if bind_instance_targets(&inst.target_types, tys, &mut bindings) {
                 return Some(&inst.js_name);
             }
         }
@@ -111,7 +111,7 @@ impl InstanceRegistry {
         }
         for inst in self.parametric_candidates(trait_name, tys) {
             let mut bindings = HashMap::new();
-            if bind_type_vars_many(&inst.target_types, tys, &mut bindings) {
+            if bind_instance_targets(&inst.target_types, tys, &mut bindings) {
                 return inst.source_module.as_deref();
             }
         }

@@ -380,7 +380,11 @@ fn resolve_trait_method(
                 .map(|(_, id)| *id);
         }
         let mut bindings = HashMap::new();
-        if bind_type_vars(primary, target, &mut bindings) {
+        if bind_instance_targets(
+            std::slice::from_ref(primary),
+            std::slice::from_ref(target),
+            &mut bindings,
+        ) {
             return inst
                 .method_fn_ids
                 .iter()
