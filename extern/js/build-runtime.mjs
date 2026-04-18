@@ -25,6 +25,20 @@ const entryPoints = {
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(distDir, { recursive: true });
 
+const entryBasenames = new Set(Object.keys(entryPoints));
+const externalSiblingEntries = {
+  name: 'external-sibling-entries',
+  setup(build) {
+    build.onResolve({ filter: /^\.\/.+\.mjs$/ }, (args) => {
+      const base = path.basename(args.path, '.mjs');
+      if (entryBasenames.has(base)) {
+        return { path: args.path, external: true };
+      }
+      return null;
+    });
+  },
+};
+
 try {
   await build({
     entryPoints,
@@ -36,6 +50,7 @@ try {
     splitting: false,
     packages: 'bundle',
     outExtension: { '.js': '.mjs' },
+    plugins: [externalSiblingEntries],
   });
 } catch {
   process.exitCode = 1;

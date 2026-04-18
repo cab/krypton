@@ -4645,28 +4645,8 @@ function setProp(prototype, name) {
   }
 }
 
-// src/map-hashed-key.mts
-var HashedKey = class {
-  key;
-  hash;
-  eqDict;
-  constructor(key, hashDict, eqDict) {
-    this.key = key;
-    this.eqDict = eqDict;
-    const raw = hashDict.hash(key);
-    this.hash = typeof raw === "bigint" ? Number(BigInt.asIntN(32, raw)) : raw | 0;
-  }
-  hashCode() {
-    return this.hash;
-  }
-  equals(other) {
-    if (other === this) return true;
-    if (!other || typeof other !== "object" || !("key" in other)) return false;
-    return this.eqDict.eq(this.key, other.key);
-  }
-};
-
 // src/map.mts
+import { HashedKey } from "./map-hashed-key.mjs";
 function create(data, hashDict, eqDict) {
   return Object.freeze({ data, hashDict, eqDict });
 }

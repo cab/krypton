@@ -4645,15 +4645,8 @@ function setProp(prototype, name) {
   }
 }
 
-// src/panic.mts
-var KryptonPanic = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "KryptonPanic";
-  }
-};
-
 // src/array.mts
+import { KryptonPanic } from "./panic.mjs";
 function staticLength(list) {
   return list.size;
 }

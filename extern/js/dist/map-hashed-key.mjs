@@ -1,5 +1,5 @@
 // src/map-hashed-key.mts
-var HashedKey = class {
+var HashedKey = class _HashedKey {
   key;
   hash;
   eqDict;
@@ -14,7 +14,7 @@ var HashedKey = class {
   }
   equals(other) {
     if (other === this) return true;
-    if (!other || typeof other !== "object" || !("key" in other)) return false;
+    if (!(other instanceof _HashedKey)) return false;
     return this.eqDict.eq(this.key, other.key);
   }
 };

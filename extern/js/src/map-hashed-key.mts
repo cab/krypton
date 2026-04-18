@@ -10,11 +10,8 @@ type EqDict = { eq: (a: unknown, b: unknown) => boolean };
  * JS trait dicts are plain objects with named methods (e.g. `{ hash: ... }`),
  * not bare callables, so `hashCode`/`equals` delegate via `.hash`/`.eq`.
  *
- * Both `map.mts` and `map-builder.mts` import this module; esbuild bundles
- * each entry point independently, so at runtime there are two structurally
- * identical `HashedKey` classes. `equals` duck-types the other side via a
- * field check, so a lookup wrapped by one bundle compares correctly
- * against a value wrapped by the other.
+ * Emitted as a shared runtime file so every bundle (`map.mjs`,
+ * `map-builder.mjs`, ...) imports the same class at load time.
  */
 export class HashedKey implements ValueObject {
   readonly key: unknown;
@@ -36,7 +33,7 @@ export class HashedKey implements ValueObject {
 
   equals(other: unknown): boolean {
     if (other === this) return true;
-    if (!other || typeof other !== 'object' || !('key' in other)) return false;
-    return this.eqDict.eq(this.key, (other as { key: unknown }).key);
+    if (!(other instanceof HashedKey)) return false;
+    return this.eqDict.eq(this.key, other.key);
   }
 }
