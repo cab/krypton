@@ -130,7 +130,6 @@ pub enum TypeErrorCode {
     E0320, // Too many `shape` parameters in a single trait method (cap is 2)
     E0515, // Import overload arity mismatch
     E0516, // Local overload arity mismatch
-    E0517, // No matching overload
     E0518, // Ambiguous overload
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
