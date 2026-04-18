@@ -1,0 +1,12 @@
+# expect: error E0510
+# expect: error E0510
+# expect: error E0510
+import vec_mod.{length}
+import list_mod.{length}
+
+fun three_unresolved(xs, ys, zs) -> Int {
+  let a = length(xs)
+  let b = length(ys)
+  let c = length(zs)
+  a + b + c
+}

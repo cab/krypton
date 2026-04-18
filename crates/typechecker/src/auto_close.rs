@@ -643,6 +643,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 func,
                 args,
                 param_modes,
+                deferred_id: _,
             } => {
                 self.walk_expr(func, live);
                 for arg in args {

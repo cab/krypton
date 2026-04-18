@@ -10,7 +10,7 @@ use crate::unify::{coerce_unify, unify};
 /// `Vec[a]` and `Vec[b]` produce the same fingerprint. No whitespace; every
 /// qualifier (`Own`, `MaybeOwn`, `Shape`) is serialized deterministically.
 ///
-/// Used as the input to `short_hash` when mangling overload-sibling names.
+/// Used as the input to `overload_hash` when mangling overload-sibling names.
 pub fn canonical_type_string(tys: &[Type]) -> String {
     let mut vars: HashMap<TypeVarId, u32> = HashMap::new();
     let mut qvars: HashMap<crate::types::QualVarId, u32> = HashMap::new();
@@ -115,12 +115,15 @@ fn write_canonical(
     }
 }
 
-/// FNV-1a 64-bit hash of UTF-8 bytes, rendered as the first 6 lowercase hex
-/// digits (24 bits). Used to mangle overload-sibling symbol names. 24 bits is
-/// sufficient for realistic sibling-count collision probability; the mangler
-/// escalates any duplicate into a hard ICE so we cannot silently collide at
-/// encode time.
-pub fn short_hash(bytes: &str) -> String {
+/// FNV-1a 64-bit hash of UTF-8 bytes, rendered in full as 16 lowercase hex
+/// digits. Used to mangle overload-sibling symbol names. Full-length output is
+/// collision-free for any plausible overload group: distinct canonical forms
+/// would require a 64-bit FNV-1a collision, which is not attainable from
+/// realistic overload sibling counts. If adversarial robustness is ever a
+/// concern the hash function is a drop-in change; the output encoding is
+/// intentionally stable at 16 hex chars so downstream consumers (IR,
+/// codegen, module interfaces) do not need to parse the width.
+pub fn overload_hash(bytes: &str) -> String {
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
     let mut h: u64 = FNV_OFFSET;
@@ -128,23 +131,26 @@ pub fn short_hash(bytes: &str) -> String {
         h ^= *b as u64;
         h = h.wrapping_mul(FNV_PRIME);
     }
-    let truncated = (h >> 40) & 0x00FF_FFFF;
-    format!("{:06x}", truncated)
+    format!("{:016x}", h)
 }
 
 /// Assign stable mangled names to a group of overload siblings that share a
 /// bare `name`. Entries are sorted by `def_spans[i]` start offset (entries
 /// without a span sort last, preserving their declaration order as a
 /// tiebreaker). The earliest entry keeps the bare `name`; subsequent siblings
-/// are suffixed with `_<hash6>` where the hash is FNV-1a over the canonical
-/// type-string of the entry's parameter types.
+/// are suffixed with `_<hash16>` where the hash is the full 64-bit FNV-1a
+/// digest (16 hex chars) over the canonical type-string of the entry's
+/// parameter types.
 ///
 /// Used by both `mangle_overload_symbols` (on `ExportedFnSummary`) and
 /// TypedFnDecl mangling at end-of-typechecking so interface-export mangling
 /// and AST mangling cannot diverge.
 ///
-/// Panics on hash collision within a sibling set — overload-time collisions
-/// must not silently produce the same exported symbol.
+/// A duplicate mangled name within a sibling group implies two siblings share
+/// the same canonical parameter types, which is an overlap the typechecker is
+/// responsible for rejecting upstream. This invariant is asserted via
+/// `debug_assert!` rather than a user-reachable panic: if it ever trips in
+/// debug builds it points at a missing overlap check, not user error.
 pub fn mangle_group(
     name: &str,
     params: &[Vec<Type>],
@@ -172,27 +178,26 @@ pub fn mangle_group(
     });
 
     let mut out = vec![String::new(); n];
-    let mut used_hashes: HashMap<String, usize> = HashMap::new();
+    let mut seen_mangled: HashMap<String, usize> = HashMap::new();
     for (rank, idx) in order.iter().enumerate() {
-        if rank == 0 {
-            out[*idx] = name.to_string();
-            continue;
-        }
-        let canon = canonical_type_string(&params[*idx]);
-        let h = short_hash(&canon);
-        if let Some(prev) = used_hashes.get(&h) {
-            panic!(
-                "ICE: overload hash collision for `{}` between siblings #{} and #{}: \
-                 canonical forms `{}` vs `{}`",
-                name,
-                prev,
-                idx,
-                canonical_type_string(&params[*prev]),
-                canon,
-            );
-        }
-        used_hashes.insert(h.clone(), *idx);
-        out[*idx] = format!("{name}_{h}");
+        let mangled = if rank == 0 {
+            name.to_string()
+        } else {
+            let canon = canonical_type_string(&params[*idx]);
+            format!("{name}_{}", overload_hash(&canon))
+        };
+        debug_assert!(
+            !seen_mangled.contains_key(&mangled),
+            "ICE: mangle_group produced duplicate mangled name `{}` in sibling set \
+             for `{}` (siblings #{} and #{}) — upstream overlap check should have \
+             rejected this",
+            mangled,
+            name,
+            seen_mangled.get(&mangled).copied().unwrap_or(usize::MAX),
+            idx,
+        );
+        seen_mangled.insert(mangled.clone(), *idx);
+        out[*idx] = mangled;
     }
     out
 }

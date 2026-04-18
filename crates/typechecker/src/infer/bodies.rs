@@ -25,7 +25,7 @@ pub(super) fn infer_function_bodies<'a>(
     trait_registry: &TraitRegistry,
     trait_method_map: &HashMap<String, TraitName>,
     mod_path: &str,
-) -> Result<InferFunctionBodiesResult<'a>, SpannedTypeError> {
+) -> Result<InferFunctionBodiesResult<'a>, Vec<SpannedTypeError>> {
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
         .decls
         .iter()
@@ -48,13 +48,13 @@ pub(super) fn infer_function_bodies<'a>(
                 missing.push("return type".to_string());
             }
             if !missing.is_empty() {
-                return Err(spanned(
+                return Err(vec![spanned(
                     TypeError::MissingPubAnnotation {
                         fn_name: decl.name.clone(),
                         missing,
                     },
                     decl.span,
-                ));
+                )]);
             }
         }
     }
@@ -357,7 +357,7 @@ pub(super) fn infer_function_bodies<'a>(
             Ok(()) => state.subst.commit_qual_scope(qual_snap),
             Err(_) => state.subst.rollback_qual_scope(qual_snap),
         }
-        scc_result?;
+        scc_result.map_err(|e| vec![e])?;
 
         // Eagerly resolve multi-parameter trait method calls before
         // generalization. Pinning secondary trait params (e.g. `?b = String`)
@@ -384,43 +384,12 @@ pub(super) fn infer_function_bodies<'a>(
             &mut state.gen,
         );
 
-        if let Err(mut errors) = resolve_overloads::resolve_deferred_overloads(
+        resolve_overloads::resolve_deferred_overloads(
             &mut deferred_overloads,
             &mut fn_bodies,
             &mut state.subst,
             &mut state.gen,
-        ) {
-            // The outer return type is single-error; surface the first site
-            // and attach the rest as secondary spans in the primary error's
-            // note so every ambiguous call is visible in one compile pass.
-            if errors.is_empty() {
-                unreachable!(
-                    "ICE: resolve_deferred_overloads returned Err with empty vec"
-                );
-            }
-            let mut first = errors.remove(0);
-            if !errors.is_empty() {
-                let mut note_lines = Vec::new();
-                note_lines.push(format!(
-                    "{} additional unresolved overload site(s):",
-                    errors.len(),
-                ));
-                for e in &errors {
-                    note_lines.push(format!(
-                        "  at byte offset {}..{}: {}",
-                        e.span.0,
-                        e.span.1,
-                        e.error,
-                    ));
-                }
-                let extra = note_lines.join("\n");
-                first.note = match first.note.take() {
-                    Some(existing) => Some(format!("{existing}\n{extra}")),
-                    None => Some(extra),
-                };
-            }
-            return Err(first);
-        }
+        )?;
 
         // Generalize against an empty env: all env bindings are either fully-quantified
         // schemes (no free vars) or current-SCC monomorphic bindings whose vars should be
@@ -539,7 +508,8 @@ pub(super) fn infer_function_bodies<'a>(
                 &declared,
                 &decl.name,
                 &type_var_names,
-            )?;
+            )
+            .map_err(|e| vec![e])?;
         }
     }
 
@@ -578,7 +548,8 @@ pub(super) fn infer_function_bodies<'a>(
                     &fn_schemes_map,
                     &fn_type_vars,
                     &scheme_var_names,
-                )?;
+                )
+                .map_err(|e| vec![e])?;
             }
         }
     }

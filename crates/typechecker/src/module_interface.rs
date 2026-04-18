@@ -132,10 +132,11 @@ pub struct ModuleInterface {
 /// distinguish overload siblings at the module boundary. For non-overloaded
 /// functions it equals `name`. For a group of overloads sharing a name, the
 /// earliest (by source order) keeps the bare name and each sibling is
-/// suffixed with `_<hash6>`, where `hash6` is the first six hex digits of
-/// an FNV-1a hash over the canonical parameter-type fingerprint. The hash
-/// keys on type structure rather than declaration position, so reordering
-/// or renaming existing overloads does not change wire names.
+/// suffixed with `_<hash16>`, where `hash16` is the full 64-bit FNV-1a
+/// digest (16 lowercase hex chars) over the canonical parameter-type
+/// fingerprint. The hash keys on type structure rather than declaration
+/// position, so reordering or renaming existing overloads does not change
+/// wire names.
 #[derive(Clone, Debug)]
 pub struct ExportedFnSummary {
     pub key: LocalSymbolKey,
@@ -893,7 +894,6 @@ pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
         span: (0, 0),
         resolved_ref: None,
         scope_id: None,
-        deferred_id: None,
     };
     InstanceDefInfo {
         trait_name: is.trait_name.clone(),

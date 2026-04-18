@@ -1005,6 +1005,22 @@ fn e0510_ambiguous_call_diagnostic() {
     insta::assert_snapshot!(output);
 }
 
+/// Three unresolved overload sites in one function body — each must surface
+/// its own source-highlighted diagnostic in one pass, not collapse into a
+/// single error with a byte-offset note about the others.
+#[test]
+fn e0510_ambiguous_call_reports_all_sites() {
+    let output = render_fixture_module_error(
+        "../../tests/fixtures/modules/overload_deferred_ambiguous_multi.kr",
+    );
+    let site_count = output.matches("[E0510] Error:").count();
+    assert_eq!(
+        site_count, 3,
+        "expected 3 distinct E0510 diagnostics, got {site_count}; output:\n{output}"
+    );
+    insta::assert_snapshot!(output);
+}
+
 #[test]
 fn e0511_no_matching_overload_diagnostic() {
     let output =

@@ -353,7 +353,9 @@ pub(crate) fn infer_module_inner(
     )
     .map_err(|e| vec![e])?;
 
-    // Phase: SCC-based function inference
+    // Phase: SCC-based function inference. Returns a vec of errors so every
+    // unresolved/ambiguous/no-match overload site is reported in one pass
+    // rather than collapsed into a single diagnostic with a byte-offset note.
     let (fn_decls, result_schemes, fn_bodies, mut fn_constraint_requirements) =
         infer_function_bodies(
             &mut state,
@@ -362,8 +364,7 @@ pub(crate) fn infer_module_inner(
             &trait_registry,
             &trait_method_map,
             &module_path,
-        )
-        .map_err(|e| vec![e])?;
+        )?;
 
     // Merge extern function where-clause dict requirements
     for (name, reqs) in extern_fn_constraints {

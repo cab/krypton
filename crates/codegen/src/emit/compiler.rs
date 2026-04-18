@@ -215,15 +215,17 @@ pub(super) struct CodegenTypeInfo {
 impl CodegenTypeInfo {
     /// Get the (single) function info for a name.
     ///
-    /// Panics in debug builds if `name` is overloaded — the correct dispatch
-    /// path for overloadable call sites is `get_function_by_id`, which keys
-    /// on the resolved `FnId` and therefore cannot collapse siblings. The
-    /// four remaining callers (extern-binding emit in
+    /// Panics if `name` is overloaded — the correct dispatch path for
+    /// overloadable call sites is `get_function_by_id`, which keys on the
+    /// resolved `FnId` and therefore cannot collapse siblings. The four
+    /// remaining callers (extern-binding emit in
     /// `registration.rs:1571/1685/1845` and the `main` lookup in
-    /// `registration.rs:1922`) only touch non-overloadable names.
+    /// `registration.rs:1922`) only touch non-overloadable names. The
+    /// invariant is enforced in release builds so a future caller that adds
+    /// an overloadable name cannot silently dispatch to the wrong sibling.
     pub(super) fn get_function(&self, name: &str) -> Option<&FunctionInfo> {
         let v = self.functions.get(name)?;
-        debug_assert!(
+        assert!(
             v.len() == 1,
             "ICE: get_function called on overloaded name `{}` ({} candidates); use get_function_by_id",
             name,

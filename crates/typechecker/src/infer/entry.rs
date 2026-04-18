@@ -132,7 +132,7 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
         }
 
         // Function application: check param types and modes to decide shared vs own
-        TypedExprKind::App { func, args, param_modes } => {
+        TypedExprKind::App { func, args, param_modes, .. } => {
             let func_ty = subst.apply(&func.ty);
             let fn_params = match &func_ty {
                 Type::Fn(p, _) => Some(p.as_slice()),

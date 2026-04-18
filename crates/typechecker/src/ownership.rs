@@ -1158,7 +1158,7 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            TypedExprKind::App { func, args, param_modes } => {
+            TypedExprKind::App { func, args, param_modes, .. } => {
                 // Borrow regions (AC #9):
                 // - Arguments are evaluated left-to-right.
                 // - A nested call that borrows a place releases its borrow when the

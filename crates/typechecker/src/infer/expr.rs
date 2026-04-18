@@ -458,12 +458,12 @@ impl<'a> InferenceContext<'a> {
                 func: Box::new(func_typed),
                 args: args_typed,
                 param_modes,
+                deferred_id: None,
             },
             ty: if wrap { Type::Own(Box::new(ty)) } else { ty },
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -585,7 +585,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: export.resolved_ref.clone(),
             scope_id: None,
-            deferred_id: None,
         };
         let actual_args = &args[1..];
         self.infer_call_args_and_unify(
@@ -654,7 +653,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: export.resolved_ref.clone(),
             scope_id: None,
-            deferred_id: None,
         };
 
         Some(self.infer_call_args_and_unify(
@@ -939,12 +937,12 @@ impl<'a> InferenceContext<'a> {
                 func: Box::new(func_typed),
                 args: args_typed,
                 param_modes,
+                deferred_id: None,
             },
             ty,
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1020,19 +1018,18 @@ impl<'a> InferenceContext<'a> {
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 };
                 return Ok(TypedExpr {
                     kind: TypedExprKind::App {
                         func: Box::new(func_typed),
                         args: args_typed,
                         param_modes: placeholder_param_modes,
+                        deferred_id: Some(deferred_id),
                     },
                     ty: Type::Var(ret_var),
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: Some(deferred_id),
                 });
             }
             0 => {
@@ -1071,19 +1068,18 @@ impl<'a> InferenceContext<'a> {
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 };
                 return Ok(TypedExpr {
                     kind: TypedExprKind::App {
                         func: Box::new(func_typed),
                         args: args_typed,
                         param_modes: placeholder_param_modes,
+                        deferred_id: Some(deferred_id),
                     },
                     ty: Type::Var(ret_var),
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: Some(deferred_id),
                 });
             }
             _ => {
@@ -1154,7 +1150,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: resolved_ref.clone(),
             scope_id: None,
-            deferred_id: None,
         };
 
         Ok(TypedExpr {
@@ -1162,12 +1157,12 @@ impl<'a> InferenceContext<'a> {
                 func: Box::new(func_typed),
                 args: args_typed,
                 param_modes,
+                deferred_id: None,
             },
             ty: ret_ty,
             span,
             resolved_ref,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1265,7 +1260,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1394,7 +1388,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1461,7 +1454,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1570,7 +1562,6 @@ impl<'a> InferenceContext<'a> {
                         span,
                         resolved_ref: None,
                         scope_id: None,
-                        deferred_id: None,
                     }
                 }
                 None => {
@@ -1585,7 +1576,6 @@ impl<'a> InferenceContext<'a> {
                         span,
                         resolved_ref: None,
                         scope_id: None,
-                        deferred_id: None,
                     }
                 }
             };
@@ -1642,7 +1632,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1690,7 +1679,6 @@ impl<'a> InferenceContext<'a> {
                         span,
                         resolved_ref: export.resolved_ref.clone(),
                         scope_id: None,
-                        deferred_id: None,
                     });
                 }
             }
@@ -1740,7 +1728,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1819,7 +1806,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -1887,7 +1873,6 @@ impl<'a> InferenceContext<'a> {
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
             None => {
@@ -1903,7 +1888,6 @@ impl<'a> InferenceContext<'a> {
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
         }
@@ -2051,7 +2035,6 @@ impl<'a> InferenceContext<'a> {
                     span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
             _ => Err(super::spanned(
@@ -2248,7 +2231,6 @@ impl<'a> InferenceContext<'a> {
             span,
             resolved_ref: None,
             scope_id: None,
-            deferred_id: None,
         })
     }
 
@@ -2285,7 +2267,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2316,7 +2297,6 @@ impl<'a> InferenceContext<'a> {
                         span: *span,
                         resolved_ref,
                         scope_id: None,
-                        deferred_id: None,
                     })
                 }
                 None => {
@@ -2401,7 +2381,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2415,7 +2394,6 @@ impl<'a> InferenceContext<'a> {
                         span: *span,
                         resolved_ref: None,
                         scope_id: None,
-                        deferred_id: None,
                     });
                 }
                 let mut typed_exprs = Vec::new();
@@ -2435,7 +2413,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2463,7 +2440,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2507,7 +2483,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2537,7 +2512,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2559,7 +2533,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
 
@@ -2604,7 +2577,6 @@ impl<'a> InferenceContext<'a> {
                     span: *span,
                     resolved_ref: None,
                     scope_id: None,
-                    deferred_id: None,
                 })
             }
             Expr::QuestionMark { expr, span } => {

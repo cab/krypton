@@ -37,6 +37,8 @@ pub(super) fn resolve_deferred_overloads(
         return Ok(());
     }
 
+    let mut errors: Vec<SpannedTypeError> = Vec::new();
+
     // Fixed-point loop
     loop {
         let mut progress = false;
@@ -106,31 +108,33 @@ pub(super) fn resolve_deferred_overloads(
                     i += 1;
                 }
                 0 => {
-                    // Concrete args, no match → E0511
+                    // Concrete args, no match → E0511. Record and continue so
+                    // every unresolved site is reported in one pass.
                     let entry = deferred.remove(i);
-                    return Err(vec![super::spanned(
+                    errors.push(super::spanned(
                         TypeError::NoMatchingOverload {
                             name: entry.name,
                             candidates: entry.candidate_descriptions,
                             arg_types,
                         },
                         entry.span,
-                    )]);
+                    ));
                 }
                 _ => {
-                    // Concrete args, multiple matches → E0518
+                    // Concrete args, multiple matches → E0518. Record and
+                    // continue so every ambiguous site is reported in one pass.
                     let entry = deferred.remove(i);
                     let ambiguous: Vec<String> = matches
                         .iter()
                         .map(|(ci, _)| entry.candidate_descriptions[*ci].clone())
                         .collect();
-                    return Err(vec![super::spanned(
+                    errors.push(super::spanned(
                         TypeError::AmbiguousOverload {
                             name: entry.name,
                             candidates: ambiguous,
                         },
                         entry.span,
-                    )]);
+                    ));
                 }
             }
         }
@@ -142,20 +146,19 @@ pub(super) fn resolve_deferred_overloads(
 
     // Any remaining entries have unsolved args → E0510. Emit one error per
     // site so every ambiguous call appears in the compiler's output.
-    let remaining: Vec<SpannedTypeError> = deferred
-        .drain(..)
-        .map(|entry| {
-            super::spanned(
-                TypeError::UnresolvedOverload {
-                    name: entry.name,
-                    candidates: entry.candidate_descriptions,
-                },
-                entry.span,
-            )
-        })
-        .collect();
-    if !remaining.is_empty() {
-        return Err(remaining);
+    for entry in deferred.drain(..) {
+        errors.push(super::spanned(
+            TypeError::UnresolvedOverload {
+                name: entry.name,
+                candidates: entry.candidate_descriptions,
+            },
+            entry.span,
+        ));
+    }
+
+    if !errors.is_empty() {
+        errors.sort_by_key(|e| e.span);
+        return Err(errors);
     }
 
     Ok(())
@@ -180,7 +183,9 @@ fn extract_param_modes(ty: &Type) -> Vec<ParamMode> {
 /// Walk the typed AST to find the deferred `App` node stamped with
 /// `target_id` and patch it with the resolved reference, function type, and
 /// param modes. Using a stable node id rather than span uniqueness keeps this
-/// correct under future desugarings that might reuse spans.
+/// correct under future desugarings that might reuse spans. The `deferred_id`
+/// marker is cleared on the winning node so any surviving `Some(_)` after
+/// this pass is structural evidence of a bug.
 fn patch_deferred_app(
     expr: &mut TypedExpr,
     target_id: DeferredId,
@@ -188,29 +193,31 @@ fn patch_deferred_app(
     func_ty: &Type,
     param_modes: &[ParamMode],
 ) {
-    if expr.deferred_id == Some(target_id) {
-        if let TypedExprKind::App {
-            func,
-            param_modes: ref mut pm,
-            ..
-        } = &mut expr.kind
-        {
+    if let TypedExprKind::App {
+        func,
+        args,
+        param_modes: pm,
+        deferred_id,
+    } = &mut expr.kind
+    {
+        if *deferred_id == Some(target_id) {
             expr.resolved_ref = resolved_ref.clone();
             *pm = param_modes.to_vec();
             func.resolved_ref = resolved_ref.clone();
             func.ty = func_ty.clone();
+            *deferred_id = None;
             return;
         }
+        patch_deferred_app(func, target_id, resolved_ref, func_ty, param_modes);
+        for arg in args {
+            patch_deferred_app(arg, target_id, resolved_ref, func_ty, param_modes);
+        }
+        return;
     }
 
     // Recurse into children
     match &mut expr.kind {
-        TypedExprKind::App { func, args, .. } => {
-            patch_deferred_app(func, target_id, resolved_ref, func_ty, param_modes);
-            for arg in args {
-                patch_deferred_app(arg, target_id, resolved_ref, func_ty, param_modes);
-            }
-        }
+        TypedExprKind::App { .. } => unreachable!("handled above"),
         TypedExprKind::Do(exprs) => {
             for e in exprs {
                 patch_deferred_app(e, target_id, resolved_ref, func_ty, param_modes);

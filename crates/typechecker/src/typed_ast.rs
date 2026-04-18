@@ -262,8 +262,11 @@ impl fmt::Display for ScopeId {
 }
 
 /// Unique identity for an `App` node whose overload resolution was deferred.
-/// Used to reliably locate the node during post-inference resolution even if
-/// span uniqueness ever breaks (e.g., desugaring that copies spans).
+/// Stamped directly on the `App` variant of `TypedExprKind`, so only `App`
+/// nodes can carry this marker — a compile-time guarantee that non-call
+/// expressions never end up in the deferred-overloads work queue. The
+/// post-inference patcher matches on this id instead of relying on span
+/// uniqueness (desugaring that copies spans would otherwise break lookup).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeferredId(pub u32);
 
@@ -279,10 +282,6 @@ pub struct TypedExpr {
     /// LetPattern{body:Some}, and function body / Lambda body nodes.
     /// Stamped by the `scope_ids` pre-pass.
     pub scope_id: Option<ScopeId>,
-    /// Set on `App` nodes whose overload resolution was deferred to the
-    /// post-inference pass. The deferred entry stores the same id, and the
-    /// post-inference patcher matches on it rather than on spans.
-    pub deferred_id: Option<DeferredId>,
 }
 
 #[derive(Debug, Clone)]
@@ -293,6 +292,10 @@ pub enum TypedExprKind {
         func: Box<TypedExpr>,
         args: Vec<TypedExpr>,
         param_modes: Vec<ParamMode>,
+        /// `Some` while overload resolution is deferred to the post-inference
+        /// pass. Cleared to `None` by the patcher once a winning candidate is
+        /// committed — any `Some(_)` surviving the pass indicates a bug.
+        deferred_id: Option<DeferredId>,
     },
     TypeApp {
         expr: Box<TypedExpr>,

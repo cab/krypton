@@ -1,0 +1,43 @@
+---
+source: crates/typechecker/tests/typechecker/diagnostics.rs
+expression: output
+---
+[E0510] Error: ambiguous call to `length`
+   ╭─[ ../../tests/fixtures/modules/overload_deferred_ambiguous_multi.kr:8:11 ]
+   │
+ 8 │   let a = length(xs)
+   │           ─────┬────  
+   │                ╰────── E0510: ambiguous call to `length`
+   │ 
+   │ Help: add a type annotation to disambiguate
+   │ 
+   │ Note: type of argument is not known; cannot select among candidates:
+   │         vec_mod.length: (Vec[Int]) -> Int
+   │         list_mod.length: (List[Int]) -> Int
+───╯
+[E0510] Error: ambiguous call to `length`
+   ╭─[ ../../tests/fixtures/modules/overload_deferred_ambiguous_multi.kr:9:11 ]
+   │
+ 9 │   let b = length(ys)
+   │           ─────┬────  
+   │                ╰────── E0510: ambiguous call to `length`
+   │ 
+   │ Help: add a type annotation to disambiguate
+   │ 
+   │ Note: type of argument is not known; cannot select among candidates:
+   │         vec_mod.length: (Vec[Int]) -> Int
+   │         list_mod.length: (List[Int]) -> Int
+───╯
+[E0510] Error: ambiguous call to `length`
+    ╭─[ ../../tests/fixtures/modules/overload_deferred_ambiguous_multi.kr:10:11 ]
+    │
+ 10 │   let c = length(zs)
+    │           ─────┬────  
+    │                ╰────── E0510: ambiguous call to `length`
+    │ 
+    │ Help: add a type annotation to disambiguate
+    │ 
+    │ Note: type of argument is not known; cannot select among candidates:
+    │         vec_mod.length: (Vec[Int]) -> Int
+    │         list_mod.length: (List[Int]) -> Int
+────╯

@@ -3082,7 +3082,6 @@ impl LowerCtx {
                 span: (0, 0),
                 resolved_ref: None,
                 scope_id: None,
-                deferred_id: None,
             }
         };
 
@@ -4167,7 +4166,6 @@ impl LowerCtx {
                     // Synthetic grouping: not its own scope. The enclosing
                     // real Do already owns the scope identity for this slice.
                     scope_id: None,
-                    deferred_id: None,
                 }
             };
             return self.lower_let_pattern(pattern, value, Some(&rest_body), &rest_ty);
