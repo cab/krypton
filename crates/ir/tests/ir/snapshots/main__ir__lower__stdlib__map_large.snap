@@ -1,0 +1,68 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__map_large
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/map/get as get(Map[k10, w10], k10) -> Option[w10]
+import core/map/from_list as from_list(List[(e14, f14)]) -> Map[e14, f14]
+import core/map/size as size(Map[j14, k14]) -> Int
+import core/list/Cons as Cons(d, List[d]) -> List[d]
+declare from_list: (List[(e14, f14)]) -> Map[e14, f14]
+declare get: (Map[k10, w10], k10) -> Option[w10]
+declare println: (g) -> Unit
+declare size: (Map[j14, k14]) -> Int
+
+fn build_pairs(v0: Int, v1: Int, v2: List[(Int, Int)]) -> List[(Int, Int)] =
+  let_join [recur] v3(v4: Int, v5: Int, v6: List[(Int, Int)]) =
+    let_join v13(v9: Bool) =
+      if v9 {
+        let v10: Int = add_int(v4, 1)
+        let v11: (Int, Int) = tuple(v4, v4)
+        let v12: List[(Int, Int)] = construct List::Cons#0(v11, v6)
+        jump v3(v10, v5, v12)
+      } else {
+        v6
+      }
+    in
+    let v7: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+    let v8: Bool = trait_call core/ord.Ord.lt(v7, v4, v5)
+    jump v13(v8)
+  in
+  jump v3(v0, v1, v2)
+
+fn main() -> Unit =
+  let v15: List[(Int, Int)] = construct List::Nil#1()
+  let v16: List[(Int, Int)] = call build_pairs(0, 10000, v15)
+  let v17: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v18: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
+  let v14: Map[Int, Int] = call from_list(v17, v18, v16)
+  let v19: Int = call size(v14)
+  let v20: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v21: Unit = call println(v20, v19)
+  let v22: Dict[core/eq.Eq, Int] = get_dict core/eq.Eq[Int]
+  let v23: Dict[core/hash.Hash, Int] = get_dict core/hash.Hash[Int]
+  let v24: Option[Int] = call get(v22, v23, v14, 5000)
+  switch v24 {
+    0 (v25: Int) ->
+      let v26: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v27: Unit = call println(v26, v25)
+      v27
+    1 ->
+      let v29: Int = neg_int(1)
+      let v28: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v30: Unit = call println(v28, v29)
+      v30
+  }

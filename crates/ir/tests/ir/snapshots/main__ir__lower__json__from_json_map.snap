@@ -17,16 +17,16 @@ import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/list/Cons as Cons(d, List[d]) -> List[d]
-import core/map/get as get(Map[c12, o12], c12) -> Option[o12]
+import core/map/get as get(Map[k10, w10], k10) -> Option[w10]
 import core/option/Some as Some(c) -> Option[c]
 import core/json/JNum as JNum(Float) -> Json
 import core/json/JObj as JObj(Map[String, Json]) -> Json
 import core/json/JBool as JBool(Bool) -> Json
 import core/json/JStr as JStr(String) -> Json
 import core/json/JArr as JArr(List[Json]) -> Json
-import core/map/from_list as from_list(List[(o15, p15)]) -> Map[o15, p15]
-declare from_list: (List[(o15, p15)]) -> Map[o15, p15]
-declare get: (Map[c12, o12], c12) -> Option[o12]
+import core/map/from_list as from_list(List[(e14, f14)]) -> Map[e14, f14]
+declare from_list: (List[(e14, f14)]) -> Map[e14, f14]
+declare get: (Map[k10, w10], k10) -> Option[w10]
 declare println: (g) -> Unit
 
 fn main() -> Unit =

@@ -1,7 +1,20 @@
-# core/map — extern where clauses (dict passing)
+# core/map — Persistent hash map.
+#
+# Backed by Paguro's `PersistentHashMap` on JVM and Immutable.js's `Map` on JS.
+# Both offer structural sharing on `put`/`delete`. The JVM backing stores all
+# dict/data fields `final`, so actor sends safely publish the Map across
+# threads via the JMM §17.5 final-field guarantee — no synchronization, no
+# torn reads.
+#
+# Bulk construction uses `~MapBuilder[k, v]` (a linear companion type) to
+# route through the backend's transient/mutable mode; see `builder`/`put`/
+# `freeze`. `from_list` lowers through this path for O(n) construction.
+#
+# Trait-dispatched key equality/hashing is bridged via a `HashedKey` wrapper
+# on both backends, keeping dict-passing orthogonal to the backing map.
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold}
-import core/vec.{to_list as vec_to_list}
+import core/vec.{Vec, VecBuilder, builder as vec_builder, push as vec_push, freeze as vec_freeze, len as vec_len}
 import core/eq.{Eq}
 import core/hash.{Hash}
 import core/ord.{Ord}
@@ -21,6 +34,16 @@ extern java "krypton.runtime.KryptonMap" {
     fun staticMerge[k, v](m1: Map[k, v], m2: Map[k, v]) -> Map[k, v]
 }
 
+extern java "krypton.runtime.KryptonMapBuilder" as MapBuilder[k, v] lifts always {
+    fun builderNew[k, v]() -> ~MapBuilder[k, v]
+    fun builderPut[k, v](b: ~MapBuilder[k, v], key: k, value: v) -> ~MapBuilder[k, v] where k: Eq + Hash
+    fun builderFreeze[k, v](b: ~MapBuilder[k, v]) -> Map[k, v]
+}
+
+extern java "krypton.runtime.KryptonArray" {
+    fun staticGet[a](xs: Vec[a], index: Int) -> a
+}
+
 extern js "../extern/js/map.mjs" as pub Map[k, v] {}
 
 extern js "../extern/js/map.mjs" {
@@ -35,13 +58,30 @@ extern js "../extern/js/map.mjs" {
     fun staticMerge[k, v](m1: Map[k, v], m2: Map[k, v]) -> Map[k, v]
 }
 
+extern js "../extern/js/map-builder.mjs" as MapBuilder[k, v] lifts always {
+    fun builderNew[k, v]() -> ~MapBuilder[k, v]
+    fun builderPut[k, v](b: ~MapBuilder[k, v], key: k, value: v) -> ~MapBuilder[k, v] where k: Eq + Hash
+    fun builderFreeze[k, v](b: ~MapBuilder[k, v]) -> Map[k, v]
+}
+
+extern js "../extern/js/array.mjs" {
+    fun staticGet[a](xs: Vec[a], index: Int) -> a
+}
+
 # empty() intentionally has no `where k: Eq + Hash` constraint.
 # Let-polymorphism means `let m = empty()` generalizes the return type,
 # making dict resolution impossible at the call site. Dicts flow through put() instead.
 pub fun empty[k, v]() -> Map[k, v] = staticEmpty()
 
+pub fun builder[k, v]() -> ~MapBuilder[k, v] = builderNew()
+
 pub fun put[k, v](m: Map[k, v], key: k, value: v) -> Map[k, v] where k: Eq + Hash =
     staticPut(m, key, value)
+
+pub fun put[k, v](b: ~MapBuilder[k, v], key: k, value: v) -> ~MapBuilder[k, v] where k: Eq + Hash =
+    builderPut(b, key, value)
+
+pub fun freeze[k, v](b: ~MapBuilder[k, v]) -> Map[k, v] = builderFreeze(b)
 
 pub fun get[k, v](m: Map[k, v], key: k) -> Option[v] where k: Eq + Hash =
     if staticContainsKey(m, key) { Some(staticGetUnsafe(m, key)) } else { None }
@@ -52,21 +92,31 @@ pub fun delete[k, v](m: Map[k, v], key: k) -> Map[k, v] where k: Eq + Hash =
 pub fun contains[k, v](m: Map[k, v], key: k) -> Bool where k: Eq + Hash =
     staticContainsKey(m, key)
 
-pub fun keys[k, v](m: Map[k, v]) -> List[k] = vec_to_list(staticKeys(m))
+pub fun keys[k, v](m: Map[k, v]) -> Vec[k] = staticKeys(m)
 
-pub fun values[k, v](m: Map[k, v]) -> List[v] = vec_to_list(staticValues(m))
+pub fun values[k, v](m: Map[k, v]) -> Vec[v] = staticValues(m)
 
-fun zip_vecs[a, b](ks: List[a], vs: List[b]) -> List[(a, b)] =
-    match (ks, vs) {
-        (Cons(k, kr), Cons(v, vr)) => Cons((k, v), zip_vecs(kr, vr)),
-        _ => Nil,
+fun zip_vecs_go[a, b](ks: Vec[a], vs: Vec[b], i: Int, n: Int, out: ~VecBuilder[(a, b)]) -> Vec[(a, b)] =
+    if i < n {
+        recur(ks, vs, i + 1, n, vec_push(out, (staticGet(ks, i), staticGet(vs, i))))
+    } else {
+        vec_freeze(out)
     }
 
-pub fun entries[k, v](m: Map[k, v]) -> List[(k, v)] =
-    zip_vecs(vec_to_list(staticKeys(m)), vec_to_list(staticValues(m)))
+pub fun entries[k, v](m: Map[k, v]) -> Vec[(k, v)] = {
+    let ks = staticKeys(m);
+    let vs = staticValues(m);
+    zip_vecs_go(ks, vs, 0, vec_len(ks), vec_builder())
+}
 
 pub fun from_list[k, v](pairs: List[(k, v)]) -> Map[k, v] where k: Eq + Hash =
-    fold(pairs, empty(), (acc, pair) -> { let (k, v) = pair; put(acc, k, v) })
+    from_list_go(pairs, builder())
+
+fun from_list_go[k, v](pairs: List[(k, v)], b: ~MapBuilder[k, v]) -> Map[k, v] where k: Eq + Hash =
+    match pairs {
+        Nil => freeze(b),
+        Cons(pair, rest) => { let (k, v) = pair; recur(rest, put(b, k, v)) },
+    }
 
 pub fun size[k, v](m: Map[k, v]) -> Int = staticSize(m)
 

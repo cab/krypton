@@ -1,0 +1,72 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__map_vec_accessors
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/map/empty as empty() -> Map[v8, w8]
+import core/map/put as put(Map[n9, o9], n9, o9) -> Map[n9, o9]
+import core/map/put as put(~MapBuilder[x9, y9], x9, y9) -> ~MapBuilder[x9, y9]
+import core/map/keys as keys(Map[r11, p11]) -> Vec[r11]
+import core/map/values as values(Map[v11, z11]) -> Vec[z11]
+import core/map/entries as entries(Map[b13, c13]) -> Vec[(b13, c13)]
+import core/vec/len as len(Vec[k7]) -> Int
+import core/vec/nth as nth(Vec[z7], Int) -> Option[z7]
+import core/vec/fold as fold(Vec[w11], f12, (f12, w11) -> f12) -> f12
+import core/option/Some as Some(c) -> Option[c]
+declare empty: () -> Map[v8, w8]
+declare entries: (Map[b13, c13]) -> Vec[(b13, c13)]
+declare fold: (Vec[w11], f12, (f12, w11) -> f12) -> f12
+declare keys: (Map[r11, p11]) -> Vec[r11]
+declare len: (Vec[k7]) -> Int
+declare println: (g) -> Unit
+declare put: (Map[n9, o9], n9, o9) -> Map[n9, o9]
+declare values: (Map[v11, z11]) -> Vec[z11]
+
+fn main() -> Unit =
+  let v1: Map[String, Int] = call empty()
+  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v4: Map[String, Int] = call put(v2, v3, v1, "a", 1)
+  let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v6: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v7: Map[String, Int] = call put(v5, v6, v4, "b", 2)
+  let v8: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v9: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v0: Map[String, Int] = call put(v8, v9, v7, "c", 3)
+  let v10: Vec[String] = call keys(v0)
+  let v11: Int = call len(v10)
+  let v12: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v13: Unit = call println(v12, v11)
+  let v14: Vec[Int] = call values(v0)
+  let v18: (Int, Int) -> Int = make_closure(lambda$34, [])
+  let v19: Int = call fold(v14, 0, v18)
+  let v20: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v21: Unit = call println(v20, v19)
+  let v23: Vec[(String, Int)] = call entries(v0)
+  let v29: (Int, (String, Int)) -> Int = make_closure(lambda$35, [])
+  let v30: Int = call fold(v23, 0, v29)
+  let v22: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v31: Unit = call println(v22, v30)
+  v31
+
+fn lambda$34(v15: Int, v16: Int) -> Int =
+  let v17: Int = add_int(v15, v16)
+  v17
+
+fn lambda$35(v24: Int, v25: (String, Int)) -> Int =
+  let v26: String = tuple_project v25.0
+  let v27: Int = tuple_project v25.1
+  let v28: Int = add_int(v24, v27)
+  v28

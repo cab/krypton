@@ -97,6 +97,8 @@ const stableDistFiles = [
   'convert.mjs',
   'io.mjs',
   'json.mjs',
+  'map-builder.mjs',
+  'map-hashed-key.mjs',
   'map.mjs',
   'panic.mjs',
   'prelude.mjs',
@@ -269,28 +271,40 @@ describe('json', () => {
 });
 
 describe('map', () => {
+  const stringEq = { eq: (a: unknown, b: unknown) => a === b };
+  const stringHash = {
+    hash: (x: unknown) => {
+      const s = x as string;
+      let h = 0;
+      for (let i = 0; i < s.length; i++) {
+        h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+      }
+      return h;
+    },
+  };
+
   it('supports persistent-style map operations', () => {
     const m1 = staticEmpty();
-    const m2 = staticPut(m1, 'a', 1, null, null);
-    const m3 = staticPut(m2, 'b', 2, null, null);
+    const m2 = staticPut(m1, 'a', 1, stringEq, stringHash);
+    const m3 = staticPut(m2, 'b', 2, stringEq, stringHash);
     expect(staticGetUnsafe(m3, 'a')).toBe(1);
     expect(staticContainsKey(m3, 'b')).toBe(true);
-    expect(staticDelete(m3, 'a')).toEqual(new Map([['b', 2]]));
-    expect(staticKeys(m3).toArray()).toEqual(['a', 'b']);
-    expect(staticValues(m3).toArray()).toEqual([1, 2]);
+    expect(staticSize(staticDelete(m3, 'a'))).toBe(1);
+    expect(staticContainsKey(staticDelete(m3, 'a'), 'a')).toBe(false);
+    expect(staticKeys(m3).toArray().sort()).toEqual(['a', 'b']);
+    expect(staticValues(m3).toArray().sort()).toEqual([1, 2]);
     expect(staticSize(m3)).toBe(2);
-    expect(staticMerge(m2, new Map([['c', 3]]))).toEqual(
-      new Map([
-        ['a', 1],
-        ['c', 3],
-      ]),
-    );
+    const m4 = staticPut(staticEmpty(), 'c', 3, stringEq, stringHash);
+    const merged = staticMerge(m2, m4);
+    expect(staticSize(merged)).toBe(2);
+    expect(staticGetUnsafe(merged, 'a')).toBe(1);
+    expect(staticGetUnsafe(merged, 'c')).toBe(3);
   });
 
   it('distinguishes missing keys from present nullish values via containsKey', () => {
     const m1 = staticEmpty();
-    const m2 = staticPut(m1, 'undefined', undefined, null, null);
-    const m3 = staticPut(m2, 'null', null, null, null);
+    const m2 = staticPut(m1, 'undefined', undefined, stringEq, stringHash);
+    const m3 = staticPut(m2, 'null', null, stringEq, stringHash);
     expect(staticContainsKey(m3, 'undefined')).toBe(true);
     expect(staticGetUnsafe(m3, 'undefined')).toBeUndefined();
     expect(staticContainsKey(m3, 'null')).toBe(true);

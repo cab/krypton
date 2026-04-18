@@ -1014,7 +1014,7 @@ function filterFactory(collection, predicate, context, useKeys) {
   return filterSequence;
 }
 function countByFactory(collection, grouper, context) {
-  var groups = Map2().asMutable();
+  var groups = Map().asMutable();
   collection.__iterate(function(v, k) {
     groups.update(grouper.call(context, v, k, collection), 0, function(a) {
       return a + 1;
@@ -1024,7 +1024,7 @@ function countByFactory(collection, grouper, context) {
 }
 function groupByFactory(collection, grouper, context) {
   var isKeyedIter = isKeyed(collection);
-  var groups = (isOrdered(collection) ? OrderedMap() : Map2()).asMutable();
+  var groups = (isOrdered(collection) ? OrderedMap() : Map()).asMutable();
   collection.__iterate(function(v, k) {
     groups.update(
       grouper.call(context, v, k, collection),
@@ -1784,8 +1784,8 @@ function invariant(condition, error) {
 function assertNotInfinite(size) {
   invariant(size !== Infinity, "Cannot perform this action with an infinite size.");
 }
-var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
-  function Map3(value) {
+var Map = /* @__PURE__ */ (function(KeyedCollection2) {
+  function Map2(value) {
     return value === void 0 || value === null ? emptyMap() : isMap(value) && !isOrdered(value) ? value : emptyMap().withMutations(function(map2) {
       var iter = KeyedCollection2(value);
       assertNotInfinite(iter.size);
@@ -1794,22 +1794,22 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
       });
     });
   }
-  if (KeyedCollection2) Map3.__proto__ = KeyedCollection2;
-  Map3.prototype = Object.create(KeyedCollection2 && KeyedCollection2.prototype);
-  Map3.prototype.constructor = Map3;
-  Map3.prototype.toString = function toString5() {
+  if (KeyedCollection2) Map2.__proto__ = KeyedCollection2;
+  Map2.prototype = Object.create(KeyedCollection2 && KeyedCollection2.prototype);
+  Map2.prototype.constructor = Map2;
+  Map2.prototype.toString = function toString5() {
     return this.__toString("Map {", "}");
   };
-  Map3.prototype.get = function get11(k, notSetValue) {
+  Map2.prototype.get = function get11(k, notSetValue) {
     return this._root ? this._root.get(0, void 0, k, notSetValue) : notSetValue;
   };
-  Map3.prototype.set = function set3(k, v) {
+  Map2.prototype.set = function set3(k, v) {
     return updateMap(this, k, v);
   };
-  Map3.prototype.remove = function remove3(k) {
+  Map2.prototype.remove = function remove3(k) {
     return updateMap(this, k, NOT_SET);
   };
-  Map3.prototype.deleteAll = function deleteAll(keys2) {
+  Map2.prototype.deleteAll = function deleteAll(keys2) {
     var collection = Collection(keys2);
     if (collection.size === 0) {
       return this;
@@ -1820,7 +1820,7 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
       });
     });
   };
-  Map3.prototype.clear = function clear2() {
+  Map2.prototype.clear = function clear2() {
     if (this.size === 0) {
       return this;
     }
@@ -1833,13 +1833,13 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
     }
     return emptyMap();
   };
-  Map3.prototype.sort = function sort2(comparator) {
+  Map2.prototype.sort = function sort2(comparator) {
     return OrderedMap(sortFactory(this, comparator));
   };
-  Map3.prototype.sortBy = function sortBy2(mapper, comparator) {
+  Map2.prototype.sortBy = function sortBy2(mapper, comparator) {
     return OrderedMap(sortFactory(this, comparator, mapper));
   };
-  Map3.prototype.map = function map2(mapper, context) {
+  Map2.prototype.map = function map2(mapper, context) {
     var this$1$1 = this;
     return this.withMutations(function(map3) {
       map3.forEach(function(value, key) {
@@ -1847,10 +1847,10 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
       });
     });
   };
-  Map3.prototype.__iterator = function __iterator2(type, reverse3) {
+  Map2.prototype.__iterator = function __iterator2(type, reverse3) {
     return new MapIterator(this, type, reverse3);
   };
-  Map3.prototype.__iterate = function __iterate2(fn, reverse3) {
+  Map2.prototype.__iterate = function __iterate2(fn, reverse3) {
     var this$1$1 = this;
     var iterations = 0;
     this._root && this._root.iterate(function(entry) {
@@ -1859,7 +1859,7 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
     }, reverse3);
     return iterations;
   };
-  Map3.prototype.__ensureOwner = function __ensureOwner2(ownerID) {
+  Map2.prototype.__ensureOwner = function __ensureOwner2(ownerID) {
     if (ownerID === this.__ownerID) {
       return this;
     }
@@ -1873,10 +1873,10 @@ var Map2 = /* @__PURE__ */ (function(KeyedCollection2) {
     }
     return makeMap(this.size, this._root, ownerID, this.__hash);
   };
-  return Map3;
+  return Map2;
 })(KeyedCollection);
-Map2.isMap = isMap;
-var MapPrototype = Map2.prototype;
+Map.isMap = isMap;
+var MapPrototype = Map.prototype;
 MapPrototype[IS_MAP_SYMBOL] = true;
 MapPrototype[DELETE] = MapPrototype.remove;
 MapPrototype.removeAll = MapPrototype.deleteAll;
@@ -3084,7 +3084,7 @@ function getTailOffset(size) {
 function isOrderedMap(maybeOrderedMap) {
   return isMap(maybeOrderedMap) && isOrdered(maybeOrderedMap);
 }
-var OrderedMap = /* @__PURE__ */ (function(Map3) {
+var OrderedMap = /* @__PURE__ */ (function(Map2) {
   function OrderedMap2(value) {
     return value === void 0 || value === null ? emptyOrderedMap() : isOrderedMap(value) ? value : emptyOrderedMap().withMutations(function(map2) {
       var iter = KeyedCollection(value);
@@ -3094,8 +3094,8 @@ var OrderedMap = /* @__PURE__ */ (function(Map3) {
       });
     });
   }
-  if (Map3) OrderedMap2.__proto__ = Map3;
-  OrderedMap2.prototype = Object.create(Map3 && Map3.prototype);
+  if (Map2) OrderedMap2.__proto__ = Map2;
+  OrderedMap2.prototype = Object.create(Map2 && Map2.prototype);
   OrderedMap2.prototype.constructor = OrderedMap2;
   OrderedMap2.of = function of() {
     return this(arguments);
@@ -3157,7 +3157,7 @@ var OrderedMap = /* @__PURE__ */ (function(Map3) {
     return makeOrderedMap(newMap, newList, ownerID, this.__hash);
   };
   return OrderedMap2;
-})(Map2);
+})(Map);
 OrderedMap.isOrderedMap = isOrderedMap;
 OrderedMap.prototype[IS_ORDERED_SYMBOL] = true;
 OrderedMap.prototype[DELETE] = OrderedMap.prototype.remove;
@@ -3940,7 +3940,7 @@ mixin(Collection, {
     return new ToKeyedSequence(this, true);
   },
   toMap: function toMap() {
-    return Map2(this.toKeyedSeq());
+    return Map(this.toKeyedSeq());
   },
   toObject,
   toOrderedMap: function toOrderedMap() {
@@ -4645,37 +4645,67 @@ function setProp(prototype, name) {
   }
 }
 
+// src/map-hashed-key.mts
+var HashedKey = class {
+  key;
+  hash;
+  eqDict;
+  constructor(key, hashDict, eqDict) {
+    this.key = key;
+    this.eqDict = eqDict;
+    const raw = hashDict.hash(key);
+    this.hash = typeof raw === "bigint" ? Number(BigInt.asIntN(32, raw)) : raw | 0;
+  }
+  hashCode() {
+    return this.hash;
+  }
+  equals(other) {
+    if (other === this) return true;
+    if (!other || typeof other !== "object" || !("key" in other)) return false;
+    return this.eqDict.eq(this.key, other.key);
+  }
+};
+
 // src/map.mts
-function staticEmpty() {
-  return /* @__PURE__ */ new Map();
+function create(data, hashDict, eqDict) {
+  return Object.freeze({ data, hashDict, eqDict });
 }
-function staticPut(m, key, value, _eqDict, _hashDict) {
-  const copy = new Map(m);
-  copy.set(key, value);
-  return copy;
+function staticEmpty() {
+  return create(Map(), null, null);
+}
+function staticPut(m, key, value, eqDict, hashDict) {
+  const wrapped = new HashedKey(key, hashDict, eqDict);
+  return create(m.data.set(wrapped, value), hashDict, eqDict);
 }
 function staticGetUnsafe(m, key) {
-  return m.get(key);
+  if (m.eqDict === null || m.hashDict === null) return void 0;
+  return m.data.get(new HashedKey(key, m.hashDict, m.eqDict));
 }
 function staticContainsKey(m, key) {
-  return m.has(key);
+  if (m.eqDict === null || m.hashDict === null) return false;
+  return m.data.has(new HashedKey(key, m.hashDict, m.eqDict));
 }
 function staticDelete(m, key) {
-  const copy = new Map(m);
-  copy.delete(key);
-  return copy;
+  if (m.eqDict === null || m.hashDict === null) return m;
+  const wrapped = new HashedKey(key, m.hashDict, m.eqDict);
+  return create(m.data.delete(wrapped), m.hashDict, m.eqDict);
 }
 function staticKeys(m) {
-  return List([...m.keys()]);
+  return List(m.data.keySeq().map((hk) => hk.key));
 }
 function staticValues(m) {
-  return List([...m.values()]);
+  return List(m.data.valueSeq());
 }
 function staticSize(m) {
-  return m.size;
+  return m.data.size;
 }
 function staticMerge(m1, m2) {
-  return new Map([...m1, ...m2]);
+  if (m2.eqDict === null) return m1;
+  return create(
+    m1.data.merge(m2.data),
+    m1.hashDict ?? m2.hashDict,
+    m1.eqDict ?? m2.eqDict
+  );
 }
 export {
   staticContainsKey,

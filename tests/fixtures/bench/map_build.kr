@@ -1,0 +1,12 @@
+# expect: output "4950"
+import core/map.{Map, from_list, entries}
+import core/list.{List, Cons, Nil}
+import core/vec.{fold}
+
+fun build_pairs(i: Int, n: Int, acc: List[(Int, Int)]) -> List[(Int, Int)] =
+    if i < n { recur(i + 1, n, Cons((i, i), acc)) } else { acc }
+
+fun main() -> Unit = {
+    let m = from_list(build_pairs(0, 100, Nil));
+    println(fold(entries(m), 0, (acc, pair) -> { let (_, v) = pair; acc + v }))
+}

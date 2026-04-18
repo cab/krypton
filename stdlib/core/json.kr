@@ -3,7 +3,7 @@ import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
 import core/list.{List, Cons, Nil, fold, map as list_map, reverse}
 import core/map.{Map, empty, put, get as map_get, entries, from_list}
-import core/vec.{to_list as vec_to_list}
+import core/vec.{to_list as vec_to_list, map as vec_map}
 import core/eq.{Eq}
 import core/hash.{Hash}
 
@@ -115,7 +115,7 @@ fun to_java(j: Json) -> JavaJson = match j {
     JNum(n) => staticMkNum(n),
     JStr(s) => staticMkStr(s),
     JArr(items) => build_arr(items, staticNewArr()),
-    JObj(m) => build_obj(entries(m), staticNewObj()),
+    JObj(m) => build_obj(vec_to_list(entries(m)), staticNewObj()),
 }
 
 # ── Public API ────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ impl ToJson[Option[a]] where a: ToJson {
 
 impl ToJson[Map[String, a]] where a: ToJson {
     fun to_json(m: Map[String, a]) -> Json =
-        JObj(from_list(list_map(entries(m), (pair) -> { let (k, v) = pair; (k, to_json(v)) })))
+        JObj(from_list(vec_to_list(vec_map(entries(m), (pair) -> { let (k, v) = pair; (k, to_json(v)) }))))
 }
 
 # ── FromJson trait ──────────────────���────────────────────────────
@@ -278,7 +278,7 @@ fun from_json_entries[a](pairs: List[(String, Json)]) -> Result[String, List[(St
 
 impl FromJson[Map[String, a]] where a: FromJson {
     fun from_json(j: Json) -> Result[String, Map[String, a]] = match j {
-        JObj(m) => match from_json_entries(entries(m)) {
+        JObj(m) => match from_json_entries(vec_to_list(entries(m))) {
             Ok(pairs) => Ok(from_list(pairs)),
             Err(e) => Err(e),
         },

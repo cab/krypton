@@ -1,47 +1,80 @@
-import { List } from 'immutable';
+import { List, Map as IMap } from 'immutable';
 
-export function staticEmpty<K, V>(): Map<K, V> {
-  return new Map<K, V>();
+import { HashedKey } from './map-hashed-key.mjs';
+
+type HashDict = { hash: (key: unknown) => number | bigint };
+type EqDict = { eq: (a: unknown, b: unknown) => boolean };
+
+/**
+ * Persistent-map-backed wrapper. Fields are frozen after construction.
+ *
+ * The Krypton stdlib's `staticGetUnsafe`/`staticContainsKey`/`staticDelete`
+ * do not receive Eq/Hash dicts — they rely on the dicts captured at the
+ * first `put`. Empty maps have no dicts (never put-to), matching the JVM
+ * `eqFn == null` invariant.
+ */
+export interface KryptonMap {
+  readonly data: IMap<HashedKey, unknown>;
+  readonly hashDict: HashDict | null;
+  readonly eqDict: EqDict | null;
 }
 
-export function staticPut<K, V>(
-  m: Map<K, V>,
-  key: K,
-  value: V,
-  _eqDict: unknown,
-  _hashDict: unknown,
-): Map<K, V> {
-  const copy = new Map(m);
-  copy.set(key, value);
-  return copy;
+function create(
+  data: IMap<HashedKey, unknown>,
+  hashDict: HashDict | null,
+  eqDict: EqDict | null,
+): KryptonMap {
+  return Object.freeze({ data, hashDict, eqDict });
 }
 
-export function staticGetUnsafe<K, V>(m: Map<K, V>, key: K): V | undefined {
-  return m.get(key);
+export function staticEmpty(): KryptonMap {
+  return create(IMap<HashedKey, unknown>(), null, null);
 }
 
-export function staticContainsKey<K, V>(m: Map<K, V>, key: K): boolean {
-  return m.has(key);
+export function staticPut(
+  m: KryptonMap,
+  key: unknown,
+  value: unknown,
+  eqDict: EqDict,
+  hashDict: HashDict,
+): KryptonMap {
+  const wrapped = new HashedKey(key, hashDict, eqDict);
+  return create(m.data.set(wrapped, value), hashDict, eqDict);
 }
 
-export function staticDelete<K, V>(m: Map<K, V>, key: K): Map<K, V> {
-  const copy = new Map(m);
-  copy.delete(key);
-  return copy;
+export function staticGetUnsafe(m: KryptonMap, key: unknown): unknown {
+  if (m.eqDict === null || m.hashDict === null) return undefined;
+  return m.data.get(new HashedKey(key, m.hashDict, m.eqDict));
 }
 
-export function staticKeys<K, V>(m: Map<K, V>): List<K> {
-  return List([...m.keys()]);
+export function staticContainsKey(m: KryptonMap, key: unknown): boolean {
+  if (m.eqDict === null || m.hashDict === null) return false;
+  return m.data.has(new HashedKey(key, m.hashDict, m.eqDict));
 }
 
-export function staticValues<K, V>(m: Map<K, V>): List<V> {
-  return List([...m.values()]);
+export function staticDelete(m: KryptonMap, key: unknown): KryptonMap {
+  if (m.eqDict === null || m.hashDict === null) return m;
+  const wrapped = new HashedKey(key, m.hashDict, m.eqDict);
+  return create(m.data.delete(wrapped), m.hashDict, m.eqDict);
 }
 
-export function staticSize(m: Map<unknown, unknown>): number {
-  return m.size;
+export function staticKeys(m: KryptonMap): List<unknown> {
+  return List(m.data.keySeq().map((hk) => hk.key));
 }
 
-export function staticMerge<K, V>(m1: Map<K, V>, m2: Map<K, V>): Map<K, V> {
-  return new Map([...m1, ...m2]);
+export function staticValues(m: KryptonMap): List<unknown> {
+  return List(m.data.valueSeq());
+}
+
+export function staticSize(m: KryptonMap): number {
+  return m.data.size;
+}
+
+export function staticMerge(m1: KryptonMap, m2: KryptonMap): KryptonMap {
+  if (m2.eqDict === null) return m1;
+  return create(
+    m1.data.merge(m2.data),
+    m1.hashDict ?? m2.hashDict,
+    m1.eqDict ?? m2.eqDict,
+  );
 }

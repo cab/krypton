@@ -1,0 +1,16 @@
+# expect: ok
+# expect: output "10000\n5000"
+import core/map.{Map, from_list, get, size}
+import core/list.{List, Cons, Nil}
+
+fun build_pairs(i: Int, n: Int, acc: List[(Int, Int)]) -> List[(Int, Int)] =
+    if i < n { recur(i + 1, n, Cons((i, i), acc)) } else { acc }
+
+fun main() = {
+  let m = from_list(build_pairs(0, 10000, Nil));
+  println(size(m));
+  match get(m, 5000) {
+    Some(v) => println(v),
+    None => println(-1),
+  }
+}

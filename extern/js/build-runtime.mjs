@@ -14,6 +14,8 @@ const entryPoints = {
   io: path.join(rootDir, 'src/io.mts'),
   json: path.join(rootDir, 'src/json.mts'),
   map: path.join(rootDir, 'src/map.mts'),
+  'map-builder': path.join(rootDir, 'src/map-builder.mts'),
+  'map-hashed-key': path.join(rootDir, 'src/map-hashed-key.mts'),
   panic: path.join(rootDir, 'src/panic.mts'),
   prelude: path.join(rootDir, 'src/prelude.mts'),
   'repl-registry': path.join(rootDir, 'src/repl-registry.mts'),

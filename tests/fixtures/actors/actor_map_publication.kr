@@ -1,0 +1,29 @@
+# expect: output "49995000"
+# Cross-thread Map publication: parent builds a 10_000-entry Map[Int, Int]
+# via from_list (builder path) and sends it to a spawned child. The child
+# folds entry values to sum 0..9999 and replies. Primary purpose is the JVM
+# safe-publication regression: the persistent-map rewrite stores the backing
+# data (and dict refs) in final fields so the JMM's §17.5 final-field
+# guarantee covers the cross-thread publication. JS passes trivially.
+import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, mailbox}
+import core/map.{Map, from_list, entries}
+import core/list.{List, Cons, Nil}
+import core/vec.{fold}
+
+type Msg = MapMsg(Map[Int, Int], Ref[Int])
+
+fun build_pairs(i: Int, n: Int, acc: List[(Int, Int)]) -> List[(Int, Int)] =
+    if i < n { recur(i + 1, n, Cons((i, i), acc)) } else { acc }
+
+fun worker(mb: Mailbox[Msg]) =
+    match receive(mb) {
+        MapMsg(m, sender) => send(sender, fold(entries(m), 0, (acc, pair) -> { let (_, v) = pair; acc + v })),
+    }
+
+fun main() -> Unit = {
+    let target = spawn(worker);
+    let my_mb: Mailbox[Int] = mailbox();
+    let m = from_list(build_pairs(0, 10000, Nil));
+    send(target, MapMsg(m, actor_ref(my_mb)));
+    println(receive(my_mb))
+}

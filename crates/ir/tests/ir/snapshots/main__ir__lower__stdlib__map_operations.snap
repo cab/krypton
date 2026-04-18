@@ -16,17 +16,18 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[p11, q11]
-import core/map/put as put(Map[y11, z11], y11, z11) -> Map[y11, z11]
-import core/map/delete as delete(Map[u12, v12], u12) -> Map[u12, v12]
-import core/map/contains as contains(Map[y12, z12], y12) -> Bool
-import core/map/size as size(Map[t15, u15]) -> Int
-declare contains: (Map[y12, z12], y12) -> Bool
-declare delete: (Map[u12, v12], u12) -> Map[u12, v12]
-declare empty: () -> Map[p11, q11]
+import core/map/empty as empty() -> Map[v8, w8]
+import core/map/put as put(Map[n9, o9], n9, o9) -> Map[n9, o9]
+import core/map/put as put(~MapBuilder[x9, y9], x9, y9) -> ~MapBuilder[x9, y9]
+import core/map/delete as delete(Map[c11, d11], c11) -> Map[c11, d11]
+import core/map/contains as contains(Map[g11, h11], g11) -> Bool
+import core/map/size as size(Map[j14, k14]) -> Int
+declare contains: (Map[g11, h11], g11) -> Bool
+declare delete: (Map[c11, d11], c11) -> Map[c11, d11]
+declare empty: () -> Map[v8, w8]
 declare println: (g) -> Unit
-declare put: (Map[y11, z11], y11, z11) -> Map[y11, z11]
-declare size: (Map[t15, u15]) -> Int
+declare put: (Map[n9, o9], n9, o9) -> Map[n9, o9]
+declare size: (Map[j14, k14]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()
