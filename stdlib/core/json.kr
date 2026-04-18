@@ -84,7 +84,7 @@ fun from_java(raw: JavaJson) -> Json = {
 
 fun entries_to_map(keys: List[String], values: List[JavaJson], acc: Map[String, Json]) -> Map[String, Json] =
     match (keys, values) {
-        (Cons(k, kr), Cons(v, vr)) => entries_to_map(kr, vr, put(acc, k, from_java(v))),
+        (Cons(k, kr), Cons(v, vr)) => recur(kr, vr, put(acc, k, from_java(v))),
         _ => acc,
     }
 
@@ -95,7 +95,7 @@ fun build_arr(items: List[Json], arr: JavaJson) -> JavaJson =
         Nil => arr,
         Cons(h, rest) => {
             staticArrPush(arr, to_java(h));
-            build_arr(rest, arr)
+            recur(rest, arr)
         },
     }
 
@@ -105,7 +105,7 @@ fun build_obj(es: List[(String, Json)], obj: JavaJson) -> JavaJson =
         Cons(pair, rest) => {
             let (k, v) = pair;
             staticObjPut(obj, k, to_java(v));
-            build_obj(rest, obj)
+            recur(rest, obj)
         },
     }
 
