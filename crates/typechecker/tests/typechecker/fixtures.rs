@@ -10,6 +10,13 @@ fn infer_module_snapshot(source: &str) -> Result<String, Vec<String>> {
     infer_module_snapshot_with_resolver(source, &CompositeResolver::stdlib_only())
 }
 
+fn infer_module_snapshot_at(source: &str, fixture_dir: &Path) -> Result<String, Vec<String>> {
+    infer_module_snapshot_with_resolver(
+        source,
+        &CompositeResolver::with_source_root(fixture_dir.to_path_buf()),
+    )
+}
+
 fn infer_module_snapshot_with_resolver(
     source: &str,
     resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
@@ -47,7 +54,7 @@ fn infer_module_snapshot_with_resolver(
     }
 }
 
-const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
+const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "inspect"];
 
 fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
@@ -73,6 +80,7 @@ fn typecheck_fixture(
     }
 
     let name = path.file_stem().unwrap().to_string_lossy().to_string();
+    let fixture_dir = path.parent().unwrap();
 
     let expected_errors: Vec<&str> = fixture
         .expectations
@@ -87,7 +95,7 @@ fn typecheck_fixture(
         // Expect success
         for expectation in &fixture.expectations {
             if let Expectation::Ok = expectation {
-                let result = infer_module_snapshot(&fixture.source);
+                let result = infer_module_snapshot_at(&fixture.source, fixture_dir);
                 let snapshot = result.unwrap_or_else(|codes| {
                     panic!("fixture {name}: expected ok but got errors {codes:?}")
                 });
@@ -96,7 +104,7 @@ fn typecheck_fixture(
         }
     } else {
         // Expect errors — check all expected codes appear in actual codes
-        let result = infer_module_snapshot(&fixture.source);
+        let result = infer_module_snapshot_at(&fixture.source, fixture_dir);
         match result {
             Ok(ty) => {
                 panic!("fixture {name}: expected errors {expected_errors:?} but inferred: {ty}")

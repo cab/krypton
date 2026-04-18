@@ -89,7 +89,7 @@ fn run_program_with_resolver(
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
-const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "modules", "inspect"];
+const SKIP_DIRS: &[&str] = &["parser", "bench", "smoke", "inspect"];
 
 fn should_skip(path: &Path) -> bool {
     path.components().any(|c| {
