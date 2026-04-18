@@ -7534,10 +7534,17 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
             }
         },
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
+            // Exact-arity or pattern-extra: a pattern with more slots than the
+            // actual matches the actual's prefix. This lets HKT instance patterns
+            // stored in full form (e.g. `Map[Var(k), Var(anon)]`) match partial
+            // dispatch types (e.g. `Map[String]`) produced by HKT method resolution.
+            // Trailing pattern slots stay unbound — consumers only care that the
+            // instance is identified, not what the hole slot resolves to.
             p_name == a_name
-                && p_args.len() == a_args.len()
+                && p_args.len() >= a_args.len()
                 && p_args
                     .iter()
+                    .take(a_args.len())
                     .zip(a_args.iter())
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
@@ -7568,12 +7575,19 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
         // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
+        // Partial application: when a_args.len() > p_args.len(), the prefix bakes
+        // into the constructor (f = Named("Result", [String]) when pattern is
+        // f[a] and actual is Result[String, Int]).
         (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
-            p_args.len() == a_args.len()
-                && bind_type_vars(p_ctor, &Type::Named(a_name.clone(), Vec::new()), bindings)
+            if p_args.len() > a_args.len() {
+                return false;
+            }
+            let prefix_len = a_args.len() - p_args.len();
+            let prefix: Vec<Type> = a_args[..prefix_len].to_vec();
+            bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)
                 && p_args
                     .iter()
-                    .zip(a_args.iter())
+                    .zip(a_args[prefix_len..].iter())
                     .all(|(p, a)| bind_type_vars(p, a, bindings))
         }
         // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)

@@ -1,0 +1,14 @@
+# expect: ok
+import core/map.{Map, values}
+import core/vec.{Vec, fold as vec_fold}
+
+trait Foldable[f[_]] {
+  fun fold[a, b](fa: f[a], init: b, f: (b, a) -> b) -> b
+}
+
+impl[k] Foldable[Map[k, _]] {
+  fun fold[a, b](fa: Map[k, a], init: b, f: (b, a) -> b) -> b =
+    vec_fold(values(fa), init, f)
+}
+
+fun sum_values(m: Map[String, Int]) -> Int = fold(m, 0, (acc, x) -> acc + x)

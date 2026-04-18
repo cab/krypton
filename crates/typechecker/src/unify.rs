@@ -217,18 +217,22 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
             }
             Ok(())
         }
-        // App(Var(f), args) vs Named(name, args2): bind f to the constructor
+        // App(Var(f), args1) vs Named(name, args2): bind f to the (possibly partial)
+        // Named constructor. When args2.len() > args1.len(), split off a prefix that
+        // bakes into the constructor — mirrors the Fn partial-application rule above.
+        // e.g. App(Var(f), [Int]) vs Result[String, Int] binds f = Named("Result", [String]).
         (Type::App(ctor, args1), Type::Named(name, args2))
         | (Type::Named(name, args2), Type::App(ctor, args1)) => {
-            // Unify the constructor with the zero-arg Named type (the constructor itself)
-            unify(ctor, &Type::Named(name.clone(), vec![]), subst)?;
-            if args1.len() != args2.len() {
+            if args1.len() > args2.len() {
                 return Err(TypeError::WrongArity {
                     expected: args1.len(),
                     actual: args2.len(),
                 });
             }
-            for (a, b) in args1.iter().zip(args2.iter()) {
+            let prefix_len = args2.len() - args1.len();
+            let prefix: Vec<Type> = args2[..prefix_len].to_vec();
+            unify(ctor, &Type::Named(name.clone(), prefix), subst)?;
+            for (a, b) in args1.iter().zip(args2[prefix_len..].iter()) {
                 unify(a, b, subst)?;
             }
             Ok(())

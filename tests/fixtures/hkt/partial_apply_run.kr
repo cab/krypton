@@ -1,0 +1,41 @@
+# expect: output "15\n8"
+import core/map.{Map, builder, put, freeze, values}
+import core/vec.{fold as vec_fold}
+
+type Result[e, a] = Ok(a) | Err(e)
+
+trait Functor[f[_]] {
+  fun fmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+impl[e] Functor[Result[e, _]] {
+  fun fmap[a, b](fa: Result[e, a], g: (a) -> b) -> Result[e, b] =
+    match fa { Ok(v) => Ok(g(v)), Err(err) => Err(err) }
+}
+
+trait Foldable[f[_]] {
+  fun fold[a, b](fa: f[a], init: b, f: (b, a) -> b) -> b
+}
+
+impl[k] Foldable[Map[k, _]] {
+  fun fold[a, b](fa: Map[k, a], init: b, f: (b, a) -> b) -> b =
+    vec_fold(values(fa), init, f)
+}
+
+fun build_map() -> Map[String, Int] = {
+  let b = builder();
+  let b1 = put(b, "a", 3);
+  let b2 = put(b1, "b", 5);
+  let b3 = put(b2, "c", 7);
+  freeze(b3)
+}
+
+fun main() -> Unit = {
+  let m = build_map();
+  println(fold(m, 0, (acc, x) -> acc + x));
+  let r: Result[String, Int] = Ok(3);
+  match fmap(r, x -> x + 5) {
+    Ok(v) => println(v),
+    Err(_) => println(-1),
+  }
+}
