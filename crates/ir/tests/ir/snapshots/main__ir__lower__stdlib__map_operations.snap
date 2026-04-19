@@ -5,27 +5,27 @@ expression: ir_module.to_string()
 module stdlib__map_operations
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[e10, f10]
-import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
-import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
-import core/map/delete as delete(Map[l12, m12], l12) -> Map[l12, m12]
-import core/map/contains as contains(Map[p12, q12], p12) -> Bool
-import core/map/size as size(Map[s15, t15]) -> Int
-declare contains: (Map[p12, q12], p12) -> Bool
-declare delete: (Map[l12, m12], l12) -> Map[l12, m12]
-declare empty: () -> Map[e10, f10]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[s9, t9], s9, t9) -> Map[s9, t9]
+import core/map/put as put(~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
+import core/map/delete as delete(Map[h11, i11], h11) -> Map[h11, i11]
+import core/map/contains as contains(Map[l11, m11], l11) -> Bool
+import core/map/size as size(Map[o14, p14]) -> Int
+declare contains: (Map[l11, m11], l11) -> Bool
+declare delete: (Map[h11, i11], h11) -> Map[h11, i11]
+declare empty: () -> Map[a9, b9]
 declare println: (g) -> Unit
-declare put: (Map[w10, x10], w10, x10) -> Map[w10, x10]
-declare size: (Map[s15, t15]) -> Int
+declare put: (Map[s9, t9], s9, t9) -> Map[s9, t9]
+declare size: (Map[o14, p14]) -> Int
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

@@ -17,7 +17,7 @@ last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
 to_list: forall a. (Vec[a]) -> List[a]
-map: forall a. (a[d], (d) -> e) -> a[e]
+map: forall a b c. (a[b], (b) -> c) -> a[c]
 println: forall a. (a) -> Unit where a: Show
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]

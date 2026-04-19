@@ -17,8 +17,8 @@ last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
 to_list: forall a. (Vec[a]) -> List[a]
-map: forall a. (a[d], (d) -> e) -> a[e]
-fold: forall a. (a[d], e, (e, d) -> e) -> e
+map: forall a b c. (a[b], (b) -> c) -> a[c]
+fold: forall a b c. (a[b], c, (c, b) -> c) -> c
 println: forall a. (a) -> Unit where a: Show
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Predicate: forall a b. ((a) -> b) -> Predicate[a, b]
-Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[c13, c13], (c13) -> c13) -> Predicate[c13, c13]
+Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[y11, y11], (y11) -> y11) -> Predicate[y11, y11]

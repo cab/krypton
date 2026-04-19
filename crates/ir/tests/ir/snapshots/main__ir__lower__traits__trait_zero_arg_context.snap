@@ -4,13 +4,13 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_context
 
-trait Default[l12] { default(): l12 }
+trait Default[h11] { default(): h11 }
 instance traits__trait_zero_arg_context.Default[Int] { default=Default$$Int$$default }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -23,8 +23,8 @@ fn int_default() -> Int =
   let v1: Int = trait_call traits__trait_zero_arg_context.Default.default(v0)
   v1
 
-fn default2(v2: Dict[traits__trait_zero_arg_context.Default, s12]) -> s12 =
-  let v3: s12 = trait_call traits__trait_zero_arg_context.Default.default(v2)
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, o11]) -> o11 =
+  let v3: o11 = trait_call traits__trait_zero_arg_context.Default.default(v2)
   v3
 
 fn main() -> Unit =

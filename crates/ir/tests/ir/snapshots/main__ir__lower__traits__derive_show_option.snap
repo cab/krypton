@@ -7,10 +7,10 @@ module traits__derive_show_option
 type Option[a] = Some#0(a) | None#1
 instance core/show.Show[Option] { show=Show$$Option$$show }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -27,9 +27,9 @@ fn main() -> Unit =
   let v5: Unit = call println(v0, v4)
   v5
 
-fn Show$$Option$$show(v6: Dict[core/show.Show, b12], v7: Option[b12]) -> String =
+fn Show$$Option$$show(v6: Dict[core/show.Show, x10], v7: Option[x10]) -> String =
   switch v7 {
-    0 (v8: b12) ->
+    0 (v8: x10) ->
       let v9: String = trait_call core/show.Show.show(v6, v8)
       let v10: String = concat_string("Some(", v9)
       let v11: String = concat_string(v10, ")")

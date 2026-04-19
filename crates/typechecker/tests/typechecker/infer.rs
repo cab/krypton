@@ -368,8 +368,8 @@ fn infer_forward_reference() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -419,8 +419,8 @@ fn infer_module_forward_ref() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -459,8 +459,8 @@ fn infer_mutual_recursion() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -513,8 +513,8 @@ fn infer_record_constructor() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -553,8 +553,8 @@ fn infer_sum_constructor() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -594,8 +594,8 @@ fn infer_bare_variant() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -645,8 +645,8 @@ fn infer_scc_generalization_order() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -686,8 +686,8 @@ fn infer_field_access() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -726,8 +726,8 @@ fn infer_struct_update() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -796,8 +796,8 @@ fn infer_match_option() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -837,8 +837,8 @@ fn infer_match_literal() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -876,8 +876,8 @@ fn infer_match_variable() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -915,8 +915,8 @@ fn infer_match_nested_constructor() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -966,8 +966,8 @@ fn infer_tuple_in_match() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1010,8 +1010,8 @@ fn infer_tuple_polymorphic() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1059,8 +1059,8 @@ fn test_exhaustive_complete() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1110,8 +1110,8 @@ fn test_exhaustive_wildcard_covers_all() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1383,7 +1383,7 @@ fn explicit_type_args_work_with_methods() {
 
         fun use_it(xs: List[Int]) = xs.map[String](stringify)
     "#;
-    insta::assert_snapshot!(infer_module_fn(src, "use_it"), @"TypeError: type mismatch: expected String, found List");
+    insta::assert_snapshot!(infer_module_fn(src, "use_it"), @"(List[Int]) -> List[String]");
 }
 
 // --- Unknown type error tests ---
@@ -3060,8 +3060,8 @@ fn lambda_params_inferred_from_higher_order_fn() {
     sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
-    map: forall a. (a[d], (d) -> e) -> a[e]
-    fold: forall a. (a[d], e, (e, d) -> e) -> e
+    map: forall a b c. (a[b], (b) -> c) -> a[c]
+    fold: forall a b c. (a[b], c, (c, b) -> c) -> c
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]

@@ -731,11 +731,9 @@ pub(super) fn check_trait_instances(
                             &mut bindings,
                         );
                         // Bind from explicit type application
-                        if let TypedExprKind::TypeApp { type_args, .. } = &func.kind {
-                            if !type_args.is_empty() {
-                                bindings
-                                    .entry(info.type_var_id)
-                                    .or_insert_with(|| type_args[0].clone());
+                        if let TypedExprKind::TypeApp { type_bindings, .. } = &func.kind {
+                            for (tv, ty) in type_bindings {
+                                bindings.entry(*tv).or_insert_with(|| ty.clone());
                             }
                         }
                         // Multi-parameter trait method validation.

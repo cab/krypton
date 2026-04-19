@@ -5,30 +5,30 @@ expression: ir_module.to_string()
 module stdlib__map_builder
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/builder as builder() -> ~MapBuilder[m10, n10]
-import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
-import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
-import core/map/freeze as freeze(~MapBuilder[p11, q11]) -> Map[p11, q11]
-import core/map/get as get(Map[t11, f12], t11) -> Option[f12]
-import core/map/size as size(Map[s15, t15]) -> Int
-declare builder: () -> ~MapBuilder[m10, n10]
-declare freeze: (~MapBuilder[p11, q11]) -> Map[p11, q11]
-declare get: (Map[t11, f12], t11) -> Option[f12]
+import core/map/builder as builder() -> ~MapBuilder[i9, j9]
+import core/map/put as put(Map[s9, t9], s9, t9) -> Map[s9, t9]
+import core/map/put as put(~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
+import core/map/freeze as freeze(~MapBuilder[l10, m10]) -> Map[l10, m10]
+import core/map/get as get(Map[p10, b11], p10) -> Option[b11]
+import core/map/size as size(Map[o14, p14]) -> Int
+declare builder: () -> ~MapBuilder[i9, j9]
+declare freeze: (~MapBuilder[l10, m10]) -> Map[l10, m10]
+declare get: (Map[p10, b11], p10) -> Option[b11]
 declare println: (g) -> Unit
-declare put: (~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
-declare size: (Map[s15, t15]) -> Int
+declare put: (~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
+declare size: (Map[o14, p14]) -> Int
 
 fn main() -> Unit =
-  let v0: ~MapBuilder[g16, h16] = call builder()
+  let v0: ~MapBuilder[c15, d15] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 1)

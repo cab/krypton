@@ -5,10 +5,10 @@ expression: ir_module.to_string()
 module stdlib__list_literal_empty
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -22,8 +22,8 @@ fn main() -> Unit =
     let v6: Unit = call println(v0, v5)
     v6
   in
-  let v1: List[q12] = construct List::Nil#1()
-  let v2: List[q12] = v1
+  let v1: List[m11] = construct List::Nil#1()
+  let v2: List[m11] = v1
   switch v2 {
     0 (v3: j, v4: List[j]) ->
       jump v7(1)

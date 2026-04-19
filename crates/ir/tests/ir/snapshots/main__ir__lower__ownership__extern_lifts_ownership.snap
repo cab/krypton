@@ -5,21 +5,21 @@ expression: ir_module.to_string()
 module ownership__extern_lifts_ownership
 
 extern java "native.Socket" close_socket(~Socket) -> Unit
-extern java "native.Socket" close_map(~ForeignMap[d12, e12]) -> Unit
+extern java "native.Socket" close_map(~ForeignMap[z10, a11]) -> Unit
 extern type java "native.Socket" Socket
 extern type java "native.ForeignString" ForeignString
 extern type java "native.ForeignMap" ForeignMap
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-declare close_map: (~ForeignMap[d12, e12]) -> Unit
+declare close_map: (~ForeignMap[z10, a11]) -> Unit
 declare close_socket: (~Socket) -> Unit
 
 fn use_socket(v0: ~Socket) -> Unit =

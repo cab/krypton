@@ -177,13 +177,8 @@ impl ToJson[Bool] {
     fun to_json(x: Bool) -> Json = JBool(x)
 }
 
-fun json_list_go[a](xs: List[a]) -> List[Json] where a: ToJson = match xs {
-    Nil => Nil,
-    Cons(h, rest) => Cons(to_json(h), json_list_go(rest)),
-}
-
 impl ToJson[List[a]] where a: ToJson {
-    fun to_json(xs: List[a]) -> Json = JArr(json_list_go(xs))
+    fun to_json(xs: List[a]) -> Json = JArr(map(xs, (x) -> to_json(x)))
 }
 
 impl ToJson[Option[a]] where a: ToJson {
@@ -193,18 +188,10 @@ impl ToJson[Option[a]] where a: ToJson {
     }
 }
 
-fun json_pairs_go[a](xs: List[(String, a)]) -> List[(String, Json)] where a: ToJson = match xs {
-    Nil => Nil,
-    Cons(pair, rest) => {
-        let (k, v) = pair
-        Cons((k, to_json(v)), json_pairs_go(rest))
-    },
-}
-
 impl ToJson[Map[String, a]] where a: ToJson {
     fun to_json(m: Map[String, a]) -> Json = {
         let pairs: List[(String, a)] = vec_to_list(entries(m))
-        JObj(from_list(json_pairs_go(pairs)))
+        JObj(from_list(map(pairs, (p) -> { let (k, v) = p; (k, to_json(v)) })))
     }
 }
 

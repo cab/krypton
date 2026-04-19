@@ -5,14 +5,14 @@ expression: ir_module.to_string()
 module inference__self_type_generic_int
 
 struct Box[a] { value: a }
-trait MyEq[m12] { my_eq(m12, m12): Bool }
+trait MyEq[i11] { my_eq(i11, i11): Bool }
 instance inference__self_type_generic_int.MyEq[Int] { my_eq=MyEq$$Int$$my_eq }
 instance inference__self_type_generic_int.MyEq[Box$$Var0] { my_eq=MyEq$$Box$$Var0$$my_eq }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -35,8 +35,8 @@ fn MyEq$$Int$$my_eq(v7: Int, v8: Int) -> Bool =
   let v10: Bool = trait_call core/eq.Eq.eq(v9, v7, v8)
   v10
 
-fn MyEq$$Box$$Var0$$my_eq(v11: Dict[inference__self_type_generic_int.MyEq, n12], v12: Box[n12], v13: Box[n12]) -> Bool =
-  let v14: n12 = project v12.0
-  let v15: n12 = project v13.0
+fn MyEq$$Box$$Var0$$my_eq(v11: Dict[inference__self_type_generic_int.MyEq, j11], v12: Box[j11], v13: Box[j11]) -> Bool =
+  let v14: j11 = project v12.0
+  let v15: j11 = project v13.0
   let v16: Bool = trait_call inference__self_type_generic_int.MyEq.my_eq(v11, v14, v15)
   v16

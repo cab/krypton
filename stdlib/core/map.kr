@@ -143,16 +143,6 @@ impl[k] Functor[Map[k, _]] where k: Eq + Hash {
         map_rebuild_go(entries(m), 0, vec_len(staticKeys(m)), g, builder())
 }
 
-fun map_fold_values_go[a, b](vs: Vec[a], i: Int, n: Int, acc: b, g: (b, a) -> b) -> b =
-    if i < n {
-        recur(vs, i + 1, n, g(acc, staticGet(vs, i)), g)
-    } else {
-        acc
-    }
-
 impl[k] Foldable[Map[k, _]] {
-    fun fold[a, b](m: Map[k, a], acc: b, g: (b, a) -> b) -> b = {
-        let vs = staticValues(m);
-        map_fold_values_go(vs, 0, vec_len(vs), acc, g)
-    }
+    fun fold[a, b](m: Map[k, a], acc: b, g: (b, a) -> b) -> b = fold(staticValues(m), acc, g)
 }

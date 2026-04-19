@@ -5,22 +5,22 @@ expression: ir_module.to_string()
 module extern__extern_java_actor
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[i13]) -> Unit) -> Ref[i13]
-import core/actor/send as send(Ref[l13], l13) -> Unit
-import core/actor/receive as receive(Mailbox[u13]) -> u13
-import core/actor/actor_ref as actor_ref(Mailbox[e14]) -> Ref[e14]
-declare actor_ref: (Mailbox[e14]) -> Ref[e14]
-declare receive: (Mailbox[u13]) -> u13
-declare send: (Ref[l13], l13) -> Unit
+import core/actor/spawn as spawn((Mailbox[e12]) -> Unit) -> Ref[e12]
+import core/actor/send as send(Ref[h12], h12) -> Unit
+import core/actor/receive as receive(Mailbox[q12]) -> q12
+import core/actor/actor_ref as actor_ref(Mailbox[a13]) -> Ref[a13]
+declare actor_ref: (Mailbox[a13]) -> Ref[a13]
+declare receive: (Mailbox[q12]) -> q12
+declare send: (Ref[h12], h12) -> Unit
 
 fn echo(v0: Mailbox[Int]) -> Unit =
   let v1: Int = call receive(v0)

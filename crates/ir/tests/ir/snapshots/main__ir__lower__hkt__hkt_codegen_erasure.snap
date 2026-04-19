@@ -5,11 +5,11 @@ expression: ir_module.to_string()
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
-trait Functor[m12] { fmap(m12[n12], (n12) -> o12): m12[o12] }
+trait Functor[i11] { fmap(i11[j11], (j11) -> k11): i11[k11] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
@@ -17,17 +17,17 @@ import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/list/Cons as Cons(j, List[j]) -> List[j]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 declare println: (g) -> Unit
-declare to_list: (Vec[a12]) -> List[a12]
+declare to_list: (Vec[w10]) -> List[w10]
 
-fn fold_box(v0: List[w12], v1: q12[w12], v2: (q12[w12], w12) -> q12[w12]) -> q12[w12] =
-  let_join [recur] v3(v4: List[w12], v5: q12[w12], v6: (q12[w12], w12) -> q12[w12]) =
+fn fold_box(v0: List[s11], v1: m11[s11], v2: (m11[s11], s11) -> m11[s11]) -> m11[s11] =
+  let_join [recur] v3(v4: List[s11], v5: m11[s11], v6: (m11[s11], s11) -> m11[s11]) =
     switch v4 {
       1 ->
         v5
-      0 (v7: w12, v8: List[w12]) ->
-        let v9: q12[w12] = call_closure v6(v5, v7)
+      0 (v7: s11, v8: List[s11]) ->
+        let v9: m11[s11] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in
@@ -46,11 +46,11 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[v13], v24: (v13) -> x13) -> Box[x13] =
+fn Functor$$Box$$fmap(v23: Box[r12], v24: (r12) -> t12) -> Box[t12] =
   switch v23 {
-    0 (v25: v13) ->
-      let v26: x13 = call_closure v24(v25)
-      let v27: Box[x13] = construct Box::Box#0(v26)
+    0 (v25: r12) ->
+      let v26: t12 = call_closure v24(v25)
+      let v27: Box[t12] = construct Box::Box#0(v26)
       v27
   }
 

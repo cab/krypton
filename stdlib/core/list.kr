@@ -22,13 +22,11 @@ pub fun filter[a](xs: List[a], f: (a) -> Bool) -> List[a] = match xs {
     Cons(h, rest) => if f(h) { Cons(h, filter(rest, f)) } else { filter(rest, f) },
 }
 
-fun list_map_go[a, b](xs: List[a], g: (a) -> b) -> List[b] = match xs {
-    Nil => Nil,
-    Cons(h, rest) => Cons(g(h), list_map_go(rest, g)),
-}
-
 impl Functor[List] {
-    fun map[a, b](xs: List[a], g: (a) -> b) -> List[b] = list_map_go(xs, g)
+    fun map[a, b](xs: List[a], g: (a) -> b) -> List[b] = match xs {
+        Nil => Nil,
+        Cons(h, rest) => Cons(g(h), map(rest, g)),
+    }
 }
 
 impl Foldable[List] {
@@ -49,35 +47,29 @@ impl Monoid[List[a]] {
     fun empty() -> List[a] = Nil
 }
 
-fun list_apply_go[a, b](ffs: List[(a) -> b], xs: List[a]) -> List[b] = match ffs {
-    Nil => Nil,
-    Cons(g, rest) => combine(list_map_go(xs, g), list_apply_go(rest, xs)),
-}
-
-fun list_flat_map_go[a, b](xs: List[a], g: (a) -> List[b]) -> List[b] = match xs {
-    Nil => Nil,
-    Cons(h, rest) => combine(g(h), list_flat_map_go(rest, g)),
-}
-
 impl Applicative[List] {
     fun pure[a](x: a) -> List[a] = Cons(x, Nil)
-    fun apply[a, b](ffs: List[(a) -> b], xs: List[a]) -> List[b] = list_apply_go(ffs, xs)
+    fun apply[a, b](ffs: List[(a) -> b], xs: List[a]) -> List[b] = match ffs {
+        Nil => Nil,
+        Cons(g, rest) => combine(map(xs, g), apply(rest, xs)),
+    }
 }
 
 impl Monad[List] {
-    fun flat_map[a, b](xs: List[a], g: (a) -> List[b]) -> List[b] = list_flat_map_go(xs, g)
+    fun flat_map[a, b](xs: List[a], g: (a) -> List[b]) -> List[b] = match xs {
+        Nil => Nil,
+        Cons(h, rest) => combine(g(h), flat_map(rest, g)),
+    }
 }
 
-# Traversable[List] intentionally not provided in this pass.
-# The body would require `apply(map(k(h), cons), traverse(rest, k))` where
-# `map` dispatches via the `g: Applicative, g: Functor` constraint on the
-# method signature rather than the enclosing `t = List` instance. The current
-# typechecker, at a call site where `List` also has a `Functor` instance
-# visible, cannot route the `map` through the constraint dict and falls back
-# to picking the concrete `Functor[List]`, corrupting the `map` return type
-# (see M18-T5 follow-up notes). Users can convert `List → Vec` with `to_vec`
-# and `traverse` on Vec when that instance is available, or materialize via
-# `fold` manually.
+fun cons_partial[a](h: a) -> (List[a]) -> List[a] = (rest) -> Cons(h, rest)
+
+impl Traversable[List] {
+    fun traverse[g[_], a, b](xs: List[a], k: (a) -> g[b]) -> g[List[b]] where g: Applicative, g: Functor = match xs {
+        Nil => pure(Nil),
+        Cons(h, rest) => apply(map(k(h), cons_partial), traverse(rest, k)),
+    }
+}
 
 pub fun reverse[a](xs: List[a]) -> List[a] = fold(xs, Nil, (acc, x) -> Cons(x, acc))
 

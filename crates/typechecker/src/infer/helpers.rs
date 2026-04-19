@@ -297,6 +297,53 @@ pub(crate) fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
     out
 }
 
+/// Collect free type variables in left-to-right encounter order, deduplicated.
+/// Use this (not `free_vars`) whenever iteration order controls fresh TypeVarId
+/// allocation: HashSet iteration depends on the RandomState seed and would make
+/// compilation nondeterministic across processes.
+pub(crate) fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    free_vars_ordered_into(ty, &mut out, &mut seen);
+    out
+}
+
+fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+    match ty {
+        Type::Var(id) => {
+            if seen.insert(*id) {
+                out.push(*id);
+            }
+        }
+        Type::Fn(params, ret) => {
+            for (_, p) in params {
+                free_vars_ordered_into(p, out, seen);
+            }
+            free_vars_ordered_into(ret, out, seen);
+        }
+        Type::Named(_, args) => {
+            for a in args {
+                free_vars_ordered_into(a, out, seen);
+            }
+        }
+        Type::App(ctor, args) => {
+            free_vars_ordered_into(ctor, out, seen);
+            for a in args {
+                free_vars_ordered_into(a, out, seen);
+            }
+        }
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+            free_vars_ordered_into(inner, out, seen);
+        }
+        Type::Tuple(elems) => {
+            for e in elems {
+                free_vars_ordered_into(e, out, seen);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn match_type_with_bindings(
     pattern: &Type,
     actual: &Type,
@@ -821,7 +868,7 @@ pub(crate) fn instantiate_scheme_with_types(
     explicit_types: &[Type],
     span: Span,
     gen: &mut TypeVarGen,
-) -> Result<Type, SpannedTypeError> {
+) -> Result<(Type, Vec<(TypeVarId, Type)>), SpannedTypeError> {
     if explicit_types.len() > scheme.vars.len() {
         return Err(spanned(
             TypeError::WrongArity {
@@ -837,8 +884,10 @@ pub(crate) fn instantiate_scheme_with_types(
         sub = sub.compose(&Substitution::bind(var, Type::Var(gen.fresh())));
     }
     let offset = scheme.vars.len() - explicit_types.len();
+    let mut bindings: Vec<(TypeVarId, Type)> = Vec::with_capacity(explicit_types.len());
     for (&var, ty) in scheme.vars.iter().skip(offset).zip(explicit_types.iter()) {
         sub = sub.compose(&Substitution::bind(var, ty.clone()));
+        bindings.push((var, ty.clone()));
     }
-    Ok(sub.apply(&scheme.ty))
+    Ok((sub.apply(&scheme.ty), bindings))
 }

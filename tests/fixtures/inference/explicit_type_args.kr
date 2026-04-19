@@ -14,4 +14,4 @@ fun standalone() = {
   id_int(42)
 }
 
-fun method_site(xs: List[Int]) -> List[String] = xs.map(stringify)
+fun method_site(xs: List[Int]) = xs.map[String](stringify)

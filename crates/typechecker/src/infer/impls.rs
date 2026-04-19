@@ -13,8 +13,8 @@ use crate::unify::{SpannedTypeError, TypeError};
 use super::display::substitute_type_var;
 use super::fork::{check_fork, ForkCommit};
 use super::helpers::{
-    collect_type_expr_var_names, duplicate_instance_spanned, free_vars, require_param_vars,
-    resolve_impl_target, spanned, spanned_with_names, strip_anon_type_args,
+    collect_type_expr_var_names, duplicate_instance_spanned, free_vars, free_vars_ordered,
+    require_param_vars, resolve_impl_target, spanned, spanned_with_names, strip_anon_type_args,
     validate_impl_wildcards,
 };
 use super::state::ModuleInferenceState;
@@ -585,9 +585,12 @@ pub(super) fn typecheck_impl_methods(
 
                     // Freshen trait's secondary/method vars that are NOT shape
                     // vars (those are handled above via fork_overrides).
+                    // Walk vars in left-to-right encounter order so fresh-id
+                    // allocation is deterministic across processes (HashSet
+                    // iteration depends on RandomState seed).
                     let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
                     for (_, pt) in &trait_method.param_types {
-                        for v in free_vars(pt) {
+                        for v in free_vars_ordered(pt) {
                             if v != tv_id && !fork_overrides.contains_key(&v) {
                                 extra_subst
                                     .entry(v)
@@ -595,7 +598,7 @@ pub(super) fn typecheck_impl_methods(
                             }
                         }
                     }
-                    for v in free_vars(&trait_method.return_type) {
+                    for v in free_vars_ordered(&trait_method.return_type) {
                         if v != tv_id && !fork_overrides.contains_key(&v) {
                             extra_subst
                                 .entry(v)

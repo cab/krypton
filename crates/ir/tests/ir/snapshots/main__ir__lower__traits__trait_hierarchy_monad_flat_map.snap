@@ -5,10 +5,10 @@ expression: ir_module.to_string()
 module traits__trait_hierarchy_monad_flat_map
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -18,6 +18,10 @@ declare println: (g) -> Unit
 
 fn main() -> Unit =
   let_join v46(v13: Unit) =
+    let v15: Option[Int] = construct Option::Some#0(3)
+    let v18: (Int) -> Option[Int] = make_closure(lambda$28, [])
+    let v19: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
+    let v14: Option[Int] = trait_call core/monad.Monad.flat_map(v19, v15, v18)
     let_join v45(v26: Unit) =
       let v28: List[Int] = construct List::Nil#1()
       let v29: List[Int] = construct List::Cons#0(2, v28)
@@ -32,11 +36,7 @@ fn main() -> Unit =
       let v44: Unit = call println(v37, v43)
       v44
     in
-    let v14: Option[Int] = construct Option::Some#0(3)
-    let v17: (Int) -> Option[Int] = make_closure(lambda$28, [])
-    let v18: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
-    let v19: Option[Int] = trait_call core/monad.Monad.flat_map(v18, v14, v17)
-    switch v19 {
+    switch v14 {
       0 (v20: Int) ->
         let v21: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
         let v22: Unit = call println(v21, v20)
@@ -69,9 +69,9 @@ fn lambda$27(v1: Int) -> Option[Int] =
   let v3: Option[Int] = construct Option::Some#0(v2)
   v3
 
-fn lambda$28(v15: Int) -> Option[Int] =
-  let v16: Option[Int] = construct Option::None#1()
-  v16
+fn lambda$28(v16: Int) -> Option[Int] =
+  let v17: Option[Int] = construct Option::None#1()
+  v17
 
 fn lambda$29(v31: Int) -> List[Int] =
   let v32: List[Int] = construct List::Nil#1()

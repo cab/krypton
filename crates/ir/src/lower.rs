@@ -1503,7 +1503,7 @@ impl LowerCtx {
             }
             TypedExprKind::TypeApp {
                 expr: inner,
-                type_args,
+                type_bindings,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let Some(trait_ref) = resolved_trait_method_ref(expr) {
@@ -1511,7 +1511,7 @@ impl LowerCtx {
                         &trait_ref.trait_name,
                         &trait_ref.method_name,
                         &expr.ty,
-                        type_args,
+                        type_bindings,
                     )?;
                     let var = self.fresh_var();
                     let ty = expr.ty.clone();
@@ -1928,7 +1928,7 @@ impl LowerCtx {
             }
             TypedExprKind::TypeApp {
                 expr: inner,
-                type_args,
+                type_bindings,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let Some(trait_ref) = resolved_trait_method_ref(expr) {
@@ -1936,7 +1936,7 @@ impl LowerCtx {
                         &trait_ref.trait_name,
                         &trait_ref.method_name,
                         &expr.ty,
-                        type_args,
+                        type_bindings,
                     );
                 }
                 if let Some((_binding_name, callable_ref)) = resolved_callable_ref(expr) {
@@ -1951,7 +1951,7 @@ impl LowerCtx {
                                 &qn,
                                 fn_id,
                                 &constraints,
-                                type_args,
+                                type_bindings,
                                 &expr.ty,
                             );
                         }
@@ -2416,7 +2416,7 @@ impl LowerCtx {
 
             TypedExprKind::TypeApp {
                 expr: inner,
-                type_args,
+                type_bindings,
             } => {
                 // For trait method values, use the outer (concrete) type from the TypeApp
                 if let Some(trait_ref) = resolved_trait_method_ref(expr) {
@@ -2424,7 +2424,7 @@ impl LowerCtx {
                         &trait_ref.trait_name,
                         &trait_ref.method_name,
                         &expr.ty,
-                        type_args,
+                        type_bindings,
                     )?;
                     let var = self.fresh_var();
                     let mut result = expr_at(
@@ -4415,8 +4415,9 @@ impl LowerCtx {
         func: &TypedExpr,
         args: &[TypedExpr],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
-        // Peel TypeApp to get the function name, resolved binding ref, and type args
-        let (func_name, resolved_ref, type_args) = extract_call_info(func);
+        // Peel TypeApp to get the function name, resolved binding ref, and the
+        // user's explicit (TypeVarId, Type) bindings.
+        let (func_name, resolved_ref, user_type_bindings) = extract_call_info(func);
 
         // ANF-normalize all arguments
         let mut bindings = vec![];
@@ -4431,8 +4432,12 @@ impl LowerCtx {
         if let Some(ResolvedBindingRef::TraitMethod(trait_ref)) = resolved_ref.as_ref() {
             let trait_id = &trait_ref.trait_name;
             let name = &trait_ref.method_name;
-            let (dict_tys, type_bindings) =
-                self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
+            let (dict_tys, resolved_bindings) = self.resolve_dispatch_type_with_bindings(
+                trait_id,
+                name,
+                &func.ty,
+                &user_type_bindings,
+            )?;
             let (dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_tys)?;
             bindings.extend(dict_bindings);
 
@@ -4447,7 +4452,7 @@ impl LowerCtx {
             for (constraint_trait, constraint_tvs) in &method_constraints {
                 let concrete_tys: Option<Vec<Type>> = constraint_tvs
                     .iter()
-                    .map(|tv| type_bindings.get(tv).cloned())
+                    .map(|tv| resolved_bindings.get(tv).cloned())
                     .collect();
                 if let Some(concrete_tys) = concrete_tys {
                     let (extra_bindings, extra_atom) =
@@ -4550,7 +4555,7 @@ impl LowerCtx {
                 };
                 // Resolve dict arguments for constrained functions
                 let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(&qn, args, &type_args, Some(&func.ty))?;
+                    self.resolve_call_dicts(&qn, args, &user_type_bindings, Some(&func.ty))?;
                 bindings.extend(dict_bindings);
 
                 let mut all_args = dict_atoms;
@@ -4657,8 +4662,9 @@ impl LowerCtx {
         args: &[TypedExpr],
         result_ty: &Type,
     ) -> Result<Expr, LowerError> {
-        // Peel TypeApp to get function name, resolved binding ref, and type args
-        let (func_name, resolved_ref, type_args) = extract_call_info(func);
+        // Peel TypeApp to get function name, resolved binding ref, and the
+        // user's explicit (TypeVarId, Type) bindings.
+        let (func_name, resolved_ref, user_type_bindings) = extract_call_info(func);
 
         let result_ty = result_ty.clone();
 
@@ -4666,8 +4672,12 @@ impl LowerCtx {
         if let Some(ResolvedBindingRef::TraitMethod(trait_ref)) = resolved_ref.as_ref() {
             let trait_id = &trait_ref.trait_name;
             let name = &trait_ref.method_name;
-            let (dict_tys, type_bindings) =
-                self.resolve_dispatch_type_with_bindings(trait_id, name, &func.ty, &type_args)?;
+            let (dict_tys, resolved_bindings) = self.resolve_dispatch_type_with_bindings(
+                trait_id,
+                name,
+                &func.ty,
+                &user_type_bindings,
+            )?;
             let (mut dict_bindings, dict_atom) = self.resolve_dict(trait_id, &dict_tys)?;
 
             // Methods without where-clause constraints have no entry
@@ -4683,7 +4693,7 @@ impl LowerCtx {
                     let concrete_tys: Vec<Type> = constraint_tvs
                         .iter()
                         .map(|tv| {
-                            type_bindings.get(tv).cloned().ok_or_else(|| {
+                            resolved_bindings.get(tv).cloned().ok_or_else(|| {
                                 LowerError::InternalError(format!(
                                     "ICE: could not resolve method constraint type var for {}.{}",
                                     trait_id.local_name, name
@@ -4856,7 +4866,7 @@ impl LowerCtx {
                     return Err(LowerError::UnresolvedVar(name.clone()));
                 };
                 let (dict_bindings, dict_atoms) =
-                    self.resolve_call_dicts(&qn, args, &type_args, Some(&func.ty))?;
+                    self.resolve_call_dicts(&qn, args, &user_type_bindings, Some(&func.ty))?;
 
                 return self.lower_atoms_then(args, vec![], |ctx, arg_atoms| {
                     let mut all_args = dict_atoms;
@@ -5242,7 +5252,7 @@ impl LowerCtx {
         &mut self,
         qn: &QualifiedName,
         args: &[TypedExpr],
-        type_args: &[Type],
+        user_type_bindings: &[(TypeVarId, Type)],
         callee_concrete_ty: Option<&Type>,
     ) -> Result<(Vec<LetBinding>, Vec<Atom>), LowerError> {
         let constraints = match self.fn_constraints.get(qn) {
@@ -5253,15 +5263,14 @@ impl LowerCtx {
         // Get the function's type scheme to extract param type patterns
         let scheme = self.fn_schemes.get(qn).cloned();
 
-        // Build type var bindings from type_args and argument types
+        // Build type var bindings: seed with the user's explicit pairs, then
+        // let `bind_type_vars` fill in the rest from the scheme/arg types.
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        for (var_id, ty) in user_type_bindings {
+            type_bindings.insert(*var_id, ty.clone());
+        }
 
         if let Some(ref scheme) = scheme {
-            // Bind from explicit type args
-            for (var_id, ty) in scheme.vars.iter().zip(type_args.iter()) {
-                type_bindings.insert(*var_id, ty.clone());
-            }
-
             // Bind from argument types matched against param patterns
             if let Type::Fn(ref param_patterns, _) = scheme.ty {
                 for ((_, pattern), arg) in param_patterns.iter().zip(args.iter()) {
@@ -5308,13 +5317,13 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         concrete_method_ty: &Type,
-        type_args: &[Type],
+        user_type_bindings: &[(TypeVarId, Type)],
     ) -> Result<Vec<Type>, LowerError> {
         let (dispatch_tys, _bindings) = self.resolve_dispatch_type_with_bindings(
             trait_name,
             method_name,
             concrete_method_ty,
-            type_args,
+            user_type_bindings,
         )?;
         Ok(dispatch_tys)
     }
@@ -5324,7 +5333,7 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         concrete_method_ty: &Type,
-        type_args: &[Type],
+        user_type_bindings: &[(TypeVarId, Type)],
     ) -> Result<(Vec<Type>, HashMap<TypeVarId, Type>), LowerError> {
         let (type_var_ids, method_types) =
             self.trait_method_types.get(trait_name).ok_or_else(|| {
@@ -5342,18 +5351,19 @@ impl LowerCtx {
             ))
         })?;
 
-        let mut bindings = HashMap::new();
-
-        // Bind from explicit type application (authoritative when present).
-        // For multi-param traits each `type_args[i]` maps to `type_var_ids[i]`.
-        for (idx, ta) in type_args.iter().enumerate() {
-            if let Some(&tv) = type_var_ids.get(idx) {
-                bindings.entry(tv).or_insert_with(|| ta.clone());
-            }
+        // Seed bindings from the user's explicit scheme-var → type pairs.
+        // The typechecker already resolved which scheme vars the user pinned;
+        // those land on their vars by id (including phantom trait vars that
+        // don't appear in the method signature).
+        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        for (var_id, ty) in user_type_bindings {
+            bindings.insert(*var_id, ty.clone());
         }
 
-        // Bind from matching the method signature against the concrete type.
-        // IR strips modes here — it only cares about the type-shape half.
+        // Fill in the remaining vars by matching the method signature against
+        // the concrete typechecker-produced type. `bind_type_vars` checks
+        // existing bindings for consistency and only inserts when missing, so
+        // user pins are preserved.
         let stripped_params: Vec<Type> = param_patterns.iter().map(|(_, t)| t.clone()).collect();
         let pattern_fn_ty = Type::fn_consuming(stripped_params, ret_pattern.clone());
         let concrete = strip_own(concrete_method_ty);
@@ -5386,18 +5396,17 @@ impl LowerCtx {
         qn: &QualifiedName,
         fn_id: FnId,
         constraints: &[(TraitName, Vec<TypeVarId>)],
-        type_args: &[Type],
+        user_type_bindings: &[(TypeVarId, Type)],
         expr_ty: &Type,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
-        // Build type var bindings from type_args and expression type
+        // Seed with user-supplied pairs, then match the scheme against the
+        // expression's concrete type for the remaining vars.
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        for (var_id, ty) in user_type_bindings {
+            type_bindings.insert(*var_id, ty.clone());
+        }
 
         if let Some(scheme) = self.fn_schemes.get(qn).cloned() {
-            // Bind from explicit type args
-            for (var_id, ty) in scheme.vars.iter().zip(type_args.iter()) {
-                type_bindings.insert(*var_id, ty.clone());
-            }
-            // Bind from matching scheme type against expression type
             let concrete = strip_own(expr_ty);
             bind_type_vars(&scheme.ty, concrete, &mut type_bindings);
         }
@@ -5530,12 +5539,12 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         expr_ty: &Type,
-        type_args: &[Type],
+        user_type_bindings: &[(TypeVarId, Type)],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // 1. Resolve the dispatch type(s) — multi-parameter traits return one
         //    type per trait type parameter.
         let dispatch_tys =
-            self.resolve_dispatch_type(trait_name, method_name, expr_ty, type_args)?;
+            self.resolve_dispatch_type(trait_name, method_name, expr_ty, user_type_bindings)?;
         if dispatch_tys.is_empty() {
             return Err(LowerError::InternalError(format!(
                 "trait {} has zero type parameters at dispatch site",
@@ -7346,18 +7355,25 @@ fn resolved_trait_method_ref(expr: &TypedExpr) -> Option<&ResolvedTraitMethodRef
     }
 }
 
-/// Extract function name, resolved binding ref, and type_args from a call expression,
-/// peeling through TypeApp wrappers. Collects the outermost type_args.
-fn extract_call_info(expr: &TypedExpr) -> (Option<String>, Option<ResolvedBindingRef>, Vec<Type>) {
+/// Extract function name, resolved binding ref, and explicit user type bindings
+/// from a call expression, peeling through TypeApp wrappers. Collects the
+/// outermost bindings.
+fn extract_call_info(
+    expr: &TypedExpr,
+) -> (
+    Option<String>,
+    Option<ResolvedBindingRef>,
+    Vec<(TypeVarId, Type)>,
+) {
     match &expr.kind {
         TypedExprKind::Var(name) => (Some(name.clone()), expr.resolved_ref.clone(), vec![]),
         TypedExprKind::TypeApp {
             expr: inner,
-            type_args,
+            type_bindings,
         } => {
             let (name, resolved_ref, _) = extract_call_info(inner);
             let resolved_ref = resolved_ref.or_else(|| expr.resolved_ref.clone());
-            (name, resolved_ref, type_args.clone())
+            (name, resolved_ref, type_bindings.clone())
         }
         _ => (None, expr.resolved_ref.clone(), vec![]),
     }

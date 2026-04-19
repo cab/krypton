@@ -9,7 +9,8 @@ fun main() = {
         None => println(-1),
     }
 
-    match flat_map(Some(3), x -> None) {
+    let none_result: Option[Int] = flat_map(Some(3), x -> None);
+    match none_result {
         Some(v) => println(v),
         None => println(-1),
     }

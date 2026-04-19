@@ -577,7 +577,15 @@ impl<'a> InferenceContext<'a> {
                     .map_err(|e| super::spanned(e, span))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            super::instantiate_scheme_with_types(&export.scheme, &explicit_types, span, self.gen)?
+            // Qualified-module calls don't synthesize a TypeApp node; the user
+            // bindings get baked into the returned type by substitution.
+            let (ty, _bindings) = super::instantiate_scheme_with_types(
+                &export.scheme,
+                &explicit_types,
+                span,
+                self.gen,
+            )?;
+            ty
         };
         let func_typed = TypedExpr {
             kind: TypedExprKind::Var(resolved_name),
@@ -1423,7 +1431,7 @@ impl<'a> InferenceContext<'a> {
             ));
         };
 
-        let specialized_ty = match expr {
+        let (specialized_ty, type_bindings) = match expr {
             Expr::Var { name, .. } => {
                 let Some(scheme) = self.env.lookup(name).cloned() else {
                     return Err(super::spanned(
@@ -1448,7 +1456,7 @@ impl<'a> InferenceContext<'a> {
         Ok(TypedExpr {
             kind: TypedExprKind::TypeApp {
                 expr: Box::new(expr_typed),
-                type_args: explicit_types,
+                type_bindings,
             },
             ty: specialized_ty,
             span,

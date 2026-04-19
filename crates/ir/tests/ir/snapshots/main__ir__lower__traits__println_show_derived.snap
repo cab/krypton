@@ -7,10 +7,10 @@ module traits__println_show_derived
 type MyOption[a] = MySome#0(a) | MyNone#1
 instance core/show.Show[MyOption] { show=Show$$MyOption$$show }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -25,9 +25,9 @@ fn main() -> Unit =
   let v3: Unit = call println(v1, v2)
   v3
 
-fn Show$$MyOption$$show(v4: Dict[core/show.Show, b12], v5: MyOption[b12]) -> String =
+fn Show$$MyOption$$show(v4: Dict[core/show.Show, x10], v5: MyOption[x10]) -> String =
   switch v5 {
-    0 (v6: b12) ->
+    0 (v6: x10) ->
       let v7: String = trait_call core/show.Show.show(v4, v6)
       let v8: String = concat_string("MySome(", v7)
       let v9: String = concat_string(v8, ")")

@@ -765,12 +765,23 @@ impl ModuleInferenceState {
                             method.param_types.clone(),
                             Box::new(method.return_type.clone()),
                         );
-                        // Include all trait type parameter ids so secondary
-                        // params (e.g. `b` in `Convert[a, b]`) are freshened on
-                        // every call instantiation. Required for multi-parameter
-                        // trait resolution.
+                        // Generalize over both trait-level params and the
+                        // method's own type parameters. `free_vars(&fn_ty)`
+                        // recovers the method-level vars from the signature,
+                        // so `ExportedTraitMethod`/`TraitMethodSummary` don't
+                        // need to carry them separately. Trait-level ids are
+                        // unioned in so secondary params (e.g. `b` in
+                        // `Convert[a, b]`) stay in the scheme even if they
+                        // don't appear syntactically in this method.
+                        let mut method_vars = super::free_vars(&fn_ty);
+                        for tv in &trait_def.type_var_ids {
+                            method_vars.insert(*tv);
+                        }
+                        let mut vars: Vec<crate::types::TypeVarId> =
+                            method_vars.into_iter().collect();
+                        vars.sort();
                         let scheme = TypeScheme {
-                            vars: trait_def.type_var_ids.clone(),
+                            vars,
                             constraints: Vec::new(),
                             ty: fn_ty,
                             var_names: HashMap::new(),

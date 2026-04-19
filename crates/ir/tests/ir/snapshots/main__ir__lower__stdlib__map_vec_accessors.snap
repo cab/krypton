@@ -5,53 +5,67 @@ expression: ir_module.to_string()
 module stdlib__map_vec_accessors
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[e10, f10]
-import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
-import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
-import core/map/keys as keys(Map[a13, y12]) -> Vec[a13]
-import core/map/values as values(Map[e13, i13]) -> Vec[i13]
-import core/vec/len as len(Vec[n8]) -> Int
-import core/vec/nth as nth(Vec[c9], Int) -> Option[c9]
+import core/map/empty as empty() -> Map[a9, b9]
+import core/map/put as put(Map[s9, t9], s9, t9) -> Map[s9, t9]
+import core/map/put as put(~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
+import core/map/keys as keys(Map[w11, u11]) -> Vec[w11]
+import core/map/values as values(Map[a12, e12]) -> Vec[e12]
+import core/map/entries as entries(Map[g13, h13]) -> Vec[(g13, h13)]
+import core/vec/len as len(Vec[j7]) -> Int
+import core/vec/nth as nth(Vec[y7], Int) -> Option[y7]
 import core/option/Some as Some(f) -> Option[f]
-declare empty: () -> Map[e10, f10]
-declare keys: (Map[a13, y12]) -> Vec[a13]
-declare len: (Vec[n8]) -> Int
+declare empty: () -> Map[a9, b9]
+declare entries: (Map[g13, h13]) -> Vec[(g13, h13)]
+declare keys: (Map[w11, u11]) -> Vec[w11]
+declare len: (Vec[j7]) -> Int
 declare println: (g) -> Unit
-declare put: (Map[w10, x10], w10, x10) -> Map[w10, x10]
-declare values: (Map[e13, i13]) -> Vec[i13]
+declare put: (Map[s9, t9], s9, t9) -> Map[s9, t9]
+declare values: (Map[a12, e12]) -> Vec[e12]
+
+fn add_pair_val(v0: Int, v1: (String, Int)) -> Int =
+  let v2: String = tuple_project v1.0
+  let v3: Int = tuple_project v1.1
+  let v4: Int = add_int(v0, v3)
+  v4
 
 fn main() -> Unit =
-  let v1: Map[String, Int] = call empty()
-  let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
-  let v4: Map[String, Int] = call put(v2, v3, v1, "a", 1)
-  let v5: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v6: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
-  let v7: Map[String, Int] = call put(v5, v6, v4, "b", 2)
-  let v8: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
-  let v9: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
-  let v0: Map[String, Int] = call put(v8, v9, v7, "c", 3)
-  let v10: Vec[String] = call keys(v0)
-  let v11: Int = call len(v10)
-  let v12: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v13: Unit = call println(v12, v11)
-  let v15: Vec[Int] = call values(v0)
-  let v19: (Int, Int) -> Int = make_closure(lambda$33, [])
-  let v20: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
-  let v21: Int = trait_call core/foldable.Foldable.fold(v20, v15, 0, v19)
-  let v14: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v22: Unit = call println(v14, v21)
-  v22
+  let v6: Map[String, Int] = call empty()
+  let v7: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v8: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v9: Map[String, Int] = call put(v7, v8, v6, "a", 1)
+  let v10: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v11: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v12: Map[String, Int] = call put(v10, v11, v9, "b", 2)
+  let v13: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v14: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v5: Map[String, Int] = call put(v13, v14, v12, "c", 3)
+  let v15: Vec[String] = call keys(v5)
+  let v16: Int = call len(v15)
+  let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v18: Unit = call println(v17, v16)
+  let v19: Vec[Int] = call values(v5)
+  let v23: (Int, Int) -> Int = make_closure(lambda$35, [])
+  let v24: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v25: Int = trait_call core/foldable.Foldable.fold(v24, v19, 0, v23)
+  let v26: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v27: Unit = call println(v26, v25)
+  let v29: Vec[(String, Int)] = call entries(v5)
+  let v30: (Int, (String, Int)) -> Int = make_closure(add_pair_val, [])
+  let v31: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v32: Int = trait_call core/foldable.Foldable.fold(v31, v29, 0, v30)
+  let v28: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v33: Unit = call println(v28, v32)
+  v33
 
-fn lambda$33(v16: Int, v17: Int) -> Int =
-  let v18: Int = add_int(v16, v17)
-  v18
+fn lambda$35(v20: Int, v21: Int) -> Int =
+  let v22: Int = add_int(v20, v21)
+  v22

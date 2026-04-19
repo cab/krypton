@@ -299,7 +299,10 @@ pub enum TypedExprKind {
     },
     TypeApp {
         expr: Box<TypedExpr>,
-        type_args: Vec<Type>,
+        /// Explicit user-supplied bindings in scheme-var order. IR consumers
+        /// apply these directly, without positional re-derivation against a
+        /// trait/scheme's type-var list.
+        type_bindings: Vec<(TypeVarId, Type)>,
     },
     If {
         cond: Box<TypedExpr>,

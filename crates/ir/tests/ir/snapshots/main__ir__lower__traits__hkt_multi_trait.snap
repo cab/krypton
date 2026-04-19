@@ -5,29 +5,29 @@ expression: ir_module.to_string()
 module traits__hkt_multi_trait
 
 type Box[a] = Box#0(a)
-trait Container[p12] { wrap(q12): p12[q12] }
-trait Functor[m12] { fmap(m12[n12], (n12) -> o12): m12[o12] }
+trait Container[l11] { wrap(m11): l11[m11] }
+trait Functor[i11] { fmap(i11[j11], (j11) -> k11): i11[k11] }
 instance traits__hkt_multi_trait.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance traits__hkt_multi_trait.Container[Box] { wrap=Container$$Box$$wrap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Functor$$Box$$fmap(v0: Box[x12], v1: (x12) -> z12) -> Box[z12] =
+fn Functor$$Box$$fmap(v0: Box[t11], v1: (t11) -> v11) -> Box[v11] =
   switch v0 {
-    0 (v2: x12) ->
-      let v3: z12 = call_closure v1(v2)
-      let v4: Box[z12] = construct Box::Box#0(v3)
+    0 (v2: t11) ->
+      let v3: v11 = call_closure v1(v2)
+      let v4: Box[v11] = construct Box::Box#0(v3)
       v4
   }
 
-fn Container$$Box$$wrap(v5: b13) -> Box[b13] =
-  let v6: Box[b13] = construct Box::Box#0(v5)
+fn Container$$Box$$wrap(v5: x11) -> Box[x11] =
+  let v6: Box[x11] = construct Box::Box#0(v5)
   v6

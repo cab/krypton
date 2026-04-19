@@ -1,14 +1,21 @@
 # expect: ok
-# expect: output "3\n6"
-import core/map.{Map, empty, put, keys, values}
+# expect: output "3\n6\n6"
+import core/map.{Map, empty, put, keys, values, entries}
 import core/vec.{len, nth}
 import core/foldable.{fold}
 import core/option.{Some, None}
+
+fun add_pair_val(acc: Int, pair: (String, Int)) -> Int = {
+    let (_, v) = pair
+    acc + v
+}
 
 fun main() = {
   let m: Map[String, Int] = put(put(put(empty(), "a", 1), "b", 2), "c", 3);
   # keys returns Vec[String] — check length
   println(len(keys(m)));
   # values returns Vec[Int] — sum via fold
-  println(fold(values(m), 0, (acc, x) -> acc + x))
+  println(fold(values(m), 0, (acc, x) -> acc + x));
+  # entries returns Vec[(String, Int)] — sum values via fold
+  println(fold(entries(m), 0, add_pair_val))
 }

@@ -4,23 +4,23 @@ expression: ir_module.to_string()
 ---
 module linear__linear_self_recur_own_param_generic
 
-extern java "native.Foo" foo_new() -> ~Foo[c12]
-extern java "native.Foo" foo_consume(~Foo[d12]) -> Unit
+extern java "native.Foo" foo_new() -> ~Foo[y10]
+extern java "native.Foo" foo_consume(~Foo[z10]) -> Unit
 extern type java "native.Foo" Foo
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-declare foo_consume: (~Foo[d12]) -> Unit
-declare foo_new: () -> ~Foo[c12]
+declare foo_consume: (~Foo[z10]) -> Unit
+declare foo_new: () -> ~Foo[y10]
 
-fn consume_loop(v0: ~Foo[p12], v1: Int) -> Unit =
+fn consume_loop(v0: ~Foo[l11], v1: Int) -> Unit =
   let_join v8(v4: Bool) =
     if v4 {
       let v5: Unit = call foo_consume(v0)
@@ -36,7 +36,7 @@ fn consume_loop(v0: ~Foo[p12], v1: Int) -> Unit =
   jump v8(v3)
 
 fn user() -> Unit =
-  let v9: ~Foo[y12] = call foo_new()
+  let v9: ~Foo[u11] = call foo_new()
   let v10: Unit = call consume_loop(v9, 3)
   v10
 

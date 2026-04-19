@@ -4,13 +4,13 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_where
 
-trait Convert[l12] { convert(l12): m12 }
+trait Convert[h11] { convert(h11): i11 }
 instance traits__multi_param_where.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -18,12 +18,12 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn sugar(v0: Dict[traits__multi_param_where.Convert, o12, t12], v1: o12) -> t12 =
-  let v2: t12 = trait_call traits__multi_param_where.Convert.convert(v0, v1)
+fn sugar(v0: Dict[traits__multi_param_where.Convert, k11, p11], v1: k11) -> p11 =
+  let v2: p11 = trait_call traits__multi_param_where.Convert.convert(v0, v1)
   v2
 
-fn explicit(v3: Dict[traits__multi_param_where.Convert, v12, a13], v4: v12) -> a13 =
-  let v5: a13 = trait_call traits__multi_param_where.Convert.convert(v3, v4)
+fn explicit(v3: Dict[traits__multi_param_where.Convert, r11, w11], v4: r11) -> w11 =
+  let v5: w11 = trait_call traits__multi_param_where.Convert.convert(v3, v4)
   v5
 
 fn main() -> Unit =

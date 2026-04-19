@@ -5,22 +5,22 @@ expression: ir_module.to_string()
 module ownership__own_fold_literal_acc
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn fold(v0: List[s12], v1: u12, v2: (u12, s12) -> u12) -> u12 =
+fn fold(v0: List[o11], v1: q11, v2: (q11, o11) -> q11) -> q11 =
   switch v0 {
     1 ->
       v1
-    0 (v3: s12, v4: List[s12]) ->
-      let v5: u12 = call_closure v2(v1, v3)
-      let v6: u12 = call fold(v4, v5, v2)
+    0 (v3: o11, v4: List[o11]) ->
+      let v5: q11 = call_closure v2(v1, v3)
+      let v6: q11 = call fold(v4, v5, v2)
       v6
   }
 

@@ -5,29 +5,29 @@ expression: ir_module.to_string()
 module hkt__partial_apply_run
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Fmap[o12] { fmap(o12[p12], (p12) -> q12): o12[q12] }
+trait Fmap[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
 instance hkt__partial_apply_run.Fmap[Result$$Var0$$Var1] { fmap=Fmap$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[i4]) -> Option[i4]
-import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
-import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/builder as builder() -> ~MapBuilder[m10, n10]
-import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
-import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
-import core/map/freeze as freeze(~MapBuilder[p11, q11]) -> Map[p11, q11]
-declare builder: () -> ~MapBuilder[m10, n10]
-declare freeze: (~MapBuilder[p11, q11]) -> Map[p11, q11]
+import core/map/builder as builder() -> ~MapBuilder[i9, j9]
+import core/map/put as put(Map[s9, t9], s9, t9) -> Map[s9, t9]
+import core/map/put as put(~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
+import core/map/freeze as freeze(~MapBuilder[l10, m10]) -> Map[l10, m10]
+declare builder: () -> ~MapBuilder[i9, j9]
+declare freeze: (~MapBuilder[l10, m10]) -> Map[l10, m10]
 declare println: (g) -> Unit
-declare put: (~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
+declare put: (~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
 
 fn build_map() -> Map[String, Int] =
-  let v0: ~MapBuilder[u12, v12] = call builder()
+  let v0: ~MapBuilder[q11, r11] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 3)
@@ -63,14 +63,14 @@ fn main() -> Unit =
       v32
   }
 
-fn Fmap$$Result$$Var0$$Var1$$fmap(v33: Result[y14, z14], v34: (z14) -> b15) -> Result[y14, b15] =
+fn Fmap$$Result$$Var0$$Var1$$fmap(v33: Result[w13, x13], v34: (x13) -> z13) -> Result[w13, z13] =
   switch v33 {
-    0 (v35: z14) ->
-      let v36: b15 = call_closure v34(v35)
-      let v37: Result[y14, b15] = construct Result::Ok#0(v36)
+    0 (v35: x13) ->
+      let v36: z13 = call_closure v34(v35)
+      let v37: Result[w13, z13] = construct Result::Ok#0(v36)
       v37
-    1 (v38: y14) ->
-      let v39: Result[y14, b15] = construct Result::Err#1(v38)
+    1 (v38: w13) ->
+      let v39: Result[w13, z13] = construct Result::Err#1(v38)
       v39
   }
 
