@@ -233,7 +233,7 @@ pub(super) fn check_constrained_function_refs(
                                     return Err(no_instance_error(
                                         trait_registry,
                                         req_trait_name,
-                                        &requirement_ty,
+                                        std::slice::from_ref(&requirement_ty),
                                         expr.span,
                                         var_names,
                                         crate::type_error::NoInstanceCause::Bound {
@@ -792,23 +792,15 @@ pub(super) fn check_trait_instances(
                                 // enclosing fn — there's nothing to dispatch
                                 // here, the caller will provide the dict.
                             } else if trait_registry.find_instance_multi(trait_id, &tys).is_none() {
-                                // Reuse the single-param error path for the
-                                // first concrete position; the joined display
-                                // form is handled inside the registry.
-                                let display = tys
-                                    .iter()
-                                    .map(|t| format!("{t}"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ");
-                                return Err(spanned(
-                                    TypeError::NoInstance {
-                                        trait_name: trait_id.local_name.clone(),
-                                        ty: display,
-                                        cause: crate::type_error::NoInstanceCause::MethodCall {
-                                            method_name: method_name.to_string(),
-                                        },
-                                    },
+                                return Err(no_instance_error(
+                                    trait_registry,
+                                    trait_id,
+                                    &tys,
                                     expr.span,
+                                    var_names,
+                                    crate::type_error::NoInstanceCause::MethodCall {
+                                        method_name: method_name.to_string(),
+                                    },
                                 ));
                             }
                         } else {
@@ -836,7 +828,7 @@ pub(super) fn check_trait_instances(
                                 return Err(no_instance_error(
                                     trait_registry,
                                     trait_id,
-                                    &concrete_ty,
+                                    std::slice::from_ref(&concrete_ty),
                                     expr.span,
                                     var_names,
                                     crate::type_error::NoInstanceCause::MethodCall {
@@ -859,7 +851,7 @@ pub(super) fn check_trait_instances(
                                         return Err(no_instance_error(
                                             trait_registry,
                                             req_trait,
-                                            &concrete,
+                                            std::slice::from_ref(&concrete),
                                             expr.span,
                                             var_names,
                                             crate::type_error::NoInstanceCause::Bound {
@@ -946,7 +938,7 @@ pub(super) fn check_trait_instances(
                                             return Err(no_instance_error(
                                                 trait_registry,
                                                 req_trait_name,
-                                                &concrete,
+                                                std::slice::from_ref(&concrete),
                                                 expr.span,
                                                 var_names,
                                                 crate::type_error::NoInstanceCause::Bound {
@@ -968,12 +960,10 @@ pub(super) fn check_trait_instances(
                                         .find_instance_for(req_trait_name, &position_tys)
                                         .is_none()
                                 {
-                                    let display_ty =
-                                        position_tys.first().cloned().unwrap_or(Type::Unit);
                                     return Err(no_instance_error(
                                         trait_registry,
                                         req_trait_name,
-                                        &display_ty,
+                                        &position_tys,
                                         expr.span,
                                         var_names,
                                         crate::type_error::NoInstanceCause::Bound {
@@ -1012,7 +1002,7 @@ pub(super) fn check_trait_instances(
                         return Err(no_instance_error(
                             trait_registry,
                             trait_name,
-                            &operand_ty,
+                            std::slice::from_ref(&operand_ty),
                             expr.span,
                             var_names,
                             crate::type_error::NoInstanceCause::Operator {
@@ -1037,7 +1027,7 @@ pub(super) fn check_trait_instances(
                         return Err(no_instance_error(
                             trait_registry,
                             &neg_trait,
-                            &operand_ty,
+                            std::slice::from_ref(&operand_ty),
                             expr.span,
                             var_names,
                             crate::type_error::NoInstanceCause::Operator {

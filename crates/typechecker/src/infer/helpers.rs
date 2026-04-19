@@ -731,24 +731,32 @@ pub(crate) fn duplicate_instance_spanned(
 }
 
 /// Construct a NoInstance error with diagnostic note when a near-miss instance exists.
+///
+/// `tys` is the full tuple of trait type arguments (length 1 for single-param
+/// traits, N for multi-param traits). The rendered error type joins display
+/// forms with `", "` for multi-param.
 pub(crate) fn no_instance_error(
     trait_registry: &TraitRegistry,
     trait_name: &TraitName,
-    ty: &Type,
+    tys: &[Type],
     span: Span,
     var_names: &HashMap<TypeVarId, String>,
     cause: crate::type_error::NoInstanceCause,
 ) -> SpannedTypeError {
-    let display_ty = ty.strip_own();
+    let display = tys
+        .iter()
+        .map(|t| crate::types::format_type_for_error(&t.strip_own(), var_names))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut err = spanned(
         TypeError::NoInstance {
             trait_name: trait_name.local_name.clone(),
-            ty: crate::types::format_type_for_error(&display_ty, var_names),
+            ty: display,
             cause,
         },
         span,
     );
-    if let Some(diag) = trait_registry.diagnose_missing_instance(trait_name, ty) {
+    if let Some(diag) = trait_registry.diagnose_missing_instance(trait_name, tys) {
         err.note = Some(diag.to_note());
     }
     err

@@ -403,29 +403,37 @@ pub(super) fn typecheck_impl_methods(
             let instance = trait_registry
                 .find_instance_by_trait_and_span(&impl_trait_name, *span)
                 .unwrap();
-            // For HKT partial application, strip anonymous type var args from the
-            // target type so it acts as a partial constructor for substitution.
-            // e.g., Named("Result", [Var(e), Var(anon)]) → Named("Result", [Var(e)])
+            // Bind every trait type variable to its concrete instance target.
+            // Applies uniformly to single-param, non-HK multi-param, and
+            // multi-param HK traits. Position 0 of an HK trait is partial-applied:
+            // strip anonymous type args so the binding acts as a partial
+            // constructor (e.g. `Named("Result", [Var(e), Var(anon)])` →
+            // `Named("Result", [Var(e)])`). All other positions are bound
+            // directly to the registered instance target.
             //
-            // Non-HK multi-param traits (e.g. `Convert[a, b]`) also hit this path:
-            // we take position 0 as the primary dispatch type and rely on the
-            // dictionary-passing layer to carry the full tuple. The additional
-            // positions are not consulted here because trait method substitution
-            // only ever binds the primary type variable. Multi-parameter HK traits
-            // (arity > 0 **and** more than one target type) are not expressible in
-            // current Krypton.
-            debug_assert!(
-                !(trait_info.type_var_arity > 0 && instance.target_types.len() > 1),
-                "multi-parameter HK trait method resolution not yet supported \
-                 (trait {}, instance has {} target types)",
-                trait_name,
-                instance.target_types.len()
-            );
-            let resolved_target = if trait_info.type_var_arity > 0 {
-                strip_anon_type_args(&instance.target_types[0], &instance.type_var_ids)
-            } else {
-                instance.target_types[0].clone()
-            };
+            // This binding loop also closes a soundness gap for non-HK
+            // multi-param traits: previously only position 0 was bound,
+            // leaving positions 1+ freshened so the user annotation could pin
+            // them to anything; now all positions are bound to the registered
+            // instance target before body inference.
+            let mut trait_target_bindings: HashMap<TypeVarId, Type> =
+                HashMap::with_capacity(trait_info.type_var_ids.len());
+            for (i, &trait_tv) in trait_info.type_var_ids.iter().enumerate() {
+                let raw = &instance.target_types[i];
+                let bound = if i == 0 && trait_info.type_var_arity > 0 {
+                    strip_anon_type_args(raw, &instance.type_var_ids)
+                } else {
+                    raw.clone()
+                };
+                trait_target_bindings.insert(trait_tv, bound);
+            }
+
+            // Position 0 is preserved for `check_fork`'s `Some(resolved_target.clone())`
+            // self-type and for the existing single-param shape-var special case.
+            let resolved_target = trait_target_bindings
+                .get(&tv_id)
+                .cloned()
+                .expect("trait_info.type_var_ids[0] == tv_id by construction");
             let target_type_name = instance.target_type_name.clone();
 
             let mut instance_methods = Vec::new();
@@ -467,25 +475,29 @@ pub(super) fn typecheck_impl_methods(
                 };
 
                 // For each shape variable, determine its candidate bindings.
-                // tv_id defaults to `resolved_target` when concrete; otherwise
-                // the trait primary is free and we fork on (plain, owned).
-                // Non-tv_id shape vars (secondary trait vars or method vars
-                // appearing in shape positions) always fork on (plain, owned).
+                // A shape var that is *some* trait position with a concrete
+                // instance target binds to that target; a shape var that is a
+                // trait position with a non-concrete (Var/parametric) target,
+                // or a non-trait method-local var, forks on (Plain, Owned).
+                // This correctly extends the single-param HK special case to
+                // multi-param HK, where any subset of trait vars may be a
+                // shape var.
                 #[derive(Clone)]
                 enum ShapeCandidate {
                     Concrete(Type),
                     Plain,
                     Owned,
                 }
-                let resolved_target_is_concrete = free_vars(&resolved_target).is_empty();
                 let mut per_var_candidates: Vec<(TypeVarId, Vec<ShapeCandidate>)> = Vec::new();
                 for &sv in &shape_vars {
-                    if sv == tv_id && resolved_target_is_concrete {
-                        per_var_candidates
-                            .push((sv, vec![ShapeCandidate::Concrete(resolved_target.clone())]));
-                    } else {
-                        per_var_candidates
-                            .push((sv, vec![ShapeCandidate::Plain, ShapeCandidate::Owned]));
+                    let concrete_target = trait_target_bindings
+                        .get(&sv)
+                        .filter(|t| free_vars(t).is_empty());
+                    match concrete_target {
+                        Some(t) => per_var_candidates
+                            .push((sv, vec![ShapeCandidate::Concrete(t.clone())])),
+                        None => per_var_candidates
+                            .push((sv, vec![ShapeCandidate::Plain, ShapeCandidate::Owned])),
                     }
                 }
 
@@ -506,7 +518,7 @@ pub(super) fn typecheck_impl_methods(
                     }
                     combos = next;
                 }
-                debug_assert!(combos.len() <= 64, "shape cap is 6 → at most 64 forks");
+                assert!(combos.len() <= 64, "shape cap is 6 → at most 64 forks");
 
                 // Track the committed fork's typed output so the post-loop
                 // bookkeeping can push it into `instance_methods`. The first
@@ -555,12 +567,16 @@ pub(super) fn typecheck_impl_methods(
                         form_label_parts.push(form);
                         fork_overrides.insert(*sv, replacement);
                     }
-                    // Always ensure tv_id is substituted; mono cases put it
-                    // into fork_overrides directly, generic non-shape cases
-                    // fall through to `resolved_target`.
-                    fork_overrides
-                        .entry(tv_id)
-                        .or_insert_with(|| resolved_target.clone());
+                    // Bind every trait type variable to its declared instance
+                    // target, unless the per-shape-var loop already wrote a
+                    // fork-specific override (Plain/Owned for free shape
+                    // positions). Handles single-param HK, non-HK multi-param,
+                    // and multi-param HK uniformly.
+                    for (&trait_tv, target_ty) in &trait_target_bindings {
+                        fork_overrides
+                            .entry(trait_tv)
+                            .or_insert_with(|| target_ty.clone());
+                    }
                     let form_label = if form_label_parts.is_empty() {
                         String::new()
                     } else {

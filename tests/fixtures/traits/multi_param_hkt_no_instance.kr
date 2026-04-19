@@ -1,0 +1,13 @@
+# expect: error E0301
+type Box[a] = Box(a)
+type Other[a] = Other(a)
+
+trait BoxConvert[f[_], a] {
+  fun box_convert(fa: f[a]) -> a
+}
+
+impl BoxConvert[Box, Int] {
+  fun box_convert(fa: Box[Int]) -> Int = match fa { Box(x) => x }
+}
+
+fun main() = println(box_convert(Other(7)))

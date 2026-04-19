@@ -1,0 +1,16 @@
+# expect: error E0309
+type Box[a] = Box(a)
+
+trait BoxConvert[f[_], a] {
+  fun box_convert(fa: f[a]) -> a
+}
+
+impl BoxConvert[Box, Int] {
+  fun box_convert(fa: Box[Int]) -> Int = match fa { Box(x) => x }
+}
+
+impl BoxConvert[Box, Int] {
+  fun box_convert(fa: Box[Int]) -> Int = match fa { Box(x) => x + 1 }
+}
+
+fun main() = println(box_convert(Box(7)))

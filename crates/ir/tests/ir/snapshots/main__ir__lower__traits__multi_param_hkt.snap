@@ -1,0 +1,36 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_hkt
+
+type Box[a] = Box#0(a)
+trait BoxConvert[z10] { box_convert(z10[a11]): a11 }
+instance traits__multi_param_hkt.BoxConvert[Box$$Int] { box_convert=BoxConvert$$Box$$Int$$box_convert }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[n3]) -> Option[n3]
+import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
+import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
+import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
+import core/list/map as map(List[u], (u) -> w) -> List[w]
+import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: Box[Int] = construct Box::Box#0(7)
+  let v2: Dict[traits__multi_param_hkt.BoxConvert, Box, Int] = get_dict traits__multi_param_hkt.BoxConvert[Box, Int]
+  let v3: Int = trait_call traits__multi_param_hkt.BoxConvert.box_convert(v2, v1)
+  let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v4: Unit = call println(v0, v3)
+  v4
+
+fn BoxConvert$$Box$$Int$$box_convert(v5: Box[Int]) -> Int =
+  switch v5 {
+    0 (v6: Int) ->
+      v6
+  }

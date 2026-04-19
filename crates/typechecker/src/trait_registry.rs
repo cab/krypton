@@ -196,7 +196,7 @@ impl TraitRegistry {
     }
 
     pub fn find_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<&InstanceInfo> {
-        debug_assert!(
+        assert!(
             self.lookup_trait(trait_name)
                 .map(|t| t.type_var_arity <= 1 && t.type_var_ids.len() <= 1)
                 .unwrap_or(true),
@@ -457,9 +457,9 @@ impl TraitRegistry {
             Some(t) => t,
             None => return Ok(()),
         };
-        debug_assert!(
+        assert!(
             instance.target_types.len() == 1 || trait_info.superclasses.is_empty(),
-            "multi-parameter traits with superclasses are not supported yet (M30-T5)"
+            "multi-parameter traits with superclasses are not supported yet"
         );
         for superclass in &trait_info.superclasses {
             if self
@@ -518,7 +518,7 @@ impl TraitRegistry {
     pub fn diagnose_missing_instance(
         &self,
         trait_name: &TraitName,
-        ty: &Type,
+        tys: &[Type],
     ) -> Option<InstanceDiagnostic> {
         let trait_info = self.lookup_trait(trait_name);
 
@@ -528,24 +528,29 @@ impl TraitRegistry {
             .get(trait_name)
             .unwrap_or(&empty_indices);
 
-        // HK trait path (arity > 0)
+        // HK trait path (arity > 0): position 0 matches by outermost
+        // constructor; remaining positions unify positionwise.
         if let Some(info) = trait_info {
             if info.type_var_arity > 0 {
+                let primary = tys.first()?;
                 for &idx in trait_indices {
                     let inst = &self.instances[idx];
                     if inst.constraints.is_empty() {
                         continue;
                     }
-                    // Single-type diagnostic only covers single-parameter HK traits.
-                    if inst.target_types.len() != 1 {
+                    if inst.target_types.len() != tys.len() {
                         continue;
                     }
+                    let Some(inst_primary) = inst.target_types.first() else {
+                        continue;
+                    };
 
-                    let Some((actual_ctor, actual_bound_args)) = split_type_constructor(ty) else {
+                    let Some((actual_ctor, actual_bound_args)) = split_type_constructor(primary)
+                    else {
                         continue;
                     };
                     let Some((inst_ctor, inst_bound_args)) =
-                        split_instance_type_constructor(&inst.target_types[0])
+                        split_instance_type_constructor(inst_primary)
                     else {
                         continue;
                     };
@@ -564,6 +569,18 @@ impl TraitRegistry {
                             types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
                         },
                     ) {
+                        continue;
+                    }
+
+                    // Zip remaining (non-HK) positions in lockstep.
+                    let mut remaining_ok = true;
+                    for (pattern, actual) in inst.target_types.iter().zip(tys.iter()).skip(1) {
+                        if !types_match_with_bindings(pattern, actual, &mut bindings) {
+                            remaining_ok = false;
+                            break;
+                        }
+                    }
+                    if !remaining_ok {
                         continue;
                     }
 
@@ -617,18 +634,25 @@ impl TraitRegistry {
             }
         }
 
-        // Regular (non-HK) path — single-type diagnostic only covers single-parameter traits.
+        // Regular (non-HK) path — positionwise match across all positions.
         for &idx in trait_indices {
             let inst = &self.instances[idx];
             if inst.constraints.is_empty() {
                 continue;
             }
-            if inst.target_types.len() != 1 {
+            if inst.target_types.len() != tys.len() {
                 continue;
             }
 
             let mut bindings = HashMap::new();
-            if !types_match_with_bindings(&inst.target_types[0], ty, &mut bindings) {
+            let mut all_positions_match = true;
+            for (pattern, actual) in inst.target_types.iter().zip(tys.iter()) {
+                if !types_match_with_bindings(pattern, actual, &mut bindings) {
+                    all_positions_match = false;
+                    break;
+                }
+            }
+            if !all_positions_match {
                 continue;
             }
 
@@ -1319,7 +1343,7 @@ mod tests {
             .unwrap();
 
         let vec_string = Type::Named("Vec".to_string(), vec![Type::String]);
-        let diag = registry.diagnose_missing_instance(&tn("Test"), &vec_string);
+        let diag = registry.diagnose_missing_instance(&tn("Test"), std::slice::from_ref(&vec_string));
         assert!(diag.is_some());
         let diag = diag.unwrap();
         assert_eq!(diag.unsatisfied.len(), 1);
@@ -1365,7 +1389,7 @@ mod tests {
             ],
         );
         let diag = registry
-            .diagnose_missing_instance(&tn("Show"), &map_blob_opaque)
+            .diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&map_blob_opaque))
             .unwrap();
         assert_eq!(diag.unsatisfied.len(), 2);
         let note = diag.to_note();
@@ -1376,7 +1400,7 @@ mod tests {
     #[test]
     fn diagnose_no_candidate_returns_none() {
         let registry = TraitRegistry::new();
-        let result = registry.diagnose_missing_instance(&tn("Show"), &Type::Int);
+        let result = registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
         assert!(result.is_none());
     }
 
@@ -1427,7 +1451,7 @@ mod tests {
             .register_instance(instance("Show", Type::Int, "Int", vec![]))
             .unwrap();
         // Int has Show unconditionally, so diagnosis returns None
-        let result = registry.diagnose_missing_instance(&tn("Show"), &Type::Int);
+        let result = registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
         assert!(result.is_none());
     }
 
@@ -1822,5 +1846,142 @@ mod tests {
         assert!(registry
             .find_instance_multi(&tn("Convert"), &[Type::Int])
             .is_none());
+    }
+
+    // ---- Multi-parameter HK trait lookup & overlap ----
+
+    #[test]
+    fn find_instance_multi_handles_hk_primary_with_ground_secondary() {
+        // trait BoxConvert[f[_], a] + impl BoxConvert[Box, Int]
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("BoxConvert", 1))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "BoxConvert",
+                vec![
+                    Type::Named("Box".to_string(), vec![]),
+                    Type::Int,
+                ],
+                HashMap::new(),
+            ))
+            .unwrap();
+
+        // Call site: position 0 is a concrete Box[Int], position 1 is Int.
+        let box_int = Type::Named("Box".to_string(), vec![Type::Int]);
+        assert!(registry
+            .find_instance_for(&tn("BoxConvert"), &[box_int.clone(), Type::Int])
+            .is_some());
+        // Secondary position mismatch → no instance.
+        assert!(registry
+            .find_instance_for(&tn("BoxConvert"), &[box_int, Type::String])
+            .is_none());
+    }
+
+    #[test]
+    fn find_instance_multi_distinguishes_hk_ctor() {
+        // Two impls with different HK ctors must not collide on lookup.
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("BoxConvert", 1))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "BoxConvert",
+                vec![
+                    Type::Named("Box".to_string(), vec![]),
+                    Type::Int,
+                ],
+                HashMap::new(),
+            ))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "BoxConvert",
+                vec![
+                    Type::Named("List".to_string(), vec![]),
+                    Type::Int,
+                ],
+                HashMap::new(),
+            ))
+            .unwrap();
+
+        let box_int = Type::Named("Box".to_string(), vec![Type::Int]);
+        let list_int = Type::Named("List".to_string(), vec![Type::Int]);
+        let matched_box = registry
+            .find_instance_for(&tn("BoxConvert"), &[box_int, Type::Int])
+            .expect("Box impl should match");
+        assert_eq!(matched_box.target_types[0], Type::Named("Box".to_string(), vec![]));
+        let matched_list = registry
+            .find_instance_for(&tn("BoxConvert"), &[list_int, Type::Int])
+            .expect("List impl should match");
+        assert_eq!(matched_list.target_types[0], Type::Named("List".to_string(), vec![]));
+    }
+
+    #[test]
+    fn multi_param_hk_overlap_detected() {
+        let mut registry = TraitRegistry::new();
+        registry
+            .register_trait(trait_info_with_arity("BoxConvert", 1))
+            .unwrap();
+        registry
+            .register_instance(instance_multi(
+                "BoxConvert",
+                vec![
+                    Type::Named("Box".to_string(), vec![]),
+                    Type::Int,
+                ],
+                HashMap::new(),
+            ))
+            .unwrap();
+        let result = registry.register_instance(instance_multi(
+            "BoxConvert",
+            vec![
+                Type::Named("Box".to_string(), vec![]),
+                Type::Int,
+            ],
+            HashMap::new(),
+        ));
+        assert!(matches!(
+            result,
+            Err(boxed) if matches!(&*boxed, (TypeError::DuplicateInstance { .. }, _))
+        ));
+    }
+
+    #[test]
+    fn diagnose_multi_param_hk_reports_unsatisfied_bound() {
+        // BoxConvert[f[_], a] with impl[a] BoxConvert[Box, a] where a: Show.
+        // Call site Box[Int] + Int, but Show[Int] is not implemented → the
+        // multi-param HK diagnostic should surface the unsatisfied bound.
+        let mut gen = TypeVarGen::new();
+        let var_a = gen.fresh();
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(trait_info("Show")).unwrap();
+        registry
+            .register_trait(trait_info_with_arity("BoxConvert", 1))
+            .unwrap();
+        registry
+            .register_instance(InstanceInfo {
+                trait_name: tn("BoxConvert"),
+                target_types: vec![
+                    Type::Named("Box".to_string(), vec![]),
+                    Type::Var(var_a),
+                ],
+                target_type_name: "Box, a".to_string(),
+                type_var_ids: HashMap::from([(String::from("a"), var_a)]),
+                constraints: vec![rc("Show", "a")],
+                span: (0, 0),
+                is_builtin: false,
+            })
+            .unwrap();
+
+        let box_int = Type::Named("Box".to_string(), vec![Type::Int]);
+        let diag = registry
+            .diagnose_missing_instance(&tn("BoxConvert"), &[box_int, Type::Int])
+            .expect("expected a diagnostic for unsatisfied Show[Int] bound");
+        assert_eq!(diag.unsatisfied.len(), 1);
+        assert_eq!(diag.unsatisfied[0].trait_name, "Show");
+        assert_eq!(diag.unsatisfied[0].ty, "Int");
     }
 }

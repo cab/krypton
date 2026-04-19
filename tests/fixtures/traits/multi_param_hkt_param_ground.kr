@@ -1,0 +1,12 @@
+# expect: output 11
+type Box[a] = Box(a)
+
+trait BoxConvert[f[_], a] {
+  fun box_convert(fa: f[a]) -> a
+}
+
+impl[a] BoxConvert[Box, a] {
+  fun box_convert(fa: Box[a]) -> a = match fa { Box(x) => x }
+}
+
+fun main() = println(box_convert(Box(11)))

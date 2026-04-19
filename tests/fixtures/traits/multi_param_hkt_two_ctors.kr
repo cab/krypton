@@ -1,0 +1,21 @@
+# expect: output 101
+type Box[a] = Box(a)
+type Bag[a] = Bag(a)
+
+trait BoxConvert[f[_], a] {
+  fun box_convert(fa: f[a]) -> a
+}
+
+impl BoxConvert[Box, Int] {
+  fun box_convert(fa: Box[Int]) -> Int = match fa { Box(x) => x + 1 }
+}
+
+impl BoxConvert[Bag, Int] {
+  fun box_convert(fa: Bag[Int]) -> Int = match fa { Bag(x) => x + 2 }
+}
+
+fun main() = {
+  let a = box_convert(Box(50))
+  let b = box_convert(Bag(48))
+  println(a + b)
+}
