@@ -725,6 +725,31 @@ fn e0301_method_call_names_method_and_type() {
 }
 
 #[test]
+fn e0301_monomorphic_hkt_hides_trait_in_lead() {
+    let output = render_fixture_error("../../tests/fixtures/traits/hkt_monomorphic_no_functor.kr");
+    insta::assert_snapshot!(output);
+    assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
+    assert!(
+        output.contains("no `map` function found for type `Bag[Int]`"),
+        "expected concrete call-site type in lead in:\n{output}"
+    );
+    assert!(
+        output.contains("impl Functor[Bag]"),
+        "expected help to suggest constructor-form impl in:\n{output}"
+    );
+    assert!(
+        !output.contains("impl Functor[Bag[Int]]"),
+        "help should not include type arguments on the constructor in:\n{output}"
+    );
+    let lead_end = output.find('\n').unwrap_or(output.len());
+    let lead = &output[..lead_end];
+    assert!(
+        !lead.contains("Functor"),
+        "trait name should not appear in the lead sentence: {lead}"
+    );
+}
+
+#[test]
 fn e0301_operator_names_operator_and_type() {
     let output = render_fixture_error("../../tests/fixtures/traits/op_no_instance.kr");
     insta::assert_snapshot!(output);
@@ -804,6 +829,7 @@ fn e0301_no_jargon_audit() {
         "../../tests/fixtures/traits/constrained_instance_option_missing_bound.kr",
         "../../tests/fixtures/traits/constrained_instance_multi_bound_missing.kr",
         "../../tests/fixtures/traits/multi_param_still_deferred.kr",
+        "../../tests/fixtures/traits/hkt_monomorphic_no_functor.kr",
     ];
     for fixture in fixtures {
         let output = render_fixture_error(fixture);

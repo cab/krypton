@@ -1,0 +1,14 @@
+# expect: error E0301
+type Bag[a] = Bag(a)
+
+trait Functor[f[_]] {
+  fun map[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+
+fun inc(n: Int) -> Int = n + 1
+
+fun main() = {
+  let b: Bag[Int] = Bag(1)
+  let _ = map(b, inc)
+  ()
+}

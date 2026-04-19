@@ -735,6 +735,12 @@ pub(crate) fn duplicate_instance_spanned(
 /// `tys` is the full tuple of trait type arguments (length 1 for single-param
 /// traits, N for multi-param traits). The rendered error type joins display
 /// forms with `", "` for multi-param.
+///
+/// `call_site_ty` is the concrete dispatch value type for single-parameter
+/// `MethodCall` causes (e.g. `Set[Int]` when `tys` carries the constructor
+/// `Set`). It only affects the lead sentence; the help/fix suggestion still
+/// uses the instance form derived from `tys`. Pass `None` for all other
+/// causes and for multi-parameter dispatch.
 pub(crate) fn no_instance_error(
     trait_registry: &TraitRegistry,
     trait_name: &TraitName,
@@ -742,16 +748,22 @@ pub(crate) fn no_instance_error(
     span: Span,
     var_names: &HashMap<TypeVarId, String>,
     cause: crate::type_error::NoInstanceCause,
+    call_site_ty: Option<Type>,
 ) -> SpannedTypeError {
     let display = tys
         .iter()
         .map(|t| crate::types::format_type_for_error(&t.strip_own(), var_names))
         .collect::<Vec<_>>()
         .join(", ");
+    let call_site_display = call_site_ty
+        .as_ref()
+        .map(|t| crate::types::format_type_for_error(&t.strip_own(), var_names))
+        .filter(|s| s != &display);
     let mut err = spanned(
         TypeError::NoInstance {
             trait_name: trait_name.local_name.clone(),
             ty: display,
+            call_site_ty: call_site_display,
             cause,
         },
         span,

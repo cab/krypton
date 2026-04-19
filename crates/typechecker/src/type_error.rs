@@ -243,6 +243,12 @@ pub enum TypeError {
     NoInstance {
         trait_name: String,
         ty: String,
+        /// For `MethodCall` causes on single-parameter trait dispatch, the
+        /// concrete call-site value type (e.g. `Set[Int]`) used in the lead
+        /// sentence. `ty` continues to hold the instance/constructor form
+        /// (e.g. `Set`) used by the help suggestion. `None` for all other
+        /// causes and for multi-parameter dispatch.
+        call_site_ty: Option<String>,
         cause: NoInstanceCause,
     },
     OrphanInstance {
@@ -807,7 +813,7 @@ impl TypeError {
             TypeError::ConstrainedFunctionRef { name, .. } => {
                 Some(format!("call `{name}` directly with arguments, or pass it where the type can be inferred"))
             }
-            TypeError::NoInstance { trait_name, ty, cause } => match cause {
+            TypeError::NoInstance { trait_name, ty, cause, .. } => match cause {
                 NoInstanceCause::MethodCall { .. } => {
                     // For multi-param dispatch `ty` is a joined list like
                     // "Bool, String" — `deriving` can't target a tuple of
@@ -1493,14 +1499,19 @@ impl fmt::Display for TypeError {
                     "`{name}` has trait constraints that can't be resolved here: {constraint_list}"
                 )
             }
-            TypeError::NoInstance { trait_name, ty, cause } => match cause {
+            TypeError::NoInstance { trait_name, ty, call_site_ty, cause } => match cause {
                 NoInstanceCause::MethodCall { method_name } => {
+                    // Prefer the concrete call-site type when available so that
+                    // higher-kinded dispatch reports `Set[Int]` instead of just
+                    // the constructor `Set`. `ty` (instance form) is still used
+                    // by the `help()` suggestion.
+                    let lead_ty = call_site_ty.as_deref().unwrap_or(ty.as_str());
                     // Singular/plural wording for multi-param trait dispatch:
-                    // `ty` may already be a comma-joined list like "Bool, String".
-                    let noun = if ty.contains(',') { "types" } else { "type" };
+                    // the lead may already be a comma-joined list like "Bool, String".
+                    let noun = if lead_ty.contains(',') { "types" } else { "type" };
                     write!(
                         f,
-                        "no `{method_name}` function found for {noun} `{ty}`"
+                        "no `{method_name}` function found for {noun} `{lead_ty}`"
                     )
                 }
                 NoInstanceCause::Operator { symbol } => {

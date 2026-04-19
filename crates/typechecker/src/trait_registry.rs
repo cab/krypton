@@ -469,6 +469,7 @@ impl TraitRegistry {
                 return Err(TypeError::NoInstance {
                     trait_name: superclass.local_name.clone(),
                     ty: instance.target_type_name.clone(),
+                    call_site_ty: None,
                     cause: crate::type_error::NoInstanceCause::Superclass {
                         required_by: instance.trait_name.local_name.clone(),
                     },

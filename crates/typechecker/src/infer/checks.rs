@@ -239,6 +239,7 @@ pub(super) fn check_constrained_function_refs(
                                         crate::type_error::NoInstanceCause::Bound {
                                             required_by: name.to_string(),
                                         },
+                                        None,
                                     ));
                                 }
                                 continue;
@@ -801,6 +802,7 @@ pub(super) fn check_trait_instances(
                                     crate::type_error::NoInstanceCause::MethodCall {
                                         method_name: method_name.to_string(),
                                     },
+                                    None,
                                 ));
                             }
                         } else {
@@ -809,7 +811,7 @@ pub(super) fn check_trait_instances(
                                 .get(&info.type_var_id)
                                 .cloned()
                                 .or_else(|| args.first().map(|arg| subst.apply(&arg.ty)))
-                                .unwrap_or(actual_ret);
+                                .unwrap_or_else(|| actual_ret.clone());
                             let concrete_ty = strip_own(&dispatch_ty);
                             if let Some(v) = leading_type_var(&concrete_ty) {
                                 if !fn_type_vars.contains(&v) {
@@ -825,6 +827,24 @@ pub(super) fn check_trait_instances(
                                 .find_instance(trait_id, &concrete_ty)
                                 .is_none()
                             {
+                                // Find the first method parameter whose pattern
+                                // mentions the trait's dispatch type variable
+                                // and use the substituted call-site argument as
+                                // the lead type. For HKT this surfaces e.g.
+                                // `Bag[Int]` instead of just the constructor
+                                // `Bag`. For non-HKT they coincide.
+                                // Methods that dispatch via return type only
+                                // (e.g. `pure`) fall back to `actual_ret`.
+                                let call_site_ty = method
+                                    .param_types
+                                    .iter()
+                                    .zip(args.iter())
+                                    .find_map(|((_, pattern), arg)| {
+                                        free_vars(pattern)
+                                            .contains(&info.type_var_id)
+                                            .then(|| subst.apply(&arg.ty))
+                                    })
+                                    .unwrap_or(actual_ret);
                                 return Err(no_instance_error(
                                     trait_registry,
                                     trait_id,
@@ -834,6 +854,7 @@ pub(super) fn check_trait_instances(
                                     crate::type_error::NoInstanceCause::MethodCall {
                                         method_name: method_name.to_string(),
                                     },
+                                    Some(call_site_ty),
                                 ));
                             }
                         }
@@ -857,6 +878,7 @@ pub(super) fn check_trait_instances(
                                             crate::type_error::NoInstanceCause::Bound {
                                                 required_by: method.name.clone(),
                                             },
+                                            None,
                                         ));
                                     }
                                 }
@@ -944,6 +966,7 @@ pub(super) fn check_trait_instances(
                                                 crate::type_error::NoInstanceCause::Bound {
                                                     required_by: name.to_string(),
                                                 },
+                                                None,
                                             ));
                                         }
                                     }
@@ -969,6 +992,7 @@ pub(super) fn check_trait_instances(
                                         crate::type_error::NoInstanceCause::Bound {
                                             required_by: name.to_string(),
                                         },
+                                        None,
                                     ));
                                 }
                             }
@@ -1008,6 +1032,7 @@ pub(super) fn check_trait_instances(
                             crate::type_error::NoInstanceCause::Operator {
                                 symbol: bin_op_symbol(op).to_string(),
                             },
+                            None,
                         ));
                     }
                 }
@@ -1033,6 +1058,7 @@ pub(super) fn check_trait_instances(
                             crate::type_error::NoInstanceCause::Operator {
                                 symbol: "-".to_string(),
                             },
+                            None,
                         ));
                     }
                 }
