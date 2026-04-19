@@ -56,6 +56,28 @@ impl TypeVarId {
     }
 }
 
+/// A `TypeVarId` guaranteed to be a canonical, unfreshened scheme variable —
+/// i.e., one that appears in a `TypeScheme.vars` list before any per-call-site
+/// freshening. Used by `TypedExprKind::TypeApp.type_bindings` so user pins can
+/// be applied against `trait_method_types[trait].type_var_ids` and
+/// `fn_schemes[qn].vars` without risk of freshened IDs being passed by mistake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SchemeVarId(TypeVarId);
+
+impl SchemeVarId {
+    /// Wrap a `TypeVarId` known to appear in a canonical `TypeScheme.vars`
+    /// list — i.e., a scheme's declared parameter before any per-call-site
+    /// freshening. Restricted to typechecker internals so IR consumers can
+    /// only observe these through the pre-established invariant.
+    pub(crate) fn new_from_scheme(id: TypeVarId) -> Self {
+        Self(id)
+    }
+
+    pub fn as_type_var(self) -> TypeVarId {
+        self.0
+    }
+}
+
 /// Core type representation for the krypton type system.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {

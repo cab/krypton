@@ -9,8 +9,8 @@ use crate::typed_ast::{
     ResolvedTraitMethodRef, ResolvedTypeRef, TraitName,
 };
 use crate::types::{
-    BindingSource, ConstructorBindingKind, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen,
-    TypeVarId,
+    BindingSource, ConstructorBindingKind, SchemeVarId, Substitution, Type, TypeEnv, TypeScheme,
+    TypeVarGen, TypeVarId,
 };
 use crate::unify::{self, SpannedTypeError, TypeError};
 
@@ -868,7 +868,7 @@ pub(crate) fn instantiate_scheme_with_types(
     explicit_types: &[Type],
     span: Span,
     gen: &mut TypeVarGen,
-) -> Result<(Type, Vec<(TypeVarId, Type)>), SpannedTypeError> {
+) -> Result<(Type, Vec<(SchemeVarId, Type)>), SpannedTypeError> {
     if explicit_types.len() > scheme.vars.len() {
         return Err(spanned(
             TypeError::WrongArity {
@@ -884,10 +884,10 @@ pub(crate) fn instantiate_scheme_with_types(
         sub = sub.compose(&Substitution::bind(var, Type::Var(gen.fresh())));
     }
     let offset = scheme.vars.len() - explicit_types.len();
-    let mut bindings: Vec<(TypeVarId, Type)> = Vec::with_capacity(explicit_types.len());
+    let mut bindings: Vec<(SchemeVarId, Type)> = Vec::with_capacity(explicit_types.len());
     for (&var, ty) in scheme.vars.iter().skip(offset).zip(explicit_types.iter()) {
         sub = sub.compose(&Substitution::bind(var, ty.clone()));
-        bindings.push((var, ty.clone()));
+        bindings.push((SchemeVarId::new_from_scheme(var), ty.clone()));
     }
     Ok((sub.apply(&scheme.ty), bindings))
 }

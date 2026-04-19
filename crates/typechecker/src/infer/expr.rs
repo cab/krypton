@@ -578,7 +578,21 @@ impl<'a> InferenceContext<'a> {
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             // Qualified-module calls don't synthesize a TypeApp node; the user
-            // bindings get baked into the returned type by substitution.
+            // bindings get baked into the returned type by substitution. This
+            // is safe only because this path never receives a trait method —
+            // trait methods have phantom type vars that substitution cannot
+            // reach. Guard the invariant with an ICE so a future resolver
+            // change that routes a trait method here fails loud.
+            if matches!(
+                export.resolved_ref,
+                Some(crate::typed_ast::ResolvedBindingRef::TraitMethod(_))
+            ) {
+                panic!(
+                    "ICE: qualified-module path produced a TraitMethod ref at {:?}; \
+                     bindings must be threaded through TypeApp for trait methods",
+                    span
+                );
+            }
             let (ty, _bindings) = super::instantiate_scheme_with_types(
                 &export.scheme,
                 &explicit_types,

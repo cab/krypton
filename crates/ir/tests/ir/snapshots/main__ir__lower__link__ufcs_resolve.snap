@@ -524,20 +524,20 @@ fn Monad$$List$$flat_map(v145: List[e8], v146: (e8) -> List[x7]) -> List[x7] =
       v154
   }
 
-fn Traversable$$List$$traverse(v155: Dict[core/applicative.Applicative, k9], v156: Dict[core/functor.Functor, k9], v157: List[z8], v158: (z8) -> k9[x8]) -> k9[List[x8]] =
+fn Traversable$$List$$traverse(v155: Dict[core/applicative.Applicative, l9], v156: Dict[core/functor.Functor, l9], v157: List[z8], v158: (z8) -> l9[x8]) -> l9[List[x8]] =
   switch v157 {
     1 ->
       let v159: List[x8] = construct List::Nil#1()
       let v160: List[x8] = v159
-      let v161: k9[List[x8]] = trait_call core/applicative.Applicative.pure(v155, v160)
+      let v161: l9[List[x8]] = trait_call core/applicative.Applicative.pure(v155, v160)
       v161
     0 (v162: z8, v163: List[z8]) ->
-      let v164: k9[x8] = call_closure v158(v162)
+      let v164: l9[x8] = call_closure v158(v162)
       let v165: (x8) -> (List[x8]) -> List[x8] = make_closure(cons_partial, [])
-      let v166: k9[(List[x8]) -> List[x8]] = trait_call core/functor.Functor.map(v156, v164, v165)
+      let v166: l9[(List[x8]) -> List[x8]] = trait_call core/functor.Functor.map(v156, v164, v165)
       let v167: Dict[core/traversable.Traversable, List] = get_dict core/traversable.Traversable[List]
-      let v168: k9[List[x8]] = trait_call core/traversable.Traversable.traverse(v167, v155, v156, v163, v158)
-      let v169: k9[List[x8]] = trait_call core/applicative.Applicative.apply(v155, v166, v168)
+      let v168: l9[List[x8]] = trait_call core/traversable.Traversable.traverse(v167, v155, v156, v163, v158)
+      let v169: l9[List[x8]] = trait_call core/applicative.Applicative.apply(v155, v166, v168)
       v169
   }
 

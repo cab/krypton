@@ -766,20 +766,22 @@ impl ModuleInferenceState {
                             Box::new(method.return_type.clone()),
                         );
                         // Generalize over both trait-level params and the
-                        // method's own type parameters. `free_vars(&fn_ty)`
-                        // recovers the method-level vars from the signature,
-                        // so `ExportedTraitMethod`/`TraitMethodSummary` don't
-                        // need to carry them separately. Trait-level ids are
-                        // unioned in so secondary params (e.g. `b` in
-                        // `Convert[a, b]`) stay in the scheme even if they
-                        // don't appear syntactically in this method.
-                        let mut method_vars = super::free_vars(&fn_ty);
-                        for tv in &trait_def.type_var_ids {
-                            method_vars.insert(*tv);
-                        }
+                        // method's own type parameters, preserving source
+                        // order: trait-declaration order first (so `[a, b]`
+                        // on `Convert[a, b]` stays `a, b`), then
+                        // method-signature order for the remaining vars.
+                        // Ordering here is load-bearing — user pins like
+                        // `xs.map[String]` resolve positionally against this
+                        // list.
                         let mut vars: Vec<crate::types::TypeVarId> =
-                            method_vars.into_iter().collect();
-                        vars.sort();
+                            trait_def.type_var_ids.clone();
+                        let mut seen: HashSet<crate::types::TypeVarId> =
+                            vars.iter().copied().collect();
+                        for tv in super::free_vars_ordered(&fn_ty) {
+                            if seen.insert(tv) {
+                                vars.push(tv);
+                            }
+                        }
                         let scheme = TypeScheme {
                             vars,
                             constraints: Vec::new(),

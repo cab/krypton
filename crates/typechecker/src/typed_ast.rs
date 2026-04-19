@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
 
-use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
+use crate::types::{SchemeVarId, Substitution, Type, TypeScheme, TypeVarId};
 use krypton_parser::ast::{BinOp, Lit, ParamMode, Span, TypeExpr, UnaryOp, Variant, Visibility};
 
 /// Whether a generic parameter requires unlimited (U) qualifier or is polymorphic.
@@ -299,10 +299,12 @@ pub enum TypedExprKind {
     },
     TypeApp {
         expr: Box<TypedExpr>,
-        /// Explicit user-supplied bindings in scheme-var order. IR consumers
-        /// apply these directly, without positional re-derivation against a
-        /// trait/scheme's type-var list.
-        type_bindings: Vec<(TypeVarId, Type)>,
+        /// Explicit user-supplied bindings, each keyed by a canonical
+        /// (unfreshened) scheme variable. IR consumers apply these directly,
+        /// without positional re-derivation against a trait/scheme's
+        /// type-var list. `SchemeVarId` witnesses that the ID is a scheme
+        /// parameter, so a freshened `TypeVarId` can't be passed by mistake.
+        type_bindings: Vec<(SchemeVarId, Type)>,
     },
     If {
         cond: Box<TypedExpr>,

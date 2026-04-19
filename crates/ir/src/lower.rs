@@ -10,7 +10,9 @@ use krypton_typechecker::typed_ast::{
     ResolvedConstructorRef, ResolvedTraitMethodRef, ResolvedTypeRef, ResolvedVariantRef, ScopeId,
     TraitName, TypedExpr, TypedExprKind, TypedFnDecl, TypedMatchArm, TypedModule, TypedPattern,
 };
-use krypton_typechecker::types::{self as types, Type, TypeScheme, TypeVarGen, TypeVarId};
+use krypton_typechecker::types::{
+    self as types, SchemeVarId, Type, TypeScheme, TypeVarGen, TypeVarId,
+};
 
 use crate::pass::IrPass;
 use crate::Type as IrType;
@@ -5252,7 +5254,7 @@ impl LowerCtx {
         &mut self,
         qn: &QualifiedName,
         args: &[TypedExpr],
-        user_type_bindings: &[(TypeVarId, Type)],
+        user_type_bindings: &[(SchemeVarId, Type)],
         callee_concrete_ty: Option<&Type>,
     ) -> Result<(Vec<LetBinding>, Vec<Atom>), LowerError> {
         let constraints = match self.fn_constraints.get(qn) {
@@ -5266,8 +5268,8 @@ impl LowerCtx {
         // Build type var bindings: seed with the user's explicit pairs, then
         // let `bind_type_vars` fill in the rest from the scheme/arg types.
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
-        for (var_id, ty) in user_type_bindings {
-            type_bindings.insert(*var_id, ty.clone());
+        for (svid, ty) in user_type_bindings {
+            type_bindings.insert(svid.as_type_var(), ty.clone());
         }
 
         if let Some(ref scheme) = scheme {
@@ -5317,7 +5319,7 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         concrete_method_ty: &Type,
-        user_type_bindings: &[(TypeVarId, Type)],
+        user_type_bindings: &[(SchemeVarId, Type)],
     ) -> Result<Vec<Type>, LowerError> {
         let (dispatch_tys, _bindings) = self.resolve_dispatch_type_with_bindings(
             trait_name,
@@ -5333,7 +5335,7 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         concrete_method_ty: &Type,
-        user_type_bindings: &[(TypeVarId, Type)],
+        user_type_bindings: &[(SchemeVarId, Type)],
     ) -> Result<(Vec<Type>, HashMap<TypeVarId, Type>), LowerError> {
         let (type_var_ids, method_types) =
             self.trait_method_types.get(trait_name).ok_or_else(|| {
@@ -5356,8 +5358,8 @@ impl LowerCtx {
         // those land on their vars by id (including phantom trait vars that
         // don't appear in the method signature).
         let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
-        for (var_id, ty) in user_type_bindings {
-            bindings.insert(*var_id, ty.clone());
+        for (svid, ty) in user_type_bindings {
+            bindings.insert(svid.as_type_var(), ty.clone());
         }
 
         // Fill in the remaining vars by matching the method signature against
@@ -5396,14 +5398,14 @@ impl LowerCtx {
         qn: &QualifiedName,
         fn_id: FnId,
         constraints: &[(TraitName, Vec<TypeVarId>)],
-        user_type_bindings: &[(TypeVarId, Type)],
+        user_type_bindings: &[(SchemeVarId, Type)],
         expr_ty: &Type,
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // Seed with user-supplied pairs, then match the scheme against the
         // expression's concrete type for the remaining vars.
         let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
-        for (var_id, ty) in user_type_bindings {
-            type_bindings.insert(*var_id, ty.clone());
+        for (svid, ty) in user_type_bindings {
+            type_bindings.insert(svid.as_type_var(), ty.clone());
         }
 
         if let Some(scheme) = self.fn_schemes.get(qn).cloned() {
@@ -5539,7 +5541,7 @@ impl LowerCtx {
         trait_name: &TraitName,
         method_name: &str,
         expr_ty: &Type,
-        user_type_bindings: &[(TypeVarId, Type)],
+        user_type_bindings: &[(SchemeVarId, Type)],
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // 1. Resolve the dispatch type(s) — multi-parameter traits return one
         //    type per trait type parameter.
@@ -7363,7 +7365,7 @@ fn extract_call_info(
 ) -> (
     Option<String>,
     Option<ResolvedBindingRef>,
-    Vec<(TypeVarId, Type)>,
+    Vec<(SchemeVarId, Type)>,
 ) {
     match &expr.kind {
         TypedExprKind::Var(name) => (Some(name.clone()), expr.resolved_ref.clone(), vec![]),
