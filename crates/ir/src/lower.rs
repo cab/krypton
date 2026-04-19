@@ -5276,7 +5276,8 @@ impl LowerCtx {
             // Bind from argument types matched against param patterns
             if let Type::Fn(ref param_patterns, _) = scheme.ty {
                 for ((_, pattern), arg) in param_patterns.iter().zip(args.iter()) {
-                    bind_type_vars(pattern, &arg.ty, &mut type_bindings);
+                    bind_type_vars(pattern, &arg.ty, &mut type_bindings)
+                        .map_err(|bc| ice_bind_conflict("resolve_call_dicts param match", bc))?;
                 }
             }
 
@@ -5286,7 +5287,8 @@ impl LowerCtx {
             // (e.g. `fn f[a, b](x: a) -> b where Convert[a, b]`).
             if let Some(callee_ty) = callee_concrete_ty {
                 let stripped = strip_own(callee_ty);
-                bind_type_vars(&scheme.ty, stripped, &mut type_bindings);
+                bind_type_vars(&scheme.ty, stripped, &mut type_bindings)
+                    .map_err(|bc| ice_bind_conflict("resolve_call_dicts callee scheme", bc))?;
             }
         }
 
@@ -5369,11 +5371,18 @@ impl LowerCtx {
         let stripped_params: Vec<Type> = param_patterns.iter().map(|(_, t)| t.clone()).collect();
         let pattern_fn_ty = Type::fn_consuming(stripped_params, ret_pattern.clone());
         let concrete = strip_own(concrete_method_ty);
-        bind_type_vars(&pattern_fn_ty, concrete, &mut bindings);
+        let matched = bind_type_vars(&pattern_fn_ty, concrete, &mut bindings)
+            .map_err(|bc| ice_bind_conflict("resolve_dispatch_type method signature", bc))?;
 
-        // For zero-arg methods, the concrete type IS the return type (not wrapped in Fn)
-        if param_patterns.is_empty() {
-            bind_type_vars(ret_pattern, concrete, &mut bindings);
+        // For zero-arg methods the concrete type is usually just the return
+        // type — `Fn([], ret)` didn't match above, so match `ret_pattern`
+        // directly. When the concrete *is* `Fn([], ret)` the first call
+        // already bound everything; retrying against `ret_pattern` would
+        // pair the return var with the full `Fn([], …)`, producing a
+        // spurious conflict on any var that appears in both positions.
+        if !matched && param_patterns.is_empty() {
+            bind_type_vars(ret_pattern, concrete, &mut bindings)
+                .map_err(|bc| ice_bind_conflict("resolve_dispatch_type zero-arg return", bc))?;
         }
 
         let dispatch_tys: Vec<Type> = type_var_ids
@@ -5410,7 +5419,8 @@ impl LowerCtx {
 
         if let Some(scheme) = self.fn_schemes.get(qn).cloned() {
             let concrete = strip_own(expr_ty);
-            bind_type_vars(&scheme.ty, concrete, &mut type_bindings);
+            bind_type_vars(&scheme.ty, concrete, &mut type_bindings)
+                .map_err(|bc| ice_bind_conflict("lower_constrained_fn_as_value", bc))?;
         }
 
         // Resolve dicts for each constraint
@@ -7540,50 +7550,110 @@ fn resolve_type_expr_simple(
     }
 }
 
+/// Reported when [`bind_type_vars`] finds a `TypeVarId` already bound to a
+/// type that disagrees with what the current match would assign. IR call sites
+/// treat this as an ICE; instance-candidate probing treats it as "no match".
+///
+/// Twin of `crate::BindConflict` over the typechecker's `Type`; kept in sync
+/// until the two `Type` representations merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BindConflict {
+    var: TypeVarId,
+    existing: Type,
+    proposed: Type,
+}
+
+/// Wrap a [`BindConflict`] as a [`LowerError::InternalError`] carrying the
+/// offending variable, its pre-existing binding, and the binding the current
+/// match would have introduced. Used by `resolve_call_dicts`,
+/// `resolve_dispatch_type_with_bindings`, and `lower_constrained_fn_as_value`
+/// to turn typechecker-authorized pin conflicts into loud ICEs.
+fn ice_bind_conflict(where_: &str, bc: BindConflict) -> LowerError {
+    LowerError::InternalError(format!(
+        "ICE: bind conflict in {}: var {:?} pinned to {:?} but pattern would bind it to {:?}",
+        where_, bc.var, bc.existing, bc.proposed,
+    ))
+}
+
 /// Match a type pattern against a concrete type to bind type variables.
 /// Ported from codegen's `bind_type_vars` (calls.rs).
-fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarId, Type>) -> bool {
+///
+/// * `Ok(true)` — bindings extended (or already consistent); pattern matches.
+/// * `Ok(false)` — structural mismatch.
+/// * `Err(BindConflict)` — existing binding disagrees with what this match
+///   would assign.
+fn bind_type_vars(
+    pattern: &Type,
+    actual: &Type,
+    bindings: &mut HashMap<TypeVarId, Type>,
+) -> Result<bool, BindConflict> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
-            Some(existing) => existing == actual,
+            Some(existing) => {
+                if existing == actual {
+                    Ok(true)
+                } else {
+                    Err(BindConflict {
+                        var: *id,
+                        existing: existing.clone(),
+                        proposed: actual.clone(),
+                    })
+                }
+            }
             None => {
                 bindings.insert(*id, actual.clone());
-                true
+                Ok(true)
             }
         },
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
-            p_name == a_name
-                && p_args.len() == a_args.len()
-                && p_args
-                    .iter()
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_name != a_name || p_args.len() != a_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
-            p_params.len() == a_params.len()
-                && p_params
-                    .iter()
-                    .zip(a_params.iter())
-                    .all(|((_, p), (_, a))| bind_type_vars(p, a, bindings))
-                && bind_type_vars(p_ret, a_ret, bindings)
+            if p_params.len() != a_params.len() {
+                return Ok(false);
+            }
+            for ((_, p), (_, a)) in p_params.iter().zip(a_params.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            bind_type_vars(p_ret, a_ret, bindings)
         }
         (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-            p_elems.len() == a_elems.len()
-                && p_elems
-                    .iter()
-                    .zip(a_elems.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_elems.len() != a_elems.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_elems.iter().zip(a_elems.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
         (Type::Own(p), a) => bind_type_vars(p, a, bindings),
         (a, Type::Own(p)) => bind_type_vars(a, p, bindings),
         (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
-            bind_type_vars(p_ctor, a_ctor, bindings)
-                && p_args.len() == a_args.len()
-                && p_args
-                    .iter()
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, a_ctor, bindings)? {
+                return Ok(false);
+            }
+            if p_args.len() != a_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
         // Partial application: when a_args.len() > p_args.len(), the prefix bakes
@@ -7591,15 +7661,19 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
         // f[a] and actual is Result[String, Int]).
         (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
             if p_args.len() > a_args.len() {
-                return false;
+                return Ok(false);
             }
             let prefix_len = a_args.len() - p_args.len();
             let prefix: Vec<Type> = a_args[..prefix_len].to_vec();
-            bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)
-                && p_args
-                    .iter()
-                    .zip(a_args[prefix_len..].iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)? {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args[prefix_len..].iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)
         (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
@@ -7607,14 +7681,20 @@ fn bind_type_vars(pattern: &Type, actual: &Type, bindings: &mut HashMap<TypeVarI
         {
             let (ctor_fn, remaining) =
                 types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
-            bind_type_vars(p_ctor, &ctor_fn, bindings)
-                && remaining.len() == p_args.len()
-                && p_args
-                    .iter()
-                    .zip(remaining.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, &ctor_fn, bindings)? {
+                return Ok(false);
+            }
+            if remaining.len() != p_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(remaining.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
-        _ => pattern == actual,
+        _ => Ok(pattern == actual),
     }
 }
 
@@ -7635,14 +7715,17 @@ fn bind_instance_target(
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
             if p_args.len() > a_args.len() =>
         {
-            p_name == a_name
-                && p_args
-                    .iter()
-                    .take(a_args.len())
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_name != a_name {
+                return false;
+            }
+            for (p, a) in p_args.iter().take(a_args.len()).zip(a_args.iter()) {
+                if !matches!(bind_type_vars(p, a, bindings), Ok(true)) {
+                    return false;
+                }
+            }
+            true
         }
-        _ => bind_type_vars(pattern, actual, bindings),
+        _ => matches!(bind_type_vars(pattern, actual, bindings), Ok(true)),
     }
 }
 
@@ -7810,4 +7893,107 @@ pub fn lower_all(
     }
 
     Ok((ir_modules, module_sources))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use krypton_parser::ast::{Lit, ParamMode};
+
+    /// Build a minimal [`LowerCtx`] sufficient to drive `resolve_call_dicts`
+    /// into its `bind_type_vars` path. Unused subsystems are left empty.
+    fn empty_ctx() -> LowerCtx {
+        LowerCtx {
+            next_var: 0,
+            next_fn: 0,
+            type_var_gen: TypeVarGen::new(),
+            var_scope: HashMap::new(),
+            fn_ids: HashMap::new(),
+            callable_ids: HashMap::new(),
+            struct_fields: HashMap::new(),
+            struct_type_params: HashMap::new(),
+            sum_variants: HashMap::new(),
+            private_type_params: HashMap::new(),
+            fn_constraints: HashMap::new(),
+            dict_params: HashMap::new(),
+            fn_schemes: HashMap::new(),
+            param_instances: Vec::new(),
+            trait_method_types: HashMap::new(),
+            trait_method_constraints: HashMap::new(),
+            dict_depth: 0,
+            lifted_fns: Vec::new(),
+            var_types: HashMap::new(),
+            recur_join: None,
+            early_return_join: None,
+            auto_close: AutoCloseInfo::default(),
+            scope_track_stack: Vec::new(),
+            fn_block_scoped_closes: Vec::new(),
+            fn_exit_closes: HashMap::new(),
+            module_path: "test".to_string(),
+            all_instances: Vec::new(),
+            instance_exact_index: HashMap::new(),
+        }
+    }
+
+    fn typed_expr(ty: Type) -> TypedExpr {
+        TypedExpr {
+            kind: TypedExprKind::Lit(Lit::Unit),
+            ty,
+            span: (0, 0),
+            resolved_ref: None,
+            scope_id: None,
+        }
+    }
+
+    #[test]
+    fn resolve_call_dicts_conflict_is_internal_error() {
+        let mut ctx = empty_ctx();
+        let tv = ctx.type_var_gen.fresh();
+        let qn = QualifiedName::new("test".into(), "f".into());
+        let trait_name = TraitName::new("test".into(), "T".into());
+
+        // Scheme: fn f[a](x: a, y: a) -> Unit where T[a]
+        // A call with args (Int, String) asks bind_type_vars to bind `a` twice
+        // to incompatible types — the exact regression the ICE guard catches.
+        let scheme = TypeScheme {
+            vars: vec![tv],
+            constraints: vec![(trait_name.clone(), vec![tv])],
+            ty: Type::Fn(
+                vec![
+                    (ParamMode::Consume, Type::Var(tv)),
+                    (ParamMode::Consume, Type::Var(tv)),
+                ],
+                Box::new(Type::Unit),
+            ),
+            var_names: HashMap::new(),
+        };
+        ctx.fn_schemes.insert(qn.clone(), scheme);
+        ctx.fn_constraints
+            .insert(qn.clone(), vec![(trait_name, vec![tv])]);
+
+        let args = vec![typed_expr(Type::Int), typed_expr(Type::String)];
+
+        let err = match ctx.resolve_call_dicts(&qn, &args, &[], None) {
+            Err(e) => e,
+            Ok(_) => panic!("conflicting bindings must raise LowerError"),
+        };
+        let msg = match err {
+            LowerError::InternalError(m) => m,
+            other => panic!("expected InternalError, got {other:?}"),
+        };
+        assert!(
+            msg.contains("bind conflict"),
+            "message must name the failure mode: {msg}"
+        );
+        let tv_debug = format!("{:?}", tv);
+        assert!(
+            msg.contains(&tv_debug),
+            "message must name the offending var ({tv_debug}): {msg}"
+        );
+        assert!(msg.contains("Int"), "message must name existing binding: {msg}");
+        assert!(
+            msg.contains("String"),
+            "message must name proposed binding: {msg}"
+        );
+    }
 }

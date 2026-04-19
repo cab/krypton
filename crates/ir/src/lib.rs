@@ -347,54 +347,100 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
     inner(ty, &mut var_map)
 }
 
-/// Structurally match a type pattern (may contain type vars) against a concrete type,
-/// collecting variable bindings. Returns true if the pattern matches.
+/// Reported when [`bind_type_vars`] finds a `TypeVarId` already bound to a type
+/// that disagrees with what the current match would assign. Separate from a
+/// structural mismatch (legitimate "pattern doesn't fit"), since a conflict
+/// here means a caller seeded `bindings` with a pin that the pattern contradicts
+/// — a typechecker regression, not a runtime condition.
+///
+/// A twin of this struct and of [`bind_type_vars`] lives in `lower.rs` and must
+/// be kept in sync until the two `Type` representations merge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindConflict {
+    pub var: TypeVarId,
+    pub existing: Type,
+    pub proposed: Type,
+}
+
+/// Structurally match a type pattern (may contain type vars) against a concrete
+/// type, collecting variable bindings.
+///
+/// * `Ok(true)` — bindings were extended (or already consistent) and the pattern matches.
+/// * `Ok(false)` — structural mismatch (arity, head name, primitive-vs-primitive).
+/// * `Err(BindConflict)` — pattern matches structurally but would rebind a
+///   `TypeVarId` already present in `bindings` to a different `Type`.
 pub fn bind_type_vars(
     pattern: &Type,
     actual: &Type,
     bindings: &mut HashMap<TypeVarId, Type>,
-) -> bool {
+) -> Result<bool, BindConflict> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
-            Some(existing) => existing == actual,
+            Some(existing) => {
+                if existing == actual {
+                    Ok(true)
+                } else {
+                    Err(BindConflict {
+                        var: *id,
+                        existing: existing.clone(),
+                        proposed: actual.clone(),
+                    })
+                }
+            }
             None => {
                 bindings.insert(*id, actual.clone());
-                true
+                Ok(true)
             }
         },
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
-            p_name == a_name
-                && p_args.len() == a_args.len()
-                && p_args
-                    .iter()
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_name != a_name || p_args.len() != a_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
-            p_params.len() == a_params.len()
-                && p_params
-                    .iter()
-                    .zip(a_params.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
-                && bind_type_vars(p_ret, a_ret, bindings)
+            if p_params.len() != a_params.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_params.iter().zip(a_params.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            bind_type_vars(p_ret, a_ret, bindings)
         }
         (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-            p_elems.len() == a_elems.len()
-                && p_elems
-                    .iter()
-                    .zip(a_elems.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_elems.len() != a_elems.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_elems.iter().zip(a_elems.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
         (Type::Own(p), a) => bind_type_vars(p, a, bindings),
         (a, Type::Own(p)) => bind_type_vars(a, p, bindings),
         (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
-            bind_type_vars(p_ctor, a_ctor, bindings)
-                && p_args.len() == a_args.len()
-                && p_args
-                    .iter()
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, a_ctor, bindings)? {
+                return Ok(false);
+            }
+            if p_args.len() != a_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
         // Partial application: when a_args has more slots than p_args, the prefix
@@ -402,29 +448,39 @@ pub fn bind_type_vars(
         // is f[a] and actual is Result[String, Int]).
         (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
             if p_args.len() > a_args.len() {
-                return false;
+                return Ok(false);
             }
             let prefix_len = a_args.len() - p_args.len();
             let prefix: Vec<Type> = a_args[..prefix_len].to_vec();
-            bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)
-                && p_args
-                    .iter()
-                    .zip(a_args[prefix_len..].iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)? {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(a_args[prefix_len..].iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
         // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)
         (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
             if decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
         {
             let (ctor_fn, remaining) = decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
-            bind_type_vars(p_ctor, &ctor_fn, bindings)
-                && remaining.len() == p_args.len()
-                && p_args
-                    .iter()
-                    .zip(remaining.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if !bind_type_vars(p_ctor, &ctor_fn, bindings)? {
+                return Ok(false);
+            }
+            if remaining.len() != p_args.len() {
+                return Ok(false);
+            }
+            for (p, a) in p_args.iter().zip(remaining.iter()) {
+                if !bind_type_vars(p, a, bindings)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
         }
-        _ => pattern == actual,
+        _ => Ok(pattern == actual),
     }
 }
 
@@ -445,14 +501,17 @@ fn bind_instance_target(
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
             if p_args.len() > a_args.len() =>
         {
-            p_name == a_name
-                && p_args
-                    .iter()
-                    .take(a_args.len())
-                    .zip(a_args.iter())
-                    .all(|(p, a)| bind_type_vars(p, a, bindings))
+            if p_name != a_name {
+                return false;
+            }
+            for (p, a) in p_args.iter().take(a_args.len()).zip(a_args.iter()) {
+                if !matches!(bind_type_vars(p, a, bindings), Ok(true)) {
+                    return false;
+                }
+            }
+            true
         }
-        _ => bind_type_vars(pattern, actual, bindings),
+        _ => matches!(bind_type_vars(pattern, actual, bindings), Ok(true)),
     }
 }
 
@@ -1012,5 +1071,66 @@ mod tests {
             fn_dict_requirements: HashMap::new(),
             fn_exit_closes: HashMap::new(),
         };
+    }
+
+    #[test]
+    fn bind_type_vars_reports_conflict() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        bindings.insert(a, Type::Int);
+        let result = bind_type_vars(&Type::Var(a), &Type::String, &mut bindings);
+        assert_eq!(
+            result,
+            Err(BindConflict {
+                var: a,
+                existing: Type::Int,
+                proposed: Type::String,
+            })
+        );
+    }
+
+    #[test]
+    fn bind_type_vars_structural_mismatch_is_ok_false() {
+        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let result = bind_type_vars(&Type::Int, &Type::String, &mut bindings);
+        assert_eq!(result, Ok(false));
+        assert!(bindings.is_empty());
+    }
+
+    #[test]
+    fn bind_type_vars_nested_conflict_propagates() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let pattern = Type::Named("Pair".to_string(), vec![Type::Var(a), Type::Var(a)]);
+        let actual = Type::Named("Pair".to_string(), vec![Type::Int, Type::String]);
+        let result = bind_type_vars(&pattern, &actual, &mut bindings);
+        assert_eq!(
+            result,
+            Err(BindConflict {
+                var: a,
+                existing: Type::Int,
+                proposed: Type::String,
+            })
+        );
+    }
+
+    #[test]
+    fn bind_instance_targets_treats_conflict_as_no_match() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let pinned = gen.fresh();
+        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        bindings.insert(pinned, Type::Bool);
+        let snapshot = bindings.clone();
+        let pattern = Type::Named("Pair".to_string(), vec![Type::Var(a), Type::Var(a)]);
+        let actual = Type::Named("Pair".to_string(), vec![Type::Int, Type::String]);
+        let ok = bind_instance_targets(&[pattern], &[actual], &mut bindings);
+        assert!(!ok, "conflict should surface as no-match");
+        assert_eq!(
+            bindings, snapshot,
+            "bindings must be restored to their pre-call state"
+        );
     }
 }
