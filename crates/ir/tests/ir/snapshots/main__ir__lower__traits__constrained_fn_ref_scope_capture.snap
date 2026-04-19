@@ -5,12 +5,12 @@ expression: ir_module.to_string()
 module traits__constrained_fn_ref_scope_capture
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -18,13 +18,13 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, z10], v1: z10) -> String =
+fn show_it(v0: Dict[core/show.Show, c11], v1: c11) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
-fn use_it(v3: Dict[core/show.Show, e11], v4: e11) -> String =
-  let v9: (g11) -> String = make_closure(fn_ref$28, [v3])
-  let v5: (g11) -> String = v9
+fn use_it(v3: Dict[core/show.Show, h11], v4: h11) -> String =
+  let v9: (j11) -> String = make_closure(fn_ref$28, [v3])
+  let v5: (j11) -> String = v9
   let v10: String = call_closure v5(v4)
   v10
 
@@ -40,6 +40,6 @@ fn main() -> Unit =
   let v15: Bool = trait_call core/eq.Eq.eq(v12, v14, "42")
   jump v18(v15)
 
-fn fn_ref$28(v6: Dict[core/show.Show, g11], v7: g11) -> String =
+fn fn_ref$28(v6: Dict[core/show.Show, j11], v7: j11) -> String =
   let v8: String = call show_it(v6, v7)
   v8

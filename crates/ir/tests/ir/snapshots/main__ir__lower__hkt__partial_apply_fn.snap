@@ -4,15 +4,15 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
-trait Functor[y10] { fmap(y10[z10], (z10) -> a11): y10[a11] }
+trait Functor[b11] { fmap(b11[c11], (c11) -> d11): b11[d11] }
 instance hkt__partial_apply_fn.Functor[$Fun1$$Var0$$Var1] { fmap=Functor$$$Fun1$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -30,8 +30,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v8, v9)
   v10
 
-fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (b11) -> u11, v12: (u11) -> v11) -> (b11) -> v11 =
-  let v18: (b11) -> v11 = make_closure(lambda$29, [v12, v11])
+fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (e11) -> x11, v12: (x11) -> y11) -> (e11) -> y11 =
+  let v18: (e11) -> y11 = make_closure(lambda$29, [v12, v11])
   v18
 
 fn lambda$27(v1: Int) -> Int =
@@ -42,7 +42,7 @@ fn lambda$28(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$29(v13: (u11) -> v11, v14: (b11) -> u11, v15: b11) -> v11 =
-  let v16: u11 = call_closure v14(v15)
-  let v17: v11 = call_closure v13(v16)
+fn lambda$29(v13: (x11) -> y11, v14: (e11) -> x11, v15: e11) -> y11 =
+  let v16: x11 = call_closure v14(v15)
+  let v17: y11 = call_closure v13(v16)
   v17

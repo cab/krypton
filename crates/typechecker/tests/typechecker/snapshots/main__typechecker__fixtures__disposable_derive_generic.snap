@@ -32,4 +32,4 @@ GT: Ordering
 Resource: (Int) -> Resource
 Box: forall a. (~a) -> Box[a]
 Disposable$$Resource$$dispose: (~Resource) -> Unit
-Disposable$$Box$$dispose: (~Box[o10]) -> Unit
+Disposable$$Box$$dispose: (~Box[r10]) -> Unit

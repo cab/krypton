@@ -5,34 +5,34 @@ expression: ir_module.to_string()
 module stdlib__map_vec_accessors
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[v8, w8]
-import core/map/put as put(Map[n9, o9], n9, o9) -> Map[n9, o9]
-import core/map/put as put(~MapBuilder[x9, y9], x9, y9) -> ~MapBuilder[x9, y9]
-import core/map/keys as keys(Map[r11, p11]) -> Vec[r11]
-import core/map/values as values(Map[v11, z11]) -> Vec[z11]
-import core/map/entries as entries(Map[b13, c13]) -> Vec[(b13, c13)]
-import core/vec/len as len(Vec[k7]) -> Int
-import core/vec/nth as nth(Vec[z7], Int) -> Option[z7]
-import core/vec/fold as fold(Vec[w11], f12, (f12, w11) -> f12) -> f12
+import core/map/empty as empty() -> Map[o8, p8]
+import core/map/put as put(Map[g9, h9], g9, h9) -> Map[g9, h9]
+import core/map/put as put(~MapBuilder[q9, r9], q9, r9) -> ~MapBuilder[q9, r9]
+import core/map/keys as keys(Map[k11, i11]) -> Vec[k11]
+import core/map/values as values(Map[o11, s11]) -> Vec[s11]
+import core/map/entries as entries(Map[u12, v12]) -> Vec[(u12, v12)]
+import core/vec/len as len(Vec[d7]) -> Int
+import core/vec/nth as nth(Vec[s7], Int) -> Option[s7]
+import core/vec/fold as fold(Vec[z11], i12, (i12, z11) -> i12) -> i12
 import core/option/Some as Some(c) -> Option[c]
-declare empty: () -> Map[v8, w8]
-declare entries: (Map[b13, c13]) -> Vec[(b13, c13)]
-declare fold: (Vec[w11], f12, (f12, w11) -> f12) -> f12
-declare keys: (Map[r11, p11]) -> Vec[r11]
-declare len: (Vec[k7]) -> Int
+declare empty: () -> Map[o8, p8]
+declare entries: (Map[u12, v12]) -> Vec[(u12, v12)]
+declare fold: (Vec[z11], i12, (i12, z11) -> i12) -> i12
+declare keys: (Map[k11, i11]) -> Vec[k11]
+declare len: (Vec[d7]) -> Int
 declare println: (g) -> Unit
-declare put: (Map[n9, o9], n9, o9) -> Map[n9, o9]
-declare values: (Map[v11, z11]) -> Vec[z11]
+declare put: (Map[g9, h9], g9, h9) -> Map[g9, h9]
+declare values: (Map[o11, s11]) -> Vec[s11]
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

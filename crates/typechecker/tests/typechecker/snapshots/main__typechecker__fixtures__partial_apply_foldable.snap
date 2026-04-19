@@ -32,4 +32,4 @@ GT: Ordering
 values: forall k v. (Map[k, v]) -> Vec[v]
 vec_fold: forall a b. (Vec[a], b, (b, a) -> b) -> b
 sum_values: (Map[String, Int]) -> Int
-Foldable$$Map$$Var0$$Var1$$fold: (Map[t12, d13], p13, (p13, d13) -> p13) -> p13
+Foldable$$Map$$Var0$$Var1$$fold: (Map[w12, g13], s13, (s13, g13) -> s13) -> s13

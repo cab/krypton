@@ -1,0 +1,12 @@
+# expect: output 4
+
+fun len_list[a](xs: List[a]) -> Int = match xs {
+    Nil => 0,
+    Cons(_, rest) => 1 + len_list(rest),
+}
+
+fun main() = {
+    let a = Cons(1, Cons(2, Nil));
+    let b = Cons(3, Cons(4, Nil));
+    println(len_list(a + b))
+}

@@ -1,0 +1,37 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__op_add_vec
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/vec/len as len(Vec[d7]) -> Int
+declare len: (Vec[d7]) -> Int
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let_join v14(v12: Int) =
+    let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v13: Unit = call println(v0, v12)
+    v13
+  in
+  let_join v11(v9: Vec[Int]) =
+    let v10: Int = call len(v9)
+    jump v14(v10)
+  in
+  let v5: Dict[core/semigroup.Semigroup, Vec[Int]] = get_dict core/semigroup.Semigroup[Vec[Int]]
+  let v6: Vec[Int] = make_vec(1, 2)
+  let v7: Vec[Int] = make_vec(3, 4)
+  let v8: Vec[Int] = trait_call core/semigroup.Semigroup.combine(v5, v6, v7)
+  jump v11(v8)

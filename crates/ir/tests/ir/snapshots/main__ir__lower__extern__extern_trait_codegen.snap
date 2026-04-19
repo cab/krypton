@@ -4,24 +4,24 @@ expression: ir_module.to_string()
 ---
 module extern__extern_trait_codegen
 
-trait Runnable[z10] { run(z10): Unit }
+trait Runnable[c11] { run(c11): Unit }
 instance extern__extern_trait_codegen.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
-extern java "java.lang.Thread" new(o10) -> ~JThread
+extern java "java.lang.Thread" new(r10) -> ~JThread
 extern java "java.lang.Thread" start(~JThread) -> Unit
 extern type java "java.lang.Thread" JThread
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-declare new: (o10) -> ~JThread
+declare new: (r10) -> ~JThread
 declare println: (g) -> Unit
 declare start: (~JThread) -> Unit
 

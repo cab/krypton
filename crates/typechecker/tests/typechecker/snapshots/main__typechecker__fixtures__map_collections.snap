@@ -30,7 +30,7 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 empty: forall k v. () -> Map[k, v]
-put: forall k v. (Map[k, v], k, v) -> Map[k, v] where ?257: Eq, ?257: Hash
+put: forall k v. (Map[k, v], k, v) -> Map[k, v] where ?250: Eq, ?250: Hash
 put: forall k v. (~MapBuilder[k, v], k, v) -> ~MapBuilder[k, v] where k: Eq, k: Hash
 from_list: forall k v. (List[(k, v)]) -> Map[k, v] where k: Eq, k: Hash
 size: forall k v. (Map[k, v]) -> Int

@@ -1,0 +1,5 @@
+# expect: output 4
+
+import core/vec.{len}
+
+fun main() = println(len([1, 2] + [3, 4]))

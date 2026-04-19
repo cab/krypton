@@ -4,25 +4,25 @@ expression: ir_module.to_string()
 ---
 module linear__linear_self_recur_own_param_generic
 
-extern java "native.Foo" foo_new() -> ~Foo[p10]
-extern java "native.Foo" foo_consume(~Foo[q10]) -> Unit
+extern java "native.Foo" foo_new() -> ~Foo[s10]
+extern java "native.Foo" foo_consume(~Foo[t10]) -> Unit
 extern type java "native.Foo" Foo
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-declare foo_consume: (~Foo[q10]) -> Unit
-declare foo_new: () -> ~Foo[p10]
+declare foo_consume: (~Foo[t10]) -> Unit
+declare foo_new: () -> ~Foo[s10]
 
-fn consume_loop(v0: ~Foo[c11], v1: Int) -> Unit =
+fn consume_loop(v0: ~Foo[f11], v1: Int) -> Unit =
   let_join v8(v4: Bool) =
     if v4 {
       let v5: Unit = call foo_consume(v0)
@@ -38,7 +38,7 @@ fn consume_loop(v0: ~Foo[c11], v1: Int) -> Unit =
   jump v8(v3)
 
 fn user() -> Unit =
-  let v9: ~Foo[l11] = call foo_new()
+  let v9: ~Foo[o11] = call foo_new()
   let v10: Unit = call consume_loop(v9, 3)
   v10
 

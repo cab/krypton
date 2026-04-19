@@ -802,7 +802,8 @@ impl<'link> Compiler<'link> {
             self.types
                 .class_descriptors
                 .insert(inst_class_idx, inst_desc.clone());
-            if imported_instance.requirements.is_empty() {
+            let is_parameterized = imported_instance.target_types.iter().any(type_has_vars);
+            if !is_parameterized {
                 let instance_field_ref =
                     self.cp
                         .add_field_ref(inst_class_idx, "INSTANCE", &inst_desc)?;

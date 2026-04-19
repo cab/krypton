@@ -5,25 +5,25 @@ expression: ir_module.to_string()
 module stdlib__map_large
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/get as get(Map[k10, w10], k10) -> Option[w10]
-import core/map/from_list as from_list(List[(e14, f14)]) -> Map[e14, f14]
-import core/map/size as size(Map[j14, k14]) -> Int
+import core/map/get as get(Map[d10, p10], d10) -> Option[p10]
+import core/map/from_list as from_list(List[(x13, y13)]) -> Map[x13, y13]
+import core/map/size as size(Map[c14, d14]) -> Int
 import core/list/Cons as Cons(d, List[d]) -> List[d]
-declare from_list: (List[(e14, f14)]) -> Map[e14, f14]
-declare get: (Map[k10, w10], k10) -> Option[w10]
+declare from_list: (List[(x13, y13)]) -> Map[x13, y13]
+declare get: (Map[d10, p10], d10) -> Option[p10]
 declare println: (g) -> Unit
-declare size: (Map[j14, k14]) -> Int
+declare size: (Map[c14, d14]) -> Int
 
 fn build_pairs(v0: Int, v1: Int, v2: List[(Int, Int)]) -> List[(Int, Int)] =
   let_join [recur] v3(v4: Int, v5: Int, v6: List[(Int, Int)]) =

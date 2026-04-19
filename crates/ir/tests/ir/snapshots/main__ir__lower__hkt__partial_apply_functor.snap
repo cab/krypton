@@ -5,15 +5,15 @@ expression: ir_module.to_string()
 module hkt__partial_apply_functor
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Functor[a11] { fmap(a11[b11], (b11) -> c11): a11[c11] }
+trait Functor[d11] { fmap(d11[e11], (e11) -> f11): d11[f11] }
 instance hkt__partial_apply_functor.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -26,14 +26,14 @@ fn double_ok(v0: Result[String, Int]) -> Result[String, Int] =
   let v5: Result[String, Int] = trait_call hkt__partial_apply_functor.Functor.fmap(v1, v0, v4)
   v5
 
-fn Functor$$Result$$Var0$$Var1$$fmap(v6: Result[y11, z11], v7: (z11) -> b12) -> Result[y11, b12] =
+fn Functor$$Result$$Var0$$Var1$$fmap(v6: Result[b12, c12], v7: (c12) -> e12) -> Result[b12, e12] =
   switch v6 {
-    0 (v8: z11) ->
-      let v9: b12 = call_closure v7(v8)
-      let v10: Result[y11, b12] = construct Result::Ok#0(v9)
+    0 (v8: c12) ->
+      let v9: e12 = call_closure v7(v8)
+      let v10: Result[b12, e12] = construct Result::Ok#0(v9)
       v10
-    1 (v11: y11) ->
-      let v12: Result[y11, b12] = construct Result::Err#1(v11)
+    1 (v11: b12) ->
+      let v12: Result[b12, e12] = construct Result::Err#1(v11)
       v12
   }
 

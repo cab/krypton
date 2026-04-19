@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Predicate: forall a b. ((a) -> b) -> Predicate[a, b]
-Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[p11, p11], (p11) -> p11) -> Predicate[p11, p11]
+Contravariant$$Predicate$$Var0$$Var1$$contramap: (Predicate[s11, s11], (s11) -> s11) -> Predicate[s11, s11]

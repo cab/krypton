@@ -4,7 +4,6 @@ import core/semigroup.{Semigroup, combine}
 import core/sub.{sub}
 import core/ord.{Ord, lt}
 import core/show.{Show, show}
-import core/semigroup.{combine}
 
 # core/vec — Persistent vector.
 #
@@ -98,6 +97,17 @@ fun fold_go[a, acc](xs: Vec[a], i: Int, n: Int, a: acc, f: (acc, a) -> acc) -> a
     } else {
         a
     }
+
+fun copy_go[a](xs: Vec[a], i: Int, n: Int, b: ~VecBuilder[a]) -> ~VecBuilder[a] =
+    if i < n { recur(xs, i + 1, n, push(b, staticGet(xs, i))) } else { b }
+
+impl Semigroup[Vec[a]] {
+    fun combine(xs, ys) = {
+        let b1 = copy_go(xs, 0, staticLength(xs), builder());
+        let b2 = copy_go(ys, 0, staticLength(ys), b1);
+        freeze(b2)
+    }
+}
 
 fun vec_to_list_go[a](xs: Vec[a], i: Int, acc: List[a]) -> List[a] =
     if i < 0 { acc } else { recur(xs, i - 1, Cons(staticGet(xs, i), acc)) }

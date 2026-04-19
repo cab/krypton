@@ -1,0 +1,49 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__op_add_list
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn len_list(v0: List[f11]) -> Int =
+  switch v0 {
+    1 ->
+      0
+    0 (v1: d, v2: List[f11]) ->
+      let v3: Int = call len_list(v2)
+      let v4: Int = add_int(1, v3)
+      v4
+  }
+
+fn main() -> Unit =
+  let v6: List[Int] = construct List::Nil#1()
+  let v7: List[Int] = construct List::Cons#0(2, v6)
+  let v5: List[Int] = construct List::Cons#0(1, v7)
+  let v9: List[Int] = construct List::Nil#1()
+  let v10: List[Int] = construct List::Cons#0(4, v9)
+  let v8: List[Int] = construct List::Cons#0(3, v10)
+  let_join v21(v19: Int) =
+    let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v20: Unit = call println(v11, v19)
+    v20
+  in
+  let_join v18(v16: List[Int]) =
+    let v17: Int = call len_list(v16)
+    jump v21(v17)
+  in
+  let v14: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
+  let v15: List[Int] = trait_call core/semigroup.Semigroup.combine(v14, v5, v8)
+  jump v18(v15)

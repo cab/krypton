@@ -4,24 +4,24 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_foldable
 
-trait Foldable[q12] { fold(q12[r12], s12, (s12, r12) -> s12): s12 }
+trait Foldable[t12] { fold(t12[u12], v12, (v12, u12) -> v12): v12 }
 instance hkt__partial_apply_foldable.Foldable[Map$$Var0$$Var1] { fold=Foldable$$Map$$Var0$$Var1$$fold }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/values as values(Map[v11, z11]) -> Vec[z11]
-import core/vec/fold as vec_fold(Vec[w11], f12, (f12, w11) -> f12) -> f12
-declare values: (Map[v11, z11]) -> Vec[z11]
-declare vec_fold: (Vec[w11], f12, (f12, w11) -> f12) -> f12
+import core/map/values as values(Map[o11, s11]) -> Vec[s11]
+import core/vec/fold as vec_fold(Vec[z11], i12, (i12, z11) -> i12) -> i12
+declare values: (Map[o11, s11]) -> Vec[s11]
+declare vec_fold: (Vec[z11], i12, (i12, z11) -> i12) -> i12
 
 fn sum_values(v0: Map[String, Int]) -> Int =
   let v5: (Int, Int) -> Int = make_closure(lambda$29, [])
@@ -29,9 +29,9 @@ fn sum_values(v0: Map[String, Int]) -> Int =
   let v6: Int = trait_call hkt__partial_apply_foldable.Foldable.fold(v1, v0, 0, v5)
   v6
 
-fn Foldable$$Map$$Var0$$Var1$$fold(v7: Map[t12, d13], v8: p13, v9: (p13, d13) -> p13) -> p13 =
-  let v10: Vec[d13] = call values(v7)
-  let v11: p13 = call vec_fold(v10, v8, v9)
+fn Foldable$$Map$$Var0$$Var1$$fold(v7: Map[w12, g13], v8: s13, v9: (s13, g13) -> s13) -> s13 =
+  let v10: Vec[g13] = call values(v7)
+  let v11: s13 = call vec_fold(v10, v8, v9)
   v11
 
 fn lambda$29(v2: Int, v3: Int) -> Int =

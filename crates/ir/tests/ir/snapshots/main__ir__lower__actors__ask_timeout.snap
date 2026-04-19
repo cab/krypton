@@ -5,23 +5,23 @@ expression: ir_module.to_string()
 module actors__ask_timeout
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(a14) -> Unit
+extern java "krypton.runtime.KryptonIO" println(d14) -> Unit
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[v11]) -> Unit) -> Ref[v11]
-import core/actor/ask as ask(Ref[l13], (Ref[z13]) -> l13, Int) -> Result[Timeout, z13]
-declare ask: (Ref[l13], (Ref[z13]) -> l13, Int) -> Result[Timeout, z13]
-declare println: (a14) -> Unit
-declare spawn: ((Mailbox[v11]) -> Unit) -> Ref[v11]
+import core/actor/spawn as spawn((Mailbox[y11]) -> Unit) -> Ref[y11]
+import core/actor/ask as ask(Ref[o13], (Ref[c14]) -> o13, Int) -> Result[Timeout, c14]
+declare ask: (Ref[o13], (Ref[c14]) -> o13, Int) -> Result[Timeout, c14]
+declare println: (d14) -> Unit
+declare spawn: ((Mailbox[y11]) -> Unit) -> Ref[y11]
 
 fn dead_actor(v0: Mailbox[Msg]) -> Unit =
   ()

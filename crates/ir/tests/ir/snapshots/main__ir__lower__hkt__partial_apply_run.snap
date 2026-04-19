@@ -5,37 +5,37 @@ expression: ir_module.to_string()
 module hkt__partial_apply_run
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Foldable[v12] { fold(v12[w12], x12, (x12, w12) -> x12): x12 }
-trait Functor[s12] { fmap(s12[t12], (t12) -> u12): s12[u12] }
+trait Foldable[y12] { fold(y12[z12], a13, (a13, z12) -> a13): a13 }
+trait Functor[v12] { fmap(v12[w12], (w12) -> x12): v12[x12] }
 instance hkt__partial_apply_run.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 instance hkt__partial_apply_run.Foldable[Map$$Var0$$Var1] { fold=Foldable$$Map$$Var0$$Var1$$fold }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/builder as builder() -> ~MapBuilder[d9, e9]
-import core/map/put as put(Map[n9, o9], n9, o9) -> Map[n9, o9]
-import core/map/put as put(~MapBuilder[x9, y9], x9, y9) -> ~MapBuilder[x9, y9]
-import core/map/freeze as freeze(~MapBuilder[g10, h10]) -> Map[g10, h10]
-import core/map/values as values(Map[v11, z11]) -> Vec[z11]
-import core/vec/fold as vec_fold(Vec[w11], f12, (f12, w11) -> f12) -> f12
-declare builder: () -> ~MapBuilder[d9, e9]
-declare freeze: (~MapBuilder[g10, h10]) -> Map[g10, h10]
+import core/map/builder as builder() -> ~MapBuilder[w8, x8]
+import core/map/put as put(Map[g9, h9], g9, h9) -> Map[g9, h9]
+import core/map/put as put(~MapBuilder[q9, r9], q9, r9) -> ~MapBuilder[q9, r9]
+import core/map/freeze as freeze(~MapBuilder[z9, a10]) -> Map[z9, a10]
+import core/map/values as values(Map[o11, s11]) -> Vec[s11]
+import core/vec/fold as vec_fold(Vec[z11], i12, (i12, z11) -> i12) -> i12
+declare builder: () -> ~MapBuilder[w8, x8]
+declare freeze: (~MapBuilder[z9, a10]) -> Map[z9, a10]
 declare println: (g) -> Unit
-declare put: (~MapBuilder[x9, y9], x9, y9) -> ~MapBuilder[x9, y9]
-declare values: (Map[v11, z11]) -> Vec[z11]
-declare vec_fold: (Vec[w11], f12, (f12, w11) -> f12) -> f12
+declare put: (~MapBuilder[q9, r9], q9, r9) -> ~MapBuilder[q9, r9]
+declare values: (Map[o11, s11]) -> Vec[s11]
+declare vec_fold: (Vec[z11], i12, (i12, z11) -> i12) -> i12
 
 fn build_map() -> Map[String, Int] =
-  let v0: ~MapBuilder[d13, e13] = call builder()
+  let v0: ~MapBuilder[g13, h13] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 3)
@@ -71,20 +71,20 @@ fn main() -> Unit =
       v32
   }
 
-fn Functor$$Result$$Var0$$Var1$$fmap(v33: Result[j15, k15], v34: (k15) -> m15) -> Result[j15, m15] =
+fn Functor$$Result$$Var0$$Var1$$fmap(v33: Result[m15, n15], v34: (n15) -> p15) -> Result[m15, p15] =
   switch v33 {
-    0 (v35: k15) ->
-      let v36: m15 = call_closure v34(v35)
-      let v37: Result[j15, m15] = construct Result::Ok#0(v36)
+    0 (v35: n15) ->
+      let v36: p15 = call_closure v34(v35)
+      let v37: Result[m15, p15] = construct Result::Ok#0(v36)
       v37
-    1 (v38: j15) ->
-      let v39: Result[j15, m15] = construct Result::Err#1(v38)
+    1 (v38: m15) ->
+      let v39: Result[m15, p15] = construct Result::Err#1(v38)
       v39
   }
 
-fn Foldable$$Map$$Var0$$Var1$$fold(v40: Map[a13, o15], v41: a16, v42: (a16, o15) -> a16) -> a16 =
-  let v43: Vec[o15] = call values(v40)
-  let v44: a16 = call vec_fold(v43, v41, v42)
+fn Foldable$$Map$$Var0$$Var1$$fold(v40: Map[d13, r15], v41: d16, v42: (d16, r15) -> d16) -> d16 =
+  let v43: Vec[r15] = call values(v40)
+  let v44: d16 = call vec_fold(v43, v41, v42)
   v44
 
 fn lambda$35(v12: Int, v13: Int) -> Int =

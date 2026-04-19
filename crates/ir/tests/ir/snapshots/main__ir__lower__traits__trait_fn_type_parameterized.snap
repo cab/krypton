@@ -4,16 +4,16 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_parameterized
 
-trait Test[y10] { test(y10): String }
+trait Test[b11] { test(b11): String }
 instance traits__trait_fn_type_parameterized.Test[$Fun0$$Var0] { test=Test$$$Fun0$$Var0$$test }
 instance traits__trait_fn_type_parameterized.Test[$Fun1$Int$$Var0] { test=Test$$$Fun1$Int$$Var0$$test }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[n3]) -> Option[n3]
-import core/list/sort_by as sort_by(List[s5], (s5) -> h5) -> List[s5]
-import core/list/filter as filter(List[f1], (f1) -> Bool) -> List[f1]
-import core/list/fold as fold(List[s1], t1, (t1, s1) -> t1) -> t1
-import core/list/map as map(List[u], (u) -> w) -> List[w]
-import core/vec/to_list as to_list(Vec[n10]) -> List[n10]
+import core/list/last as last(List[f3]) -> Option[f3]
+import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
+import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
+import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
+import core/list/map as map(List[v], (v) -> x) -> List[x]
+import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -40,8 +40,8 @@ fn main() -> Unit =
   let v10: Unit = call println(v6, v9)
   v10
 
-fn Test$$$Fun0$$Var0$$test(v11: () -> z10) -> String =
+fn Test$$$Fun0$$Var0$$test(v11: () -> c11) -> String =
   "got-unit"
 
-fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> a11) -> String =
+fn Test$$$Fun1$Int$$Var0$$test(v12: (Int) -> d11) -> String =
   "got-int"

@@ -29,4 +29,4 @@ Nil: forall a. List[a]
 LT: Ordering
 EQ: Ordering
 GT: Ordering
-Identity$$$Var0$$identify: (a11) -> a11
+Identity$$$Var0$$identify: (d11) -> d11

@@ -32,4 +32,4 @@ GT: Ordering
 Ok: forall a b. (b) -> Result[a, b]
 Err: forall a b. (a) -> Result[a, b]
 double_ok: (Result[String, Int]) -> Result[String, Int]
-Functor$$Result$$Var0$$Var1$$fmap: (Result[y11, z11], (z11) -> b12) -> Result[y11, b12]
+Functor$$Result$$Var0$$Var1$$fmap: (Result[b12, c12], (c12) -> e12) -> Result[b12, e12]

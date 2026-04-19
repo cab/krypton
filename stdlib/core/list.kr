@@ -1,6 +1,6 @@
 import core/option.{Option, Some, None}
 import core/ord.{Ord}
-import core/semigroup.{Semigroup}
+import core/semigroup.{Semigroup, combine}
 import core/show.{Show}
 
 # core/list — List type (cons-based linked list)
@@ -26,9 +26,11 @@ pub fun fold[a, b](xs: List[a], acc: b, f: (b, a) -> b) -> b = match xs {
     Cons(h, rest) => recur(rest, f(acc, h), f),
 }
 
-pub fun concat[a](xs: List[a], ys: List[a]) -> List[a] = match xs {
-    Nil => ys,
-    Cons(h, rest) => Cons(h, concat(rest, ys)),
+impl Semigroup[List[a]] {
+    fun combine(xs, ys) = match xs {
+        Nil => ys,
+        Cons(h, rest) => Cons(h, combine(rest, ys)),
+    }
 }
 
 pub fun reverse[a](xs: List[a]) -> List[a] = fold(xs, Nil, (acc, x) -> Cons(x, acc))
