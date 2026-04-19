@@ -1,0 +1,19 @@
+# expect: output "10\n-1\n6"
+
+import core/monad.{flat_map}
+import core/foldable.{fold}
+
+fun main() = {
+    match flat_map(Some(5), x -> Some(x * 2)) {
+        Some(v) => println(v),
+        None => println(-1),
+    }
+
+    match flat_map(Some(3), x -> None) {
+        Some(v) => println(v),
+        None => println(-1),
+    }
+
+    let xs = flat_map(Cons(1, Cons(2, Nil)), x -> Cons(x, Cons(x, Nil)));
+    println(fold(xs, 0, (a, x) -> a + x));
+}

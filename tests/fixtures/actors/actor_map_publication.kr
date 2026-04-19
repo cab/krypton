@@ -8,7 +8,7 @@
 import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, mailbox}
 import core/map.{Map, from_list, entries}
 import core/list.{List, Cons, Nil}
-import core/vec.{fold}
+import core/foldable.{fold}
 
 type Msg = MapMsg(Map[Int, Int], Ref[Int])
 

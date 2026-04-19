@@ -6,7 +6,8 @@
 # field guarantee covers the cross-thread publication. JS passes trivially
 # (single-threaded event loop; send is a no-op memory barrier).
 import core/actor.{Mailbox, Ref, spawn, send, receive, actor_ref, mailbox}
-import core/vec.{push, fold}
+import core/vec.{push}
+import core/foldable.{fold}
 
 type Msg = VecMsg(Vec[Int], Ref[Int])
 

@@ -1,0 +1,12 @@
+# core/monad — Monad trait. Requires Applicative.
+#
+# Laws (not enforced by the compiler):
+#   left identity:   flat_map(pure(x), g) == g(x)
+#   right identity:  flat_map(fa, pure)   == fa
+#   associativity:   flat_map(flat_map(fa, g), h) ==
+#                    flat_map(fa, x -> flat_map(g(x), h))
+import core/applicative.{Applicative}
+
+pub trait Monad[f[_]] where f: Applicative {
+    fun flat_map[a, b](fa: f[a], g: (a) -> f[b]) -> f[b]
+}

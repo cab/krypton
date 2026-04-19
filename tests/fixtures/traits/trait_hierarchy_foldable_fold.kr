@@ -1,0 +1,13 @@
+# expect: output "6\n30\n7"
+
+import core/foldable.{fold}
+
+fun main() = {
+    let xs = Cons(1, Cons(2, Cons(3, Nil)));
+    println(fold(xs, 0, (a, x) -> a + x));
+
+    let vs: Vec[Int] = [10, 20];
+    println(fold(vs, 0, (a, x) -> a + x));
+
+    println(fold(Some(7), 0, (a, x) -> a + x));
+}

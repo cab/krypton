@@ -5,28 +5,26 @@ expression: ir_module.to_string()
 module hkt__partial_apply_result
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Functor[d11] { fmap(d11[e11], (e11) -> f11): d11[f11] }
+trait Functor[n12] { fmap(n12[o12], (o12) -> p12): n12[p12] }
 instance hkt__partial_apply_result.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Functor$$Result$$Var0$$Var1$$fmap(v0: Result[u11, v11], v1: (v11) -> x11) -> Result[u11, x11] =
+fn Functor$$Result$$Var0$$Var1$$fmap(v0: Result[e13, f13], v1: (f13) -> h13) -> Result[e13, h13] =
   switch v0 {
-    0 (v2: v11) ->
-      let v3: x11 = call_closure v1(v2)
-      let v4: Result[u11, x11] = construct Result::Ok#0(v3)
+    0 (v2: f13) ->
+      let v3: h13 = call_closure v1(v2)
+      let v4: Result[e13, h13] = construct Result::Ok#0(v3)
       v4
-    1 (v5: u11) ->
-      let v6: Result[u11, x11] = construct Result::Err#1(v5)
+    1 (v5: e13) ->
+      let v6: Result[e13, h13] = construct Result::Err#1(v5)
       v6
   }

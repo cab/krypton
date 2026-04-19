@@ -5,25 +5,23 @@ expression: ir_module.to_string()
 module stdlib__map_basic
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/map/empty as empty() -> Map[o8, p8]
-import core/map/put as put(Map[g9, h9], g9, h9) -> Map[g9, h9]
-import core/map/put as put(~MapBuilder[q9, r9], q9, r9) -> ~MapBuilder[q9, r9]
-import core/map/get as get(Map[d10, p10], d10) -> Option[p10]
-declare empty: () -> Map[o8, p8]
-declare get: (Map[d10, p10], d10) -> Option[p10]
+import core/map/empty as empty() -> Map[e10, f10]
+import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
+import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
+import core/map/get as get(Map[t11, f12], t11) -> Option[f12]
+declare empty: () -> Map[e10, f10]
+declare get: (Map[t11, f12], t11) -> Option[f12]
 declare println: (g) -> Unit
-declare put: (Map[g9, h9], g9, h9) -> Map[g9, h9]
+declare put: (Map[w10, x10], w10, x10) -> Map[w10, x10]
 
 fn main() -> Unit =
   let v1: Map[String, Int] = call empty()

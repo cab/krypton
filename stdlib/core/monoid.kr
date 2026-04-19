@@ -1,0 +1,15 @@
+# core/monoid — Monoid trait. Requires Semigroup.
+#
+# Laws (not enforced by the compiler):
+#   left identity:   combine(empty(), x) == x
+#   right identity:  combine(x, empty()) == x
+#   (associativity inherited from Semigroup)
+import core/semigroup.{Semigroup}
+
+pub trait Monoid[a] {
+    fun empty() -> a
+}
+
+impl Monoid[Int]    { fun empty() -> Int    = 0   }
+impl Monoid[Float]  { fun empty() -> Float  = 0.0 }
+impl Monoid[String] { fun empty() -> String = ""  }

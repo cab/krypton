@@ -1,0 +1,84 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_hierarchy_monad_flat_map
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let_join v46(v13: Unit) =
+    let_join v45(v26: Unit) =
+      let v28: List[Int] = construct List::Nil#1()
+      let v29: List[Int] = construct List::Cons#0(2, v28)
+      let v30: List[Int] = construct List::Cons#0(1, v29)
+      let v35: (Int) -> List[Int] = make_closure(lambda$29, [])
+      let v36: Dict[core/monad.Monad, List] = get_dict core/monad.Monad[List]
+      let v27: List[Int] = trait_call core/monad.Monad.flat_map(v36, v30, v35)
+      let v41: (Int, Int) -> Int = make_closure(lambda$30, [])
+      let v42: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
+      let v43: Int = trait_call core/foldable.Foldable.fold(v42, v27, 0, v41)
+      let v37: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v44: Unit = call println(v37, v43)
+      v44
+    in
+    let v14: Option[Int] = construct Option::Some#0(3)
+    let v17: (Int) -> Option[Int] = make_closure(lambda$28, [])
+    let v18: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
+    let v19: Option[Int] = trait_call core/monad.Monad.flat_map(v18, v14, v17)
+    switch v19 {
+      0 (v20: Int) ->
+        let v21: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v22: Unit = call println(v21, v20)
+        jump v45(v22)
+      1 ->
+        let v24: Int = neg_int(1)
+        let v23: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v25: Unit = call println(v23, v24)
+        jump v45(v25)
+    }
+  in
+  let v0: Option[Int] = construct Option::Some#0(5)
+  let v4: (Int) -> Option[Int] = make_closure(lambda$27, [])
+  let v5: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
+  let v6: Option[Int] = trait_call core/monad.Monad.flat_map(v5, v0, v4)
+  switch v6 {
+    0 (v7: Int) ->
+      let v8: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v9: Unit = call println(v8, v7)
+      jump v46(v9)
+    1 ->
+      let v11: Int = neg_int(1)
+      let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v12: Unit = call println(v10, v11)
+      jump v46(v12)
+  }
+
+fn lambda$27(v1: Int) -> Option[Int] =
+  let v2: Int = mul_int(v1, 2)
+  let v3: Option[Int] = construct Option::Some#0(v2)
+  v3
+
+fn lambda$28(v15: Int) -> Option[Int] =
+  let v16: Option[Int] = construct Option::None#1()
+  v16
+
+fn lambda$29(v31: Int) -> List[Int] =
+  let v32: List[Int] = construct List::Nil#1()
+  let v33: List[Int] = construct List::Cons#0(v31, v32)
+  let v34: List[Int] = construct List::Cons#0(v31, v33)
+  v34
+
+fn lambda$30(v38: Int, v39: Int) -> Int =
+  let v40: Int = add_int(v38, v39)
+  v40

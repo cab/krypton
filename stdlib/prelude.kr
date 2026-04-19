@@ -12,8 +12,17 @@ pub import core/peek.{peek}
 
 pub import core/option.{Option, Some, None}
 pub import core/result.{Result, Ok, Err}
-pub import core/list.{List, Cons, Nil, last, sort_by, filter, fold, map}
+pub import core/list.{List, Cons, Nil, last, sort_by, filter}
 pub import core/vec.{to_list}
+pub import core/functor.{map}
+pub import core/foldable.{fold}
+# NOTE: trait *names* (Functor, Foldable, Monoid) intentionally NOT
+# pre-imported in this pass. A prelude trait import without its methods
+# currently prevents a later explicit method import from the same trait
+# (see crates/typechecker/src/infer/imports.rs:733). It also conflicts
+# with HKT test fixtures that self-define `trait Functor[f[_]]`. Users
+# who need to write `impl Functor[MyType]` import the trait name
+# explicitly from its module. M18-T1 will revisit prelude shape.
 pub import core/ordering.{Ordering, LT, EQ, GT}
 pub import core/never.{Never}
 

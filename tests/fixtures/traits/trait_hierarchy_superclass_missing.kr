@@ -1,0 +1,13 @@
+# expect: error E0303
+
+import core/applicative.{Applicative, pure, apply}
+
+type Box2[a] = Box2(a)
+
+# Missing impl Functor[Box2] — Applicative requires Functor as a superclass.
+impl Applicative[Box2] {
+    fun pure[a](x: a) -> Box2[a] = Box2(x)
+    fun apply[a, b](fb: Box2[(a) -> b], ba: Box2[a]) -> Box2[b] = match fb {
+        Box2(g) => match ba { Box2(x) => Box2(g(x)) }
+    }
+}

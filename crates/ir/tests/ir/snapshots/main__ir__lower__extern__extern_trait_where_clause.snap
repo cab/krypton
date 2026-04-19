@@ -4,15 +4,13 @@ expression: ir_module.to_string()
 ---
 module extern__extern_trait_where_clause
 
-trait Runnable[b11] { run(b11): Unit }
+trait Runnable[l12] { run(l12): Unit }
 instance extern__extern_trait_where_clause.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -20,7 +18,7 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn invoke(v0: Dict[extern__extern_trait_where_clause.Runnable, d11], v1: d11) -> Unit =
+fn invoke(v0: Dict[extern__extern_trait_where_clause.Runnable, n12], v1: n12) -> Unit =
   let v2: Unit = trait_call extern__extern_trait_where_clause.Runnable.run(v0, v1)
   v2
 

@@ -1,0 +1,61 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_hierarchy_superclass
+
+type Box[a] = Box#0(a)
+instance core/functor.Functor[Box] { map=Functor$$Box$$map }
+instance core/applicative.Applicative[Box] { pure=Applicative$$Box$$pure, apply=Applicative$$Box$$apply }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: Dict[core/applicative.Applicative, Box] = get_dict core/applicative.Applicative[Box]
+  let v0: Box[Int] = trait_call core/applicative.Applicative.pure(v1, 5)
+  let v5: (Int) -> Int = make_closure(lambda$31, [])
+  let v2: Box[(Int) -> Int] = construct Box::Box#0(v5)
+  let v6: Dict[core/applicative.Applicative, Box] = get_dict core/applicative.Applicative[Box]
+  let v7: Box[Int] = trait_call core/applicative.Applicative.apply(v6, v2, v0)
+  switch v7 {
+    0 (v8: Int) ->
+      let v9: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v10: Unit = call println(v9, v8)
+      v10
+  }
+
+fn Functor$$Box$$map(v11: Box[h13], v12: (h13) -> j13) -> Box[j13] =
+  switch v11 {
+    0 (v13: h13) ->
+      let v14: j13 = call_closure v12(v13)
+      let v15: Box[j13] = construct Box::Box#0(v14)
+      v15
+  }
+
+fn Applicative$$Box$$pure(v16: l13) -> Box[l13] =
+  let v17: Box[l13] = construct Box::Box#0(v16)
+  v17
+
+fn Applicative$$Box$$apply(v18: Box[(x13) -> z13], v19: Box[x13]) -> Box[z13] =
+  switch v18 {
+    0 (v20: (x13) -> z13) ->
+      switch v19 {
+        0 (v21: x13) ->
+          let v22: z13 = call_closure v20(v21)
+          let v23: Box[z13] = construct Box::Box#0(v22)
+          v23
+      }
+  }
+
+fn lambda$31(v3: Int) -> Int =
+  let v4: Int = add_int(v3, 3)
+  v4

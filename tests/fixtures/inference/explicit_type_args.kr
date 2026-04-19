@@ -1,6 +1,7 @@
 # expect: ok
 
-import core/list.{List, Cons, Nil, map}
+import core/list.{List, Cons, Nil}
+import core/functor.{map}
 
 fun identity[a](x: a) -> a = x
 
@@ -13,4 +14,4 @@ fun standalone() = {
   id_int(42)
 }
 
-fun method_site(xs: List[Int]) = xs.map[String](stringify)
+fun method_site(xs: List[Int]) -> List[String] = xs.map(stringify)

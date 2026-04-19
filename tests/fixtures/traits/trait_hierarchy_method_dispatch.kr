@@ -1,0 +1,12 @@
+# expect: output "20"
+
+import core/functor.{map}
+import core/foldable.{fold}
+
+fun main() = {
+    # Acceptance criterion 5: xs.map(f) on a concrete Vec[Int] with no explicit
+    # Functor constraint in user code.
+    let vs: Vec[Int] = [1, 2, 3, 4];
+    let doubled = map(vs, x -> x * 2);
+    println(fold(doubled, 0, (acc, x) -> acc + x));
+}

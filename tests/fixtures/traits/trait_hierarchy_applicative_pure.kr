@@ -1,0 +1,21 @@
+# expect: output "5\n3\n6"
+
+import core/applicative.{pure, apply}
+import core/foldable.{fold}
+
+fun main() = {
+    let opt: Option[Int] = pure(5);
+    match opt {
+        Some(v) => println(v),
+        None => println(-1),
+    }
+
+    let lst: List[Int] = pure(3);
+    println(fold(lst, 0, (a, x) -> a + x));
+
+    let fs: Option[(Int) -> Int] = Some(x -> x * 2);
+    match apply(fs, Some(3)) {
+        Some(v) => println(v),
+        None => println(-1),
+    }
+}

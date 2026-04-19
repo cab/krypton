@@ -1,0 +1,14 @@
+# core/applicative — Applicative trait. Requires Functor.
+#
+# Laws (not enforced by the compiler):
+#   identity:     apply(pure(x -> x), fa) == fa
+#   homomorphism: apply(pure(g), pure(x)) == pure(g(x))
+#   interchange:  apply(ff, pure(x)) == apply(pure(g -> g(x)), ff)
+#   composition:  apply(apply(apply(pure(compose), u), v), w) ==
+#                 apply(u, apply(v, w))
+import core/functor.{Functor}
+
+pub trait Applicative[f[_]] where f: Functor {
+    fun pure[a](x: a) -> f[a]
+    fun apply[a, b](ff: f[(a) -> b], fa: f[a]) -> f[b]
+}

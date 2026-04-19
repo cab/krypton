@@ -5,26 +5,24 @@ expression: ir_module.to_string()
 module traits__hkt_arity2
 
 type Pair[a, b] = Pair#0(a, b)
-trait Bifunctor[d11] { bimap(d11[e11, f11], (e11) -> g11, (f11) -> h11): d11[g11, h11] }
+trait Bifunctor[n12] { bimap(n12[o12, p12], (o12) -> q12, (p12) -> r12): n12[q12, r12] }
 instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Bifunctor$$Pair$$bimap(v0: Pair[t11, u11], v1: (t11) -> x11, v2: (u11) -> y11) -> Pair[x11, y11] =
+fn Bifunctor$$Pair$$bimap(v0: Pair[d13, e13], v1: (d13) -> h13, v2: (e13) -> i13) -> Pair[h13, i13] =
   switch v0 {
-    0 (v3: t11, v4: u11) ->
-      let v5: x11 = call_closure v1(v3)
-      let v6: y11 = call_closure v2(v4)
-      let v7: Pair[x11, y11] = construct Pair::Pair#0(v5, v6)
+    0 (v3: d13, v4: e13) ->
+      let v5: h13 = call_closure v1(v3)
+      let v6: i13 = call_closure v2(v4)
+      let v7: Pair[h13, i13] = construct Pair::Pair#0(v5, v6)
       v7
   }

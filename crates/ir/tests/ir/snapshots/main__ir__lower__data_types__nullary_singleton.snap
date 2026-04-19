@@ -6,12 +6,10 @@ module data_types__nullary_singleton
 
 type Option[a] = None#0 | Some#1(a)
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -19,17 +17,17 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn unwrap_or(v0: Option[h11], v1: h11) -> h11 =
+fn unwrap_or(v0: Option[r12], v1: r12) -> r12 =
   switch v0 {
     0 ->
       v1
-    1 (v2: h11) ->
+    1 (v2: r12) ->
       v2
   }
 
 fn main() -> Unit =
-  let v4: Option[k11] = construct Option::None#0()
-  let v3: Option[k11] = v4
+  let v4: Option[u12] = construct Option::None#0()
+  let v3: Option[u12] = v4
   let v5: Option[Int] = construct Option::Some#1(42)
   let v6: Int = call unwrap_or(v5, 0)
   let v7: Int = call unwrap_or(v3, v6)

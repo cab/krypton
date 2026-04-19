@@ -1,5 +1,6 @@
 # expect: ok
-import core/list.{List, Cons, Nil, map}
+import core/list.{List, Cons, Nil}
+import core/functor.{map}
 
 fun map(x: Int, f: (Int) -> Int) -> Int = f(x)
 

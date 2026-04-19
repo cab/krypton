@@ -1,3 +1,4 @@
 # expect: output "12"
-import core/list.{map, fold}
+import core/functor.{map}
+import core/foldable.{fold}
 fun main() = println(fold(map(Cons(1, Cons(2, Cons(3, Nil))), x -> x * 2), 0, (acc, x) -> acc + x))

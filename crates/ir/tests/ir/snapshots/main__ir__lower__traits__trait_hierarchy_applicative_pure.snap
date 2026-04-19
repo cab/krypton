@@ -1,0 +1,65 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__trait_hierarchy_applicative_pure
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+  let v0: Option[Int] = trait_call core/applicative.Applicative.pure(v1, 5)
+  let_join v32(v8: Unit) =
+    let v10: Dict[core/applicative.Applicative, List] = get_dict core/applicative.Applicative[List]
+    let v9: List[Int] = trait_call core/applicative.Applicative.pure(v10, 3)
+    let v14: (Int, Int) -> Int = make_closure(lambda$28, [])
+    let v15: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
+    let v16: Int = trait_call core/foldable.Foldable.fold(v15, v9, 0, v14)
+    let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v18: Unit = call println(v17, v16)
+    let v22: (Int) -> Int = make_closure(lambda$29, [])
+    let v19: Option[(Int) -> Int] = construct Option::Some#0(v22)
+    let v23: Option[Int] = construct Option::Some#0(3)
+    let v24: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+    let v25: Option[Int] = trait_call core/applicative.Applicative.apply(v24, v19, v23)
+    switch v25 {
+      0 (v26: Int) ->
+        let v27: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v28: Unit = call println(v27, v26)
+        v28
+      1 ->
+        let v30: Int = neg_int(1)
+        let v29: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v31: Unit = call println(v29, v30)
+        v31
+    }
+  in
+  switch v0 {
+    0 (v2: Int) ->
+      let v3: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v4: Unit = call println(v3, v2)
+      jump v32(v4)
+    1 ->
+      let v6: Int = neg_int(1)
+      let v5: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v7: Unit = call println(v5, v6)
+      jump v32(v7)
+  }
+
+fn lambda$28(v11: Int, v12: Int) -> Int =
+  let v13: Int = add_int(v11, v12)
+  v13
+
+fn lambda$29(v20: Int) -> Int =
+  let v21: Int = mul_int(v20, 2)
+  v21

@@ -1,6 +1,7 @@
 # core/string — @nullable with autoboxing
 import core/option.{Option, Some, None}
-import core/list.{List, Cons, Nil, fold}
+import core/list.{List, Cons, Nil}
+import core/foldable.{fold}
 
 extern java "krypton.runtime.KryptonString" {
     pub fun split(s: String, delim: String) -> Vec[String]

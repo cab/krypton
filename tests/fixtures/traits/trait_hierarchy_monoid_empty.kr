@@ -1,0 +1,18 @@
+# expect: output "0\n\n0\n1"
+
+import core/monoid.{Monoid, empty}
+import core/foldable.{fold}
+
+fun main() = {
+    let zero: Int = empty();
+    println(zero);
+
+    let s: String = empty();
+    println(s);
+
+    let e: List[Int] = empty();
+    println(fold(e, 0, (a, x) -> a + x));
+
+    let xs: List[Int] = combine(empty(), Cons(1, Nil));
+    println(fold(xs, 0, (a, x) -> a + x));
+}

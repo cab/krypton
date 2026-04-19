@@ -1,0 +1,8 @@
+# core/functor — Functor trait for types of kind (* -> *).
+#
+# Laws (not enforced by the compiler):
+#   identity:     map(fa, x -> x) == fa
+#   composition:  map(map(fa, g), h) == map(fa, x -> h(g(x)))
+pub trait Functor[f[_]] {
+    fun map[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}

@@ -1,7 +1,7 @@
 # expect: output "4950"
 import core/map.{Map, from_list, entries}
 import core/list.{List, Cons, Nil}
-import core/vec.{fold}
+import core/foldable.{fold}
 
 fun build_pairs(i: Int, n: Int, acc: List[(Int, Int)]) -> List[(Int, Int)] =
     if i < n { recur(i + 1, n, Cons((i, i), acc)) } else { acc }

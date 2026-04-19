@@ -1,0 +1,26 @@
+# expect: output "8"
+
+import core/functor.{Functor, map}
+import core/applicative.{Applicative, pure, apply}
+
+type Box[a] = Box(a)
+
+impl Functor[Box] {
+    fun map[a, b](b: Box[a], g: (a) -> b) -> Box[b] = match b { Box(x) => Box(g(x)) }
+}
+
+# Applicative requires Functor. The impl is valid because Functor[Box] exists.
+impl Applicative[Box] {
+    fun pure[a](x: a) -> Box[a] = Box(x)
+    fun apply[a, b](fb: Box[(a) -> b], ba: Box[a]) -> Box[b] = match fb {
+        Box(g) => match ba { Box(x) => Box(g(x)) }
+    }
+}
+
+fun main() = {
+    let b: Box[Int] = pure(5);
+    let fb: Box[(Int) -> Int] = Box(x -> x + 3);
+    match apply(fb, b) {
+        Box(v) => println(v),
+    }
+}

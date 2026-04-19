@@ -16,9 +16,9 @@ peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
-fold: forall a b. (List[a], b, (b, a) -> b) -> b
-map: forall a b. (List[a], (a) -> b) -> List[b]
 to_list: forall a. (Vec[a]) -> List[a]
+map: forall a. (a[d], (d) -> e) -> a[e]
+fold: forall a. (a[d], e, (e, d) -> e) -> e
 println: forall a. (a) -> Unit where a: Show
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
@@ -30,5 +30,5 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Box: forall a. (a) -> Box[a]
-Functor$$Box$$fmap: (Box[n11], (n11) -> p11) -> Box[p11]
-Container$$Box$$wrap: (r11) -> Box[r11]
+Functor$$Box$$fmap: (Box[x12], (x12) -> z12) -> Box[z12]
+Container$$Box$$wrap: (b13) -> Box[b13]

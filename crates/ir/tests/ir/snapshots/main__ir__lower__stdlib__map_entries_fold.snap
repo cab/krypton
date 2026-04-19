@@ -1,0 +1,49 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__map_entries_fold
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/map/empty as empty() -> Map[e10, f10]
+import core/map/put as put(Map[w10, x10], w10, x10) -> Map[w10, x10]
+import core/map/put as put(~MapBuilder[g11, h11], g11, h11) -> ~MapBuilder[g11, h11]
+import core/map/entries as entries(Map[k14, l14]) -> Vec[(k14, l14)]
+declare empty: () -> Map[e10, f10]
+declare entries: (Map[k14, l14]) -> Vec[(k14, l14)]
+declare println: (g) -> Unit
+declare put: (Map[w10, x10], w10, x10) -> Map[w10, x10]
+
+fn add_pair_val(v0: Int, v1: (String, Int)) -> Int =
+  let v2: String = tuple_project v1.0
+  let v3: Int = tuple_project v1.1
+  let v4: Int = add_int(v0, v3)
+  v4
+
+fn main() -> Unit =
+  let v6: Map[String, Int] = call empty()
+  let v7: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v8: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v9: Map[String, Int] = call put(v7, v8, v6, "a", 1)
+  let v10: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v11: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v12: Map[String, Int] = call put(v10, v11, v9, "b", 2)
+  let v13: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
+  let v14: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
+  let v5: Map[String, Int] = call put(v13, v14, v12, "c", 3)
+  let v16: Vec[(String, Int)] = call entries(v5)
+  let v17: (Int, (String, Int)) -> Int = make_closure(add_pair_val, [])
+  let v18: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v19: Int = trait_call core/foldable.Foldable.fold(v18, v16, 0, v17)
+  let v15: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v20: Unit = call println(v15, v19)
+  v20

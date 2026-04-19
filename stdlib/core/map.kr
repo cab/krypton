@@ -13,8 +13,10 @@
 # Trait-dispatched key equality/hashing is bridged via a `HashedKey` wrapper
 # on both backends, keeping dict-passing orthogonal to the backing map.
 import core/option.{Option, Some, None}
-import core/list.{List, Cons, Nil, fold}
+import core/list.{List, Cons, Nil}
 import core/vec.{Vec, VecBuilder, builder as vec_builder, push as vec_push, freeze as vec_freeze, len as vec_len}
+import core/functor.{Functor}
+import core/foldable.{Foldable, fold}
 import core/eq.{Eq}
 import core/hash.{Hash}
 import core/ord.{Ord}
@@ -122,3 +124,35 @@ pub fun size[k, v](m: Map[k, v]) -> Int = staticSize(m)
 
 pub fun merge[k, v](a: Map[k, v], b: Map[k, v]) -> Map[k, v] where k: Eq + Hash =
     staticMerge(a, b)
+
+fun map_rebuild_go[k, a, b](pairs: Vec[(k, a)], i: Int, n: Int, g: (a) -> b, out: ~MapBuilder[k, b]) -> Map[k, b]
+    where k: Eq + Hash =
+    if i < n {
+        let pair = staticGet(pairs, i);
+        let (key, val) = pair;
+        recur(pairs, i + 1, n, g, put(out, key, g(val)))
+    } else {
+        freeze(out)
+    }
+
+# `Map[k, _]` is a Functor over its values; keys are unchanged. Requires
+# `k: Eq + Hash` because reconstruction routes through the hashed builder.
+# Foldable folds over the values in iteration order.
+impl[k] Functor[Map[k, _]] where k: Eq + Hash {
+    fun map[a, b](m: Map[k, a], g: (a) -> b) -> Map[k, b] =
+        map_rebuild_go(entries(m), 0, vec_len(staticKeys(m)), g, builder())
+}
+
+fun map_fold_values_go[a, b](vs: Vec[a], i: Int, n: Int, acc: b, g: (b, a) -> b) -> b =
+    if i < n {
+        recur(vs, i + 1, n, g(acc, staticGet(vs, i)), g)
+    } else {
+        acc
+    }
+
+impl[k] Foldable[Map[k, _]] {
+    fun fold[a, b](m: Map[k, a], acc: b, g: (b, a) -> b) -> b = {
+        let vs = staticValues(m);
+        map_fold_values_go(vs, 0, vec_len(vs), acc, g)
+    }
+}

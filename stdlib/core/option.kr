@@ -1,9 +1,54 @@
 # core/option — Option type for nullable values
 import core/show.{Show}
+import core/functor.{Functor, map}
+import core/foldable.{Foldable}
+import core/applicative.{Applicative, pure}
+import core/monad.{Monad}
+import core/traversable.{Traversable}
 
 pub type Option[a] = Some(a) | None deriving (Show)
 
 pub fun unwrap[a](opt: Option[a]) -> a = match opt {
     Some(v) => v,
     None => panic("None"),
+}
+
+impl Functor[Option] {
+    fun map[a, b](o: Option[a], g: (a) -> b) -> Option[b] = match o {
+        Some(x) => Some(g(x)),
+        None => None,
+    }
+}
+
+impl Foldable[Option] {
+    fun fold[a, b](o: Option[a], acc: b, g: (b, a) -> b) -> b = match o {
+        Some(x) => g(acc, x),
+        None => acc,
+    }
+}
+
+impl Applicative[Option] {
+    fun pure[a](x: a) -> Option[a] = Some(x)
+    fun apply[a, b](ff: Option[(a) -> b], fa: Option[a]) -> Option[b] = match ff {
+        Some(g) => match fa {
+            Some(x) => Some(g(x)),
+            None => None,
+        },
+        None => None,
+    }
+}
+
+impl Monad[Option] {
+    fun flat_map[a, b](o: Option[a], g: (a) -> Option[b]) -> Option[b] = match o {
+        Some(x) => g(x),
+        None => None,
+    }
+}
+
+impl Traversable[Option] {
+    fun traverse[g[_], a, b](o: Option[a], k: (a) -> g[b]) -> g[Option[b]]
+        where g: Applicative, g: Functor = match o {
+            Some(x) => map(k(x), Some),
+            None => pure(None),
+        }
 }

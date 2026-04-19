@@ -1,9 +1,11 @@
 # core/json — phantom extern types
 import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
-import core/list.{List, Cons, Nil, fold, map as list_map, reverse}
+import core/list.{List, Cons, Nil, reverse}
 import core/map.{Map, empty, put, get as map_get, entries, from_list}
-import core/vec.{to_list as vec_to_list, map as vec_map}
+import core/vec.{to_list as vec_to_list}
+import core/functor.{map}
+import core/foldable.{fold}
 import core/eq.{Eq}
 import core/hash.{Hash}
 
@@ -73,7 +75,7 @@ fun from_java(raw: JavaJson) -> Json = {
     else if t == 2 { JNum(staticRawNum(raw)) }
     else if t == 3 { JStr(staticRawStr(raw)) }
     else if t == 4 {
-        JArr(list_map(vec_to_list(staticRawArr(raw)), (item) -> from_java(item)))
+        JArr(map(vec_to_list(staticRawArr(raw)), (item) -> from_java(item)))
     }
     else {
         let ks = vec_to_list(staticRawEntryKeys(raw))
@@ -175,8 +177,13 @@ impl ToJson[Bool] {
     fun to_json(x: Bool) -> Json = JBool(x)
 }
 
+fun json_list_go[a](xs: List[a]) -> List[Json] where a: ToJson = match xs {
+    Nil => Nil,
+    Cons(h, rest) => Cons(to_json(h), json_list_go(rest)),
+}
+
 impl ToJson[List[a]] where a: ToJson {
-    fun to_json(xs: List[a]) -> Json = JArr(list_map(xs, (x) -> to_json(x)))
+    fun to_json(xs: List[a]) -> Json = JArr(json_list_go(xs))
 }
 
 impl ToJson[Option[a]] where a: ToJson {
@@ -186,9 +193,19 @@ impl ToJson[Option[a]] where a: ToJson {
     }
 }
 
+fun json_pairs_go[a](xs: List[(String, a)]) -> List[(String, Json)] where a: ToJson = match xs {
+    Nil => Nil,
+    Cons(pair, rest) => {
+        let (k, v) = pair
+        Cons((k, to_json(v)), json_pairs_go(rest))
+    },
+}
+
 impl ToJson[Map[String, a]] where a: ToJson {
-    fun to_json(m: Map[String, a]) -> Json =
-        JObj(from_list(vec_to_list(vec_map(entries(m), (pair) -> { let (k, v) = pair; (k, to_json(v)) }))))
+    fun to_json(m: Map[String, a]) -> Json = {
+        let pairs: List[(String, a)] = vec_to_list(entries(m))
+        JObj(from_list(json_pairs_go(pairs)))
+    }
 }
 
 # ── FromJson trait ──────────────────���────────────────────────────

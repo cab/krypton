@@ -2,6 +2,12 @@ import core/option.{Option, Some, None}
 import core/ord.{Ord}
 import core/semigroup.{Semigroup, combine}
 import core/show.{Show}
+import core/functor.{Functor, map}
+import core/foldable.{Foldable, fold}
+import core/applicative.{Applicative, pure, apply}
+import core/monad.{Monad, flat_map}
+import core/traversable.{Traversable, traverse}
+import core/monoid.{Monoid}
 
 # core/list — List type (cons-based linked list)
 pub type List[a] = Cons(a, List[a]) | Nil deriving (Show)
@@ -11,19 +17,25 @@ pub fun length[a](xs: List[a]) -> Int = match xs {
     Cons(_, rest) => 1 + length(rest),
 }
 
-pub fun map[a, b](xs: List[a], f: (a) -> b) -> List[b] = match xs {
-    Nil => Nil,
-    Cons(h, rest) => Cons(f(h), map(rest, f)),
-}
-
 pub fun filter[a](xs: List[a], f: (a) -> Bool) -> List[a] = match xs {
     Nil => Nil,
     Cons(h, rest) => if f(h) { Cons(h, filter(rest, f)) } else { filter(rest, f) },
 }
 
-pub fun fold[a, b](xs: List[a], acc: b, f: (b, a) -> b) -> b = match xs {
-    Nil => acc,
-    Cons(h, rest) => recur(rest, f(acc, h), f),
+fun list_map_go[a, b](xs: List[a], g: (a) -> b) -> List[b] = match xs {
+    Nil => Nil,
+    Cons(h, rest) => Cons(g(h), list_map_go(rest, g)),
+}
+
+impl Functor[List] {
+    fun map[a, b](xs: List[a], g: (a) -> b) -> List[b] = list_map_go(xs, g)
+}
+
+impl Foldable[List] {
+    fun fold[a, b](xs: List[a], acc: b, g: (b, a) -> b) -> b = match xs {
+        Nil => acc,
+        Cons(h, rest) => recur(rest, g(acc, h), g),
+    }
 }
 
 impl Semigroup[List[a]] {
@@ -32,6 +44,40 @@ impl Semigroup[List[a]] {
         Cons(h, rest) => Cons(h, combine(rest, ys)),
     }
 }
+
+impl Monoid[List[a]] {
+    fun empty() -> List[a] = Nil
+}
+
+fun list_apply_go[a, b](ffs: List[(a) -> b], xs: List[a]) -> List[b] = match ffs {
+    Nil => Nil,
+    Cons(g, rest) => combine(list_map_go(xs, g), list_apply_go(rest, xs)),
+}
+
+fun list_flat_map_go[a, b](xs: List[a], g: (a) -> List[b]) -> List[b] = match xs {
+    Nil => Nil,
+    Cons(h, rest) => combine(g(h), list_flat_map_go(rest, g)),
+}
+
+impl Applicative[List] {
+    fun pure[a](x: a) -> List[a] = Cons(x, Nil)
+    fun apply[a, b](ffs: List[(a) -> b], xs: List[a]) -> List[b] = list_apply_go(ffs, xs)
+}
+
+impl Monad[List] {
+    fun flat_map[a, b](xs: List[a], g: (a) -> List[b]) -> List[b] = list_flat_map_go(xs, g)
+}
+
+# Traversable[List] intentionally not provided in this pass.
+# The body would require `apply(map(k(h), cons), traverse(rest, k))` where
+# `map` dispatches via the `g: Applicative, g: Functor` constraint on the
+# method signature rather than the enclosing `t = List` instance. The current
+# typechecker, at a call site where `List` also has a `Functor` instance
+# visible, cannot route the `map` through the constraint dict and falls back
+# to picking the concrete `Functor[List]`, corrupting the `map` return type
+# (see M18-T5 follow-up notes). Users can convert `List → Vec` with `to_vec`
+# and `traverse` on Vec when that instance is available, or materialize via
+# `fold` manually.
 
 pub fun reverse[a](xs: List[a]) -> List[a] = fold(xs, Nil, (acc, x) -> Cons(x, acc))
 

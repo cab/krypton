@@ -1,0 +1,17 @@
+# expect: output "20\n12"
+
+import core/functor.{Functor, map}
+import core/foldable.{fold}
+
+# A user-defined generic function that dispatches via the Functor constraint.
+fun double[f[_], a](fa: f[Int]) -> f[Int] where f: Functor = map(fa, x -> x * 2)
+
+fun main() = {
+    let vs: Vec[Int] = [1, 2, 3, 4];
+    let doubled_vec = double(vs);
+    println(fold(doubled_vec, 0, (acc, x) -> acc + x));
+
+    let xs = Cons(1, Cons(2, Cons(3, Nil)));
+    let doubled_list = double(xs);
+    println(fold(doubled_list, 0, (acc, x) -> acc + x));
+}

@@ -5,29 +5,27 @@ expression: ir_module.to_string()
 module actors__async_closure
 
 type Msg = Ping#0(Int, Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(e13) -> Unit
+extern java "krypton.runtime.KryptonIO" println(o14) -> Unit
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[y11]) -> Unit) -> Ref[y11]
-import core/actor/send as send(Ref[b12], b12) -> Unit
-import core/actor/receive as receive(Mailbox[k12]) -> k12
-import core/actor/actor_ref as actor_ref(Mailbox[u12]) -> Ref[u12]
-import core/actor/mailbox as mailbox() -> Mailbox[d13]
-declare actor_ref: (Mailbox[u12]) -> Ref[u12]
-declare mailbox: () -> Mailbox[d13]
-declare println: (e13) -> Unit
-declare receive: (Mailbox[k12]) -> k12
-declare send: (Ref[b12], b12) -> Unit
-declare spawn: ((Mailbox[y11]) -> Unit) -> Ref[y11]
+import core/actor/spawn as spawn((Mailbox[i13]) -> Unit) -> Ref[i13]
+import core/actor/send as send(Ref[l13], l13) -> Unit
+import core/actor/receive as receive(Mailbox[u13]) -> u13
+import core/actor/actor_ref as actor_ref(Mailbox[e14]) -> Ref[e14]
+import core/actor/mailbox as mailbox() -> Mailbox[n14]
+declare actor_ref: (Mailbox[e14]) -> Ref[e14]
+declare mailbox: () -> Mailbox[n14]
+declare println: (o14) -> Unit
+declare receive: (Mailbox[u13]) -> u13
+declare send: (Ref[l13], l13) -> Unit
+declare spawn: ((Mailbox[i13]) -> Unit) -> Ref[i13]
 
 fn echo(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

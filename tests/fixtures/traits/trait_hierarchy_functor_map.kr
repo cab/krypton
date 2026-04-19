@@ -1,0 +1,17 @@
+# expect: output "12\n60\n6"
+
+import core/functor.{map}
+import core/foldable.{fold}
+
+fun main() = {
+    let list_doubled = map(Cons(1, Cons(2, Cons(3, Nil))), x -> x * 2);
+    println(fold(list_doubled, 0, (a, x) -> a + x));
+
+    let vec_doubled: Vec[Int] = map([10, 20], x -> x * 2);
+    println(fold(vec_doubled, 0, (a, x) -> a + x));
+
+    match map(Some(5), x -> x + 1) {
+        Some(v) => println(v),
+        None => println(-1),
+    }
+}

@@ -5,12 +5,10 @@ expression: ir_module.to_string()
 module stdlib__multi_ord_constraint
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -18,7 +16,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn both_less(v0: Dict[core/ord.Ord, c11], v1: Dict[core/ord.Ord, d11], v2: c11, v3: c11, v4: d11, v5: d11) -> Bool =
+fn both_less(v0: Dict[core/ord.Ord, m12], v1: Dict[core/ord.Ord, n12], v2: m12, v3: m12, v4: n12, v5: n12) -> Bool =
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =

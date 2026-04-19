@@ -1,0 +1,22 @@
+# core/traversable — Traversable trait. Requires Functor and Foldable.
+#
+# Laws (not enforced by the compiler):
+#   naturality:   for an applicative homomorphism t,
+#                 t(traverse(ta, g)) == traverse(ta, x -> t(g(x)))
+#   identity:     traverse in the Identity applicative is the identity
+#   composition:  traversing with Compose is the composition of traversals
+import core/functor.{Functor}
+import core/foldable.{Foldable}
+import core/applicative.{Applicative}
+
+# NOTE: `g: Applicative` implies `g: Functor` by the Applicative superclass,
+# but the compiler does not auto-propagate superclass constraints (see E0312),
+# so we spell them both on the method signature.
+pub trait Traversable[t[_]] where t: Functor, t: Foldable {
+    fun traverse[g[_], a, b](ta: t[a], k: (a) -> g[b]) -> g[t[b]]
+        where g: Applicative, g: Functor
+}
+
+pub fun sequence[t[_], g[_], a](tga: t[g[a]]) -> g[t[a]]
+    where t: Traversable, g: Applicative, g: Functor =
+    traverse(tga, x -> x)

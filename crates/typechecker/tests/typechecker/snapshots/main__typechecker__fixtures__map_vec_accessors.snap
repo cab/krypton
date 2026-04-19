@@ -16,8 +16,9 @@ peek: forall a. (a) -> a
 last: forall a. (List[a]) -> Option[a]
 sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
-map: forall a b. (List[a], (a) -> b) -> List[b]
 to_list: forall a. (Vec[a]) -> List[a]
+map: forall a. (a[d], (d) -> e) -> a[e]
+fold: forall a. (a[d], e, (e, d) -> e) -> e
 println: forall a. (a) -> Unit where a: Show
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
@@ -29,14 +30,12 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 empty: forall k v. () -> Map[k, v]
-put: forall k v. (Map[k, v], k, v) -> Map[k, v] where ?250: Eq, ?250: Hash
+put: forall k v. (Map[k, v], k, v) -> Map[k, v] where ?292: Eq, ?292: Hash
 put: forall k v. (~MapBuilder[k, v], k, v) -> ~MapBuilder[k, v] where k: Eq, k: Hash
 keys: forall v k. (Map[k, v]) -> Vec[k]
 values: forall k v. (Map[k, v]) -> Vec[v]
-entries: forall k v. (Map[k, v]) -> Vec[(k, v)]
 len: forall a. (Vec[a]) -> Int
 nth: forall a. (Vec[a], Int) -> Option[a]
-fold: forall a b. (Vec[a], b, (b, a) -> b) -> b
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]
 main: () -> Unit

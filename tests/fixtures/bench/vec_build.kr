@@ -1,5 +1,5 @@
 # expect: output "4950"
-import core/vec.{fold}
+import core/foldable.{fold}
 
 fun main() -> Unit = {
     let xs = [

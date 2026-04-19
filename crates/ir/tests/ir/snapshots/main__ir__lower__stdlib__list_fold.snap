@@ -5,18 +5,15 @@ expression: ir_module.to_string()
 module stdlib__list_fold
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-declare fold: (List[t1], u1, (u1, t1) -> u1) -> u1
 declare println: (g) -> Unit
 
 fn main() -> Unit =
@@ -25,10 +22,11 @@ fn main() -> Unit =
   let v3: List[Int] = construct List::Cons#0(2, v2)
   let v4: List[Int] = construct List::Cons#0(1, v3)
   let v8: (Int, Int) -> Int = make_closure(lambda$26, [])
-  let v9: Int = call fold(v4, 0, v8)
+  let v9: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
+  let v10: Int = trait_call core/foldable.Foldable.fold(v9, v4, 0, v8)
   let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v10: Unit = call println(v0, v9)
-  v10
+  let v11: Unit = call println(v0, v10)
+  v11
 
 fn lambda$26(v5: Int, v6: Int) -> Int =
   let v7: Int = add_int(v5, v6)

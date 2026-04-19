@@ -5,18 +5,16 @@ expression: ir_module.to_string()
 module json__json_nested
 
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/list/Cons as Cons(d, List[d]) -> List[d]
+import core/list/Cons as Cons(j, List[j]) -> List[j]
 import core/json/JNum as JNum(Float) -> Json
 import core/json/JStr as JStr(String) -> Json
 import core/json/JArr as JArr(List[Json]) -> Json
@@ -26,7 +24,7 @@ import core/json/json_to_string as json_to_string(Json) -> String
 import core/json/json_object as json_object(List[(String, Json)]) -> Json
 import core/json/json_get as json_get(Json, String) -> Option[Json]
 import core/json/JBool as JBool(Bool) -> Json
-import core/option/Some as Some(c) -> Option[c]
+import core/option/Some as Some(f) -> Option[f]
 declare json_get: (Json, String) -> Option[Json]
 declare json_object: (List[(String, Json)]) -> Json
 declare json_to_string: (Json) -> String
@@ -55,12 +53,12 @@ fn main() -> Unit =
     0 (v17: Json) ->
       let v18: Option[Json] = call json_get(v17, "a")
       switch v18 {
-        0 (v19: c) ->
+        0 (v19: f) ->
           switch v19 {
             5 (v20: Map[String, Json]) ->
               let v21: Option[Json] = call json_get(v17, "list")
               switch v21 {
-                0 (v22: c) ->
+                0 (v22: f) ->
                   switch v22 {
                     4 (v23: List[Json]) ->
                       let v24: Dict[core/show.Show, String] = get_dict core/show.Show[String]

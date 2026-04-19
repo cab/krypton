@@ -5,27 +5,25 @@ expression: ir_module.to_string()
 module actors__ask_ok
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(d14) -> Unit
+extern java "krypton.runtime.KryptonIO" println(n15) -> Unit
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[y11]) -> Unit) -> Ref[y11]
-import core/actor/send as send(Ref[b12], b12) -> Unit
-import core/actor/receive as receive(Mailbox[k12]) -> k12
-import core/actor/ask as ask(Ref[o13], (Ref[c14]) -> o13, Int) -> Result[Timeout, c14]
-declare ask: (Ref[o13], (Ref[c14]) -> o13, Int) -> Result[Timeout, c14]
-declare println: (d14) -> Unit
-declare receive: (Mailbox[k12]) -> k12
-declare send: (Ref[b12], b12) -> Unit
-declare spawn: ((Mailbox[y11]) -> Unit) -> Ref[y11]
+import core/actor/spawn as spawn((Mailbox[i13]) -> Unit) -> Ref[i13]
+import core/actor/send as send(Ref[l13], l13) -> Unit
+import core/actor/receive as receive(Mailbox[u13]) -> u13
+import core/actor/ask as ask(Ref[y14], (Ref[m15]) -> y14, Int) -> Result[Timeout, m15]
+declare ask: (Ref[y14], (Ref[m15]) -> y14, Int) -> Result[Timeout, m15]
+declare println: (n15) -> Unit
+declare receive: (Mailbox[u13]) -> u13
+declare send: (Ref[l13], l13) -> Unit
+declare spawn: ((Mailbox[i13]) -> Unit) -> Ref[i13]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

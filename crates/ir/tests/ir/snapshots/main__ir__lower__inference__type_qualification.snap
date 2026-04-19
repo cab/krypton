@@ -7,12 +7,10 @@ module inference__type_qualification
 struct Pos { x: Int, y: Int }
 instance core/show.Show[Pos] { show=Show$$Pos$$show }
 import core/peek/peek as peek(d) -> d
-import core/list/last as last(List[f3]) -> Option[f3]
-import core/list/sort_by as sort_by(List[k5], (k5) -> z4) -> List[k5]
-import core/list/filter as filter(List[g1], (g1) -> Bool) -> List[g1]
-import core/list/fold as fold(List[t1], u1, (u1, t1) -> u1) -> u1
-import core/list/map as map(List[v], (v) -> x) -> List[x]
-import core/vec/to_list as to_list(Vec[q10]) -> List[q10]
+import core/list/last as last(List[i4]) -> Option[i4]
+import core/list/sort_by as sort_by(List[n6], (n6) -> c6) -> List[n6]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[a12]) -> List[a12]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -35,11 +33,11 @@ fn main() -> Unit =
   let v12: List[Int] = construct List::Cons#0(2, v11)
   let v9: List[Int] = construct List::Cons#0(1, v12)
   switch v9 {
-    0 (v13: d, v14: List[d]) ->
+    0 (v13: j, v14: List[j]) ->
       switch v14 {
-        0 (v15: d, v16: List[d]) ->
+        0 (v15: j, v16: List[j]) ->
           switch v16 {
-            0 (v17: Int, v18: List[d]) ->
+            0 (v17: Int, v18: List[j]) ->
               switch v18 {
                 1 ->
                   let v19: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]

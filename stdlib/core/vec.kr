@@ -4,6 +4,12 @@ import core/semigroup.{Semigroup, combine}
 import core/sub.{sub}
 import core/ord.{Ord, lt}
 import core/show.{Show, show}
+import core/functor.{Functor, map}
+import core/foldable.{Foldable, fold}
+import core/applicative.{Applicative, pure, apply}
+import core/monad.{Monad, flat_map}
+import core/traversable.{Traversable}
+import core/monoid.{Monoid}
 
 # core/vec — Persistent vector.
 #
@@ -127,11 +133,47 @@ pub fun last[a](xs: Vec[a]) -> Option[a] = {
 pub fun filter[a](xs: Vec[a], f: (a) -> Bool) -> Vec[a] =
     filter_go(xs, 0, staticLength(xs), builder(), f)
 
-pub fun map[a, b](xs: Vec[a], f: (a) -> b) -> Vec[b] =
-    map_go(xs, 0, staticLength(xs), builder(), f)
+impl Functor[Vec] {
+    fun map[a, b](xs: Vec[a], g: (a) -> b) -> Vec[b] =
+        map_go(xs, 0, staticLength(xs), builder(), g)
+}
 
-pub fun fold[a, b](xs: Vec[a], acc: b, f: (b, a) -> b) -> b =
-    fold_go(xs, 0, staticLength(xs), acc, f)
+impl Foldable[Vec] {
+    fun fold[a, b](xs: Vec[a], acc: b, g: (b, a) -> b) -> b =
+        fold_go(xs, 0, staticLength(xs), acc, g)
+}
+
+impl Monoid[Vec[a]] {
+    fun empty() -> Vec[a] = freeze(builder())
+}
+
+fun apply_go[a, b](ffs: Vec[(a) -> b], i: Int, n: Int, xs: Vec[a], out: ~VecBuilder[b]) -> Vec[b] =
+    if i < n {
+        let g = staticGet(ffs, i);
+        let mapped = map_go(xs, 0, staticLength(xs), builder(), g);
+        recur(ffs, i + 1, n, xs, copy_go(mapped, 0, staticLength(mapped), out))
+    } else {
+        freeze(out)
+    }
+
+fun flat_map_go[a, b](xs: Vec[a], i: Int, n: Int, g: (a) -> Vec[b], out: ~VecBuilder[b]) -> Vec[b] =
+    if i < n {
+        let chunk = g(staticGet(xs, i));
+        recur(xs, i + 1, n, g, copy_go(chunk, 0, staticLength(chunk), out))
+    } else {
+        freeze(out)
+    }
+
+impl Applicative[Vec] {
+    fun pure[a](x: a) -> Vec[a] = freeze(push(builder(), x))
+    fun apply[a, b](ffs: Vec[(a) -> b], xs: Vec[a]) -> Vec[b] =
+        apply_go(ffs, 0, staticLength(ffs), xs, builder())
+}
+
+impl Monad[Vec] {
+    fun flat_map[a, b](xs: Vec[a], g: (a) -> Vec[b]) -> Vec[b] =
+        flat_map_go(xs, 0, staticLength(xs), g, builder())
+}
 
 pub fun sort_by[a, b](xs: Vec[a], key: (a) -> b) -> Vec[a] where b: Ord =
     list_to_vec_go(list_sort_by(to_list(xs), key), builder())

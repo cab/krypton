@@ -1,0 +1,19 @@
+# expect: output "5\n7"
+
+import core/map.{Map, builder, put, freeze}
+import core/functor.{map}
+import core/foldable.{fold}
+
+fun build_map() -> Map[String, Int] = {
+    let b = builder();
+    let b1 = put(b, "a", 1);
+    let b2 = put(b1, "b", 2);
+    freeze(b2)
+}
+
+fun main() = {
+    let m = build_map();
+    let bumped: Map[String, Int] = map(m, v -> v + 1);
+    println(fold(bumped, 0, (acc, x) -> acc + x));
+    println(fold(bumped, 0, (acc, x) -> acc + x + 1));
+}

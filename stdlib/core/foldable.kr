@@ -1,0 +1,8 @@
+# core/foldable — Foldable trait for types of kind (* -> *).
+#
+# Law:
+#   fold(fa, acc, g) folds left-to-right over the structure,
+#   applying g to the accumulator and each element in turn.
+pub trait Foldable[f[_]] {
+    fun fold[a, b](fa: f[a], acc: b, g: (b, a) -> b) -> b
+}

@@ -1,2 +1,39 @@
 # core/result — Result type for fallible operations
+import core/functor.{Functor}
+import core/foldable.{Foldable}
+import core/applicative.{Applicative}
+import core/monad.{Monad}
+
 pub type Result[e, a] = Ok(a) | Err(e)
+
+impl[e] Functor[Result[e, _]] {
+    fun map[a, b](r: Result[e, a], g: (a) -> b) -> Result[e, b] = match r {
+        Ok(x) => Ok(g(x)),
+        Err(err) => Err(err),
+    }
+}
+
+impl[e] Foldable[Result[e, _]] {
+    fun fold[a, b](r: Result[e, a], acc: b, g: (b, a) -> b) -> b = match r {
+        Ok(x) => g(acc, x),
+        Err(_) => acc,
+    }
+}
+
+impl[e] Applicative[Result[e, _]] {
+    fun pure[a](x: a) -> Result[e, a] = Ok(x)
+    fun apply[a, b](fr: Result[e, (a) -> b], r: Result[e, a]) -> Result[e, b] = match fr {
+        Ok(g) => match r {
+            Ok(x) => Ok(g(x)),
+            Err(err) => Err(err),
+        },
+        Err(err) => Err(err),
+    }
+}
+
+impl[e] Monad[Result[e, _]] {
+    fun flat_map[a, b](r: Result[e, a], g: (a) -> Result[e, b]) -> Result[e, b] = match r {
+        Ok(x) => g(x),
+        Err(err) => Err(err),
+    }
+}
