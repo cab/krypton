@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 
 use krypton_parser::ast::{ExternTarget, Span, Visibility};
@@ -120,10 +120,10 @@ pub struct ModuleInterface {
     pub exported_traits: Vec<TraitSummary>,
     pub exported_instances: Vec<InstanceSummary>,
     pub extern_types: Vec<ExternTypeSummary>,
-    pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
-    pub type_visibility: HashMap<String, Visibility>,
+    pub exported_fn_qualifiers: FxHashMap<String, Vec<(ParamQualifier, String)>>,
+    pub type_visibility: FxHashMap<String, Visibility>,
     /// All top-level names that exist but aren't exported — enables "exists but private" diagnostics.
-    pub private_names: HashSet<String>,
+    pub private_names: FxHashSet<String>,
 }
 
 /// Summary of an exported function.
@@ -225,7 +225,7 @@ pub struct InstanceSummary {
     pub target_type_name: String,
     /// Type arguments. Length 1 for single-parameter traits.
     pub target_types: Vec<Type>,
-    pub type_var_ids: HashMap<String, TypeVarId>,
+    pub type_var_ids: FxHashMap<String, TypeVarId>,
     pub constraints: Vec<crate::typed_ast::ResolvedConstraint>,
     pub method_summaries: Vec<InstanceMethodSummary>,
     pub is_intrinsic: bool,
@@ -254,7 +254,7 @@ pub struct ExternTypeSummary {
 /// Collect direct dependency module paths from the parsed module's import declarations.
 pub fn collect_direct_deps(module: &krypton_parser::ast::Module) -> Vec<ModulePath> {
     let mut deps = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = rustc_hash::FxHashSet::default();
     for decl in &module.decls {
         if let krypton_parser::ast::Decl::Import { path, .. } = decl {
             if seen.insert(path.clone()) {
@@ -279,7 +279,7 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
     let direct_deps = direct_dep_paths.iter().map(ModulePath::new).collect();
 
     // Build sets of constructor names for classifying exported fns
-    let mut constructor_names: HashMap<String, String> = HashMap::new(); // ctor_name -> parent_type
+    let mut constructor_names: FxHashMap<String, String> = FxHashMap::default(); // ctor_name -> parent_type
     for sd in &typed.struct_decls {
         if sd.qualified_name.module_path == typed.module_path {
             constructor_names.insert(sd.name.clone(), sd.name.clone());
@@ -322,7 +322,7 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
 
 fn extract_exported_fns(
     exported: &[ExportedFn],
-    constructor_names: &HashMap<String, String>,
+    constructor_names: &FxHashMap<String, String>,
 ) -> Vec<ExportedFnSummary> {
     let exported_symbols = mangle_overload_symbols(exported);
     exported
@@ -356,7 +356,7 @@ fn extract_exported_fns(
 /// type fingerprint. Delegates to `overload::mangle_group` so that AST-side
 /// mangling cannot diverge from this interface-side mangling.
 fn mangle_overload_symbols(exported: &[ExportedFn]) -> Vec<String> {
-    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut groups: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
     for (i, ef) in exported.iter().enumerate() {
         groups.entry(ef.name.as_str()).or_default().push(i);
     }
@@ -395,7 +395,7 @@ pub fn mangle_typed_fn_decls(
         params_per_decl.len(),
         "ICE: mangle_typed_fn_decls: decls and params_per_decl length mismatch",
     );
-    let mut groups: HashMap<&str, Vec<usize>> = HashMap::new();
+    let mut groups: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
     for (i, d) in decls.iter().enumerate() {
         groups.entry(d.name.as_str()).or_default().push(i);
     }
@@ -469,7 +469,7 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
 fn extract_exported_types(typed: &TypedModule) -> Vec<TypeSummary> {
     // Extern type names — these are opaque from the consumer's perspective
     // (you can name the type, but you can't construct it).
-    let extern_type_names: HashSet<&str> = typed
+    let extern_type_names: FxHashSet<&str> = typed
         .extern_types
         .iter()
         .map(|et| et.krypton_name.as_str())
@@ -625,11 +625,11 @@ fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
         .collect()
 }
 
-fn extract_private_names(typed: &TypedModule) -> HashSet<String> {
-    let mut private = HashSet::new();
+fn extract_private_names(typed: &TypedModule) -> FxHashSet<String> {
+    let mut private = FxHashSet::default();
 
     // Exported/reexported fn names
-    let exported_fn_names: HashSet<&str> = typed
+    let exported_fn_names: FxHashSet<&str> = typed
         .exported_fn_types
         .iter()
         .map(|f| f.name.as_str())

@@ -4,7 +4,8 @@ pub mod lower;
 pub mod pass;
 pub mod pretty;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
+use rustc_hash::FxHashMap;
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
 use krypton_parser::ast::Span;
@@ -90,8 +91,8 @@ impl Module {
         self.fn_identities.get(&id).map(|fi| fi.name())
     }
 
-    /// Reconstruct the old `fn_names: HashMap<FnId, String>` map.
-    pub fn fn_names(&self) -> HashMap<FnId, String> {
+    /// Reconstruct the old `fn_names: FxHashMap<FnId, String>` map.
+    pub fn fn_names(&self) -> FxHashMap<FnId, String> {
         self.fn_identities
             .iter()
             .map(|(&id, fi)| (id, fi.name().to_string()))
@@ -213,8 +214,8 @@ pub fn head_type_name(ty: &Type) -> std::string::String {
 /// Includes all type arguments, producing unique names for concrete types like
 /// `Vec$Int` (vs `Vec$String`). Type variables become `$Var0`, `$Var1`, etc.
 pub fn canonical_type_name(ty: &Type) -> std::string::String {
-    use std::collections::HashMap;
-    fn inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> std::string::String {
+    use rustc_hash::FxHashMap;
+    fn inner(ty: &Type, var_map: &mut FxHashMap<TypeVarId, usize>) -> std::string::String {
         match ty {
             Type::Own(inner_ty) => inner(inner_ty, var_map),
             Type::Named(name, args) if args.is_empty() => name.clone(),
@@ -250,7 +251,7 @@ pub fn canonical_type_name(ty: &Type) -> std::string::String {
             Type::Dict { .. } => "Dict".to_string(),
         }
     }
-    let mut var_map = HashMap::new();
+    let mut var_map = FxHashMap::default();
     inner(ty, &mut var_map)
 }
 
@@ -298,8 +299,8 @@ pub fn decompose_fn_for_app(
 /// Canonical name for a type, used for deduplication of parameterized instances.
 /// Type variables are normalized to positional names ($Var0, $Var1, ...).
 pub fn type_to_canonical_name(ty: &Type) -> String {
-    use std::collections::HashMap;
-    fn inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> String {
+    use rustc_hash::FxHashMap;
+    fn inner(ty: &Type, var_map: &mut FxHashMap<TypeVarId, usize>) -> String {
         match ty {
             Type::Int => "Int".to_string(),
             Type::Float => "Float".to_string(),
@@ -343,7 +344,7 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
             Type::FnHole => "$FnHole".to_string(),
         }
     }
-    let mut var_map = HashMap::new();
+    let mut var_map = FxHashMap::default();
     inner(ty, &mut var_map)
 }
 
@@ -372,7 +373,7 @@ pub struct BindConflict {
 pub fn bind_type_vars(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> Result<bool, BindConflict> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
@@ -495,7 +496,7 @@ pub fn bind_type_vars(
 fn bind_instance_target(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
@@ -521,7 +522,7 @@ fn bind_instance_target(
 pub fn bind_instance_targets(
     patterns: &[Type],
     dispatch_tys: &[Type],
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     if patterns.len() != dispatch_tys.len() {
         return false;
@@ -644,7 +645,7 @@ pub struct Module {
     pub sum_types: Vec<SumTypeDef>,
     pub functions: Vec<FnDef>,
     /// FnId → identity for all known functions (local + extern + imported + intrinsic).
-    pub fn_identities: HashMap<FnId, FnIdentity>,
+    pub fn_identities: FxHashMap<FnId, FnIdentity>,
     /// Extern FFI function bindings (Java/JS).
     pub extern_fns: Vec<ExternFnDef>,
     /// Extern type registrations (opaque types backed by host types).
@@ -664,7 +665,7 @@ pub struct Module {
     /// FnId → dict parameter requirements (trait_name, type_var_id).
     /// Populated from typechecker constraint requirements during lowering.
     /// Keyed by FnId (not name) so overload siblings resolve independently.
-    pub fn_dict_requirements: HashMap<FnId, Vec<(TraitName, Vec<TypeVarId>)>>,
+    pub fn_dict_requirements: FxHashMap<FnId, Vec<(TraitName, Vec<TypeVarId>)>>,
     /// FnId → disposables that must be cleaned up at function exit.
     /// Target-neutral metadata: each backend decides enforcement mechanism
     /// (JVM: exception table finally handlers, JS: try/finally, etc.).
@@ -672,7 +673,7 @@ pub struct Module {
     ///
     /// Future: consider promoting to explicit IR unwind semantics (invoke/landingpad)
     /// rather than side metadata.
-    pub fn_exit_closes: HashMap<FnId, Vec<FinallyClose>>,
+    pub fn_exit_closes: FxHashMap<FnId, Vec<FinallyClose>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -861,7 +862,7 @@ pub struct ImportedInstanceRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashSet;
+    use rustc_hash::FxHashSet;
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
         Expr::new((0, 0), ty, kind)
@@ -876,7 +877,7 @@ mod tests {
         let a = VarId(0);
         let b = a; // Copy
         assert_eq!(a, b); // Eq
-        let mut set = HashSet::new();
+        let mut set = FxHashSet::default();
         set.insert(a); // Hash
         assert!(set.contains(&b));
     }
@@ -886,7 +887,7 @@ mod tests {
         let a = FnId(0);
         let b = a;
         assert_eq!(a, b);
-        let mut set = HashSet::new();
+        let mut set = FxHashSet::default();
         set.insert(a);
         assert!(set.contains(&b));
     }
@@ -1030,7 +1031,7 @@ mod tests {
     fn module_structure() {
         let _module = Module {
             name: "test".into(),
-            fn_identities: HashMap::new(),
+            fn_identities: FxHashMap::default(),
             structs: vec![StructDef {
                 name: "Point".into(),
                 type_params: vec![],
@@ -1068,8 +1069,8 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: ModulePath::new("test"),
-            fn_dict_requirements: HashMap::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_dict_requirements: FxHashMap::default(),
+            fn_exit_closes: FxHashMap::default(),
         };
     }
 
@@ -1077,7 +1078,7 @@ mod tests {
     fn bind_type_vars_reports_conflict() {
         let mut gen = krypton_typechecker::types::TypeVarGen::new();
         let a = gen.fresh();
-        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         bindings.insert(a, Type::Int);
         let result = bind_type_vars(&Type::Var(a), &Type::String, &mut bindings);
         assert_eq!(
@@ -1092,7 +1093,7 @@ mod tests {
 
     #[test]
     fn bind_type_vars_structural_mismatch_is_ok_false() {
-        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         let result = bind_type_vars(&Type::Int, &Type::String, &mut bindings);
         assert_eq!(result, Ok(false));
         assert!(bindings.is_empty());
@@ -1102,7 +1103,7 @@ mod tests {
     fn bind_type_vars_nested_conflict_propagates() {
         let mut gen = krypton_typechecker::types::TypeVarGen::new();
         let a = gen.fresh();
-        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         let pattern = Type::Named("Pair".to_string(), vec![Type::Var(a), Type::Var(a)]);
         let actual = Type::Named("Pair".to_string(), vec![Type::Int, Type::String]);
         let result = bind_type_vars(&pattern, &actual, &mut bindings);
@@ -1121,7 +1122,7 @@ mod tests {
         let mut gen = krypton_typechecker::types::TypeVarGen::new();
         let a = gen.fresh();
         let pinned = gen.fresh();
-        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         bindings.insert(pinned, Type::Bool);
         let snapshot = bindings.clone();
         let pattern = Type::Named("Pair".to_string(), vec![Type::Var(a), Type::Var(a)]);

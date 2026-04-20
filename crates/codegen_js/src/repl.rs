@@ -99,7 +99,9 @@ pub fn compile_repl_js(
 mod tests {
     use super::*;
 
-    use std::collections::{BTreeSet, HashSet};
+    use std::collections::BTreeSet;
+
+    use rustc_hash::FxHashMap;
 
     use krypton_ir::*;
     use krypton_typechecker::link_context::LinkContext;
@@ -109,7 +111,7 @@ mod tests {
         Module {
             name: "repl_1".into(),
             fn_identities: {
-                let mut m = HashMap::new();
+                let mut m = FxHashMap::default();
                 m.insert(
                     FnId(0),
                     FnIdentity::Local {
@@ -141,8 +143,8 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: krypton_ir::ModulePath::new("repl_1"),
-            fn_dict_requirements: HashMap::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_dict_requirements: Default::default(),
+            fn_exit_closes: Default::default(),
         }
     }
 
@@ -157,9 +159,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         LinkContext::build(vec![iface])
     }

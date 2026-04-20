@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Expr, FnDecl};
 
 /// Collect references to top-level names in an expression.
-fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>) {
+fn collect_refs(expr: &Expr, names: &FxHashSet<String>, refs: &mut FxHashSet<String>) {
     match expr {
         Expr::Var { name, .. } => {
             if names.contains(name) {
@@ -112,8 +112,8 @@ fn collect_refs(expr: &Expr, names: &HashSet<String>, refs: &mut HashSet<String>
 /// Build an adjacency list for top-level function declarations.
 /// `adj[i]` contains the indices of functions that function `i` references.
 pub fn build_dependency_graph(fn_decls: &[&FnDecl]) -> Vec<Vec<usize>> {
-    let names: HashSet<String> = fn_decls.iter().map(|d| d.name.clone()).collect();
-    let mut name_to_indices: HashMap<&str, Vec<usize>> = HashMap::new();
+    let names: FxHashSet<String> = fn_decls.iter().map(|d| d.name.clone()).collect();
+    let mut name_to_indices: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
     for (i, d) in fn_decls.iter().enumerate() {
         name_to_indices.entry(d.name.as_str()).or_default().push(i);
     }
@@ -122,7 +122,7 @@ pub fn build_dependency_graph(fn_decls: &[&FnDecl]) -> Vec<Vec<usize>> {
         .iter()
         .enumerate()
         .map(|(i, decl)| {
-            let mut refs = HashSet::new();
+            let mut refs = FxHashSet::default();
             collect_refs(&decl.body, &names, &mut refs);
             let mut edges: Vec<usize> = refs
                 .iter()

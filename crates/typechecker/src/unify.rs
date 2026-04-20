@@ -17,7 +17,7 @@
 //!   list elements). Strips Own from either side to find the common type.
 //!   join(~T, ~T) preserves Own; join(~T, T) strips it.
 
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 pub use crate::type_error::{
     BareResourceContext, BorrowMisuseContext, SecondaryLabel, SpannedTypeError, TypeError,
@@ -36,7 +36,7 @@ fn is_empty_sum_type(ty: &Type, registry: Option<&TypeRegistry>) -> bool {
 
 /// Resolve type variable chains through the substitution.
 pub(crate) fn walk(ty: &Type, subst: &Substitution) -> Type {
-    let mut visiting = HashSet::new();
+    let mut visiting = FxHashSet::default();
     let mut chain = Vec::new();
     walk_inner(ty, subst, &mut visiting, &mut chain)
 }
@@ -44,7 +44,7 @@ pub(crate) fn walk(ty: &Type, subst: &Substitution) -> Type {
 fn walk_inner(
     ty: &Type,
     subst: &Substitution,
-    visiting: &mut HashSet<TypeVarId>,
+    visiting: &mut FxHashSet<TypeVarId>,
     chain: &mut Vec<TypeVarId>,
 ) -> Type {
     match ty {

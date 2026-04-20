@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Span, TypeConstraint, TypeDecl, TypeDeclKind, TypeParam};
 
@@ -118,7 +118,7 @@ pub(crate) struct QualifiedExport {
 #[derive(Clone)]
 pub(crate) struct QualifiedModuleBinding {
     pub(crate) module_path: String,
-    pub(crate) exports: HashMap<String, QualifiedExport>,
+    pub(crate) exports: FxHashMap<String, QualifiedExport>,
 }
 
 pub(crate) fn imported_binding_ref(
@@ -255,9 +255,9 @@ pub(crate) fn qualifier_suggested_usage(
 pub(crate) fn build_type_param_maps(
     params: &[TypeParam],
     gen: &mut TypeVarGen,
-) -> (HashMap<String, TypeVarId>, HashMap<String, usize>) {
-    let mut ids = HashMap::new();
-    let mut arities = HashMap::new();
+) -> (FxHashMap<String, TypeVarId>, FxHashMap<String, usize>) {
+    let mut ids = FxHashMap::default();
+    let mut arities = FxHashMap::default();
     for param in params {
         ids.insert(param.name.clone(), gen.fresh());
         arities.insert(param.name.clone(), param.arity);
@@ -291,24 +291,27 @@ pub(crate) fn defer_own(ty: &Type, subst: &mut Substitution) -> Type {
 }
 
 /// Collect free type variables in a type.
-pub(crate) fn free_vars(ty: &Type) -> HashSet<TypeVarId> {
-    let mut out = HashSet::new();
+pub(crate) fn free_vars(ty: &Type) -> FxHashSet<TypeVarId> {
+    let mut out = FxHashSet::default();
     free_vars_into(ty, &mut out);
     out
 }
 
 /// Collect free type variables in left-to-right encounter order, deduplicated.
 /// Use this (not `free_vars`) whenever iteration order controls fresh TypeVarId
-/// allocation: HashSet iteration depends on the RandomState seed and would make
-/// compilation nondeterministic across processes.
+/// allocation or any other user-visible sequencing. `FxHashSet` iteration is
+/// deterministic given a fixed insertion sequence (unlike std's `HashSet`,
+/// which was seeded per-process from ASLR), but it is still an arbitrary
+/// artifact of `FxHash(key) % capacity` — *not* source order. When the
+/// intended contract is source-encounter order, use this walk.
 pub(crate) fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     free_vars_ordered_into(ty, &mut out, &mut seen);
     out
 }
 
-fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut FxHashSet<TypeVarId>) {
     match ty {
         Type::Var(id) => {
             if seen.insert(*id) {
@@ -347,7 +350,7 @@ fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSe
 pub(crate) fn match_type_with_bindings(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
@@ -388,7 +391,7 @@ pub(crate) fn match_type_with_bindings(
 }
 
 /// Recursive accumulator for `free_vars`.
-pub(crate) fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
+pub(crate) fn free_vars_into(ty: &Type, out: &mut FxHashSet<TypeVarId>) {
     match ty {
         Type::Var(id) => {
             out.insert(*id);
@@ -423,8 +426,8 @@ pub(crate) fn free_vars_into(ty: &Type, out: &mut HashSet<TypeVarId>) {
 }
 
 /// Collect free type variables across all bindings in the environment.
-pub(crate) fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> HashSet<TypeVarId> {
-    let mut s = HashSet::new();
+pub(crate) fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> FxHashSet<TypeVarId> {
+    let mut s = FxHashSet::default();
     env.for_each_scheme(|scheme| {
         let applied = subst.apply_scheme(scheme);
         let fv = free_vars(&applied.ty);
@@ -438,7 +441,7 @@ pub(crate) fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> HashSet<Type
     s
 }
 
-pub(crate) fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut HashSet<String>) {
+pub(crate) fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut FxHashSet<String>) {
     match texpr {
         krypton_parser::ast::TypeExpr::Var { name, .. } => {
             out.insert(name.clone());
@@ -562,8 +565,8 @@ pub(crate) fn wildcard_span(texpr: &krypton_parser::ast::TypeExpr) -> Option<kry
 /// fresh anonymous type variables for each `_`.
 pub(crate) fn resolve_impl_target(
     texpr: &krypton_parser::ast::TypeExpr,
-    type_param_map: &HashMap<String, TypeVarId>,
-    type_param_arity: &HashMap<String, usize>,
+    type_param_map: &FxHashMap<String, TypeVarId>,
+    type_param_arity: &FxHashMap<String, usize>,
     registry: &type_registry::TypeRegistry,
     gen: &mut TypeVarGen,
 ) -> Result<Type, TypeError> {
@@ -664,8 +667,8 @@ pub(crate) fn resolve_impl_target(
 /// Strip type arguments from a Named type that are anonymous (not in type_var_ids).
 /// Used for HKT partial application: Named("Result", [Var(e), Var(anon)]) becomes
 /// Named("Result", [Var(e)]) when anon is not a tracked type var.
-pub(crate) fn strip_anon_type_args(ty: &Type, type_var_ids: &HashMap<String, TypeVarId>) -> Type {
-    let known_var_ids: std::collections::HashSet<TypeVarId> =
+pub(crate) fn strip_anon_type_args(ty: &Type, type_var_ids: &FxHashMap<String, TypeVarId>) -> Type {
+    let known_var_ids: rustc_hash::FxHashSet<TypeVarId> =
         type_var_ids.values().copied().collect();
     match ty {
         Type::Named(name, args) => {
@@ -721,7 +724,7 @@ pub(crate) fn generalize(ty: &Type, env: &TypeEnv, subst: &Substitution) -> Type
         vars,
         constraints: Vec::new(),
         ty,
-        var_names: HashMap::new(),
+        var_names: FxHashMap::default(),
     }
 }
 
@@ -741,7 +744,7 @@ pub(crate) fn spanned(error: TypeError, span: krypton_parser::ast::Span) -> Span
 pub(crate) fn spanned_with_names(
     error: TypeError,
     span: krypton_parser::ast::Span,
-    type_param_map: &HashMap<String, TypeVarId>,
+    type_param_map: &FxHashMap<String, TypeVarId>,
 ) -> SpannedTypeError {
     let var_names: Vec<(TypeVarId, String)> = type_param_map
         .iter()
@@ -793,7 +796,7 @@ pub(crate) fn no_instance_error(
     trait_name: &TraitName,
     tys: &[Type],
     span: Span,
-    var_names: &HashMap<TypeVarId, String>,
+    var_names: &FxHashMap<TypeVarId, String>,
     cause: crate::type_error::NoInstanceCause,
     call_site_ty: Option<Type>,
 ) -> SpannedTypeError {
@@ -823,7 +826,7 @@ pub(crate) fn no_instance_error(
 
 /// Recursively rewrite type variables according to a remap table. Variables
 /// not in the table are left unchanged.
-pub(crate) fn remap_type_vars(ty: &Type, remap: &HashMap<TypeVarId, TypeVarId>) -> Type {
+pub(crate) fn remap_type_vars(ty: &Type, remap: &FxHashMap<TypeVarId, TypeVarId>) -> Type {
     match ty {
         Type::Var(id) => Type::Var(remap.get(id).copied().unwrap_or(*id)),
         Type::Fn(params, ret) => Type::Fn(

@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::module_interface::{
     CanonicalRef, ExportedFnSummary, ExternTypeSummary, InstanceSummary, ModuleInterface,
@@ -16,14 +17,14 @@ use krypton_parser::ast::Visibility;
 pub struct ModuleId(u32);
 
 struct ModuleIdInterner {
-    forward: HashMap<ModulePath, ModuleId>,
+    forward: FxHashMap<ModulePath, ModuleId>,
     reverse: Vec<ModulePath>,
 }
 
 impl ModuleIdInterner {
     fn new() -> Self {
         Self {
-            forward: HashMap::new(),
+            forward: FxHashMap::default(),
             reverse: Vec::new(),
         }
     }
@@ -78,15 +79,15 @@ enum TypeEntry {
 
 pub struct LinkContext {
     interner: ModuleIdInterner,
-    interfaces: HashMap<ModuleId, ModuleInterface>,
+    interfaces: FxHashMap<ModuleId, ModuleInterface>,
 
     // Indexes
-    fn_index: HashMap<(ModuleId, String), FnEntry>,
-    type_index: HashMap<(ModuleId, String), TypeEntry>,
-    trait_index: HashMap<(ModuleId, String), ModuleId>,
-    instance_index: HashMap<TraitName, Vec<(ModuleId, usize)>>,
-    extern_type_index: HashMap<String, (ModuleId, usize)>,
-    transitive_deps: HashMap<ModuleId, HashSet<ModuleId>>,
+    fn_index: FxHashMap<(ModuleId, String), FnEntry>,
+    type_index: FxHashMap<(ModuleId, String), TypeEntry>,
+    trait_index: FxHashMap<(ModuleId, String), ModuleId>,
+    instance_index: FxHashMap<TraitName, Vec<(ModuleId, usize)>>,
+    extern_type_index: FxHashMap<String, (ModuleId, usize)>,
+    transitive_deps: FxHashMap<ModuleId, FxHashSet<ModuleId>>,
 }
 
 impl LinkContext {
@@ -103,14 +104,14 @@ impl LinkContext {
         }
 
         // Step 2: Store interfaces by ModuleId
-        let mut iface_map = HashMap::new();
+        let mut iface_map = FxHashMap::default();
         for iface in interfaces {
             let id = interner.lookup(&iface.module_path).unwrap();
             iface_map.insert(id, iface);
         }
 
         // Step 3: Build fn_index
-        let mut fn_index = HashMap::new();
+        let mut fn_index = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, f) in iface.exported_fns.iter().enumerate() {
                 fn_index.insert((mod_id, f.name.clone()), FnEntry::Direct { index: i });
@@ -129,7 +130,7 @@ impl LinkContext {
         }
 
         // Step 4: Build type_index
-        let mut type_index = HashMap::new();
+        let mut type_index = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, t) in iface.exported_types.iter().enumerate() {
                 type_index.insert((mod_id, t.name.clone()), TypeEntry::Direct { index: i });
@@ -147,7 +148,7 @@ impl LinkContext {
         }
 
         // Step 5: Build trait_index
-        let mut trait_index = HashMap::new();
+        let mut trait_index = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for t in &iface.exported_traits {
                 trait_index.insert((mod_id, t.name.clone()), mod_id);
@@ -155,7 +156,7 @@ impl LinkContext {
         }
 
         // Step 6: Build instance_index grouped by TraitName
-        let mut instance_index: HashMap<TraitName, Vec<(ModuleId, usize)>> = HashMap::new();
+        let mut instance_index: FxHashMap<TraitName, Vec<(ModuleId, usize)>> = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, inst) in iface.exported_instances.iter().enumerate() {
                 instance_index
@@ -166,7 +167,7 @@ impl LinkContext {
         }
 
         // Step 7: Build extern_type_index
-        let mut extern_type_index = HashMap::new();
+        let mut extern_type_index = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, et) in iface.extern_types.iter().enumerate() {
                 extern_type_index
@@ -176,9 +177,9 @@ impl LinkContext {
         }
 
         // Step 9: Compute transitive_deps via BFS
-        let mut transitive_deps = HashMap::new();
+        let mut transitive_deps = FxHashMap::default();
         // Build direct_deps map (ModuleId -> Vec<ModuleId>)
-        let mut direct_dep_map: HashMap<ModuleId, Vec<ModuleId>> = HashMap::new();
+        let mut direct_dep_map: FxHashMap<ModuleId, Vec<ModuleId>> = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             let deps: Vec<ModuleId> = iface
                 .direct_deps
@@ -189,7 +190,7 @@ impl LinkContext {
         }
 
         for &mod_id in iface_map.keys() {
-            let mut reachable = HashSet::new();
+            let mut reachable = FxHashSet::default();
             reachable.insert(mod_id);
             let mut queue = VecDeque::new();
             if let Some(deps) = direct_dep_map.get(&mod_id) {
@@ -374,7 +375,7 @@ impl LinkContext {
 pub struct ModuleLinkView<'a> {
     ctx: &'a LinkContext,
     module_id: ModuleId,
-    reachable: &'a HashSet<ModuleId>,
+    reachable: &'a FxHashSet<ModuleId>,
 }
 
 impl<'a> ModuleLinkView<'a> {
@@ -494,9 +495,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: FxHashMap::default(),
+            type_visibility: FxHashMap::default(),
+            private_names: FxHashSet::default(),
         }
     }
 
@@ -507,7 +508,7 @@ mod tests {
             exported_symbol: name.to_string(),
             scheme: TypeScheme {
                 vars: vec![],
-                var_names: HashMap::new(),
+                var_names: FxHashMap::default(),
                 constraints: vec![],
                 ty: Type::Int,
             },
@@ -559,7 +560,7 @@ mod tests {
             trait_name: TraitName::new(trait_module.to_string(), trait_name.to_string()),
             target_type_name: target.to_string(),
             target_types: vec![Type::Named(target.to_string(), vec![])],
-            type_var_ids: HashMap::new(),
+            type_var_ids: FxHashMap::default(),
             constraints: vec![],
             method_summaries: vec![],
             is_intrinsic: false,
@@ -726,7 +727,7 @@ mod tests {
             },
             scheme: TypeScheme {
                 vars: vec![],
-                var_names: HashMap::new(),
+                var_names: FxHashMap::default(),
                 constraints: vec![],
                 ty: Type::Int,
             },

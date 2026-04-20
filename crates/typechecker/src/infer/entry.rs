@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Expr, Pattern, Span};
 
@@ -16,10 +16,10 @@ pub fn infer_expr(
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
 ) -> Result<Type, SpannedTypeError> {
-    let empty_tpm = HashMap::new();
-    let empty_tpa = HashMap::new();
-    let empty_qm = HashMap::new();
-    let empty_imported_types = HashMap::new();
+    let empty_tpm = FxHashMap::default();
+    let empty_tpa = FxHashMap::default();
+    let empty_qm = FxHashMap::default();
+    let empty_imported_types = FxHashMap::default();
     let mut deferred = Vec::new();
     let mut deferred_id_counter: u32 = 0;
     let mut ctx = InferenceContext {
@@ -231,7 +231,7 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
 
 pub(crate) fn first_own_capture(
     body: &Expr,
-    params: &HashSet<&str>,
+    params: &FxHashSet<&str>,
     env: &TypeEnv,
     subst: &Substitution,
     typed_body: &TypedExpr,

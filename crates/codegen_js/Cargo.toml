@@ -8,6 +8,7 @@ krypton-diagnostics = { path = "../diagnostics" }
 krypton-ir = { path = "../ir" }
 krypton-parser = { path = "../parser" }
 krypton-typechecker = { path = "../typechecker" }
+rustc-hash.workspace = true
 
 [dev-dependencies]
 krypton-test-harness = { path = "../test-harness" }

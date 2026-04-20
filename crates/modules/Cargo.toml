@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 krypton-parser = { path = "../parser" }
 include_dir = "0.7"
+rustc-hash.workspace = true

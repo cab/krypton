@@ -1,6 +1,6 @@
 //! Function call resolution, dict/trait dispatch, and call emission.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_ir::{bind_instance_targets, TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
@@ -39,7 +39,7 @@ impl<'link> Compiler<'link> {
         instance_info: &ParameterizedInstanceInfo,
         concrete_tys: &[Type],
     ) -> Option<Vec<Type>> {
-        let mut bindings = HashMap::new();
+        let mut bindings = FxHashMap::default();
         if bind_instance_targets(&instance_info.target_types, concrete_tys, &mut bindings) {
             requirement
                 .type_vars
@@ -137,7 +137,7 @@ impl<'link> Compiler<'link> {
             .get(trait_name)
             .and_then(|instances| {
                 instances.iter().find(|inst| {
-                    let mut bindings = HashMap::new();
+                    let mut bindings = FxHashMap::default();
                     bind_instance_targets(&inst.target_types, tys, &mut bindings)
                 })
             })

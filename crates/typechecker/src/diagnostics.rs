@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 use krypton_diagnostics::{sort_diagnostics, Diagnostic, DiagnosticLabel, Severity, SourceEntry};
 
@@ -33,7 +33,7 @@ pub fn lower_infer_errors(
 ) -> (Vec<Diagnostic>, Vec<SourceEntry>) {
     let mut all_diags = Vec::new();
     let mut all_sources = Vec::new();
-    let mut seen_sources: HashSet<String> = HashSet::new();
+    let mut seen_sources: FxHashSet<String> = FxHashSet::default();
 
     for err in errors {
         let (diags, sources) = lower_infer_error(filename, source, err);

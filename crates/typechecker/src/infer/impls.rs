@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Expr, Module, Span, TypeConstraint};
 
@@ -53,7 +53,7 @@ pub(super) fn register_impl_instances(
     module_path: &str,
 ) -> Result<(), SpannedTypeError> {
     // Collect locally-defined trait names for orphan check
-    let local_trait_names: HashSet<String> = module
+    let local_trait_names: FxHashSet<String> = module
         .decls
         .iter()
         .filter_map(|d| match d {
@@ -87,13 +87,13 @@ pub(super) fn register_impl_instances(
                 wildcard_count += validate_impl_wildcards(arg).map_err(|e| spanned(e, *span))?;
             }
 
-            let type_param_map: HashMap<String, TypeVarId> = if !type_params.is_empty() {
+            let type_param_map: FxHashMap<String, TypeVarId> = if !type_params.is_empty() {
                 type_params
                     .iter()
                     .map(|tp| (tp.name.clone(), state.gen.fresh()))
                     .collect()
             } else {
-                let mut impl_type_param_names = HashSet::new();
+                let mut impl_type_param_names = FxHashSet::default();
                 for arg in type_args {
                     collect_type_expr_var_names(arg, &mut impl_type_param_names);
                 }
@@ -110,7 +110,7 @@ pub(super) fn register_impl_instances(
                     .map(|name| (name, state.gen.fresh()))
                     .collect()
             };
-            let type_param_arity: HashMap<String, usize> = HashMap::new();
+            let type_param_arity: FxHashMap<String, usize> = FxHashMap::default();
 
             // Resolve each type argument into a concrete `Type`.
             let mut resolved_targets: Vec<Type> = Vec::with_capacity(type_args.len());
@@ -227,7 +227,7 @@ pub(super) fn register_impl_instances(
             // Final orphan check: either the trait is local, or at least one type
             // argument has its head type defined locally.
             let joined_display = {
-                let names: std::collections::HashMap<crate::types::TypeVarId, &str> =
+                let names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> =
                     type_param_map
                         .iter()
                         .map(|(n, &id)| (id, n.as_str()))
@@ -311,9 +311,9 @@ pub(super) fn register_impl_instances(
                     }
                 }
 
-                let expected_methods: HashSet<&str> =
+                let expected_methods: FxHashSet<&str> =
                     trait_info.methods.iter().map(|m| m.name.as_str()).collect();
-                let actual_methods: HashSet<&str> =
+                let actual_methods: FxHashSet<&str> =
                     methods.iter().map(|m| m.name.as_str()).collect();
                 let missing_methods: Vec<String> = trait_info
                     .methods
@@ -382,7 +382,7 @@ pub(super) fn typecheck_impl_methods(
     module: &Module,
     module_path: &str,
     trait_registry: &TraitRegistry,
-    _trait_method_map: &HashMap<String, TraitName>,
+    _trait_method_map: &FxHashMap<String, TraitName>,
     _extern_fns: &[ExternFnInfo],
 ) -> Result<Vec<InstanceDefInfo>, SpannedTypeError> {
     let mut instance_defs: Vec<InstanceDefInfo> = Vec::new();
@@ -416,8 +416,11 @@ pub(super) fn typecheck_impl_methods(
             // leaving positions 1+ freshened so the user annotation could pin
             // them to anything; now all positions are bound to the registered
             // instance target before body inference.
-            let mut trait_target_bindings: HashMap<TypeVarId, Type> =
-                HashMap::with_capacity(trait_info.type_var_ids.len());
+            let mut trait_target_bindings: FxHashMap<TypeVarId, Type> =
+                FxHashMap::with_capacity_and_hasher(
+                    trait_info.type_var_ids.len(),
+                    rustc_hash::FxBuildHasher::default(),
+                );
             for (i, &trait_tv) in trait_info.type_var_ids.iter().enumerate() {
                 let raw = &instance.target_types[i];
                 let bound = if i == 0 && trait_info.type_var_arity > 0 {
@@ -458,7 +461,7 @@ pub(super) fn typecheck_impl_methods(
                 // wrapper — so we can enumerate forks below.
                 let shape_vars: Vec<TypeVarId> = {
                     let mut out: Vec<TypeVarId> = Vec::new();
-                    let mut seen: HashSet<TypeVarId> = HashSet::new();
+                    let mut seen: FxHashSet<TypeVarId> = FxHashSet::default();
                     for (_, pt) in &trait_method.param_types {
                         for v in crate::types::collect_shape_vars(pt) {
                             if seen.insert(v) {
@@ -530,8 +533,8 @@ pub(super) fn typecheck_impl_methods(
                 // fork's captured metadata is restored.
                 let mut committed: Option<ForkCommit> = None;
                 let mut committed_metadata: Option<(
-                    HashSet<Span>,
-                    HashMap<Span, String>,
+                    FxHashSet<Span>,
+                    FxHashMap<Span, String>,
                 )> = None;
                 let mut dual_check_failure: Option<(String, SpannedTypeError)> = None;
                 let is_multi_fork = combos.len() > 1;
@@ -542,7 +545,7 @@ pub(super) fn typecheck_impl_methods(
                     // Per-fork freshening + shape-var overrides. Each fork
                     // allocates its own fresh vars so the subst map grows
                     // monotonically but fork reasoning stays independent.
-                    let mut fork_overrides: HashMap<TypeVarId, Type> = HashMap::new();
+                    let mut fork_overrides: FxHashMap<TypeVarId, Type> = FxHashMap::default();
                     let mut form_label_parts: Vec<String> = Vec::new();
                     let shape_var_names = &trait_info.type_var_names;
                     for (sv, cand) in combo {
@@ -586,9 +589,9 @@ pub(super) fn typecheck_impl_methods(
                     // Freshen trait's secondary/method vars that are NOT shape
                     // vars (those are handled above via fork_overrides).
                     // Walk vars in left-to-right encounter order so fresh-id
-                    // allocation is deterministic across processes (HashSet
+                    // allocation is deterministic across processes (FxHashSet
                     // iteration depends on RandomState seed).
-                    let mut extra_subst: HashMap<TypeVarId, Type> = HashMap::new();
+                    let mut extra_subst: FxHashMap<TypeVarId, Type> = FxHashMap::default();
                     for (_, pt) in &trait_method.param_types {
                         for v in free_vars_ordered(pt) {
                             if v != tv_id && !fork_overrides.contains_key(&v) {
@@ -698,7 +701,7 @@ pub(super) fn typecheck_impl_methods(
                     vars: vec![],
                     constraints: Vec::new(),
                     ty: fn_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 };
                 instance_methods.push(typed_ast::InstanceMethod {
                     name: method.name.clone(),

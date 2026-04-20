@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Module, Visibility};
 
@@ -23,7 +23,7 @@ pub(super) fn infer_function_bodies<'a>(
     module: &'a Module,
     _extern_fns: &[ExternFnInfo],
     trait_registry: &TraitRegistry,
-    trait_method_map: &HashMap<String, TraitName>,
+    trait_method_map: &FxHashMap<String, TraitName>,
     mod_path: &str,
 ) -> Result<InferFunctionBodiesResult<'a>, Vec<SpannedTypeError>> {
     let fn_decls: Vec<&krypton_parser::ast::FnDecl> = module
@@ -71,9 +71,9 @@ pub(super) fn infer_function_bodies<'a>(
     // (not overwritten). A future per-overload constraint API would rekey
     // this to `(name, decl_idx)` — leaving name-keyed now to avoid rippling
     // the rekey through consumers in this phase.
-    let mut fn_constraint_requirements: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
-        HashMap::new();
-    let mut saved_type_param_maps: HashMap<usize, HashMap<String, TypeVarId>> = HashMap::new();
+    let mut fn_constraint_requirements: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
+        FxHashMap::default();
+    let mut saved_type_param_maps: FxHashMap<usize, FxHashMap<String, TypeVarId>> = FxHashMap::default();
 
     for component in &sccs {
         let mut deferred_overloads: Vec<expr::DeferredOverload> = Vec::new();
@@ -148,7 +148,7 @@ pub(super) fn infer_function_bodies<'a>(
                     }
                 }
 
-                let mut seen_params = HashSet::new();
+                let mut seen_params = FxHashSet::default();
                 for p in &decl.params {
                     if !seen_params.insert(&p.name) {
                         return Err(spanned(
@@ -368,7 +368,7 @@ pub(super) fn infer_function_bodies<'a>(
         // These must stay abstract through generalization so declared
         // `where` constraints on polymorphic functions are forwarded to
         // callers rather than eagerly pinned to a matching instance.
-        let protected_type_vars: Vec<HashSet<TypeVarId>> = (0..fn_bodies.len())
+        let protected_type_vars: Vec<FxHashSet<TypeVarId>> = (0..fn_bodies.len())
             .map(|idx| {
                 saved_type_param_maps
                     .get(&idx)
@@ -399,7 +399,7 @@ pub(super) fn infer_function_bodies<'a>(
             let final_ty = state.subst.apply(tv);
             let mut scheme = generalize(&final_ty, &empty_env, &state.subst);
             if let Some(tpm) = saved_type_param_maps.get(&idx) {
-                let scheme_var_set: HashSet<TypeVarId> = scheme.vars.iter().copied().collect();
+                let scheme_var_set: FxHashSet<TypeVarId> = scheme.vars.iter().copied().collect();
                 for (name, &original_id) in tpm {
                     let resolved = state.subst.apply(&Type::Var(original_id));
                     if let Type::Var(final_id) = resolved {
@@ -474,7 +474,7 @@ pub(super) fn infer_function_bodies<'a>(
     // unless the corresponding bound is declared in a `where` clause.
     for (idx, decl) in fn_decls.iter().enumerate() {
         if let Some(body) = &fn_bodies[idx] {
-            let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
+            let mut fn_type_param_vars: FxHashSet<TypeVarId> = FxHashSet::default();
             if let Some(scheme) = &result_schemes[idx] {
                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                     for (_, pty) in param_types.iter() {
@@ -496,7 +496,7 @@ pub(super) fn infer_function_bodies<'a>(
                 .cloned()
                 .unwrap_or_default();
             // Functions without explicit constraints have no entry
-            let type_var_names: HashMap<TypeVarId, String> = saved_type_param_maps
+            let type_var_names: FxHashMap<TypeVarId, String> = saved_type_param_maps
                 .get(&idx)
                 .map(|tpm| tpm.iter().map(|(name, &id)| (id, name.clone())).collect())
                 .unwrap_or_default();
@@ -515,7 +515,7 @@ pub(super) fn infer_function_bodies<'a>(
 
     // Post-inference instance resolution
     // Build fn_schemes map for bind_type_vars resolution (constraints are in TypeSchemes)
-    let mut fn_schemes_map: HashMap<String, TypeScheme> = HashMap::new();
+    let mut fn_schemes_map: FxHashMap<String, TypeScheme> = FxHashMap::default();
     for (decl, scheme) in fn_decls.iter().zip(result_schemes.iter()) {
         if let Some(scheme) = scheme {
             fn_schemes_map.insert(decl.name.clone(), scheme.clone());
@@ -531,7 +531,7 @@ pub(super) fn infer_function_bodies<'a>(
         for (body, scheme) in fn_bodies.iter().zip(result_schemes.iter()) {
             if let Some(body) = body {
                 // Monomorphic functions have no type variables
-                let fn_type_vars: HashSet<TypeVarId> = scheme
+                let fn_type_vars: FxHashSet<TypeVarId> = scheme
                     .as_ref()
                     .map(|s| s.vars.iter().copied().collect())
                     .unwrap_or_default();

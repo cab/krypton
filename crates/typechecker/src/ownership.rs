@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, ParamMode, Span};
 
@@ -10,7 +10,7 @@ use crate::unify::{
 };
 
 /// (consumed, partially_consumed) maps recorded for one branch of an if/match.
-type BranchConsumeMaps = (HashMap<String, Span>, HashMap<String, Span>);
+type BranchConsumeMaps = (FxHashMap<String, Span>, FxHashMap<String, Span>);
 
 /// Check if a type contains `Type::Own` anywhere within it.
 fn type_contains_own(ty: &Type) -> bool {
@@ -63,7 +63,7 @@ fn type_has_affine_field_after_subst(
     type_name: &str,
     args: &[Type],
     registry: &TypeRegistry,
-    visited: &mut HashSet<String>,
+    visited: &mut FxHashSet<String>,
 ) -> bool {
     let Some(info) = registry.lookup_type(type_name) else {
         return false;
@@ -257,14 +257,14 @@ fn descend_inside_wrapper(
 
 /// Check if a resolved type is affine (contains own or is a struct/sum with own fields).
 pub(crate) fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
-    let mut visited = HashSet::new();
+    let mut visited = FxHashSet::default();
     type_is_affine_rec(ty, registry, &mut visited)
 }
 
 fn type_is_affine_rec(
     ty: &Type,
     registry: &TypeRegistry,
-    visited: &mut HashSet<String>,
+    visited: &mut FxHashSet<String>,
 ) -> bool {
     match ty {
         Type::Own(_) => true,
@@ -298,7 +298,7 @@ fn type_is_affine_rec(
 // ── Surface-AST helpers (used only by compute_fn_qualifiers) ───────────────
 
 /// Count the maximum number of uses of `name` along any single execution path.
-fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
+fn count_max_uses(expr: &Expr, name: &str, bound: &FxHashSet<String>) -> usize {
     match expr {
         Expr::Var { name: v, .. } => {
             if v == name && !bound.contains(name) {
@@ -464,8 +464,8 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &HashSet<String>) -> usize {
 }
 
 /// Recursively collect quantified type variable IDs from a type.
-fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSet<TypeVarId> {
-    let mut vars = HashSet::new();
+fn collect_quantified_vars(ty: &Type, quantified: &FxHashSet<TypeVarId>) -> FxHashSet<TypeVarId> {
+    let mut vars = FxHashSet::default();
     match ty {
         Type::Var(id) if quantified.contains(id) => {
             vars.insert(*id);
@@ -505,11 +505,11 @@ fn collect_quantified_vars(ty: &Type, quantified: &HashSet<TypeVarId>) -> HashSe
 fn compute_fn_qualifiers(
     fn_decls: &[&FnDecl],
     fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitName>)],
-) -> HashMap<String, Vec<(ParamQualifier, String)>> {
-    let type_map: HashMap<&str, &TypeScheme> =
+) -> FxHashMap<String, Vec<(ParamQualifier, String)>> {
+    let type_map: FxHashMap<&str, &TypeScheme> =
         fn_types.iter().map(|(n, s, _)| (n.as_str(), s)).collect();
 
-    let mut result = HashMap::new();
+    let mut result = FxHashMap::default();
 
     for decl in fn_decls {
         let scheme = match type_map.get(decl.name.as_str()) {
@@ -522,7 +522,7 @@ fn compute_fn_qualifiers(
             _ => continue,
         };
 
-        let quantified: HashSet<_> = scheme.vars.iter().copied().collect();
+        let quantified: FxHashSet<_> = scheme.vars.iter().copied().collect();
 
         let mut qualifiers = Vec::new();
 
@@ -542,7 +542,7 @@ fn compute_fn_qualifiers(
 
             if !found_vars.is_empty() {
                 if let Some(param) = decl.params.get(i) {
-                    let bound = HashSet::new();
+                    let bound = FxHashSet::default();
                     let uses = count_max_uses(&decl.body, &param.name, &bound);
                     if uses > 1 {
                         qualifiers.push((ParamQualifier::RequiresU, param_name));
@@ -648,10 +648,10 @@ fn collect_pattern_var_names_inner(pattern: &TypedPattern, out: &mut Vec<String>
 /// Collect free variables in a typed expression that are in the `owned` set.
 fn free_owned_vars(
     expr: &TypedExpr,
-    owned: &HashSet<String>,
-    bound: &HashSet<String>,
-) -> HashSet<String> {
-    let mut result = HashSet::new();
+    owned: &FxHashSet<String>,
+    bound: &FxHashSet<String>,
+) -> FxHashSet<String> {
+    let mut result = FxHashSet::default();
     collect_free_owned(expr, owned, bound, &mut result);
     result
 }
@@ -695,23 +695,23 @@ where
 /// capturing a borrow-mode parameter.
 fn free_borrowed_vars(
     expr: &TypedExpr,
-    borrowed: &HashSet<String>,
-    bound: &HashSet<String>,
-) -> HashSet<String> {
+    borrowed: &FxHashSet<String>,
+    bound: &FxHashSet<String>,
+) -> FxHashSet<String> {
     // `collect_free_owned` is generic over "which names are roots to report":
     // it filters by `owned.contains(name)`. Reuse it by passing the borrowed
     // set in that parameter position — the traversal and shadowing logic are
     // identical.
-    let mut result = HashSet::new();
+    let mut result = FxHashSet::default();
     collect_free_owned(expr, borrowed, bound, &mut result);
     result
 }
 
 fn collect_free_owned(
     expr: &TypedExpr,
-    owned: &HashSet<String>,
-    bound: &HashSet<String>,
-    acc: &mut HashSet<String>,
+    owned: &FxHashSet<String>,
+    bound: &FxHashSet<String>,
+    acc: &mut FxHashSet<String>,
 ) {
     match &expr.kind {
         TypedExprKind::Var(name) => {
@@ -823,9 +823,9 @@ fn collect_free_owned(
 
 /// Result of ownership checking: qualifier info plus actual move locations.
 pub struct OwnershipResult {
-    pub fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
+    pub fn_qualifiers: FxHashMap<String, Vec<(ParamQualifier, String)>>,
     /// Every actual move: var_span → var_name.
-    pub moves: HashMap<Span, String>,
+    pub moves: FxHashMap<Span, String>,
 }
 
 /// Affine verification: track `own` bindings and flag double-use as E0101,
@@ -840,9 +840,9 @@ pub fn check_ownership(
     typed_fns: &[TypedFnDecl],
     fn_types: &[(String, TypeScheme, Option<crate::typed_ast::TraitName>)],
     registry: &TypeRegistry,
-    let_own_spans: &HashSet<Span>,
-    lambda_own_captures: &HashMap<Span, String>,
-    imported_fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
+    let_own_spans: &FxHashSet<Span>,
+    lambda_own_captures: &FxHashMap<Span, String>,
+    imported_fn_qualifiers: &FxHashMap<String, Vec<(ParamQualifier, String)>>,
 ) -> (OwnershipResult, Vec<SpannedTypeError>) {
     // MaybeOwn must be fully resolved before ownership checking.
     debug_assert!(
@@ -851,7 +851,7 @@ pub fn check_ownership(
     );
 
     // Build map: fn_name -> vec of ParamMode for each param
-    let mut fn_param_info: HashMap<String, Vec<ParamMode>> = HashMap::new();
+    let mut fn_param_info: FxHashMap<String, Vec<ParamMode>> = FxHashMap::default();
     for decl in &module.decls {
         if let Decl::DefFn(fn_decl) = decl {
             let modes: Vec<ParamMode> = fn_decl.params.iter().map(|p| p.mode).collect();
@@ -880,7 +880,7 @@ pub fn check_ownership(
         .collect();
 
     // Build map: fn_name -> param types from type scheme
-    let mut fn_scheme_params: HashMap<String, Vec<Type>> = HashMap::new();
+    let mut fn_scheme_params: FxHashMap<String, Vec<Type>> = FxHashMap::default();
     for (name, scheme, _) in fn_types {
         if let Type::Fn(params, _) = &scheme.ty {
             fn_scheme_params.insert(
@@ -898,7 +898,7 @@ pub fn check_ownership(
             .or_insert_with(|| quals.clone());
     }
 
-    let mut all_moves: HashMap<Span, String> = HashMap::new();
+    let mut all_moves: FxHashMap<Span, String> = FxHashMap::default();
     let mut errors: Vec<SpannedTypeError> = Vec::new();
 
     for typed_fn in typed_fns {
@@ -944,22 +944,22 @@ fn place_root(expr: &TypedExpr) -> Option<&str> {
 /// `owned` is the live set of bindings subject to move tracking (grows via let-binding).
 /// `affine` is the frozen set of params with affine type (used for qualifier mismatch errors).
 struct OwnershipChecker<'a> {
-    owned: &'a mut HashSet<String>,
+    owned: &'a mut FxHashSet<String>,
     /// Root names of parameters declared with `&x: ~T` or `&x: T`. These
     /// bindings view a value they do not own: the caller still holds the
     /// ownership. Borrowed bindings may only be reborrowed (passed to another
     /// `&` slot); they cannot be consumed, returned as `~T`, stored in a
     /// field, captured by a closure, or rebound by `let`.
-    borrowed: HashSet<String>,
-    consumed: HashMap<String, Span>,
-    partially_consumed: HashMap<String, Span>,
-    moves: HashMap<Span, String>,
-    fn_param_info: &'a HashMap<String, Vec<ParamMode>>,
-    affine: &'a HashSet<String>,
-    fn_qualifiers: &'a HashMap<String, Vec<(ParamQualifier, String)>>,
-    let_own_spans: &'a HashSet<Span>,
-    lambda_own_captures: &'a HashMap<Span, String>,
-    own_fn_notes: &'a mut HashMap<String, String>,
+    borrowed: FxHashSet<String>,
+    consumed: FxHashMap<String, Span>,
+    partially_consumed: FxHashMap<String, Span>,
+    moves: FxHashMap<Span, String>,
+    fn_param_info: &'a FxHashMap<String, Vec<ParamMode>>,
+    affine: &'a FxHashSet<String>,
+    fn_qualifiers: &'a FxHashMap<String, Vec<(ParamQualifier, String)>>,
+    let_own_spans: &'a FxHashSet<Span>,
+    lambda_own_captures: &'a FxHashMap<Span, String>,
+    own_fn_notes: &'a mut FxHashMap<String, String>,
     registry: &'a TypeRegistry,
 }
 
@@ -1458,21 +1458,21 @@ impl<'a> OwnershipChecker<'a> {
 
             TypedExprKind::If { cond, then_, else_ } => {
                 self.check_expr(cond)?;
-                let before: HashSet<String> = self.consumed.keys().cloned().collect();
+                let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
                 let (then_consumed, then_partial) = self.check_branch(then_)?;
                 let (else_consumed, else_partial) = self.check_branch(else_)?;
 
-                let then_keys: HashSet<String> = then_consumed.keys().cloned().collect();
-                let else_keys: HashSet<String> = else_consumed.keys().cloned().collect();
-                let newly_in_then: HashSet<String> =
+                let then_keys: FxHashSet<String> = then_consumed.keys().cloned().collect();
+                let else_keys: FxHashSet<String> = else_consumed.keys().cloned().collect();
+                let newly_in_then: FxHashSet<String> =
                     then_keys.difference(&before).cloned().collect();
-                let newly_in_else: HashSet<String> =
+                let newly_in_else: FxHashSet<String> =
                     else_keys.difference(&before).cloned().collect();
-                let in_all: HashSet<String> = newly_in_then
+                let in_all: FxHashSet<String> = newly_in_then
                     .intersection(&newly_in_else)
                     .cloned()
                     .collect();
-                let in_some: HashSet<String> = newly_in_then
+                let in_some: FxHashSet<String> = newly_in_then
                     .symmetric_difference(&newly_in_else)
                     .cloned()
                     .collect();
@@ -1507,9 +1507,9 @@ impl<'a> OwnershipChecker<'a> {
                 // invariant ever changes, this line must be revisited.
                 let scrutinee_is_borrowed = place_root(scrutinee)
                     .is_some_and(|root| self.borrowed.contains(root));
-                let before: HashSet<String> = self.consumed.keys().cloned().collect();
+                let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
                 let n = arms.len();
-                let mut per_arm_new: Vec<HashMap<String, Span>> = Vec::new();
+                let mut per_arm_new: Vec<FxHashMap<String, Span>> = Vec::new();
                 let mut merged_partial = self.partially_consumed.clone();
 
                 for arm in arms {
@@ -1521,7 +1521,7 @@ impl<'a> OwnershipChecker<'a> {
                         scrutinee_is_borrowed,
                     )?;
 
-                    let newly: HashMap<String, Span> = arm_consumed
+                    let newly: FxHashMap<String, Span> = arm_consumed
                         .into_iter()
                         .filter(|(k, _)| !before.contains(k) && !pattern_owned.contains(k))
                         .collect();
@@ -1533,7 +1533,7 @@ impl<'a> OwnershipChecker<'a> {
                     }
                 }
 
-                let all_names: HashSet<String> =
+                let all_names: FxHashSet<String> =
                     per_arm_new.iter().flat_map(|s| s.keys().cloned()).collect();
                 for name in &all_names {
                     let count = per_arm_new.iter().filter(|s| s.contains_key(name)).count();
@@ -1562,7 +1562,7 @@ impl<'a> OwnershipChecker<'a> {
             TypedExprKind::UnaryOp { operand, .. } => self.check_expr(operand),
 
             TypedExprKind::Lambda { params, body } => {
-                let lambda_params: HashSet<String> = params.iter().cloned().collect();
+                let lambda_params: FxHashSet<String> = params.iter().cloned().collect();
 
                 // Closures cannot capture borrowed bindings: Krypton has no
                 // closure lifetimes, so a borrowed capture could outlive the
@@ -1693,7 +1693,7 @@ impl<'a> OwnershipChecker<'a> {
                             fields: record_fields,
                         } = &info.kind
                         {
-                            let updated_fields: HashSet<&str> =
+                            let updated_fields: FxHashSet<&str> =
                                 fields.iter().map(|(n, _)| n.as_str()).collect();
                             let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
                                 type_contains_own(fty) && !updated_fields.contains(fname.as_str())
@@ -1720,7 +1720,7 @@ impl<'a> OwnershipChecker<'a> {
                                     fields: record_fields,
                                 } = &info.kind
                                 {
-                                    let updated_fields: HashSet<&str> =
+                                    let updated_fields: FxHashSet<&str> =
                                         fields.iter().map(|(n, _)| n.as_str()).collect();
                                     for (fname, fty) in record_fields {
                                         if type_contains_own(fty)
@@ -1817,16 +1817,16 @@ impl<'a> OwnershipChecker<'a> {
 
 fn check_fn(
     typed_fn: &TypedFnDecl,
-    fn_param_info: &HashMap<String, Vec<ParamMode>>,
-    fn_qualifiers: &HashMap<String, Vec<(ParamQualifier, String)>>,
-    let_own_spans: &HashSet<Span>,
-    lambda_own_captures: &HashMap<Span, String>,
+    fn_param_info: &FxHashMap<String, Vec<ParamMode>>,
+    fn_qualifiers: &FxHashMap<String, Vec<(ParamQualifier, String)>>,
+    let_own_spans: &FxHashSet<Span>,
+    lambda_own_captures: &FxHashMap<Span, String>,
     registry: &TypeRegistry,
-    fn_scheme_params: &HashMap<String, Vec<Type>>,
-) -> Result<HashMap<Span, String>, SpannedTypeError> {
-    let mut owned: HashSet<String> = HashSet::new();
-    let mut affine: HashSet<String> = HashSet::new();
-    let mut borrowed: HashSet<String> = HashSet::new();
+    fn_scheme_params: &FxHashMap<String, Vec<Type>>,
+) -> Result<FxHashMap<Span, String>, SpannedTypeError> {
+    let mut owned: FxHashSet<String> = FxHashSet::default();
+    let mut affine: FxHashSet<String> = FxHashSet::default();
+    let mut borrowed: FxHashSet<String> = FxHashSet::default();
 
     // Build owned/affine/borrowed sets from resolved param types.
     //
@@ -1849,13 +1849,13 @@ fn check_fn(
         }
     }
 
-    let mut own_fn_notes = HashMap::new();
+    let mut own_fn_notes = FxHashMap::default();
     let mut checker = OwnershipChecker {
         owned: &mut owned,
         borrowed,
-        consumed: HashMap::new(),
-        partially_consumed: HashMap::new(),
-        moves: HashMap::new(),
+        consumed: FxHashMap::default(),
+        partially_consumed: FxHashMap::default(),
+        moves: FxHashMap::default(),
         fn_param_info,
         affine: &affine,
         fn_qualifiers,

@@ -1,5 +1,5 @@
 use crate::types::{Type, TypeEnv, TypeScheme, TypeVarGen};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_module: bool) {
     // panic, todo, unreachable: fn(String) -> Never
@@ -11,7 +11,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 vars: vec![],
                 ty: Type::fn_consuming(vec![Type::String], never_ty.clone()),
                 constraints: Vec::new(),
-                var_names: HashMap::new(),
+                var_names: FxHashMap::default(),
             },
         );
     }
@@ -25,7 +25,7 @@ pub fn register_intrinsics(env: &mut TypeEnv, gen: &mut TypeVarGen, is_core_modu
                 vars: vec![b],
                 ty: Type::fn_consuming(vec![], Type::Var(b)),
                 constraints: Vec::new(),
-                var_names: HashMap::new(),
+                var_names: FxHashMap::default(),
             },
         );
     }

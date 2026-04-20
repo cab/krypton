@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_parser::ast::{Decl, ExternMethod, ExternTarget, Module, Span, Visibility};
 
@@ -16,7 +16,7 @@ pub(crate) type LocalExternResult = (
     Vec<ExternFnInfo>,
     Vec<ExternTypeInfo>,
     Vec<ExternBindingInfo>,
-    HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
     Vec<PendingExternTrait>,
 );
 
@@ -25,7 +25,7 @@ pub(crate) struct ExternMethodsResult {
     pub(crate) extern_fns: Vec<ExternFnInfo>,
     pub(crate) bindings: Vec<ExternBindingInfo>,
     /// Dict requirements for extern functions with `where` clauses.
-    pub(crate) fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    pub(crate) fn_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 }
 
 #[derive(Clone)]
@@ -61,16 +61,16 @@ pub(crate) fn process_extern_methods(
     env: &mut TypeEnv,
     gen: &mut TypeVarGen,
     registry: &TypeRegistry,
-    trait_name_lookup: &HashMap<String, TraitName>,
+    trait_name_lookup: &FxHashMap<String, TraitName>,
     module_path_str: &str,
     span: Span,
-    type_param_map: Option<&HashMap<String, TypeVarId>>,
-    type_param_arity: Option<&HashMap<String, usize>>,
+    type_param_map: Option<&FxHashMap<String, TypeVarId>>,
+    type_param_arity: Option<&FxHashMap<String, usize>>,
     type_param_names: Option<&[String]>,
     alias_name: Option<&str>,
 ) -> Result<ExternMethodsResult, SpannedTypeError> {
-    let empty_map = HashMap::new();
-    let empty_arity = HashMap::new();
+    let empty_map = FxHashMap::default();
+    let empty_arity = FxHashMap::default();
     let resolve_map = type_param_map.unwrap_or(&empty_map);
     let resolve_arity = type_param_arity.unwrap_or(&empty_arity);
     // Collect type param vars for scheme quantification in declaration order
@@ -80,7 +80,7 @@ pub(crate) fn process_extern_methods(
     };
     let mut extern_fns = Vec::new();
     let mut bindings = Vec::new();
-    let mut fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = HashMap::new();
+    let mut fn_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = FxHashMap::default();
     for method in methods {
         let bind_name = &method.name;
 
@@ -89,8 +89,8 @@ pub(crate) fn process_extern_methods(
         // Build method-level type param map (merged with block-level)
         let mut method_resolve_map;
         let mut method_resolve_arity;
-        let effective_resolve_map: &HashMap<String, TypeVarId>;
-        let effective_resolve_arity: &HashMap<String, usize>;
+        let effective_resolve_map: &FxHashMap<String, TypeVarId>;
+        let effective_resolve_arity: &FxHashMap<String, usize>;
         if !method.type_params.is_empty() {
             method_resolve_map = resolve_map.clone();
             method_resolve_arity = resolve_arity.clone();
@@ -283,7 +283,7 @@ pub(crate) fn process_extern_methods(
                 vars: scheme_vars,
                 constraints: requirements.clone(),
                 ty: fn_ty,
-                var_names: HashMap::new(),
+                var_names: FxHashMap::default(),
             }
         };
         env.bind_top_level_function(
@@ -357,12 +357,12 @@ impl ModuleInferenceState {
         let mut extern_fns: Vec<ExternFnInfo> = Vec::new();
         let mut extern_types: Vec<ExternTypeInfo> = Vec::new();
         let mut extern_bindings: Vec<ExternBindingInfo> = Vec::new();
-        let mut extern_fn_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
-            HashMap::new();
+        let mut extern_fn_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
+            FxHashMap::default();
         let mut pending_extern_traits: Vec<PendingExternTrait> = Vec::new();
 
         // Build trait name lookup from imported trait defs
-        let mut trait_name_lookup: HashMap<String, TraitName> = HashMap::new();
+        let mut trait_name_lookup: FxHashMap<String, TraitName> = FxHashMap::default();
         for td in &self.imported_trait_defs {
             trait_name_lookup.insert(
                 td.name.clone(),
@@ -406,8 +406,8 @@ impl ModuleInferenceState {
                 }
 
                 // Register type binding if `as Name[params]` is present
-                let mut tp_map: Option<HashMap<String, TypeVarId>> = None;
-                let mut tp_arity: Option<HashMap<String, usize>> = None;
+                let mut tp_map: Option<FxHashMap<String, TypeVarId>> = None;
+                let mut tp_arity: Option<FxHashMap<String, usize>> = None;
                 if let Some(name) = alias {
                     // Check if already registered (e.g. Vec is a builtin)
                     let type_param_vars = if let Some(existing) = self.registry.lookup_type(name) {

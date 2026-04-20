@@ -21,3 +21,4 @@ criterion = { version = "0.5", features = ["html_reports"] }
 stacker = "0.1"
 rstest = "0.25"
 rustyline = "15"
+rustc-hash = "2"

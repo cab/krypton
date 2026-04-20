@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_parser::ast::{TypeDeclKind, TypeExpr};
 
@@ -35,14 +35,14 @@ pub enum ResolutionContext {
 }
 
 pub struct TypeRegistry {
-    types: HashMap<String, TypeInfo>,
-    aliases: HashMap<String, String>,
+    types: FxHashMap<String, TypeInfo>,
+    aliases: FxHashMap<String, String>,
     /// Names that have been forward-declared but not yet fully registered.
-    forward_declared: std::collections::HashSet<String>,
+    forward_declared: rustc_hash::FxHashSet<String>,
     /// Type names that are visible to user-written type annotations.
     /// Types registered only for internal inference (e.g. implicit parent types
     /// from constructor imports) are NOT in this set.
-    user_visible: std::collections::HashSet<String>,
+    user_visible: rustc_hash::FxHashSet<String>,
 }
 
 impl Default for TypeRegistry {
@@ -54,10 +54,10 @@ impl Default for TypeRegistry {
 impl TypeRegistry {
     pub fn new() -> Self {
         TypeRegistry {
-            types: HashMap::new(),
-            aliases: HashMap::new(),
-            forward_declared: std::collections::HashSet::new(),
-            user_visible: std::collections::HashSet::new(),
+            types: FxHashMap::default(),
+            aliases: FxHashMap::default(),
+            forward_declared: rustc_hash::FxHashSet::default(),
+            user_visible: rustc_hash::FxHashSet::default(),
         }
     }
 
@@ -238,8 +238,8 @@ impl TypeRegistry {
 ///   `register_name` and not yet in `user_visible`.
 pub fn resolve_type_expr(
     texpr: &TypeExpr,
-    type_param_map: &HashMap<String, TypeVarId>,
-    type_param_arity: &HashMap<String, usize>,
+    type_param_map: &FxHashMap<String, TypeVarId>,
+    type_param_arity: &FxHashMap<String, usize>,
     registry: &TypeRegistry,
     context: ResolutionContext,
     self_type: Option<&Type>,
@@ -376,8 +376,8 @@ pub fn resolve_type_expr(
 
 fn resolve_named(
     name: &str,
-    type_param_map: &HashMap<String, TypeVarId>,
-    _type_param_arity: &HashMap<String, usize>,
+    type_param_map: &FxHashMap<String, TypeVarId>,
+    _type_param_arity: &FxHashMap<String, usize>,
     registry: &TypeRegistry,
     context: ResolutionContext,
     self_type: Option<&Type>,
@@ -452,8 +452,8 @@ pub fn process_type_decl(
     gen: &mut TypeVarGen,
 ) -> Result<Vec<(String, TypeScheme)>, TypeError> {
     // Create fresh type vars for type params
-    let mut type_param_map: HashMap<String, TypeVarId> = HashMap::new();
-    let type_param_arity: HashMap<String, usize> = HashMap::new();
+    let mut type_param_map: FxHashMap<String, TypeVarId> = FxHashMap::default();
+    let type_param_arity: FxHashMap<String, usize> = FxHashMap::default();
     let mut quantified_vars: Vec<TypeVarId> = Vec::new();
     for param_name in &decl.type_params {
         let var_id = gen.fresh();
@@ -491,7 +491,7 @@ pub fn process_type_decl(
                     vars: quantified_vars.clone(),
                     constraints: Vec::new(),
                     ty: ctor_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 },
             ));
 
@@ -529,7 +529,7 @@ pub fn process_type_decl(
                         vars: quantified_vars.clone(),
                         constraints: Vec::new(),
                         ty: ctor_ty,
-                        var_names: HashMap::new(),
+                        var_names: FxHashMap::default(),
                     },
                 ));
 
@@ -570,7 +570,7 @@ pub fn register_type_from_export(
 ) -> Result<Vec<(String, TypeScheme)>, TypeError> {
     // Create fresh type vars for type params and build old→new mapping
     let mut fresh_vars: Vec<TypeVarId> = Vec::new();
-    let mut old_to_new: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let mut old_to_new: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
 
     for (i, _) in info.type_params.iter().enumerate() {
         let fresh_id = gen.fresh();
@@ -602,7 +602,7 @@ pub fn register_type_from_export(
                     vars: fresh_vars.clone(),
                     constraints: Vec::new(),
                     ty: ctor_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 },
             ));
 
@@ -631,7 +631,7 @@ pub fn register_type_from_export(
                         vars: fresh_vars.clone(),
                         constraints: Vec::new(),
                         ty: ctor_ty,
-                        var_names: HashMap::new(),
+                        var_names: FxHashMap::default(),
                     },
                 ));
 
@@ -660,7 +660,7 @@ pub fn register_type_from_export(
 }
 
 /// Remap TypeVarIds in a Type according to the given mapping.
-fn remap_vars(ty: &Type, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
+fn remap_vars(ty: &Type, mapping: &FxHashMap<TypeVarId, TypeVarId>) -> Type {
     match ty {
         Type::Var(id) => {
             if let Some(&new_id) = mapping.get(id) {

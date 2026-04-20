@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::trait_registry::TraitRegistry;
 use crate::type_error::LeakReason;
@@ -158,7 +158,7 @@ impl LiveBinding {
 
 /// Recursively collect every `Var` reference inside an expression tree
 /// whose span is recorded in the ownership checker's move set.
-fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>) -> Vec<String> {
+fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &FxHashMap<Span, String>) -> Vec<String> {
     let mut acc = Vec::new();
     collect_moved_vars_inner(expr, ownership_moves, &mut acc);
     acc
@@ -166,7 +166,7 @@ fn collect_moved_vars(expr: &TypedExpr, ownership_moves: &HashMap<Span, String>)
 
 fn collect_moved_vars_inner(
     expr: &TypedExpr,
-    ownership_moves: &HashMap<Span, String>,
+    ownership_moves: &FxHashMap<Span, String>,
     acc: &mut Vec<String>,
 ) {
     match &expr.kind {
@@ -361,7 +361,7 @@ fn collect_owned_bindings_inner(
 
 struct AutoCloseAnalyzer<'a> {
     registry: &'a TraitRegistry,
-    ownership_moves: &'a HashMap<Span, String>,
+    ownership_moves: &'a FxHashMap<Span, String>,
     has_disposable_trait: bool,
     scheme_constraints: &'a [(TraitName, Vec<TypeVarId>)],
     info: AutoCloseInfo,
@@ -369,13 +369,13 @@ struct AutoCloseAnalyzer<'a> {
     /// Bindings (keyed by `(name, binding_span)`) for which an E0108 has
     /// already been emitted in the current function. Used to avoid
     /// double-reporting (e.g. branch-leak + scope-exit on the same binding).
-    reported_linear: HashSet<(String, Span)>,
+    reported_linear: FxHashSet<(String, Span)>,
 }
 
 impl<'a> AutoCloseAnalyzer<'a> {
     fn new(
         registry: &'a TraitRegistry,
-        ownership_moves: &'a HashMap<Span, String>,
+        ownership_moves: &'a FxHashMap<Span, String>,
         has_disposable_trait: bool,
         scheme_constraints: &'a [(TraitName, Vec<TypeVarId>)],
     ) -> Self {
@@ -386,7 +386,7 @@ impl<'a> AutoCloseAnalyzer<'a> {
             scheme_constraints,
             info: AutoCloseInfo::default(),
             errors: Vec::new(),
-            reported_linear: HashSet::new(),
+            reported_linear: FxHashSet::default(),
         }
     }
 
@@ -1016,7 +1016,7 @@ pub fn compute_auto_close(
         Option<crate::typed_ast::TraitName>,
     )],
     registry: &TraitRegistry,
-    ownership_moves: &HashMap<Span, String>,
+    ownership_moves: &FxHashMap<Span, String>,
 ) -> (AutoCloseInfo, Vec<SpannedTypeError>) {
     let disposable_tn = crate::typed_ast::TraitName::core_disposable();
     let has_disposable_trait = registry.lookup_trait(&disposable_tn).is_some();

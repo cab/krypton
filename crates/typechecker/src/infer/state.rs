@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, FnDecl, Module, Span, Visibility};
 
@@ -23,7 +23,7 @@ pub(crate) type InferFunctionBodiesResult<'a> = (
     Vec<&'a krypton_parser::ast::FnDecl>,
     Vec<Option<TypeScheme>>,
     Vec<Option<TypedExpr>>,
-    HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 );
 
 /// Result of `process_traits_and_deriving`: trait registry, exported defs,
@@ -34,7 +34,7 @@ pub(crate) type TraitsAndDerivingResult = (
     Vec<ExternTraitInfo>,
     Vec<InstanceDefInfo>,
     Vec<InstanceDefInfo>,
-    HashMap<String, TraitName>,
+    FxHashMap<String, TraitName>,
 );
 
 /// State accumulated during the bootstrap phases of module inference
@@ -46,21 +46,21 @@ pub(crate) struct ModuleInferenceState {
     pub(super) subst: Substitution,
     pub(super) gen: TypeVarGen,
     pub(super) registry: TypeRegistry,
-    pub(super) let_own_spans: HashSet<Span>,
-    pub(super) lambda_own_captures: HashMap<Span, String>,
+    pub(super) let_own_spans: FxHashSet<Span>,
+    pub(super) lambda_own_captures: FxHashMap<Span, String>,
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
-    pub(super) imported_trait_names: HashSet<String>,
+    pub(super) imported_trait_names: FxHashSet<String>,
     pub(super) trait_aliases: Vec<(String, TraitName)>,
-    pub(super) qualified_modules: HashMap<String, QualifiedModuleBinding>,
+    pub(super) qualified_modules: FxHashMap<String, QualifiedModuleBinding>,
     // Re-export state
     pub(super) reexported_fn_types: Vec<typed_ast::ExportedFn>,
     pub(super) reexported_type_names: Vec<String>,
-    pub(super) reexported_type_visibility: HashMap<String, Visibility>,
+    pub(super) reexported_type_visibility: FxHashMap<String, Visibility>,
     pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
     // Prelude tracking
-    pub(super) prelude_imported_names: HashSet<String>,
+    pub(super) prelude_imported_names: FxHashSet<String>,
 }
 
 impl ModuleInferenceState {
@@ -77,18 +77,18 @@ impl ModuleInferenceState {
             subst: Substitution::new(),
             gen,
             registry,
-            let_own_spans: HashSet::new(),
-            lambda_own_captures: HashMap::new(),
+            let_own_spans: FxHashSet::default(),
+            lambda_own_captures: FxHashMap::default(),
             imports: ImportContext::new(),
             imported_trait_defs: Vec::new(),
-            imported_trait_names: HashSet::new(),
+            imported_trait_names: FxHashSet::default(),
             trait_aliases: Vec::new(),
-            qualified_modules: HashMap::new(),
+            qualified_modules: FxHashMap::default(),
             reexported_fn_types: Vec::new(),
             reexported_type_names: Vec::new(),
-            reexported_type_visibility: HashMap::new(),
+            reexported_type_visibility: FxHashMap::default(),
             reexported_trait_defs: Vec::new(),
-            prelude_imported_names: HashSet::new(),
+            prelude_imported_names: FxHashSet::default(),
         }
     }
 
@@ -110,7 +110,7 @@ impl ModuleInferenceState {
 
     pub(super) fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {
         // Collect all extern method names (same name across targets is fine)
-        let mut extern_names: HashSet<&str> = HashSet::new();
+        let mut extern_names: FxHashSet<&str> = FxHashSet::default();
         for decl in &module.decls {
             if let Decl::Extern { methods, .. } = decl {
                 for m in methods {
@@ -119,7 +119,7 @@ impl ModuleInferenceState {
             }
         }
         // Group DefFn by name
-        let mut groups: HashMap<&str, Vec<&FnDecl>> = HashMap::new();
+        let mut groups: FxHashMap<&str, Vec<&FnDecl>> = FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefFn(f) = decl {
                 if extern_names.contains(f.name.as_str()) {

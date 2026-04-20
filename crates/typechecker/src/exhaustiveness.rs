@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 use krypton_parser::ast::{Lit, Span};
 
@@ -334,7 +334,7 @@ fn default_matrix(matrix: &[Vec<Pat>]) -> Vec<Vec<Pat>> {
 
 /// Collect the set of head constructors from column 0 of the matrix.
 fn head_constructors(matrix: &[Vec<Pat>]) -> Vec<Con> {
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     let mut result = Vec::new();
     for row in matrix {
         if row.is_empty() {
@@ -380,7 +380,7 @@ fn is_useful(
         Pat::Wild => {
             let heads = head_constructors(matrix);
             if let Some(all_cons) = all_constructors(ty, registry, depth, false) {
-                let head_set: HashSet<Con> = heads.into_iter().collect();
+                let head_set: FxHashSet<Con> = heads.into_iter().collect();
                 let is_complete = all_cons.iter().all(|c| head_set.contains(c));
                 if is_complete {
                     for con in &all_cons {
@@ -430,7 +430,7 @@ fn witness(
     let heads = head_constructors(matrix);
 
     if let Some(all_cons) = all_constructors(ty, registry, depth, true) {
-        let head_set: HashSet<Con> = heads.into_iter().collect();
+        let head_set: FxHashSet<Con> = heads.into_iter().collect();
         let is_complete = all_cons.iter().all(|c| head_set.contains(c));
 
         if is_complete {
@@ -592,7 +592,7 @@ pub fn check_exhaustiveness(
     // or make later arms redundant (since the guard might fail).
     let mut unguarded_matrix: Vec<Vec<Pat>> = Vec::new();
 
-    let mut checked_arms: HashSet<usize> = HashSet::new();
+    let mut checked_arms: FxHashSet<usize> = FxHashSet::default();
 
     for (arm_idx, arm) in arms.iter().enumerate() {
         let converted = convert_or_expand(&arm.pattern);

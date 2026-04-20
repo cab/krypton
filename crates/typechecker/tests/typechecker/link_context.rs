@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
@@ -12,7 +12,7 @@ use krypton_typechecker::typed_ast::TraitName;
 // ---------------------------------------------------------------------------
 
 struct InMemoryResolver {
-    modules: HashMap<String, String>,
+    modules: FxHashMap<String, String>,
 }
 
 impl InMemoryResolver {
@@ -64,7 +64,7 @@ fn extract_multi(
     libs: Vec<(&str, &str)>,
 ) -> Vec<(String, ModuleInterface)> {
     // Parse all sources so we can get direct_deps from the ASTs
-    let mut all_sources: HashMap<String, String> = libs
+    let mut all_sources: FxHashMap<String, String> = libs
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();

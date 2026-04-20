@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_modules::module_resolver::{CompositeResolver, ModuleResolver};
 use krypton_parser::parser::parse;
@@ -10,7 +10,7 @@ use krypton_typechecker::module_interface::*;
 // ---------------------------------------------------------------------------
 
 struct InMemoryResolver {
-    modules: HashMap<String, String>,
+    modules: FxHashMap<String, String>,
 }
 
 impl InMemoryResolver {

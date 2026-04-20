@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_ir::expr::{
     Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch,
@@ -11,7 +11,7 @@ use krypton_ir::{
 };
 use krypton_typechecker::types::TypeVarGen;
 
-fn make_simple_module(functions: Vec<FnDef>, fn_identities: HashMap<FnId, FnIdentity>) -> Module {
+fn make_simple_module(functions: Vec<FnDef>, fn_identities: FxHashMap<FnId, FnIdentity>) -> Module {
     Module {
         name: "test".into(),
         structs: vec![],
@@ -26,8 +26,8 @@ fn make_simple_module(functions: Vec<FnDef>, fn_identities: HashMap<FnId, FnIden
         instances: vec![],
         tuple_arities: std::collections::BTreeSet::new(),
         module_path: ModulePath::new("test"),
-        fn_dict_requirements: std::collections::HashMap::new(),
-        fn_exit_closes: std::collections::HashMap::new(),
+        fn_dict_requirements: rustc_hash::FxHashMap::default(),
+        fn_exit_closes: rustc_hash::FxHashMap::default(),
     }
 }
 
@@ -55,7 +55,7 @@ fn well_formed_module_passes() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "main".to_string(),
@@ -97,7 +97,7 @@ fn well_formed_with_let_and_call() {
     };
     let module = make_simple_module(
         vec![func, main_fn],
-        HashMap::from([
+        FxHashMap::from_iter([
             (
                 FnId(0),
                 FnIdentity::Local {
@@ -152,7 +152,7 @@ fn duplicate_var_id_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -190,7 +190,7 @@ fn join_point_used_as_value_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -221,7 +221,7 @@ fn jump_to_non_join_point_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -260,7 +260,7 @@ fn call_to_unknown_fn_id_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -302,7 +302,7 @@ fn make_closure_unknown_fn_id_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -341,7 +341,7 @@ fn letrec_unknown_fn_id_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -381,7 +381,7 @@ fn primop_type_mismatch_is_error() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -424,7 +424,7 @@ fn well_formed_join_point_passes() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
@@ -474,7 +474,7 @@ fn letjoin_param_varid_reusable_in_body() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
@@ -516,7 +516,7 @@ fn switch_branch_varid_reusable_across_branches() {
     };
     let module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),
@@ -557,7 +557,7 @@ fn getdict_unknown_trait_is_error() {
     };
     let mut module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "bad".to_string(),
@@ -612,7 +612,7 @@ fn getdict_valid_trait_and_instance_passes() {
     };
     let mut module = make_simple_module(
         vec![func],
-        HashMap::from([(
+        FxHashMap::from_iter([(
             FnId(0),
             FnIdentity::Local {
                 name: "good".to_string(),

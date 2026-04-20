@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Module, TypeDeclKind, Visibility};
 
@@ -69,9 +69,9 @@ pub fn infer_module(
         }]
     })?;
 
-    let mut cache: HashMap<String, TypedModule> = HashMap::new();
-    let mut interface_cache: HashMap<String, crate::module_interface::ModuleInterface> =
-        HashMap::new();
+    let mut cache: FxHashMap<String, TypedModule> = FxHashMap::default();
+    let mut interface_cache: FxHashMap<String, crate::module_interface::ModuleInterface> =
+        FxHashMap::default();
 
     // Type-check each dependency in topological order
     for resolved in &graph.modules {
@@ -303,9 +303,9 @@ pub fn infer_module_single(
 /// 15. Assemble TypedModule
 pub(crate) fn infer_module_inner(
     module: &Module,
-    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+    interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     module_path: String,
-    prelude_tree_paths: &HashSet<String>,
+    prelude_tree_paths: &FxHashSet<String>,
 ) -> Result<TypedModule, Vec<SpannedTypeError>> {
     let is_core_module = module_path.starts_with("core/");
     let is_prelude_tree = prelude_tree_paths.contains(&module_path);
@@ -422,8 +422,8 @@ impl ModuleInferenceState {
         instance_defs: Vec<InstanceDefInfo>,
         derived_instance_defs: Vec<InstanceDefInfo>,
         _imported_instance_defs: Vec<InstanceDefInfo>,
-        fn_constraint_requirements: &mut HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
-        _trait_method_map: &HashMap<String, TraitName>,
+        fn_constraint_requirements: &mut FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+        _trait_method_map: &FxHashMap<String, TraitName>,
         trait_registry: &TraitRegistry,
         exported_trait_defs: Vec<ExportedTraitDef>,
         extern_fns: Vec<ExternFnInfo>,
@@ -431,7 +431,7 @@ impl ModuleInferenceState {
         extern_traits: Vec<ExternTraitInfo>,
         extern_bindings: Vec<ExternBindingInfo>,
         constructor_schemes: Vec<(String, TypeScheme)>,
-        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+        interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     ) -> Result<TypedModule, Vec<SpannedTypeError>> {
         let mut instance_defs = instance_defs;
         instance_defs.extend(derived_instance_defs);
@@ -630,7 +630,7 @@ impl ModuleInferenceState {
         // checks below and in `checks.rs`) only use this to look up "a scheme
         // for this name" — no overload-specific disambiguation. Overload
         // disambiguation is carried separately on resolved_ref.
-        let fn_schemes: HashMap<String, TypeScheme> = results
+        let fn_schemes: FxHashMap<String, TypeScheme> = results
             .iter()
             .map(|e| (e.name.clone(), e.scheme.clone()))
             .collect();
@@ -661,7 +661,7 @@ impl ModuleInferenceState {
 
         // Detect implicit trait constraints from body and merge into fn_constraint_requirements
         for func in &functions {
-            let mut fn_type_param_vars: HashSet<TypeVarId> = HashSet::new();
+            let mut fn_type_param_vars: FxHashSet<TypeVarId> = FxHashSet::default();
             if let Some(scheme) = fn_schemes.get(&func.name) {
                 if let Type::Fn(param_types, ret_ty) = &scheme.ty {
                     for (_, pty) in param_types.iter() {
@@ -727,7 +727,7 @@ impl ModuleInferenceState {
                 .iter()
                 .map(|m| (m.name.clone(), m.param_types.len()))
                 .collect();
-            let method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)> =
+            let method_tc_types: FxHashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)> =
                 info.methods
                     .iter()
                     .map(|m| {
@@ -737,7 +737,7 @@ impl ModuleInferenceState {
                         )
                     })
                     .collect();
-            let method_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = info
+            let method_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = info
                 .methods
                 .iter()
                 .filter(|m| !m.constraints.is_empty())
@@ -774,11 +774,11 @@ impl ModuleInferenceState {
         validation_errors.extend(ownership_errors);
 
         // Filter to exported functions only for cross-module propagation
-        let exported_names: HashSet<&str> = exported_fn_types
+        let exported_names: FxHashSet<&str> = exported_fn_types
             .iter()
             .map(|ef| ef.name.as_str())
             .collect();
-        let exported_fn_qualifiers: HashMap<_, _> = ownership_result
+        let exported_fn_qualifiers: FxHashMap<_, _> = ownership_result
             .fn_qualifiers
             .into_iter()
             .filter(|(name, _)| exported_names.contains(name.as_str()))
@@ -849,7 +849,7 @@ impl ModuleInferenceState {
             })
             .collect();
 
-        let _local_type_names: HashSet<String> = module
+        let _local_type_names: FxHashSet<String> = module
             .decls
             .iter()
             .filter_map(|d| {
@@ -860,7 +860,7 @@ impl ModuleInferenceState {
                 }
             })
             .collect();
-        let mut type_visibility: HashMap<String, Visibility> = HashMap::new();
+        let mut type_visibility: FxHashMap<String, Visibility> = FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
                 type_visibility.insert(td.name.clone(), td.visibility);
@@ -884,7 +884,7 @@ impl ModuleInferenceState {
 
         // Build exported_type_infos from fully-resolved TypeInfo in the registry.
         // This allows importers to register types without re-resolving from AST.
-        let mut exported_type_infos: HashMap<String, typed_ast::ExportedTypeInfo> = HashMap::new();
+        let mut exported_type_infos: FxHashMap<String, typed_ast::ExportedTypeInfo> = FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
                 if matches!(td.visibility, Visibility::Private) {
@@ -968,7 +968,7 @@ impl ModuleInferenceState {
             }
         }
 
-        let fn_types_by_name: HashMap<String, usize> = results
+        let fn_types_by_name: FxHashMap<String, usize> = results
             .iter()
             .enumerate()
             .map(|(i, e)| (e.name.clone(), i))

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::Visibility;
 use krypton_parser::ast::{BinOp, Expr, Lit, MatchArm, Param, Pattern, Span, TypeExpr, UnaryOp};
@@ -33,12 +33,12 @@ pub(crate) struct InferenceContext<'a> {
     pub(super) gen: &'a mut TypeVarGen,
     pub(super) registry: Option<&'a TypeRegistry>,
     pub(super) recur_params: Option<Vec<(ParamMode, Type)>>,
-    pub(super) let_own_spans: Option<&'a mut HashSet<Span>>,
-    pub(super) lambda_own_captures: Option<&'a mut HashMap<Span, String>>,
-    pub(super) type_param_map: &'a HashMap<String, TypeVarId>,
-    pub(super) type_param_arity: &'a HashMap<String, usize>,
-    pub(super) qualified_modules: &'a HashMap<String, QualifiedModuleBinding>,
-    pub(super) imported_type_info: &'a HashMap<String, (String, Visibility)>,
+    pub(super) let_own_spans: Option<&'a mut FxHashSet<Span>>,
+    pub(super) lambda_own_captures: Option<&'a mut FxHashMap<Span, String>>,
+    pub(super) type_param_map: &'a FxHashMap<String, TypeVarId>,
+    pub(super) type_param_arity: &'a FxHashMap<String, usize>,
+    pub(super) qualified_modules: &'a FxHashMap<String, QualifiedModuleBinding>,
+    pub(super) imported_type_info: &'a FxHashMap<String, (String, Visibility)>,
     pub(super) module_path: &'a str,
     pub(super) shadowed_prelude_fns: &'a [(String, String)],
     pub(super) self_type: Option<Type>,
@@ -1316,7 +1316,7 @@ impl<'a> InferenceContext<'a> {
                 _ => None,
             }
         });
-        let mut seen_params = HashSet::new();
+        let mut seen_params = FxHashSet::default();
         for p in params.iter() {
             if !seen_params.insert(&p.name) {
                 return Err(super::spanned(
@@ -1366,7 +1366,7 @@ impl<'a> InferenceContext<'a> {
             .map(|(p, ty)| (p.mode, ty))
             .collect();
         let fn_ty = Type::Fn(fn_params, Box::new(body_ty));
-        let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        let param_names: FxHashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
         let ty = if let Some(cap_name) =
             super::first_own_capture(body, &param_names, self.env, self.subst, &body_typed)
         {
@@ -1555,7 +1555,7 @@ impl<'a> InferenceContext<'a> {
                 if tentative.vars.is_empty() {
                     tentative
                 } else {
-                    let gen_vars: HashSet<TypeVarId> = tentative.vars.iter().copied().collect();
+                    let gen_vars: FxHashSet<TypeVarId> = tentative.vars.iter().copied().collect();
                     let has_trait_constraints =
                         collect_trait_constraints_on_vars(&val_typed, self.subst, &gen_vars);
                     if has_trait_constraints {
@@ -2003,7 +2003,7 @@ impl<'a> InferenceContext<'a> {
                 let struct_ty = Type::Named(info.name.clone(), fresh_args.clone());
                 let resolved_type_ref = self.resolved_type_ref_for_name(&info.name);
 
-                let provided: HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+                let provided: FxHashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
                 let missing: Vec<String> = record_fields
                     .iter()
                     .filter(|(n, _)| !provided.contains(n.as_str()))
@@ -2614,7 +2614,7 @@ impl<'a> InferenceContext<'a> {
 fn collect_trait_constraints_on_vars(
     expr: &TypedExpr,
     subst: &Substitution,
-    generalized_vars: &HashSet<TypeVarId>,
+    generalized_vars: &FxHashSet<TypeVarId>,
 ) -> bool {
     let mut stack: Vec<&TypedExpr> = vec![expr];
     while let Some(e) = stack.pop() {

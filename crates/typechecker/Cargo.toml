@@ -9,6 +9,7 @@ krypton-modules = { path = "../modules" }
 serde.workspace = true
 krypton-diagnostics = { path = "../diagnostics" }
 tracing.workspace = true
+rustc-hash.workspace = true
 
 [dev-dependencies]
 krypton-test-harness = { path = "../test-harness" }

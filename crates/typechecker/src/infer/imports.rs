@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, ImportName, Module, Span, Visibility};
 
@@ -63,7 +63,7 @@ impl ModuleInferenceState {
     pub(super) fn build_synthetic_prelude_import(
         &mut self,
         is_prelude_tree: bool,
-        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+        interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     ) -> Option<Decl> {
         if is_prelude_tree {
             return None;
@@ -83,7 +83,7 @@ impl ModuleInferenceState {
 
         // Build set of constructor names from pub (transparent) re-exported types,
         // so we can exclude them from the re-exported fn list (they come from type processing).
-        let mut prelude_constructor_names: HashSet<String> = HashSet::new();
+        let mut prelude_constructor_names: FxHashSet<String> = FxHashSet::default();
         for reex in &iface.reexported_types {
             if matches!(reex.visibility, Visibility::Pub) {
                 let orig_path = &reex.canonical_ref.module.0;
@@ -134,7 +134,7 @@ impl ModuleInferenceState {
     pub(super) fn process_imports(
         &mut self,
         module: &Module,
-        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+        interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
         synthetic_prelude_import: Option<&Decl>,
     ) -> Result<(), SpannedTypeError> {
         // Build decl list: synthetic prelude import (if any) + module's own decls
@@ -163,7 +163,7 @@ impl ModuleInferenceState {
         path: &str,
         names: &[ImportName],
         span: Span,
-        interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+        interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     ) -> Result<(), SpannedTypeError> {
         use crate::module_interface;
 
@@ -172,33 +172,33 @@ impl ModuleInferenceState {
             .get(path)
             .expect("module interface should be in cache (topological order)");
 
-        let requested: HashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
+        let requested: FxHashSet<&str> = names.iter().map(|n| n.name.as_str()).collect();
         let import_all = names.is_empty();
         let is_synthetic_prelude_import = path == "prelude" && span == (0, 0);
 
         // Build alias map from ImportName
-        let aliases: HashMap<String, String> = names
+        let aliases: FxHashMap<String, String> = names
             .iter()
             .filter_map(|n| n.alias.as_ref().map(|a| (n.name.clone(), a.clone())))
             .collect();
 
         let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
-        let mut qualified_exports: HashMap<String, QualifiedExport> = HashMap::new();
+        let mut qualified_exports: FxHashMap<String, QualifiedExport> = FxHashMap::default();
 
         // Build name sets from interface for visibility checks
-        let exported_fn_names: HashSet<&str> = iface
+        let exported_fn_names: FxHashSet<&str> = iface
             .exported_fns
             .iter()
             .map(|ef| ef.name.as_str())
             .collect();
-        let reexported_fn_names: HashSet<&str> = iface
+        let reexported_fn_names: FxHashSet<&str> = iface
             .reexported_fns
             .iter()
             .map(|ef| ef.local_name.as_str())
             .collect();
         // Build set of names importable via type/trait/extern paths
-        let type_or_trait_names: HashSet<&str> = {
-            let mut s: HashSet<&str> = HashSet::new();
+        let type_or_trait_names: FxHashSet<&str> = {
+            let mut s: FxHashSet<&str> = FxHashSet::default();
             for t in &iface.exported_types {
                 if !matches!(t.visibility, Visibility::Private) {
                     s.insert(&t.name);
@@ -775,7 +775,7 @@ impl ModuleInferenceState {
                         // list.
                         let mut vars: Vec<crate::types::TypeVarId> =
                             trait_def.type_var_ids.clone();
-                        let mut seen: HashSet<crate::types::TypeVarId> =
+                        let mut seen: FxHashSet<crate::types::TypeVarId> =
                             vars.iter().copied().collect();
                         for tv in super::free_vars_ordered(&fn_ty) {
                             if seen.insert(tv) {
@@ -786,7 +786,7 @@ impl ModuleInferenceState {
                             vars,
                             constraints: Vec::new(),
                             ty: fn_ty,
-                            var_names: HashMap::new(),
+                            var_names: FxHashMap::default(),
                         };
                         self.imports.bind_import(
                             &mut self.env,

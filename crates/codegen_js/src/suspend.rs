@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use rustc_hash::FxHashMap;
+
 use krypton_ir::*;
 
 /// Qualified function reference: (module_index, FnId).
@@ -379,7 +381,7 @@ fn resolve_trait_method(
                 .find(|(name, _)| name == method_name)
                 .map(|(_, id)| *id);
         }
-        let mut bindings = HashMap::new();
+        let mut bindings = FxHashMap::default();
         if bind_instance_targets(
             std::slice::from_ref(primary),
             std::slice::from_ref(target),
@@ -399,7 +401,7 @@ fn resolve_trait_method(
 mod tests {
     use super::*;
     use krypton_typechecker::types::TypeVarGen;
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::BTreeSet;
 
     fn expr(ty: Type, kind: ExprKind) -> Expr {
         Expr::new((0, 0), ty, kind)
@@ -415,7 +417,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             functions: vec![],
-            fn_identities: HashMap::new(),
+            fn_identities: Default::default(),
             extern_fns: vec![],
             extern_types: vec![],
             extern_traits: vec![],
@@ -424,8 +426,8 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: ModulePath::new(name),
-            fn_dict_requirements: HashMap::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_dict_requirements: Default::default(),
+            fn_exit_closes: Default::default(),
         }
     }
 

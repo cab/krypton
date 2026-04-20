@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use rustc_hash::FxHashMap;
+
 use krypton_ir::{bind_instance_targets, SimpleExprKind, TraitName, Type, TypeVarId};
 use krypton_parser::ast::Span;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
@@ -369,7 +371,7 @@ pub(super) struct Compiler<'link> {
     pre_allocated_slots: HashMap<krypton_ir::VarId, u16>,
     pub(super) var_types: HashMap<krypton_ir::VarId, Type>,
     pub(super) join_points: HashMap<krypton_ir::VarId, JoinPointInfo>,
-    pub(super) fn_names: HashMap<krypton_ir::FnId, String>,
+    pub(super) fn_names: FxHashMap<krypton_ir::FnId, String>,
     /// sum_type_name → (tag → variant_name) for IR Switch compilation.
     pub(super) variant_tags: HashMap<String, HashMap<u32, String>>,
     /// sum_type_name → type_params for resolving generic types in switch bindings.
@@ -531,7 +533,7 @@ impl<'link> Compiler<'link> {
             pre_allocated_slots: HashMap::new(),
             var_types: HashMap::new(),
             join_points: HashMap::new(),
-            fn_names: HashMap::new(),
+            fn_names: FxHashMap::default(),
             variant_tags: HashMap::new(),
             sum_type_params: HashMap::new(),
             variant_field_types: HashMap::new(),
@@ -1909,7 +1911,7 @@ impl<'link> Compiler<'link> {
                     .get(trait_name)
                     .and_then(|instances| {
                         instances.iter().find(|inst| {
-                            let mut bindings = HashMap::new();
+                            let mut bindings = FxHashMap::default();
                             bind_instance_targets(&inst.target_types, target_types, &mut bindings)
                         })
                     })

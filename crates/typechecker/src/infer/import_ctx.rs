@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_parser::ast::{Decl, Module, Span, Visibility};
 
@@ -13,9 +13,9 @@ use super::state::ModuleInferenceState;
 pub(crate) struct ImportContext {
     pub(super) imported_fn_types: Vec<typed_ast::ImportedFn>,
     /// Index: function name → indices into `imported_fn_types` for O(1) name lookups.
-    imported_fn_index: HashMap<String, Vec<usize>>,
-    pub(super) imported_type_info: HashMap<String, (String, Visibility)>,
-    pub(super) imported_fn_qualifiers: HashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
+    imported_fn_index: FxHashMap<String, Vec<usize>>,
+    pub(super) imported_type_info: FxHashMap<String, (String, Visibility)>,
+    pub(super) imported_fn_qualifiers: FxHashMap<String, Vec<(typed_ast::ParamQualifier, String)>>,
     /// Prelude functions that were shadowed by explicit imports: (name, source_module)
     pub(super) shadowed_prelude_fns: Vec<(String, String)>,
 }
@@ -24,9 +24,9 @@ impl ImportContext {
     pub(super) fn new() -> Self {
         ImportContext {
             imported_fn_types: Vec::new(),
-            imported_fn_index: HashMap::new(),
-            imported_type_info: HashMap::new(),
-            imported_fn_qualifiers: HashMap::new(),
+            imported_fn_index: FxHashMap::default(),
+            imported_type_info: FxHashMap::default(),
+            imported_fn_qualifiers: FxHashMap::default(),
             shadowed_prelude_fns: Vec::new(),
         }
     }

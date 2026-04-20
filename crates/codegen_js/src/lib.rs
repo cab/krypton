@@ -8,7 +8,7 @@ pub use repl::compile_repl_js;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, HashMap, HashSet};
+    use std::collections::{BTreeSet, HashMap};
 
     use krypton_ir::*;
     use krypton_typechecker::link_context::LinkContext;
@@ -30,7 +30,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             functions: vec![],
-            fn_identities: HashMap::new(),
+            fn_identities: Default::default(),
             extern_fns: vec![],
             extern_types: vec![],
             extern_traits: vec![],
@@ -39,8 +39,8 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: ModulePath::new(name),
-            fn_dict_requirements: HashMap::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_dict_requirements: Default::default(),
+            fn_exit_closes: Default::default(),
         }
     }
 
@@ -55,9 +55,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         LinkContext::build(vec![iface])
     }

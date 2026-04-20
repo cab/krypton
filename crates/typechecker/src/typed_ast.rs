@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt;
 use std::ops::Deref;
 
@@ -194,16 +194,16 @@ pub struct AutoCloseBinding {
 #[derive(Debug, Clone, Default)]
 pub struct AutoCloseInfo {
     /// Shadow point: let_span → old binding to close before new binding takes effect
-    pub shadow_closes: HashMap<Span, AutoCloseBinding>,
+    pub shadow_closes: FxHashMap<Span, AutoCloseBinding>,
     /// QuestionMark early return: qm_span → bindings to close before early return (LIFO order)
-    pub early_returns: HashMap<Span, Vec<AutoCloseBinding>>,
+    pub early_returns: FxHashMap<Span, Vec<AutoCloseBinding>>,
     /// Recur back-edge: recur_span → bindings to close before jumping back (LIFO order)
-    pub recur_closes: HashMap<Span, Vec<AutoCloseBinding>>,
+    pub recur_closes: FxHashMap<Span, Vec<AutoCloseBinding>>,
     /// Move/consumption sites: arg_span → consumed bindings
-    pub consumptions: HashMap<Span, Vec<AutoCloseBinding>>,
+    pub consumptions: FxHashMap<Span, Vec<AutoCloseBinding>>,
     /// Block scope exits: scope_id → bindings to close at that scope's tail,
     /// in LIFO order (reverse of declaration order).
-    pub scope_exits: HashMap<ScopeId, Vec<AutoCloseBinding>>,
+    pub scope_exits: FxHashMap<ScopeId, Vec<AutoCloseBinding>>,
 }
 
 #[derive(Debug, Clone)]
@@ -427,9 +427,9 @@ pub struct TraitDefInfo {
     /// traits this has length 1 (`type_var_ids[0] == type_var_id`); for
     /// multi-parameter traits it carries all params.
     pub type_var_ids: Vec<TypeVarId>,
-    pub method_tc_types: HashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)>, // name -> (param_types, return_type)
+    pub method_tc_types: FxHashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)>, // name -> (param_types, return_type)
     /// Method-level constraints: method_name -> Vec<(TraitName, Vec<TypeVarId>)>
-    pub method_constraints: HashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    pub method_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 }
 
 #[derive(Clone)]
@@ -488,7 +488,7 @@ pub struct InstanceDefInfo {
     pub target_type_name: String,
     /// Type arguments. Length 1 for single-parameter traits, N for multi-parameter.
     pub target_types: Vec<Type>,
-    pub type_var_ids: HashMap<String, TypeVarId>,
+    pub type_var_ids: FxHashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
     pub methods: Vec<InstanceMethod>,
     pub is_intrinsic: bool, // true when all method bodies are intrinsic()
@@ -595,7 +595,7 @@ pub struct TypedModule {
     /// `main`, which is not permitted to be overloaded. For other functions —
     /// which may be overloaded — scan `fn_types` directly or dispatch via the
     /// typed-AST resolved_ref.
-    pub fn_types_by_name: HashMap<String, usize>,
+    pub fn_types_by_name: FxHashMap<String, usize>,
     /// Public API: only locally-defined pub functions, pub (transparent) constructors,
     /// and trait instance methods. Used by downstream importers.
     pub exported_fn_types: Vec<ExportedFn>,
@@ -610,23 +610,23 @@ pub struct TypedModule {
     pub struct_decls: Vec<StructDecl>,
     pub sum_decls: Vec<SumDecl>,
     /// Maps type_name → visibility for types declared in this module.
-    pub type_visibility: HashMap<String, Visibility>,
+    pub type_visibility: FxHashMap<String, Visibility>,
     /// Functions re-exported via `pub use` — these become part of this module's public API.
     pub reexported_fn_types: Vec<ExportedFn>,
     /// Type names re-exported via `pub use`.
     pub reexported_type_names: Vec<String>,
     /// Maps re-exported type name → original visibility (preserves pub/opaque distinction).
-    pub reexported_type_visibility: HashMap<String, Visibility>,
+    pub reexported_type_visibility: FxHashMap<String, Visibility>,
     /// Trait definitions exported for cross-module use.
     pub exported_trait_defs: Vec<ExportedTraitDef>,
     /// Pre-resolved type registrations for exported types.
     /// Used by importers to register types without re-resolving from AST.
-    pub exported_type_infos: HashMap<String, ExportedTypeInfo>,
+    pub exported_type_infos: FxHashMap<String, ExportedTypeInfo>,
     /// Auto-close info for Disposable bindings.
     pub auto_close: AutoCloseInfo,
     /// Pre-computed per-param qualifier info for exported functions.
     /// Downstream modules use this for cross-module ownership checking.
-    pub exported_fn_qualifiers: HashMap<String, Vec<(ParamQualifier, String)>>,
+    pub exported_fn_qualifiers: FxHashMap<String, Vec<(ParamQualifier, String)>>,
     /// Source text of this module (for diagnostic rendering of codegen errors).
     pub module_source: Option<String>,
 }

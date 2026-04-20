@@ -1,3 +1,4 @@
+mod determinism;
 mod diagnostics;
 mod fixtures;
 mod infer;

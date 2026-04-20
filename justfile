@@ -80,6 +80,7 @@ fmt:
 lint:
     cargo clippy --workspace
     cargo fmt -- --check
+    @! grep -rEn 'use std::collections::(\{[^}]*(HashMap|HashSet)|HashMap|HashSet)' crates/typechecker/src crates/ir/src crates/modules/src || (echo "error: std::collections::HashMap/HashSet is forbidden in typechecker/ir/modules — use rustc_hash::FxHashMap/FxHashSet"; exit 1)
 
 # Run all benchmarks (criterion only)
 bench:

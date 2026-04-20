@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_parser::ast::Span;
 
@@ -58,20 +58,20 @@ pub struct InstanceInfo {
     pub target_types: Vec<Type>,
     /// Display form, joining multiple arguments with ", " for multi-param traits.
     pub target_type_name: String,
-    pub type_var_ids: HashMap<String, TypeVarId>,
+    pub type_var_ids: FxHashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
     pub span: Span,
     pub is_builtin: bool,
 }
 
 pub struct TraitRegistry {
-    traits: HashMap<TraitName, TraitInfo>,
+    traits: FxHashMap<TraitName, TraitInfo>,
     /// Secondary index: bare trait name → TraitName, for O(1) lookup_trait_by_name.
-    bare_name_index: HashMap<String, TraitName>,
+    bare_name_index: FxHashMap<String, TraitName>,
     instances: Vec<InstanceInfo>,
     /// Index: trait_name → indices into `instances`, for fast overlap/lookup.
-    instances_by_trait: HashMap<TraitName, Vec<usize>>,
-    trait_aliases: HashMap<String, TraitName>,
+    instances_by_trait: FxHashMap<TraitName, Vec<usize>>,
+    trait_aliases: FxHashMap<String, TraitName>,
 }
 
 impl Default for TraitRegistry {
@@ -83,11 +83,11 @@ impl Default for TraitRegistry {
 impl TraitRegistry {
     pub fn new() -> Self {
         TraitRegistry {
-            traits: HashMap::new(),
-            bare_name_index: HashMap::new(),
+            traits: FxHashMap::default(),
+            bare_name_index: FxHashMap::default(),
             instances: Vec::new(),
-            instances_by_trait: HashMap::new(),
-            trait_aliases: HashMap::new(),
+            instances_by_trait: FxHashMap::default(),
+            trait_aliases: FxHashMap::default(),
         }
     }
 
@@ -146,12 +146,12 @@ impl TraitRegistry {
         for &idx in &trait_indices {
             let existing = &self.instances[idx];
             if instances_overlap(&existing.target_types, &info.target_types) {
-                let names: std::collections::HashMap<crate::types::TypeVarId, &str> = info
+                let names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> = info
                     .type_var_ids
                     .iter()
                     .map(|(name, &id)| (id, name.as_str()))
                     .collect();
-                let existing_names: std::collections::HashMap<crate::types::TypeVarId, &str> =
+                let existing_names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> =
                     existing
                         .type_var_ids
                         .iter()
@@ -240,7 +240,7 @@ impl TraitRegistry {
             if inst.target_types.len() != tys.len() {
                 continue;
             }
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             let positions_match =
                 inst.target_types
                     .iter()
@@ -303,7 +303,7 @@ impl TraitRegistry {
             if inst.target_types.len() != tys.len() {
                 return false;
             }
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             inst.target_types
                 .iter()
                 .zip(tys.iter())
@@ -365,7 +365,7 @@ impl TraitRegistry {
                             return false;
                         }
 
-                        let mut bindings = HashMap::new();
+                        let mut bindings = FxHashMap::default();
                         if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
                             |(pattern_arg, actual_arg)| {
                                 types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
@@ -424,7 +424,7 @@ impl TraitRegistry {
                 if inst.target_types.len() != target_tys.len() {
                     return false;
                 }
-                let mut bindings = HashMap::new();
+                let mut bindings = FxHashMap::default();
                 for (pattern, actual) in inst.target_types.iter().zip(target_tys.iter()) {
                     if !types_match_with_bindings(pattern, actual, &mut bindings) {
                         return false;
@@ -505,7 +505,7 @@ impl TraitRegistry {
         self.trait_aliases.insert(alias, canonical);
     }
 
-    pub fn traits(&self) -> &HashMap<TraitName, TraitInfo> {
+    pub fn traits(&self) -> &FxHashMap<TraitName, TraitInfo> {
         &self.traits
     }
 
@@ -564,7 +564,7 @@ impl TraitRegistry {
                         continue;
                     }
 
-                    let mut bindings = HashMap::new();
+                    let mut bindings = FxHashMap::default();
                     if !inst_bound_args.iter().zip(actual_bound_args.iter()).all(
                         |(pattern_arg, actual_arg)| {
                             types_match_with_bindings(pattern_arg, actual_arg, &mut bindings)
@@ -645,7 +645,7 @@ impl TraitRegistry {
                 continue;
             }
 
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             let mut all_positions_match = true;
             for (pattern, actual) in inst.target_types.iter().zip(tys.iter()) {
                 if !types_match_with_bindings(pattern, actual, &mut bindings) {
@@ -701,7 +701,7 @@ impl TraitRegistry {
 }
 
 /// Format a type, substituting TypeVarIds back to their user-written names.
-fn format_type_with_names(ty: &Type, id_to_name: &HashMap<TypeVarId, &str>) -> String {
+fn format_type_with_names(ty: &Type, id_to_name: &FxHashMap<TypeVarId, &str>) -> String {
     match ty {
         Type::Var(id) => {
             if let Some(name) = id_to_name.get(id) {
@@ -732,7 +732,7 @@ fn format_type_with_names(ty: &Type, id_to_name: &HashMap<TypeVarId, &str>) -> S
 }
 
 fn instance_type_display(inst: &InstanceInfo) -> String {
-    let id_to_name: HashMap<TypeVarId, &str> = inst
+    let id_to_name: FxHashMap<TypeVarId, &str> = inst
         .type_var_ids
         .iter()
         .map(|(name, id)| (*id, name.as_str()))
@@ -776,7 +776,7 @@ impl InstanceDiagnostic {
 fn types_match_with_bindings(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
         // Type variable in instance type matches anything
@@ -945,8 +945,8 @@ fn instances_overlap(a: &[Type], b: &[Type]) -> bool {
     let mut gen = TypeVarGen::new();
     // Freshen a's vars together (shared var_map) and b's vars together (own var_map),
     // into a common generator namespace.
-    let mut a_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
-    let mut b_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let mut a_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
+    let mut b_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
     let a_fresh: Vec<Type> = a
         .iter()
         .map(|t| freshen_inner(t, &mut a_map, &mut gen))
@@ -964,7 +964,7 @@ fn instances_overlap(a: &[Type], b: &[Type]) -> bool {
     true
 }
 
-fn format_type_tuple_with_var_map(types: &[Type], names: &HashMap<TypeVarId, &str>) -> String {
+fn format_type_tuple_with_var_map(types: &[Type], names: &FxHashMap<TypeVarId, &str>) -> String {
     types
         .iter()
         .map(|t| crate::types::format_type_with_var_map(t, names))
@@ -974,7 +974,7 @@ fn format_type_tuple_with_var_map(types: &[Type], names: &HashMap<TypeVarId, &st
 
 #[cfg(test)]
 fn freshen_type_vars(ty: &Type, gen: &mut TypeVarGen) -> Type {
-    let mut var_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let mut var_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
     freshen_inner(ty, &mut var_map, gen)
 }
 
@@ -999,7 +999,7 @@ fn contains_type_var(ty: &Type) -> bool {
 /// Wrapper around `freshen_inner`, exposed for the multi-param solver.
 pub(crate) fn freshen_type(
     ty: &Type,
-    var_map: &mut HashMap<TypeVarId, TypeVarId>,
+    var_map: &mut FxHashMap<TypeVarId, TypeVarId>,
     gen: &mut TypeVarGen,
 ) -> Type {
     freshen_inner(ty, var_map, gen)
@@ -1007,7 +1007,7 @@ pub(crate) fn freshen_type(
 
 fn freshen_inner(
     ty: &Type,
-    var_map: &mut HashMap<TypeVarId, TypeVarId>,
+    var_map: &mut FxHashMap<TypeVarId, TypeVarId>,
     gen: &mut TypeVarGen,
 ) -> Type {
     match ty {
@@ -1057,7 +1057,7 @@ mod tests {
     use crate::typed_ast::{ResolvedConstraint, TraitName};
     use crate::types::{Type, TypeVarGen};
     use crate::unify::TypeError;
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
 
     fn tn(name: &str) -> TraitName {
         TraitName::new("test".to_string(), name.to_string())
@@ -1103,7 +1103,7 @@ mod tests {
             trait_name: tn(trait_name),
             target_types: vec![target_type],
             target_type_name: target_type_name.to_string(),
-            type_var_ids: HashMap::from([(String::from("a"), var_a)]),
+            type_var_ids: FxHashMap::from_iter([(String::from("a"), var_a)]),
             constraints,
 
             span: (0, 0),
@@ -1114,7 +1114,7 @@ mod tests {
     fn instance_multi(
         trait_name: &str,
         target_types: Vec<Type>,
-        type_var_ids: HashMap<String, crate::types::TypeVarId>,
+        type_var_ids: FxHashMap<String, crate::types::TypeVarId>,
     ) -> InstanceInfo {
         let joined = target_types
             .iter()
@@ -1187,7 +1187,7 @@ mod tests {
                 trait_name: tn("Functor"),
                 target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
-                type_var_ids: HashMap::new(),
+                type_var_ids: FxHashMap::default(),
                 constraints: vec![],
 
                 span: (0, 0),
@@ -1217,7 +1217,7 @@ mod tests {
                 trait_name: tn("Functor"),
                 target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
-                type_var_ids: HashMap::new(),
+                type_var_ids: FxHashMap::default(),
                 constraints: vec![],
 
                 span: (0, 0),
@@ -1229,7 +1229,7 @@ mod tests {
                 trait_name: tn("Foldable"),
                 target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
-                type_var_ids: HashMap::new(),
+                type_var_ids: FxHashMap::default(),
                 constraints: vec![],
 
                 span: (0, 0),
@@ -1241,7 +1241,7 @@ mod tests {
                 trait_name: tn("Traversable"),
                 target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
-                type_var_ids: HashMap::from([(String::from("f"), TypeVarGen::new().fresh())]),
+                type_var_ids: FxHashMap::from_iter([(String::from("f"), TypeVarGen::new().fresh())]),
                 constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
 
                 span: (0, 0),
@@ -1272,7 +1272,7 @@ mod tests {
                 trait_name: tn("Functor"),
                 target_types: vec![Type::Named("Result".to_string(), vec![Type::Var(var_e)])],
                 target_type_name: "Result".to_string(),
-                type_var_ids: HashMap::from([(String::from("e"), var_e)]),
+                type_var_ids: FxHashMap::from_iter([(String::from("e"), var_e)]),
                 constraints: vec![rc("Show", "e")],
 
                 span: (0, 0),
@@ -1371,7 +1371,7 @@ mod tests {
                     vec![Type::Var(var_k), Type::Var(var_v)],
                 )],
                 target_type_name: "Map".to_string(),
-                type_var_ids: HashMap::from([
+                type_var_ids: FxHashMap::from_iter([
                     (String::from("k"), var_k),
                     (String::from("v"), var_v),
                 ]),
@@ -1566,7 +1566,7 @@ mod tests {
         let var_a = gen.fresh();
         let pattern = Type::Tuple(vec![Type::Var(var_a), Type::String]);
         let actual = Type::Tuple(vec![Type::Int, Type::String]);
-        let mut bindings = HashMap::new();
+        let mut bindings = FxHashMap::default();
         assert!(super::types_match_with_bindings(
             &pattern,
             &actual,
@@ -1579,7 +1579,7 @@ mod tests {
     fn types_match_with_bindings_tuple_no_match() {
         let pattern = Type::Tuple(vec![Type::Int, Type::String]);
         let actual = Type::Tuple(vec![Type::Int, Type::Bool]);
-        let mut bindings = HashMap::new();
+        let mut bindings = FxHashMap::default();
         assert!(!super::types_match_with_bindings(
             &pattern,
             &actual,
@@ -1599,7 +1599,7 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         assert_eq!(
@@ -1616,13 +1616,13 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         let result = registry.register_instance(instance_multi(
             "Convert",
             vec![Type::Int, Type::String],
-            HashMap::new(),
+            FxHashMap::default(),
         ));
         assert!(matches!(
             result,
@@ -1644,14 +1644,14 @@ mod tests {
                     Type::Named("Array".into(), vec![Type::Var(var_a)]),
                     Type::String,
                 ],
-                HashMap::from([(String::from("a"), var_a)]),
+                FxHashMap::from_iter([(String::from("a"), var_a)]),
             ))
             .unwrap();
         // impl Convert[Array[Int], String] overlaps
         let result = registry.register_instance(instance_multi(
             "Convert",
             vec![Type::Named("Array".into(), vec![Type::Int]), Type::String],
-            HashMap::new(),
+            FxHashMap::default(),
         ));
         assert!(matches!(
             result,
@@ -1667,14 +1667,14 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         registry
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::Float],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         assert_eq!(registry.instances().len(), 2);
@@ -1688,13 +1688,13 @@ mod tests {
         let mut registry = TraitRegistry::new();
         registry.register_trait(trait_info("Convert")).unwrap();
         registry
-            .register_instance(instance_multi("Convert", vec![Type::Int], HashMap::new()))
+            .register_instance(instance_multi("Convert", vec![Type::Int], FxHashMap::default()))
             .unwrap();
         registry
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         assert_eq!(registry.instances().len(), 2);
@@ -1716,13 +1716,13 @@ mod tests {
                     Type::Named("Array".into(), vec![Type::Var(var_a)]),
                     Type::Var(var_a),
                 ],
-                HashMap::from([(String::from("a"), var_a)]),
+                FxHashMap::from_iter([(String::from("a"), var_a)]),
             ))
             .unwrap();
         let result = registry.register_instance(instance_multi(
             "Convert",
             vec![Type::Named("Array".into(), vec![Type::Int]), Type::Int],
-            HashMap::new(),
+            FxHashMap::default(),
         ));
         assert!(matches!(
             result,
@@ -1745,14 +1745,14 @@ mod tests {
                     Type::Named("Array".into(), vec![Type::Var(var_a)]),
                     Type::Var(var_a),
                 ],
-                HashMap::from([(String::from("a"), var_a)]),
+                FxHashMap::from_iter([(String::from("a"), var_a)]),
             ))
             .unwrap();
         registry
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Named("Array".into(), vec![Type::Int]), Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         assert_eq!(registry.instances().len(), 2);
@@ -1768,7 +1768,7 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         // Query: position 0 = Int, position 1 = unknown (var) → unique match
@@ -1789,14 +1789,14 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         registry
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::Float],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         let var_b = gen.fresh();
@@ -1816,7 +1816,7 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         let var_b = gen.fresh();
@@ -1835,7 +1835,7 @@ mod tests {
             .register_instance(instance_multi(
                 "Convert",
                 vec![Type::Int, Type::String],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         assert!(registry
@@ -1865,7 +1865,7 @@ mod tests {
                     Type::Named("Box".to_string(), vec![]),
                     Type::Int,
                 ],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
 
@@ -1894,7 +1894,7 @@ mod tests {
                     Type::Named("Box".to_string(), vec![]),
                     Type::Int,
                 ],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         registry
@@ -1904,7 +1904,7 @@ mod tests {
                     Type::Named("List".to_string(), vec![]),
                     Type::Int,
                 ],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
 
@@ -1933,7 +1933,7 @@ mod tests {
                     Type::Named("Box".to_string(), vec![]),
                     Type::Int,
                 ],
-                HashMap::new(),
+                FxHashMap::default(),
             ))
             .unwrap();
         let result = registry.register_instance(instance_multi(
@@ -1942,7 +1942,7 @@ mod tests {
                 Type::Named("Box".to_string(), vec![]),
                 Type::Int,
             ],
-            HashMap::new(),
+            FxHashMap::default(),
         ));
         assert!(matches!(
             result,
@@ -1970,7 +1970,7 @@ mod tests {
                     Type::Var(var_a),
                 ],
                 target_type_name: "Box, a".to_string(),
-                type_var_ids: HashMap::from([(String::from("a"), var_a)]),
+                type_var_ids: FxHashMap::from_iter([(String::from("a"), var_a)]),
                 constraints: vec![rc("Show", "a")],
                 span: (0, 0),
                 is_builtin: false,

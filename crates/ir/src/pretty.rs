@@ -1,6 +1,6 @@
 use std::fmt;
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::Type;
 use crate::{
@@ -201,14 +201,14 @@ fn fmt_types(types: &[crate::Type]) -> String {
 struct IndentWriter<'a, 'b> {
     f: &'a mut fmt::Formatter<'b>,
     indent: usize,
-    fn_names: &'a HashMap<FnId, String>,
+    fn_names: &'a FxHashMap<FnId, String>,
 }
 
 impl<'a, 'b> IndentWriter<'a, 'b> {
     fn new(
         f: &'a mut fmt::Formatter<'b>,
         indent: usize,
-        fn_names: &'a HashMap<FnId, String>,
+        fn_names: &'a FxHashMap<FnId, String>,
     ) -> Self {
         Self {
             f,
@@ -501,7 +501,7 @@ impl fmt::Display for SumTypeDef {
 
 impl fmt::Display for FnDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let empty = HashMap::new();
+        let empty = FxHashMap::default();
         self.fmt_with_names(f, &empty)
     }
 }
@@ -510,7 +510,7 @@ impl FnDef {
     fn fmt_with_names(
         &self,
         f: &mut fmt::Formatter<'_>,
-        fn_names: &HashMap<FnId, String>,
+        fn_names: &FxHashMap<FnId, String>,
     ) -> fmt::Result {
         writeln!(
             f,
@@ -613,13 +613,13 @@ impl fmt::Display for Module {
         }
 
         // Print declarations for imported/extern functions referenced in bodies
-        let local_fn_ids: HashSet<FnId> = self.functions.iter().map(|func| func.id).collect();
-        let mut referenced = HashSet::new();
+        let local_fn_ids: FxHashSet<FnId> = self.functions.iter().map(|func| func.id).collect();
+        let mut referenced = FxHashSet::default();
         for func in &self.functions {
             collect_referenced_fns(&func.body, &mut referenced);
         }
         // Build FnId → Type lookup from enriched extern_fns and imported_fns
-        let mut fn_type_lookup: HashMap<FnId, String> = HashMap::new();
+        let mut fn_type_lookup: FxHashMap<FnId, String> = FxHashMap::default();
         for ext in &self.extern_fns {
             let params: Vec<String> = ext.param_types.iter().map(|t| format!("{t}")).collect();
             fn_type_lookup.insert(
@@ -668,7 +668,7 @@ impl fmt::Display for Module {
 }
 
 /// Collect all FnIds referenced in Call and MakeClosure nodes.
-fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
+fn collect_referenced_fns(expr: &Expr, ids: &mut FxHashSet<FnId>) {
     match &expr.kind {
         ExprKind::Let { value, body, .. } => {
             collect_referenced_fns_simple(value, ids);
@@ -711,7 +711,7 @@ fn collect_referenced_fns(expr: &Expr, ids: &mut HashSet<FnId>) {
     }
 }
 
-fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut HashSet<FnId>) {
+fn collect_referenced_fns_simple(expr: &SimpleExpr, ids: &mut FxHashSet<FnId>) {
     match &expr.kind {
         SimpleExprKind::Call { func, .. } | SimpleExprKind::MakeClosure { func, .. } => {
             ids.insert(*func);
@@ -1044,7 +1044,7 @@ mod tests {
         let ids = gen_type_var_ids(1);
         let module = Module {
             name: "test".into(),
-            fn_identities: std::collections::HashMap::new(),
+            fn_identities: rustc_hash::FxHashMap::default(),
             extern_fns: vec![],
             extern_types: vec![],
             extern_traits: vec![],
@@ -1082,8 +1082,8 @@ mod tests {
                 return_type: Type::Unit,
                 body: expr(Type::Unit, ExprKind::Atom(Atom::Lit(Literal::Unit))),
             }],
-            fn_dict_requirements: std::collections::HashMap::new(),
-            fn_exit_closes: std::collections::HashMap::new(),
+            fn_dict_requirements: rustc_hash::FxHashMap::default(),
+            fn_exit_closes: rustc_hash::FxHashMap::default(),
         };
         insta::assert_snapshot!(module.to_string(), @r"
         module test

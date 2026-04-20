@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Module, Span};
 
@@ -45,18 +45,18 @@ pub(super) fn process_deriving(
                     }
                 };
 
-                let derived_type_var_ids: HashMap<String, TypeVarId> = type_decl
+                let derived_type_var_ids: FxHashMap<String, TypeVarId> = type_decl
                     .type_params
                     .iter()
                     .cloned()
                     .zip(type_info.type_param_vars.iter().copied())
                     .collect();
-                let local_type_params: HashMap<TypeVarId, String> = derived_type_var_ids
+                let local_type_params: FxHashMap<TypeVarId, String> = derived_type_var_ids
                     .iter()
                     .map(|(name, id)| (*id, name.clone()))
                     .collect();
                 let mut derived_constraints: Vec<ResolvedConstraint> = Vec::new();
-                let mut visited_constraints: HashSet<(String, String)> = HashSet::new();
+                let mut visited_constraints: FxHashSet<(String, String)> = FxHashSet::default();
 
                 for ft in &field_types {
                     // Disposable: only owned fields contribute constraints;
@@ -190,7 +190,7 @@ pub(super) fn process_deriving(
                     vars: vec![],
                     constraints: Vec::new(),
                     ty: fn_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 };
 
                 derived_instance_defs.push(InstanceDefInfo {
@@ -262,7 +262,7 @@ pub(super) fn process_deriving(
                     trait_name: derive_full_trait_name.clone(),
                     target_types: vec![target_type.clone()],
                     target_type_name: name.clone(),
-                    type_var_ids: HashMap::new(),
+                    type_var_ids: FxHashMap::default(),
                     constraints: vec![],
                     span: *span,
                     is_builtin: false,
@@ -287,14 +287,14 @@ pub(super) fn process_deriving(
                     vars: vec![],
                     constraints: Vec::new(),
                     ty: fn_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 };
 
                 derived_instance_defs.push(InstanceDefInfo {
                     trait_name: derive_full_trait_name,
                     target_type_name: name.clone(),
                     target_types: vec![target_type],
-                    type_var_ids: HashMap::new(),
+                    type_var_ids: FxHashMap::default(),
                     constraints: vec![],
                     methods: vec![typed_ast::InstanceMethod {
                         name: "dispose".to_string(),

@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use rustc_hash::FxHashMap;
+
 use krypton_ir::{
     bind_instance_targets, canonical_type_name, has_type_vars, head_type_name, Atom, CanonicalRef,
     Expr, ExprKind, FnId, FnIdentity, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind,
@@ -82,7 +84,7 @@ impl InstanceRegistry {
         }
         // 2. Parametric structural match
         for inst in self.parametric_candidates(trait_name, tys) {
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             if bind_instance_targets(&inst.target_types, tys, &mut bindings) {
                 return Some(&inst.js_name);
             }
@@ -110,7 +112,7 @@ impl InstanceRegistry {
             }
         }
         for inst in self.parametric_candidates(trait_name, tys) {
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             if bind_instance_targets(&inst.target_types, tys, &mut bindings) {
                 return inst.source_module.as_deref();
             }
@@ -2632,7 +2634,7 @@ mod tests {
             structs: vec![],
             sum_types: vec![],
             functions: vec![],
-            fn_identities: HashMap::new(),
+            fn_identities: Default::default(),
             extern_fns: vec![],
             extern_types: vec![],
             extern_traits: vec![],
@@ -2641,8 +2643,8 @@ mod tests {
             instances: vec![],
             tuple_arities: BTreeSet::new(),
             module_path: ModulePath::new(name),
-            fn_dict_requirements: HashMap::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_dict_requirements: Default::default(),
+            fn_exit_closes: Default::default(),
         }
     }
 
@@ -2657,9 +2659,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         LinkContext::build(vec![iface])
     }
@@ -2782,9 +2784,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         let main_iface = ModuleInterface {
             module_path: LinkModulePath::new("app/main"),
@@ -2796,9 +2798,9 @@ mod tests {
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         let link_ctx = LinkContext::build(vec![main_iface, stringlib_iface]);
         let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();
@@ -3033,9 +3035,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         let helpers_b_iface = ModuleInterface {
             module_path: LinkModulePath::new("helpers_b"),
@@ -3047,9 +3049,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         let main_iface = ModuleInterface {
             module_path: LinkModulePath::new("app/main"),
@@ -3064,9 +3066,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_traits: vec![],
             exported_instances: vec![],
             extern_types: vec![],
-            exported_fn_qualifiers: HashMap::new(),
-            type_visibility: HashMap::new(),
-            private_names: HashSet::new(),
+            exported_fn_qualifiers: Default::default(),
+            type_visibility: Default::default(),
+            private_names: Default::default(),
         };
         let link_ctx = LinkContext::build(vec![main_iface, helpers_a_iface, helpers_b_iface]);
         let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();

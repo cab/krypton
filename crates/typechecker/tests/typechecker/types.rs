@@ -1,5 +1,5 @@
 use krypton_typechecker::types::*;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 // ── 1a. Types construct, substitute, and pretty-print ──
 
@@ -275,7 +275,7 @@ fn type_scheme_poly_display() {
         vars: vec![a, b],
         constraints: Vec::new(),
         ty: Type::fn_consuming(vec![Type::Var(a)], Type::Var(b)),
-        var_names: HashMap::new(),
+        var_names: FxHashMap::default(),
     };
     insta::assert_snapshot!(scheme.to_string(), @"forall a b. (a) -> b");
 }
@@ -289,7 +289,7 @@ fn type_scheme_instantiate() {
         vars: vec![a, b],
         constraints: Vec::new(),
         ty: Type::fn_consuming(vec![Type::Var(a)], Type::Var(b)),
-        var_names: HashMap::new(),
+        var_names: FxHashMap::default(),
     };
     let instantiated = scheme.instantiate(&mut || gen.fresh());
     let c = gen.fresh(); // this is the 5th var (index 4), but we need the 3rd and 4th
@@ -340,7 +340,7 @@ fn apply_scheme_respects_quantified_vars() {
         vars: vec![a],
         constraints: Vec::new(),
         ty: Type::fn_consuming(vec![Type::Var(a), Type::Var(b)], Type::Var(a)),
-        var_names: HashMap::new(),
+        var_names: FxHashMap::default(),
     };
     // Substituting {a -> Int, b -> Bool}: var a is quantified so should NOT be substituted
     let s1 = Substitution::bind(a, Type::Int);

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, FnDecl, Module, Span, Visibility};
 
@@ -19,7 +19,7 @@ use super::state::{ModuleInferenceState, TraitsAndDerivingResult};
 pub(super) fn process_traits_and_deriving(
     state: &mut ModuleInferenceState,
     module: &Module,
-    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+    interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     module_path: &str,
     is_core_module: bool,
     pending_extern_traits: Vec<PendingExternTrait>,
@@ -79,7 +79,7 @@ pub(super) fn process_traits_and_deriving(
     )?;
 
     // Compute trait_method_map between phases 5 and 6, with collision detection
-    let mut trait_method_map: HashMap<String, TraitName> = HashMap::new();
+    let mut trait_method_map: FxHashMap<String, TraitName> = FxHashMap::default();
     for (method_name, trait_id, is_prelude) in trait_registry.trait_method_names() {
         if let Some(existing) = trait_method_map.get(&method_name) {
             let existing_is_prelude = trait_registry
@@ -137,15 +137,15 @@ pub(super) fn process_traits_and_deriving(
 /// Phase 1: Import instances from cached modules via orphan-rule lookup.
 pub(super) fn import_cached_instances(
     trait_registry: &mut TraitRegistry,
-    imported_type_info: &HashMap<String, (String, Visibility)>,
+    imported_type_info: &FxHashMap<String, (String, Visibility)>,
     imported_trait_defs: &[ExportedTraitDef],
-    interface_cache: &HashMap<String, crate::module_interface::ModuleInterface>,
+    interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
 ) -> Vec<InstanceDefInfo> {
     let mut imported_instance_defs = Vec::new();
     // Structural instance lookup: for each type/trait in scope, look up instances
     // in the defining module. The orphan rule guarantees instances live in the
     // module defining the type or the trait.
-    let mut source_modules: HashSet<&str> = HashSet::new();
+    let mut source_modules: FxHashSet<&str> = FxHashSet::default();
     for (source_path, _) in imported_type_info.values() {
         source_modules.insert(source_path.as_str());
     }
@@ -158,7 +158,7 @@ pub(super) fn import_cached_instances(
     // so always include its defining module for instance resolution.
     source_modules.insert("core/vec");
 
-    let mut seen_instances: HashSet<(TraitName, Vec<Type>)> = HashSet::new();
+    let mut seen_instances: FxHashSet<(TraitName, Vec<Type>)> = FxHashSet::default();
     for mod_path in &source_modules {
         if let Some(iface) = interface_cache.get(*mod_path) {
             for inst_summary in &iface.exported_instances {
@@ -202,7 +202,7 @@ pub(super) fn register_imported_trait_defs(
     trait_registry: &mut TraitRegistry,
     imported_trait_defs: &[ExportedTraitDef],
     gen: &mut TypeVarGen,
-    prelude_imported_names: &HashSet<String>,
+    prelude_imported_names: &FxHashSet<String>,
 ) {
     // Register trait definitions imported from other modules
     for trait_def in imported_trait_defs {
@@ -218,7 +218,7 @@ pub(super) fn register_imported_trait_defs(
         let new_tv_id = gen.fresh();
         let mut new_type_var_ids: Vec<TypeVarId> = Vec::with_capacity(trait_def.type_var_ids.len());
         new_type_var_ids.push(new_tv_id);
-        let mut remap: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+        let mut remap: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
         if let Some(&primary_old) = trait_def.type_var_ids.first() {
             remap.insert(primary_old, new_tv_id);
         } else {
@@ -286,7 +286,7 @@ pub(super) fn register_extern_traits(
     let mut exported_defs = Vec::new();
     let mut extern_trait_infos = Vec::new();
 
-    let empty_tp_arity: HashMap<String, usize> = HashMap::new();
+    let empty_tp_arity: FxHashMap<String, usize> = FxHashMap::default();
 
     for ext in pending {
         // Allocate fresh type var for the trait's type parameter
@@ -304,7 +304,7 @@ pub(super) fn register_extern_traits(
         let type_var_name = ext.type_params[0].clone();
 
         // Build type param map for resolving method types
-        let mut tp_map = HashMap::new();
+        let mut tp_map = FxHashMap::default();
         tp_map.insert(type_var_name.clone(), tv_id);
         // Additional type params (rare but supported)
         let mut all_tv_ids = vec![tv_id];
@@ -367,7 +367,7 @@ pub(super) fn register_extern_traits(
 
             // Build TypeScheme for the method: forall [tv_id]. param_types -> return_type
             let fn_type = Type::fn_consuming(param_types.clone(), return_type.clone());
-            let var_names: HashMap<TypeVarId, String> = all_tv_ids
+            let var_names: FxHashMap<TypeVarId, String> = all_tv_ids
                 .iter()
                 .zip(ext.type_params.iter())
                 .map(|(id, name)| (*id, name.clone()))
@@ -524,8 +524,8 @@ pub(super) fn register_local_traits(
             let type_param = &trait_type_params[0];
             let tv_id = state.gen.fresh();
             let type_var_arity = type_param.arity;
-            let mut type_param_map = HashMap::new();
-            let mut type_param_arity = HashMap::new();
+            let mut type_param_map = FxHashMap::default();
+            let mut type_param_arity = FxHashMap::default();
             type_param_map.insert(type_param.name.clone(), tv_id);
             type_param_arity.insert(type_param.name.clone(), type_param.arity);
             // Track ALL trait type parameter ids in declaration order so the
@@ -614,8 +614,8 @@ pub(super) fn register_local_traits(
                 // a well-formed method.
                 {
                     let mut shape_vars: Vec<TypeVarId> = Vec::new();
-                    let mut seen: std::collections::HashSet<TypeVarId> =
-                        std::collections::HashSet::new();
+                    let mut seen: rustc_hash::FxHashSet<TypeVarId> =
+                        rustc_hash::FxHashSet::default();
                     for pt in &param_types {
                         for v in crate::types::collect_shape_vars(pt) {
                             if seen.insert(v) {
@@ -658,7 +658,7 @@ pub(super) fn register_local_traits(
                     vars: all_vars,
                     constraints: Vec::new(),
                     ty: fn_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 };
                 state.env.bind_trait_method(
                     method.name.clone(),
@@ -773,8 +773,8 @@ pub(super) fn resolve_fn_param_types_for_overlap(
         .collect::<Option<Vec<_>>>()?;
 
     let mut gen = TypeVarGen::new();
-    let mut type_param_map = HashMap::new();
-    let mut type_param_arity = HashMap::new();
+    let mut type_param_map = FxHashMap::default();
+    let mut type_param_arity = FxHashMap::default();
     for tp in &f.type_params {
         let id = gen.fresh();
         type_param_map.insert(tp.name.clone(), id);
@@ -811,7 +811,7 @@ pub(super) fn trait_method_param_types(
 /// Phase 6: Check for trait method name conflicts and reserved name usage.
 pub(super) fn check_trait_name_conflicts(
     module: &Module,
-    trait_method_map: &HashMap<String, TraitName>,
+    trait_method_map: &FxHashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
     type_registry: &TypeRegistry,
     is_core_module: bool,
@@ -830,7 +830,7 @@ pub(super) fn check_trait_name_conflicts(
                 }
             });
 
-        let mut user_trait_methods: HashMap<String, (String, Span)> = HashMap::new();
+        let mut user_trait_methods: FxHashMap<String, (String, Span)> = FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefTrait { name, methods, .. } = decl {
                 for method in methods {

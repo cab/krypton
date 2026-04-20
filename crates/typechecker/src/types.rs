@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::fmt;
 
 pub use krypton_parser::ast::ParamMode;
@@ -289,14 +289,14 @@ impl Type {
     /// Re-letter type variables to sequential a, b, c, ... based on first-appearance order.
     /// Preserves identity: same original var → same new letter throughout.
     pub fn renumber_for_display(&self) -> Type {
-        let mut mapping = HashMap::new();
+        let mut mapping = FxHashMap::default();
         let mut next_id = 0u32;
         self.renumber_inner(&mut mapping, &mut next_id)
     }
 
     fn renumber_inner(
         &self,
-        mapping: &mut HashMap<TypeVarId, TypeVarId>,
+        mapping: &mut FxHashMap<TypeVarId, TypeVarId>,
         next_id: &mut u32,
     ) -> Type {
         match self {
@@ -343,7 +343,7 @@ impl Type {
     }
 
     /// Remap only vars present in the mapping; leave others unchanged.
-    fn remap_vars(&self, mapping: &HashMap<TypeVarId, TypeVarId>) -> Type {
+    fn remap_vars(&self, mapping: &FxHashMap<TypeVarId, TypeVarId>) -> Type {
         match self {
             Type::Var(id) => Type::Var(*mapping.get(id).unwrap_or(id)),
             Type::Fn(params, ret) => Type::Fn(
@@ -374,7 +374,7 @@ impl Type {
 
 /// Renumber type vars across multiple types sharing the same mapping.
 pub fn renumber_types_for_display(types: &[&Type]) -> Vec<Type> {
-    let mut mapping = HashMap::new();
+    let mut mapping = FxHashMap::default();
     let mut next_id = 0u32;
     types
         .iter()
@@ -462,7 +462,7 @@ pub struct TypeScheme {
     pub ty: Type,
     /// User-written type parameter names (e.g., from `fun foo[elem](...)`).
     /// Display uses these instead of auto-generated letters when available.
-    pub var_names: HashMap<TypeVarId, String>,
+    pub var_names: FxHashMap<TypeVarId, String>,
 }
 
 impl TypeScheme {
@@ -472,7 +472,7 @@ impl TypeScheme {
             vars: Vec::new(),
             constraints: Vec::new(),
             ty,
-            var_names: HashMap::new(),
+            var_names: FxHashMap::default(),
         }
     }
 
@@ -551,7 +551,7 @@ impl TypeScheme {
     /// Uses user names when available, sequential letters otherwise.
     pub fn display_var_names(&self) -> (Type, Vec<String>) {
         // 1. Renumber vars to sequential 0,1,2,... (order in vars list)
-        let mut id_mapping = HashMap::new();
+        let mut id_mapping = FxHashMap::default();
         let mut next_id = 0u32;
         for &v in &self.vars {
             id_mapping.entry(v).or_insert_with(|| {
@@ -563,7 +563,7 @@ impl TypeScheme {
         let renamed_ty = self.ty.remap_vars(&id_mapping);
 
         // 2. Assign display names: user names first, then sequential letters
-        let mut used: HashSet<String> = HashSet::new();
+        let mut used: FxHashSet<String> = FxHashSet::default();
         let mut names = Vec::new();
         let mut letter_idx = 0u32;
         for &v in &self.vars {
@@ -603,7 +603,7 @@ impl VarNameLookup for [String] {
     }
 }
 
-impl VarNameLookup for HashMap<TypeVarId, &str> {
+impl VarNameLookup for FxHashMap<TypeVarId, &str> {
     fn lookup(&self, id: &TypeVarId) -> Option<&str> {
         self.get(id).copied()
     }
@@ -679,14 +679,17 @@ pub fn format_type_with_var_names(ty: &Type, var_names: &[String]) -> String {
 
 /// Format a type using a map from TypeVarId to user-written name.
 /// Falls back to `display_name()` for vars not in the map.
-pub fn format_type_with_var_map(ty: &Type, names: &HashMap<TypeVarId, &str>) -> String {
+pub fn format_type_with_var_map(ty: &Type, names: &FxHashMap<TypeVarId, &str>) -> String {
     format_type_impl(ty, names)
 }
 
 /// Collect free type variables in left-to-right encounter order, deduplicated.
+/// `FxHashSet` iteration is deterministic given a fixed insertion sequence
+/// but reflects hash-bucket layout, not source order. When the intended
+/// contract is source-encounter order, use this walk.
 fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     free_vars_ordered_into(ty, &mut out, &mut seen);
     out
 }
@@ -699,12 +702,12 @@ fn free_vars_ordered(ty: &Type) -> Vec<TypeVarId> {
 /// shape parameter (see `typecheck_impl_methods`).
 pub fn collect_shape_vars(ty: &Type) -> Vec<TypeVarId> {
     let mut out = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     collect_shape_vars_into(ty, &mut out, &mut seen);
     out
 }
 
-fn collect_shape_vars_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+fn collect_shape_vars_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut FxHashSet<TypeVarId>) {
     match ty {
         Type::Shape(inner) => {
             free_vars_ordered_into(inner, out, seen);
@@ -732,7 +735,7 @@ fn collect_shape_vars_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashS
     }
 }
 
-fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSet<TypeVarId>) {
+fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut FxHashSet<TypeVarId>) {
     match ty {
         Type::Var(id) => {
             if seen.insert(*id) {
@@ -764,21 +767,21 @@ fn free_vars_ordered_into(ty: &Type, out: &mut Vec<TypeVarId>, seen: &mut HashSe
 
 /// Format a type for error messages, renumbering type variables to nice names.
 /// Uses declared names from `var_names` where available, sequential letters otherwise.
-pub fn format_type_for_error(ty: &Type, var_names: &HashMap<TypeVarId, String>) -> String {
+pub fn format_type_for_error(ty: &Type, var_names: &FxHashMap<TypeVarId, String>) -> String {
     let vars = free_vars_ordered(ty);
     if vars.is_empty() {
         return format!("{ty}");
     }
 
     // Renumber vars to sequential 0, 1, 2, ...
-    let mut id_mapping = HashMap::new();
+    let mut id_mapping = FxHashMap::default();
     for (i, &v) in vars.iter().enumerate() {
         id_mapping.insert(v, TypeVarId(i as u32));
     }
     let renamed_ty = ty.remap_vars(&id_mapping);
 
     // Build display names (same logic as TypeScheme::display_var_names)
-    let mut used: HashSet<String> = HashSet::new();
+    let mut used: FxHashSet<String> = FxHashSet::default();
     let mut names = Vec::new();
     let mut letter_idx = 0u32;
     for &v in &vars {
@@ -814,7 +817,7 @@ impl fmt::Display for TypeScheme {
             write!(f, ". {}", format_type_with_var_names(&renamed_ty, &names))?;
             if !self.constraints.is_empty() {
                 // Build id → sequential index mapping (same as display_var_names)
-                let id_mapping: HashMap<TypeVarId, usize> =
+                let id_mapping: FxHashMap<TypeVarId, usize> =
                     self.vars.iter().enumerate().map(|(i, &v)| (v, i)).collect();
                 let mut where_parts: Vec<String> = Vec::new();
                 for (trait_name, vars) in &self.constraints {
@@ -848,13 +851,13 @@ impl fmt::Display for TypeScheme {
 /// variables for deferred ownership resolution.
 #[derive(Debug, Clone)]
 pub struct Substitution {
-    map: HashMap<TypeVarId, Type>,
+    map: FxHashMap<TypeVarId, Type>,
     /// Qualifier variable states (Pending, Affine, or Shared).
-    qualifiers: HashMap<QualVarId, QualifierState>,
+    qualifiers: FxHashMap<QualVarId, QualifierState>,
     /// Union-find for qualifier unification: child → parent.
-    qualifier_aliases: HashMap<QualVarId, QualVarId>,
+    qualifier_aliases: FxHashMap<QualVarId, QualVarId>,
     /// Scope depth at which each qualifier was created.
-    qualifier_scope_depth: HashMap<QualVarId, u32>,
+    qualifier_scope_depth: FxHashMap<QualVarId, u32>,
     /// Counter for fresh qualifier variable IDs.
     next_qual: u32,
     /// Current qualifier scope nesting depth.
@@ -870,10 +873,10 @@ impl Default for Substitution {
 impl Substitution {
     pub fn new() -> Self {
         Substitution {
-            map: HashMap::new(),
-            qualifiers: HashMap::new(),
-            qualifier_aliases: HashMap::new(),
-            qualifier_scope_depth: HashMap::new(),
+            map: FxHashMap::default(),
+            qualifiers: FxHashMap::default(),
+            qualifier_aliases: FxHashMap::default(),
+            qualifier_scope_depth: FxHashMap::default(),
             next_qual: 0,
             current_scope_depth: 0,
         }
@@ -888,7 +891,7 @@ impl Substitution {
 
     /// Recursively apply this substitution to a type.
     pub fn apply(&self, ty: &Type) -> Type {
-        let mut visiting = HashSet::new();
+        let mut visiting = FxHashSet::default();
         let mut chain = Vec::new();
         self.apply_inner(ty, &mut visiting, &mut chain)
     }
@@ -896,7 +899,7 @@ impl Substitution {
     fn apply_inner(
         &self,
         ty: &Type,
-        visiting: &mut HashSet<TypeVarId>,
+        visiting: &mut FxHashSet<TypeVarId>,
         chain: &mut Vec<TypeVarId>,
     ) -> Type {
         match ty {
@@ -991,7 +994,7 @@ impl Substitution {
     /// Compose two substitutions: applying the result is equivalent to applying
     /// `other` first, then `self`.
     pub fn compose(&self, other: &Substitution) -> Substitution {
-        let mut result_map = HashMap::new();
+        let mut result_map = FxHashMap::default();
         // Apply self to each binding in other
         for (&var, ty) in &other.map {
             result_map.insert(var, self.apply(ty));
@@ -1186,7 +1189,7 @@ impl Substitution {
     }
 
     /// Read-only access to the qualifier map (for resolve_maybe_own helper).
-    pub fn qualifiers_ref(&self) -> &HashMap<QualVarId, QualifierState> {
+    pub fn qualifiers_ref(&self) -> &FxHashMap<QualVarId, QualifierState> {
         &self.qualifiers
     }
 
@@ -1272,24 +1275,24 @@ impl EnvEntry {
 /// Scoped type environment for variable lookups.
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
-    scopes: Vec<HashMap<std::string::String, EnvEntry>>,
+    scopes: Vec<FxHashMap<std::string::String, EnvEntry>>,
     pub fn_return_type: Option<Type>,
-    def_spans: HashMap<std::string::String, DefSpan>,
+    def_spans: FxHashMap<std::string::String, DefSpan>,
 }
 
 impl TypeEnv {
     /// Create a new environment with one empty scope.
     pub fn new() -> Self {
         TypeEnv {
-            scopes: vec![HashMap::new()],
+            scopes: vec![FxHashMap::default()],
             fn_return_type: None,
-            def_spans: HashMap::new(),
+            def_spans: FxHashMap::default(),
         }
     }
 
     /// Push a new empty scope.
     pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
+        self.scopes.push(FxHashMap::default());
     }
 
     /// Pop the top scope.
@@ -1571,11 +1574,11 @@ pub fn head_type_name(ty: &Type) -> String {
 /// Produces collision-free identifiers: `$Fun` prefix prevents collision with
 /// user-defined type names, and type vars are normalized by order of occurrence.
 pub fn type_to_canonical_name(ty: &Type) -> String {
-    let mut var_map = HashMap::new();
+    let mut var_map = FxHashMap::default();
     canonical_name_inner(ty, &mut var_map)
 }
 
-fn canonical_name_inner(ty: &Type, var_map: &mut HashMap<TypeVarId, usize>) -> String {
+fn canonical_name_inner(ty: &Type, var_map: &mut FxHashMap<TypeVarId, usize>) -> String {
     match ty {
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -1768,7 +1771,7 @@ mod tests {
     fn format_with_var_map_simple() {
         let id = TypeVarId(5);
         let ty = Type::fn_consuming(vec![Type::Int], Type::Var(id));
-        let names: HashMap<TypeVarId, &str> = [(id, "b")].into_iter().collect();
+        let names: FxHashMap<TypeVarId, &str> = [(id, "b")].into_iter().collect();
         assert_eq!(format_type_with_var_map(&ty, &names), "(Int) -> b");
     }
 
@@ -1780,7 +1783,7 @@ mod tests {
             vec![Type::Var(a)],
             Type::fn_consuming(vec![Type::Var(b)], Type::Int),
         );
-        let names: HashMap<TypeVarId, &str> = [(a, "x"), (b, "y")].into_iter().collect();
+        let names: FxHashMap<TypeVarId, &str> = [(a, "x"), (b, "y")].into_iter().collect();
         assert_eq!(format_type_with_var_map(&ty, &names), "(x) -> (y) -> Int");
     }
 
@@ -1839,7 +1842,7 @@ mod tests {
     fn format_with_var_map_unmapped_fallback() {
         let id = TypeVarId(2); // display_name = "c"
         let ty = Type::Var(id);
-        let names: HashMap<TypeVarId, &str> = HashMap::new();
+        let names: FxHashMap<TypeVarId, &str> = FxHashMap::default();
         assert_eq!(format_type_with_var_map(&ty, &names), "c");
     }
 
@@ -1847,7 +1850,7 @@ mod tests {
     fn format_with_var_map_named_type() {
         let id = TypeVarId(7);
         let ty = Type::Named("Vec".to_string(), vec![Type::Var(id)]);
-        let names: HashMap<TypeVarId, &str> = [(id, "a")].into_iter().collect();
+        let names: FxHashMap<TypeVarId, &str> = [(id, "a")].into_iter().collect();
         assert_eq!(format_type_with_var_map(&ty, &names), "Vec[a]");
     }
 }

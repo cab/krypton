@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{BinOp, UnaryOp};
 
@@ -50,7 +50,7 @@ fn resolve_function_ref_requirement_type(
     actual_param_types: &[(crate::types::ParamMode, Type)],
 ) -> Option<Type> {
     let _ = trait_name;
-    let mut bindings = HashMap::new();
+    let mut bindings = FxHashMap::default();
     for ((_, declared), (_, actual)) in declared_param_types.iter().zip(actual_param_types.iter()) {
         if !match_type_with_bindings(declared, actual, &mut bindings) {
             return None;
@@ -83,7 +83,7 @@ fn typed_callee_resolved_ref(expr: &TypedExpr) -> Option<&ResolvedBindingRef> {
 pub(super) fn collect_type_var_bindings_strict(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
         // Unresolved actuals are still informative enough to establish a first binding,
@@ -155,9 +155,9 @@ pub(super) fn collect_type_var_bindings_strict(
 pub(super) fn check_constrained_function_refs(
     expr: &TypedExpr,
     current_requirements: &[(TraitName, Vec<TypeVarId>)],
-    fn_schemes: &HashMap<String, TypeScheme>,
+    fn_schemes: &FxHashMap<String, TypeScheme>,
     trait_registry: &TraitRegistry,
-    var_names: &HashMap<TypeVarId, String>,
+    var_names: &FxHashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = vec![expr];
     while let Some(expr) = work.pop() {
@@ -358,8 +358,8 @@ pub(super) fn detect_trait_constraints(
     expr: &TypedExpr,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_type_param_vars: &HashSet<TypeVarId>,
-    fn_schemes: &HashMap<String, TypeScheme>,
+    fn_type_param_vars: &FxHashSet<TypeVarId>,
+    fn_schemes: &FxHashMap<String, TypeScheme>,
     constraints: &mut Vec<(TraitName, Vec<TypeVarId>)>,
 ) {
     walk_trait_method_calls(
@@ -379,16 +379,16 @@ pub(super) fn validate_trait_constraints(
     expr: &TypedExpr,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_type_param_vars: &HashSet<TypeVarId>,
+    fn_type_param_vars: &FxHashSet<TypeVarId>,
     declared_constraints: &[(TraitName, Vec<TypeVarId>)],
     fn_name: &str,
-    type_var_names: &HashMap<TypeVarId, String>,
+    type_var_names: &FxHashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     // Validate uses an empty fn schemes map — constrained function call detection is
     // only done in the detect pass (for auto-inference). The validate pass only checks
     // direct trait method calls and operator uses, which can precisely identify the
     // constrained type variable.
-    let empty_fn_schemes = HashMap::new();
+    let empty_fn_schemes = FxHashMap::default();
     let mut first_error: Option<SpannedTypeError> = None;
     walk_trait_method_calls(
         expr,
@@ -441,8 +441,8 @@ fn walk_trait_method_calls(
     expr: &TypedExpr,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_type_param_vars: &HashSet<TypeVarId>,
-    fn_schemes: &HashMap<String, TypeScheme>,
+    fn_type_param_vars: &FxHashSet<TypeVarId>,
+    fn_schemes: &FxHashMap<String, TypeScheme>,
     callback: &mut dyn FnMut(TraitName, Vec<TypeVarId>),
 ) {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
@@ -463,7 +463,7 @@ fn walk_trait_method_calls(
                     // the method's declared parameter/return types against the
                     // call-site's actual types. This carries bindings for every
                     // trait type-parameter (not just the primary dispatch var).
-                    let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+                    let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
                         for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                             collect_type_var_bindings_strict(
@@ -691,9 +691,9 @@ pub(super) fn check_trait_instances(
     expr: &TypedExpr,
     trait_registry: &TraitRegistry,
     subst: &Substitution,
-    fn_schemes: &HashMap<String, TypeScheme>,
-    fn_type_vars: &HashSet<TypeVarId>,
-    var_names: &HashMap<TypeVarId, String>,
+    fn_schemes: &FxHashMap<String, TypeScheme>,
+    fn_type_vars: &FxHashSet<TypeVarId>,
+    var_names: &FxHashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
     let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
     work.push(expr);
@@ -710,7 +710,7 @@ pub(super) fn check_trait_instances(
                         .lookup_trait(trait_id)
                         .expect("trait in trait_method_map must be in registry");
                     if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
-                        let mut bindings = HashMap::new();
+                        let mut bindings = FxHashMap::default();
                         // Bind from params
                         for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                             collect_type_var_bindings_strict(
@@ -903,11 +903,11 @@ pub(super) fn check_trait_instances(
                                 // than iterating positions independently (which
                                 // would mis-dispatch a multi-param trait through
                                 // the single-param `find_instance`).
-                                let constraint_bindings: Option<HashMap<TypeVarId, Type>> =
+                                let constraint_bindings: Option<FxHashMap<TypeVarId, Type>> =
                                     fn_scheme.and_then(|scheme| {
                                         if let Type::Fn(param_types, ret_ty) = &scheme.ty {
-                                            let mut bindings: HashMap<TypeVarId, Type> =
-                                                HashMap::new();
+                                            let mut bindings: FxHashMap<TypeVarId, Type> =
+                                                FxHashMap::default();
                                             for ((_, pattern), arg) in
                                                 param_types.iter().zip(args.iter())
                                             {
@@ -1125,7 +1125,7 @@ pub(super) fn check_trait_instances(
 mod tests {
     use super::collect_type_var_bindings_strict;
     use crate::types::{Type, TypeVarGen};
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap;
 
     #[test]
     fn strict_binding_rejects_inconsistent_repeated_vars() {
@@ -1133,7 +1133,7 @@ mod tests {
         let tv = gen.fresh();
         let pattern = Type::Tuple(vec![Type::Var(tv), Type::Var(tv)]);
         let actual = Type::Tuple(vec![Type::Int, Type::String]);
-        let mut bindings = HashMap::new();
+        let mut bindings = FxHashMap::default();
         assert!(!collect_type_var_bindings_strict(
             &pattern,
             &actual,

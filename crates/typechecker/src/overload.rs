@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::Write;
 
 use crate::trait_registry::freshen_type;
@@ -12,8 +12,8 @@ use crate::unify::{coerce_unify, unify};
 ///
 /// Used as the input to `overload_hash` when mangling overload-sibling names.
 pub fn canonical_type_string(tys: &[Type]) -> String {
-    let mut vars: HashMap<TypeVarId, u32> = HashMap::new();
-    let mut qvars: HashMap<crate::types::QualVarId, u32> = HashMap::new();
+    let mut vars: FxHashMap<TypeVarId, u32> = FxHashMap::default();
+    let mut qvars: FxHashMap<crate::types::QualVarId, u32> = FxHashMap::default();
     let mut out = String::new();
     out.push('(');
     for (i, t) in tys.iter().enumerate() {
@@ -29,8 +29,8 @@ pub fn canonical_type_string(tys: &[Type]) -> String {
 fn write_canonical(
     out: &mut String,
     ty: &Type,
-    vars: &mut HashMap<TypeVarId, u32>,
-    qvars: &mut HashMap<crate::types::QualVarId, u32>,
+    vars: &mut FxHashMap<TypeVarId, u32>,
+    qvars: &mut FxHashMap<crate::types::QualVarId, u32>,
 ) {
     match ty {
         Type::Int => out.push_str("I"),
@@ -178,7 +178,7 @@ pub fn mangle_group(
     });
 
     let mut out = vec![String::new(); n];
-    let mut seen_mangled: HashMap<String, usize> = HashMap::new();
+    let mut seen_mangled: FxHashMap<String, usize> = FxHashMap::default();
     for (rank, idx) in order.iter().enumerate() {
         let mangled = if rank == 0 {
             name.to_string()
@@ -213,8 +213,8 @@ pub fn types_overlap(a: &[Type], b: &[Type]) -> bool {
         return false;
     }
     let mut gen = TypeVarGen::new();
-    let mut a_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
-    let mut b_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+    let mut a_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
+    let mut b_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
     let a_fresh: Vec<Type> = a.iter().map(|t| freshen_type(t, &mut a_map, &mut gen)).collect();
     let b_fresh: Vec<Type> = b.iter().map(|t| freshen_type(t, &mut b_map, &mut gen)).collect();
     let mut subst = Substitution::new();
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn expected_type_generic_scheme() {
         use crate::types::{ParamMode, TypeScheme};
-        use std::collections::HashMap;
+        use rustc_hash::FxHashMap;
         let a = TypeVarId(100);
         let scheme = TypeScheme {
             vars: vec![a],
@@ -477,7 +477,7 @@ mod tests {
                 vec![(ParamMode::Borrow, named("Vec", vec![Type::Var(a)]))],
                 Box::new(Type::Int),
             ),
-            var_names: HashMap::new(),
+            var_names: FxHashMap::default(),
         };
         let expected = Type::Fn(
             vec![(ParamMode::Borrow, named("Vec", vec![Type::Int]))],

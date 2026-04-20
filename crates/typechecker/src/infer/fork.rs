@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_parser::ast::Span;
 
@@ -61,8 +61,8 @@ where
         .map(|(_, t)| t.clone())
         .collect();
 
-    let mut impl_method_tpm: HashMap<String, TypeVarId> = instance.type_var_ids.clone();
-    let mut impl_method_tpa = HashMap::new();
+    let mut impl_method_tpm: FxHashMap<String, TypeVarId> = instance.type_var_ids.clone();
+    let mut impl_method_tpa = FxHashMap::default();
     for tv_param in &method.type_params {
         if !impl_method_tpm.contains_key(&tv_param.name) {
             impl_method_tpm.insert(tv_param.name.clone(), state.gen.fresh());

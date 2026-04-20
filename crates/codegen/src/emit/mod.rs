@@ -12,6 +12,8 @@ mod trait_class_gen;
 
 use std::collections::HashMap;
 
+use rustc_hash::FxHashMap;
+
 use krypton_ir::{TraitName, Type, TypeVarId};
 use ristretto_classfile::attributes::{Attribute, Instruction};
 use ristretto_classfile::{
@@ -128,7 +130,7 @@ pub fn compile_modules(
     ir_modules: &[krypton_ir::Module],
     main_class_name: &str,
     link_ctx: &krypton_typechecker::link_context::LinkContext,
-    module_sources: &HashMap<String, String>,
+    module_sources: &FxHashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
     let mut all_classes = Vec::new();
 

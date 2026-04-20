@@ -1,7 +1,7 @@
 //! REPL-specific codegen: compiles IR modules into class files with an `eval()` wrapper
 //! that loads prior bindings from Var registry and returns a boxed result.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use krypton_ir::Type;
 use krypton_typechecker::link_context::{LinkContext, ModuleLinkView};
@@ -25,7 +25,7 @@ pub fn compile_repl_input(
     ir_modules: &[krypton_ir::Module],
     main_class_name: &str,
     link_ctx: &LinkContext,
-    module_sources: &HashMap<String, String>,
+    module_sources: &FxHashMap<String, String>,
     repl_vars: &[(String, Type)],
     store_var: Option<&str>,
     show_wrapped: bool,

@@ -3,7 +3,7 @@ use krypton_parser::ast::Span;
 use crate::types::{
     format_type_with_var_map, renumber_types_for_display, ParamMode, Type, TypeVarId,
 };
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt;
 
 /// Human-readable label for a parameter mode.
@@ -1185,7 +1185,7 @@ impl TypeError {
     }
 
     /// Format with user var name context. Falls back to Display for non-type fields.
-    pub fn format_with_names(&self, names: &HashMap<TypeVarId, &str>) -> String {
+    pub fn format_with_names(&self, names: &FxHashMap<TypeVarId, &str>) -> String {
         match self {
             TypeError::Mismatch { expected, actual } => {
                 format!(
@@ -1279,7 +1279,7 @@ impl TypeError {
     }
 
     /// Help text with user var name context.
-    pub fn help_with_names(&self, names: &HashMap<TypeVarId, &str>) -> Option<String> {
+    pub fn help_with_names(&self, names: &FxHashMap<TypeVarId, &str>) -> Option<String> {
         match self {
             TypeError::NotAFunction { actual } => {
                 let inner = match actual {
@@ -2061,7 +2061,7 @@ impl SpannedTypeError {
     pub fn format_message(&self) -> String {
         match &self.var_names {
             Some(names) => {
-                let map: HashMap<TypeVarId, &str> =
+                let map: FxHashMap<TypeVarId, &str> =
                     names.iter().map(|(id, n)| (*id, n.as_str())).collect();
                 self.error.format_with_names(&map)
             }
@@ -2073,7 +2073,7 @@ impl SpannedTypeError {
     pub fn format_help(&self) -> Option<String> {
         match &self.var_names {
             Some(names) => {
-                let map: HashMap<TypeVarId, &str> =
+                let map: FxHashMap<TypeVarId, &str> =
                     names.iter().map(|(id, n)| (*id, n.as_str())).collect();
                 self.error.help_with_names(&map)
             }

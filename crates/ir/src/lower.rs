@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::rc::Rc;
 
 use krypton_parser::ast::{BinOp, Lit, Span, UnaryOp};
@@ -72,7 +72,7 @@ struct ParamInstanceInfo {
     trait_name: TraitName,
     /// Type arguments. Length 1 for single-parameter traits; N for multi-parameter.
     target_types: Vec<Type>,
-    type_var_ids: HashMap<String, TypeVarId>,
+    type_var_ids: FxHashMap<String, TypeVarId>,
     constraints: Vec<(TraitName, Vec<String>)>, // (trait_name, type_var_names)
     source_module: String,                      // module defining this instance
     target_type_name: String,                   // for building CanonicalRef
@@ -187,18 +187,18 @@ fn pattern_type(pat: &TypedPattern) -> Type {
 /// Walk a TypedExpr tree and collect variable names that are referenced but not
 /// bound locally (by Let, Lambda, or LetPattern). Returns deduplicated names in
 /// stable (first-seen) order.
-fn free_vars(expr: &TypedExpr, bound: &HashSet<String>) -> Vec<String> {
+fn free_vars(expr: &TypedExpr, bound: &FxHashSet<String>) -> Vec<String> {
     let mut free = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = FxHashSet::default();
     free_vars_inner(expr, bound, &mut free, &mut seen);
     free
 }
 
 fn free_vars_inner(
     expr: &TypedExpr,
-    bound: &HashSet<String>,
+    bound: &FxHashSet<String>,
     free: &mut Vec<String>,
-    seen: &mut HashSet<String>,
+    seen: &mut FxHashSet<String>,
 ) {
     match &expr.kind {
         TypedExprKind::Lit(_) => {}
@@ -318,7 +318,7 @@ fn free_vars_inner(
 /// Collect all variable names bound by a pattern.
 fn collect_pattern_bindings(
     pattern: &krypton_typechecker::typed_ast::TypedPattern,
-    bound: &mut HashSet<String>,
+    bound: &mut FxHashSet<String>,
 ) {
     use krypton_typechecker::typed_ast::TypedPattern;
     match pattern {
@@ -419,13 +419,13 @@ fn contains_question_mark(expr: &TypedExpr) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Collect all VarIds referenced in an IR expression tree.
-fn referenced_vars_in_expr(expr: &Expr) -> HashSet<VarId> {
-    let mut vars = HashSet::new();
+fn referenced_vars_in_expr(expr: &Expr) -> FxHashSet<VarId> {
+    let mut vars = FxHashSet::default();
     referenced_vars_walk(expr, &mut vars);
     vars
 }
 
-fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
+fn referenced_vars_walk(expr: &Expr, vars: &mut FxHashSet<VarId>) {
     match &expr.kind {
         ExprKind::Atom(atom) => referenced_vars_atom(atom, vars),
         ExprKind::Let {
@@ -495,7 +495,7 @@ fn referenced_vars_walk(expr: &Expr, vars: &mut HashSet<VarId>) {
     }
 }
 
-fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
+fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut FxHashSet<VarId>) {
     match &simple.kind {
         SimpleExprKind::Call { func: _, args } | SimpleExprKind::TraitCall { args, .. } => {
             for atom in args {
@@ -554,7 +554,7 @@ fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut HashSet<VarId>) {
     }
 }
 
-fn referenced_vars_atom(atom: &Atom, vars: &mut HashSet<VarId>) {
+fn referenced_vars_atom(atom: &Atom, vars: &mut FxHashSet<VarId>) {
     if let Atom::Var(id) = atom {
         vars.insert(*id);
     }
@@ -596,7 +596,7 @@ struct ScopeTrack {
     /// Expected resource names (in scope_exits LIFO order) → type_name.
     expected: Vec<(String, String)>,
     /// VarIds resolved for each expected name, recorded via push_var.
-    resolved: HashMap<String, VarId>,
+    resolved: FxHashMap<String, VarId>,
 }
 
 fn expr_at(span: Span, ty: IrType, kind: ExprKind) -> Expr {
@@ -621,11 +621,11 @@ fn simple_at(span: Span, kind: SimpleExprKind) -> SimpleExpr {
 /// point of use (see consumer sites below).
 type TraitMethodTypeInfo = (
     Vec<TypeVarId>,
-    HashMap<String, (Vec<(types::ParamMode, Type)>, Type)>,
+    FxHashMap<String, (Vec<(types::ParamMode, Type)>, Type)>,
 );
 type TraitConstraintInfo = (TraitName, Vec<TypeVarId>);
 type TraitConstraintList = Vec<TraitConstraintInfo>;
-type TraitMethodConstraintInfo = HashMap<String, TraitConstraintList>;
+type TraitMethodConstraintInfo = FxHashMap<String, TraitConstraintList>;
 
 struct LowerCtx {
     next_var: u32,
@@ -633,48 +633,48 @@ struct LowerCtx {
     /// For generating TypeVarIds for private type definitions
     type_var_gen: TypeVarGen,
     /// name → stack of VarIds (supports nested scopes)
-    var_scope: HashMap<String, Vec<VarId>>,
+    var_scope: FxHashMap<String, Vec<VarId>>,
     /// top-level function name → overload candidates. Most names map to a
     /// singleton vec; names with top-level overloading (e.g. two `push`
     /// overloads in core/vec) map to multiple entries. The key in each tuple
     /// is a canonical parameter-type list (ParamMode stripped, polymorphic
     /// vars preserved) used with `types_overlap` to disambiguate. Lifted
     /// synthetics have unique names and carry an empty key.
-    fn_ids: HashMap<String, Vec<(Vec<Type>, FnId)>>,
+    fn_ids: FxHashMap<String, Vec<(Vec<Type>, FnId)>>,
     /// Canonical qualified name → overload candidates. Mirrors `fn_ids` but
     /// keyed by the fully qualified name. Same shape/rules.
-    callable_ids: HashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
+    callable_ids: FxHashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
     /// Resolved type ref → ordered fields with resolved types
-    struct_fields: HashMap<ResolvedTypeRef, Vec<(String, Type)>>,
+    struct_fields: FxHashMap<ResolvedTypeRef, Vec<(String, Type)>>,
     /// Resolved type ref → ordered declared type-parameter vars. Paired with
     /// `struct_fields`: each entry's `TypeVarId`s are the vars the field types
     /// reference. Used to substitute actual type arguments into field types
     /// when lowering uses at a concrete type (record construction, struct
     /// update, struct-pattern projection).
-    struct_type_params: HashMap<ResolvedTypeRef, Vec<TypeVarId>>,
+    struct_type_params: FxHashMap<ResolvedTypeRef, Vec<TypeVarId>>,
     /// Resolved variant ref → (tag, field_types)
-    sum_variants: HashMap<ResolvedVariantRef, (u32, Vec<Type>)>,
+    sum_variants: FxHashMap<ResolvedVariantRef, (u32, Vec<Type>)>,
     /// Cached type_params for private types (avoids double build_type_param_map)
-    private_type_params: HashMap<String, Vec<TypeVarId>>,
+    private_type_params: FxHashMap<String, Vec<TypeVarId>>,
     /// qualified name → [(trait_name, type_vars)] — required trait dicts
-    fn_constraints: HashMap<QualifiedName, TraitConstraintList>,
+    fn_constraints: FxHashMap<QualifiedName, TraitConstraintList>,
     /// (trait_name, type_vars) → VarId — dict param variables for the current function
-    dict_params: HashMap<(TraitName, Vec<TypeVarId>), VarId>,
+    dict_params: FxHashMap<(TraitName, Vec<TypeVarId>), VarId>,
     /// qualified name → TypeScheme for resolving type var bindings at call sites
-    fn_schemes: HashMap<QualifiedName, TypeScheme>,
+    fn_schemes: FxHashMap<QualifiedName, TypeScheme>,
     /// Instance defs for parameterized dict resolution:
     /// (trait_name, target_type, type_var_ids, constraints)
     param_instances: Vec<ParamInstanceInfo>,
     /// trait_name → (type_var_id, method_name → (param_types, return_type))
-    trait_method_types: HashMap<TraitName, TraitMethodTypeInfo>,
+    trait_method_types: FxHashMap<TraitName, TraitMethodTypeInfo>,
     /// trait_name → method_name → required trait dicts for method-level where constraints
-    trait_method_constraints: HashMap<TraitName, TraitMethodConstraintInfo>,
+    trait_method_constraints: FxHashMap<TraitName, TraitMethodConstraintInfo>,
     /// Recursion depth counter for dict resolution (cycle detection)
     dict_depth: u32,
     /// Lifted lambda definitions accumulated during lowering
     lifted_fns: Vec<FnDef>,
     /// VarId → Type, populated at binding sites for capture type lookups
-    var_types: HashMap<VarId, Type>,
+    var_types: FxHashMap<VarId, Type>,
     /// Join point for `recur` jumps in the current function
     recur_join: Option<(VarId, Vec<VarId>)>,
     /// Join point for `?` early returns in the current function
@@ -692,7 +692,7 @@ struct LowerCtx {
     fn_block_scoped_closes: Vec<FinallyClose>,
     /// Accumulated fn_exit_closes for the module (FnId → disposables to close on unwind).
     /// Keyed by FnId so overload siblings track independently.
-    fn_exit_closes: HashMap<FnId, Vec<FinallyClose>>,
+    fn_exit_closes: FxHashMap<FnId, Vec<FinallyClose>>,
     /// Module path of the module being lowered (for filtering local dict refs).
     module_path: String,
     /// All known instances with source module and target type info,
@@ -701,7 +701,7 @@ struct LowerCtx {
     /// (trait_local_name, canonical_type_name) → index into all_instances.
     /// Fast path for exact-match instance resolution; parameterized instances
     /// fall through to the linear structural scan.
-    instance_exact_index: HashMap<(String, String), usize>,
+    instance_exact_index: FxHashMap<(String, String), usize>,
 }
 
 impl LowerCtx {
@@ -779,7 +779,7 @@ impl LowerCtx {
                 .iter()
                 .filter(|info| info.trait_name == *trait_name)
                 .find(|info| {
-                    let mut bindings = HashMap::new();
+                    let mut bindings = FxHashMap::default();
                     bind_instance_targets(&info.target_types, target_types, &mut bindings)
                 })
                 .unwrap_or_else(|| {
@@ -927,7 +927,7 @@ impl LowerCtx {
             self.scope_track_stack.push(ScopeTrack {
                 scope_id,
                 expected,
-                resolved: HashMap::new(),
+                resolved: FxHashMap::default(),
             });
         }
     }
@@ -3407,7 +3407,7 @@ impl LowerCtx {
     ) -> Result<Expr, LowerError> {
         // Collect all constructor heads that appear
         let mut seen_tags: Vec<(String, u32, Vec<Type>)> = Vec::new();
-        let mut seen_names: HashSet<String> = HashSet::new();
+        let mut seen_names: FxHashSet<String> = FxHashSet::default();
         for clause in &clauses {
             if let TypedPattern::Constructor {
                 name,
@@ -3963,7 +3963,7 @@ impl LowerCtx {
             if i == col {
                 match p {
                     TypedPattern::StructPat { fields, span, .. } => {
-                        let field_map: HashMap<String, TypedPattern> = fields.into_iter().collect();
+                        let field_map: FxHashMap<String, TypedPattern> = fields.into_iter().collect();
                         for (fname, fty) in canonical_fields {
                             if let Some(fp) = field_map.get(fname) {
                                 new_pats.push(fp.clone());
@@ -4624,7 +4624,7 @@ impl LowerCtx {
             .clone();
 
         // Build a map of field name → lowered atom
-        let mut field_map: HashMap<String, Atom> = HashMap::new();
+        let mut field_map: FxHashMap<String, Atom> = FxHashMap::default();
         let mut bindings = vec![];
         for (fname, fexpr) in fields {
             let (bs, atom) = self.lower_to_atom(fexpr)?;
@@ -4966,7 +4966,7 @@ impl LowerCtx {
             .clone();
 
         // Reorder field expressions to canonical order
-        let field_map: HashMap<&str, &TypedExpr> =
+        let field_map: FxHashMap<&str, &TypedExpr> =
             fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
         let mut ordered_exprs = vec![];
         for (fname, _) in &canonical_fields {
@@ -5024,7 +5024,7 @@ impl LowerCtx {
         // Lower base first, then update field values
         self.lower_to_atom_then(base, |ctx, base_atom| {
             ctx.lower_atoms_then(&update_exprs, vec![], |ctx, update_atoms| {
-                let mut update_map: HashMap<String, Atom> =
+                let mut update_map: FxHashMap<String, Atom> =
                     update_names.iter().cloned().zip(update_atoms).collect();
 
                 let mut bindings = vec![];
@@ -5185,7 +5185,7 @@ impl LowerCtx {
             if &inst.trait_name != trait_name {
                 return None;
             }
-            let mut bindings = HashMap::new();
+            let mut bindings = FxHashMap::default();
             if bind_instance_targets(&inst.target_types, tys, &mut bindings) {
                 Some((inst.clone(), bindings))
             } else {
@@ -5267,7 +5267,7 @@ impl LowerCtx {
 
         // Build type var bindings: seed with the user's explicit pairs, then
         // let `bind_type_vars` fill in the rest from the scheme/arg types.
-        let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut type_bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         for (svid, ty) in user_type_bindings {
             type_bindings.insert(svid.as_type_var(), ty.clone());
         }
@@ -5338,7 +5338,7 @@ impl LowerCtx {
         method_name: &str,
         concrete_method_ty: &Type,
         user_type_bindings: &[(SchemeVarId, Type)],
-    ) -> Result<(Vec<Type>, HashMap<TypeVarId, Type>), LowerError> {
+    ) -> Result<(Vec<Type>, FxHashMap<TypeVarId, Type>), LowerError> {
         let (type_var_ids, method_types) =
             self.trait_method_types.get(trait_name).ok_or_else(|| {
                 LowerError::InternalError(format!(
@@ -5359,7 +5359,7 @@ impl LowerCtx {
         // The typechecker already resolved which scheme vars the user pinned;
         // those land on their vars by id (including phantom trait vars that
         // don't appear in the method signature).
-        let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         for (svid, ty) in user_type_bindings {
             bindings.insert(svid.as_type_var(), ty.clone());
         }
@@ -5412,7 +5412,7 @@ impl LowerCtx {
     ) -> Result<(Vec<LetBinding>, SimpleExpr), LowerError> {
         // Seed with user-supplied pairs, then match the scheme against the
         // expression's concrete type for the remaining vars.
-        let mut type_bindings: HashMap<TypeVarId, Type> = HashMap::new();
+        let mut type_bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
         for (svid, ty) in user_type_bindings {
             type_bindings.insert(svid.as_type_var(), ty.clone());
         }
@@ -5678,7 +5678,7 @@ impl LowerCtx {
         };
 
         // 2. Compute free variables (names not bound by lambda params)
-        let param_set: HashSet<String> = params.iter().cloned().collect();
+        let param_set: FxHashSet<String> = params.iter().cloned().collect();
         let fv_names = free_vars(body, &param_set);
 
         // 3. Resolve each free var to its current VarId
@@ -5722,7 +5722,7 @@ impl LowerCtx {
         }
 
         // Dict capture params — allocate new VarIds
-        let mut new_dict_params: HashMap<(TraitName, Vec<TypeVarId>), VarId> = HashMap::new();
+        let mut new_dict_params: FxHashMap<(TraitName, Vec<TypeVarId>), VarId> = FxHashMap::default();
         let mut dict_var_mappings: Vec<((TraitName, Vec<TypeVarId>), VarId)> = vec![];
         for key in &dict_capture_keys {
             let new_var = self.fresh_var();
@@ -6170,7 +6170,7 @@ pub fn lower_module(
     link_view: &krypton_typechecker::link_context::ModuleLinkView,
 ) -> Result<Module, LowerError> {
     // Build fn_constraints from TypeScheme constraints (embedded during inference)
-    let mut fn_constraints: HashMap<QualifiedName, TraitConstraintList> = HashMap::new();
+    let mut fn_constraints: FxHashMap<QualifiedName, TraitConstraintList> = FxHashMap::default();
     for entry in &typed.fn_types {
         if !entry.scheme.constraints.is_empty() {
             fn_constraints.insert(
@@ -6223,7 +6223,7 @@ pub fn lower_module(
     }
 
     // Build fn_schemes from fn_types
-    let mut fn_schemes: HashMap<QualifiedName, TypeScheme> = HashMap::new();
+    let mut fn_schemes: FxHashMap<QualifiedName, TypeScheme> = FxHashMap::default();
     for entry in &typed.fn_types {
         fn_schemes.insert(entry.qualified_name.clone(), entry.scheme.clone());
     }
@@ -6245,7 +6245,7 @@ pub fn lower_module(
                     vars,
                     constraints: ext.constraints.clone(),
                     ty: fn_ty,
-                    var_names: HashMap::new(),
+                    var_names: FxHashMap::default(),
                 },
             );
         }
@@ -6255,15 +6255,15 @@ pub fn lower_module(
         next_var: 0,
         next_fn: 0,
         type_var_gen: TypeVarGen::new(),
-        var_scope: HashMap::new(),
-        fn_ids: HashMap::new(),
-        callable_ids: HashMap::new(),
-        struct_fields: HashMap::new(),
-        struct_type_params: HashMap::new(),
-        sum_variants: HashMap::new(),
-        private_type_params: HashMap::new(),
+        var_scope: FxHashMap::default(),
+        fn_ids: FxHashMap::default(),
+        callable_ids: FxHashMap::default(),
+        struct_fields: FxHashMap::default(),
+        struct_type_params: FxHashMap::default(),
+        sum_variants: FxHashMap::default(),
+        private_type_params: FxHashMap::default(),
         fn_constraints,
-        dict_params: HashMap::new(),
+        dict_params: FxHashMap::default(),
         fn_schemes,
         module_path: typed.module_path.clone(),
         param_instances: {
@@ -6326,13 +6326,13 @@ pub fn lower_module(
             .collect(),
         dict_depth: 0,
         lifted_fns: vec![],
-        var_types: HashMap::new(),
+        var_types: FxHashMap::default(),
         recur_join: None,
         early_return_join: None,
         auto_close: typed.auto_close.clone(),
         scope_track_stack: Vec::new(),
         fn_block_scoped_closes: Vec::new(),
-        fn_exit_closes: HashMap::new(),
+        fn_exit_closes: FxHashMap::default(),
         all_instances: {
             let mut infos = Vec::new();
             for inst in &typed.instance_defs {
@@ -6355,7 +6355,7 @@ pub fn lower_module(
             }
             infos
         },
-        instance_exact_index: HashMap::new(), // populated below
+        instance_exact_index: FxHashMap::default(), // populated below
     };
     // Build exact-match index for instance resolution
     for (i, info) in ctx.all_instances.iter().enumerate() {
@@ -6479,10 +6479,10 @@ pub fn lower_module(
     // for its name. Module_driver appends fn_decls to fn_types in order
     // (module_driver.rs:475-488), so the i-th decl with name N pairs with
     // the i-th local entry with name N.
-    let local_decl_names: HashSet<&str> =
+    let local_decl_names: FxHashSet<&str> =
         typed.functions.iter().map(|d| d.name.as_str()).collect();
-    let mut local_decl_entries: HashMap<String, std::collections::VecDeque<&FnTypeEntry>> =
-        HashMap::new();
+    let mut local_decl_entries: FxHashMap<String, std::collections::VecDeque<&FnTypeEntry>> =
+        FxHashMap::default();
     for entry in &typed.fn_types {
         if entry.qualified_name.module_path == typed.module_path
             && local_decl_names.contains(entry.name.as_str())
@@ -6704,7 +6704,7 @@ pub fn lower_module(
     //     Constructed before Step 7 so `fn_identities` can read each
     //     import's `exported_symbol` when populating `FnIdentity::Imported`.
     let mut imported_fns = vec![];
-    let mut imported_fn_seen: HashSet<(String, String, Vec<Type>)> = HashSet::new();
+    let mut imported_fn_seen: FxHashSet<(String, String, Vec<Type>)> = FxHashSet::default();
     for entry in &typed.fn_types {
         if entry.origin.is_some() {
             continue;
@@ -6786,20 +6786,20 @@ pub fn lower_module(
     //   • Local fns → `functions[i].exported_symbol` (set by Step 6)
     //   • Imported fns → `ImportedFnDef.exported_symbol` (set by Step 11)
     //   • Lifted synthetics keep `name` (unique names, no overload)
-    let callable_by_id: HashMap<FnId, &QualifiedName> = ctx
+    let callable_by_id: FxHashMap<FnId, &QualifiedName> = ctx
         .callable_ids
         .iter()
         .flat_map(|(qn, cands)| cands.iter().map(move |(_, fid)| (*fid, qn)))
         .collect();
-    let local_exported_by_id: HashMap<FnId, &str> = functions
+    let local_exported_by_id: FxHashMap<FnId, &str> = functions
         .iter()
         .map(|f| (f.id, f.exported_symbol.as_str()))
         .collect();
-    let imported_exported_by_id: HashMap<FnId, &str> = imported_fns
+    let imported_exported_by_id: FxHashMap<FnId, &str> = imported_fns
         .iter()
         .map(|f| (f.id, f.exported_symbol.as_str()))
         .collect();
-    let mut fn_identities = HashMap::new();
+    let mut fn_identities = FxHashMap::default();
     for (name, candidates) in &ctx.fn_ids {
         for (_sig_key, id) in candidates {
             let id = *id;
@@ -6849,7 +6849,7 @@ pub fn lower_module(
     // 8. Build extern_fns from local definitions only.
     //    Cross-module extern fns are in module.imported_extern_fns.
     //    Build a lookup from trait_name → extern trait info for bridge params.
-    let extern_trait_lookup: HashMap<
+    let extern_trait_lookup: FxHashMap<
         &krypton_typechecker::typed_ast::TraitName,
         &krypton_typechecker::typed_ast::ExternTraitInfo,
     > = typed
@@ -6858,7 +6858,7 @@ pub fn lower_module(
         .map(|et| (&et.trait_name, et))
         .collect();
     // Build a lookup from function name → constraints for bridge detection.
-    let mut fn_constraints_by_name: HashMap<
+    let mut fn_constraints_by_name: FxHashMap<
         &str,
         &[(
             krypton_typechecker::typed_ast::TraitName,
@@ -7116,9 +7116,9 @@ pub fn lower_module(
             // Walks the same sources as before (fn_types + extern + instance-
             // method fn_constraints) but resolves each entry to its FnId via
             // `callable_ids` using the entry's parameter types as sig_key.
-            let mut reqs: HashMap<FnId, TraitConstraintList> = HashMap::new();
+            let mut reqs: FxHashMap<FnId, TraitConstraintList> = FxHashMap::default();
             let resolve_fn_id =
-                |callable_ids: &HashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
+                |callable_ids: &FxHashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
                  qn: &QualifiedName,
                  sig_key: &[Type]|
                  -> Option<FnId> {
@@ -7482,7 +7482,7 @@ fn resolve_unaryop(op: &UnaryOp, operand_ty: &Type) -> Result<PrimOp, LowerError
 fn build_type_param_map(
     type_params: &[String],
     gen: &mut TypeVarGen,
-) -> HashMap<String, TypeVarId> {
+) -> FxHashMap<String, TypeVarId> {
     type_params
         .iter()
         .map(|name| (name.clone(), gen.fresh()))
@@ -7492,7 +7492,7 @@ fn build_type_param_map(
 /// Simple TypeExpr → Type conversion for private types.
 fn resolve_type_expr_simple(
     texpr: &krypton_parser::ast::TypeExpr,
-    type_param_map: &HashMap<String, TypeVarId>,
+    type_param_map: &FxHashMap<String, TypeVarId>,
 ) -> Type {
     use krypton_parser::ast::TypeExpr;
     match texpr {
@@ -7585,7 +7585,7 @@ fn ice_bind_conflict(where_: &str, bc: BindConflict) -> LowerError {
 fn bind_type_vars(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> Result<bool, BindConflict> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
@@ -7709,7 +7709,7 @@ fn bind_type_vars(
 fn bind_instance_target(
     pattern: &Type,
     actual: &Type,
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     match (pattern, actual) {
         (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
@@ -7734,7 +7734,7 @@ fn bind_instance_target(
 fn bind_instance_targets(
     patterns: &[Type],
     dispatch_tys: &[Type],
-    bindings: &mut HashMap<TypeVarId, Type>,
+    bindings: &mut FxHashMap<TypeVarId, Type>,
 ) -> bool {
     if patterns.len() != dispatch_tys.len() {
         return false;
@@ -7868,14 +7868,14 @@ pub fn lower_all(
     typed_modules: &[TypedModule],
     root_name: &str,
     link_ctx: &LinkContext,
-) -> Result<(Vec<Module>, HashMap<String, String>), LowerError> {
+) -> Result<(Vec<Module>, FxHashMap<String, String>), LowerError> {
     let root_module_path = typed_modules
         .first()
         .map(|tm| tm.module_path.as_str())
         .unwrap_or("");
 
     let mut ir_modules = Vec::with_capacity(typed_modules.len());
-    let mut module_sources: HashMap<String, String> = HashMap::new();
+    let mut module_sources: FxHashMap<String, String> = FxHashMap::default();
 
     for tm in typed_modules {
         let is_root = tm.module_path == root_module_path;
@@ -7907,31 +7907,31 @@ mod tests {
             next_var: 0,
             next_fn: 0,
             type_var_gen: TypeVarGen::new(),
-            var_scope: HashMap::new(),
-            fn_ids: HashMap::new(),
-            callable_ids: HashMap::new(),
-            struct_fields: HashMap::new(),
-            struct_type_params: HashMap::new(),
-            sum_variants: HashMap::new(),
-            private_type_params: HashMap::new(),
-            fn_constraints: HashMap::new(),
-            dict_params: HashMap::new(),
-            fn_schemes: HashMap::new(),
+            var_scope: FxHashMap::default(),
+            fn_ids: FxHashMap::default(),
+            callable_ids: FxHashMap::default(),
+            struct_fields: FxHashMap::default(),
+            struct_type_params: FxHashMap::default(),
+            sum_variants: FxHashMap::default(),
+            private_type_params: FxHashMap::default(),
+            fn_constraints: FxHashMap::default(),
+            dict_params: FxHashMap::default(),
+            fn_schemes: FxHashMap::default(),
             param_instances: Vec::new(),
-            trait_method_types: HashMap::new(),
-            trait_method_constraints: HashMap::new(),
+            trait_method_types: FxHashMap::default(),
+            trait_method_constraints: FxHashMap::default(),
             dict_depth: 0,
             lifted_fns: Vec::new(),
-            var_types: HashMap::new(),
+            var_types: FxHashMap::default(),
             recur_join: None,
             early_return_join: None,
             auto_close: AutoCloseInfo::default(),
             scope_track_stack: Vec::new(),
             fn_block_scoped_closes: Vec::new(),
-            fn_exit_closes: HashMap::new(),
+            fn_exit_closes: FxHashMap::default(),
             module_path: "test".to_string(),
             all_instances: Vec::new(),
-            instance_exact_index: HashMap::new(),
+            instance_exact_index: FxHashMap::default(),
         }
     }
 
@@ -7965,7 +7965,7 @@ mod tests {
                 ],
                 Box::new(Type::Unit),
             ),
-            var_names: HashMap::new(),
+            var_names: FxHashMap::default(),
         };
         ctx.fn_schemes.insert(qn.clone(), scheme);
         ctx.fn_constraints

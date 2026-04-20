@@ -14,7 +14,7 @@
 //! resolved by `Convert[Int, String]`) are not erroneously generalized into the
 //! function's scheme.
 
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::trait_registry::{freshen_type, PartialMatch, TraitRegistry};
 use crate::typed_ast::{
@@ -43,7 +43,7 @@ struct Entry {
 /// Mutates `subst` to pin free positions whenever a unique candidate exists.
 pub(super) fn resolve_multi_param_constraints(
     fn_bodies: &[Option<TypedExpr>],
-    protected_type_vars: &[HashSet<TypeVarId>],
+    protected_type_vars: &[FxHashSet<TypeVarId>],
     trait_registry: &TraitRegistry,
     subst: &mut Substitution,
     gen: &mut TypeVarGen,
@@ -71,10 +71,10 @@ pub(super) fn resolve_multi_param_constraints(
         // type (`fn_b := Tuple([?c1, ?c2])` for fns returning tuples). In
         // either case, all the free vars belong semantically to the enclosing
         // fn's declared type params and must stay abstract.
-        let live_protected: Vec<HashSet<TypeVarId>> = protected_type_vars
+        let live_protected: Vec<FxHashSet<TypeVarId>> = protected_type_vars
             .iter()
             .map(|original| {
-                let mut out: HashSet<TypeVarId> = HashSet::new();
+                let mut out: FxHashSet<TypeVarId> = FxHashSet::default();
                 for &id in original {
                     out.extend(super::free_vars(&subst.apply(&Type::Var(id))));
                 }
@@ -103,7 +103,7 @@ pub(super) fn resolve_multi_param_constraints(
                     // the constraint will be dispatched at `f`'s caller.
                     let protected = live_protected
                         .get(entry.owning_fn)
-                        .map(|s| s as &HashSet<TypeVarId>);
+                        .map(|s| s as &FxHashSet<TypeVarId>);
                     // "Protected" is a property of individual free vars, not
                     // positions. A free var is protected iff it belongs to
                     // the enclosing fn's declared type-parameter equivalence
@@ -138,7 +138,7 @@ pub(super) fn resolve_multi_param_constraints(
                     // Freshen the instance's free type vars so we don't
                     // accidentally pollute the substitution with stale ids,
                     // then unify each position with the freshened target.
-                    let mut var_map: HashMap<TypeVarId, TypeVarId> = HashMap::new();
+                    let mut var_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
                     let fresh_targets: Vec<Type> = inst
                         .target_types
                         .iter()
@@ -209,7 +209,7 @@ fn collect_entries(
                         };
                         if let Some(method) = info.methods.iter().find(|m| m.name == method_name) {
                             // Collect bindings: trait_type_var_id -> Type.
-                            let mut bindings: HashMap<TypeVarId, Type> = HashMap::new();
+                            let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
                             for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                                 collect_type_var_bindings_strict(
                                     pattern,

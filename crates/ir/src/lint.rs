@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 use crate::expr::{Atom, Expr, ExprKind, PrimOp, SimpleExpr, SimpleExprKind};
 use crate::pass::{IrPass, IrPassError};
@@ -22,20 +22,20 @@ impl IrPass for LintPass {
 }
 
 struct LintContext {
-    bound_vars: HashSet<VarId>,
+    bound_vars: FxHashSet<VarId>,
     var_stack: Vec<VarId>,
-    join_points: HashSet<VarId>,
-    known_fns: HashSet<FnId>,
-    known_traits: HashSet<String>,
+    join_points: FxHashSet<VarId>,
+    known_fns: FxHashSet<FnId>,
+    known_traits: FxHashSet<String>,
     /// trait_name → sub_dict count for each instance.
     instance_sub_dict_counts: Vec<(TraitName, String, usize)>,
 }
 
 impl LintContext {
     fn new(module: &Module) -> Self {
-        let known_fns: HashSet<FnId> = module.fn_names().keys().copied().collect();
+        let known_fns: FxHashSet<FnId> = module.fn_names().keys().copied().collect();
 
-        let known_traits: HashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
+        let known_traits: FxHashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
 
         let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
             .instances
@@ -50,9 +50,9 @@ impl LintContext {
             .collect();
 
         LintContext {
-            bound_vars: HashSet::new(),
+            bound_vars: FxHashSet::default(),
             var_stack: Vec::new(),
-            join_points: HashSet::new(),
+            join_points: FxHashSet::default(),
             known_fns,
             known_traits,
             instance_sub_dict_counts,

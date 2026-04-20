@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 
 use crate::types::{Substitution, Type, TypeEnv, TypeVarId};
 
@@ -79,9 +79,9 @@ pub(crate) fn build_type_param_map(
     type_params: &[String],
     type_param_vars: &[TypeVarId],
     type_name: &str,
-) -> (HashMap<String, TypeVarId>, HashMap<String, usize>) {
-    let mut map = HashMap::new();
-    let mut arity = HashMap::new();
+) -> (FxHashMap<String, TypeVarId>, FxHashMap<String, usize>) {
+    let mut map = FxHashMap::default();
+    let mut arity = FxHashMap::default();
     for (param_name, &var) in type_params.iter().zip(type_param_vars.iter()) {
         map.insert(param_name.clone(), var);
     }

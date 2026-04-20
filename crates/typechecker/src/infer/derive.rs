@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{BinOp, Lit, Span};
 
@@ -15,9 +15,9 @@ pub(super) fn collect_derived_constraints_for_type(
     trait_registry: &TraitRegistry,
     trait_name: &str,
     field_type: &Type,
-    local_type_params: &HashMap<TypeVarId, String>,
+    local_type_params: &FxHashMap<TypeVarId, String>,
     deriving_type_name: &str,
-    visited: &mut HashSet<(String, String)>,
+    visited: &mut FxHashSet<(String, String)>,
     constraints: &mut Vec<ResolvedConstraint>,
 ) -> bool {
     let key = (trait_name.to_string(), format!("{field_type}"));
@@ -85,7 +85,7 @@ pub(super) fn collect_derived_constraints_for_type(
         return true;
     }
 
-    let mut bindings = HashMap::new();
+    let mut bindings = FxHashMap::default();
     if !match_type_with_bindings(&instance.target_types[0], field_type, &mut bindings) {
         return false;
     }

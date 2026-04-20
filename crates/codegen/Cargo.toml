@@ -11,6 +11,7 @@ krypton-ir = { path = "../ir" }
 krypton-diagnostics = { path = "../diagnostics" }
 tracing.workspace = true
 zip = "2"
+rustc-hash.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

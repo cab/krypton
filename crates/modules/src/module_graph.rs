@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 
 use krypton_parser::ast::{CompileTarget, Decl, Module, Span};
 use krypton_parser::diagnostics::ParseError;
@@ -19,7 +19,7 @@ pub struct ResolvedModule {
 #[derive(Debug)]
 pub struct ModuleGraph {
     pub modules: Vec<ResolvedModule>,
-    pub prelude_tree_paths: HashSet<String>,
+    pub prelude_tree_paths: FxHashSet<String>,
 }
 
 /// Errors that can occur during module graph resolution.
@@ -59,16 +59,16 @@ pub fn build_module_graph(
     let mut builder = ModuleGraphBuilder {
         resolver,
         target,
-        visited: HashSet::new(),
+        visited: FxHashSet::default(),
         stack: Vec::new(),
-        stack_set: HashSet::new(),
+        stack_set: FxHashSet::default(),
         result: Vec::new(),
     };
 
     // Auto-add prelude and its transitive deps (uses stdlib resolver internally)
     builder.visit_prelude_tree("prelude")?;
 
-    let prelude_tree_paths: HashSet<String> =
+    let prelude_tree_paths: FxHashSet<String> =
         builder.result.iter().map(|m| m.path.clone()).collect();
 
     // Walk root imports with proper span tracking for error messages
@@ -88,9 +88,9 @@ pub fn build_module_graph(
 struct ModuleGraphBuilder<'a> {
     resolver: &'a dyn ModuleResolver,
     target: CompileTarget,
-    visited: HashSet<String>,
+    visited: FxHashSet<String>,
     stack: Vec<String>,
-    stack_set: HashSet<String>,
+    stack_set: FxHashSet<String>,
     result: Vec<ResolvedModule>,
 }
 
