@@ -403,9 +403,14 @@ pub(super) fn validate_trait_constraints(
             // A declared constraint satisfies the use if it names the same trait
             // and its type-var tuple matches position-by-position. For single-param
             // traits this degrades to the previous `contains(&var)` check because
-            // both sides are length 1.
+            // both sides are length 1. Additionally, for single-parameter traits a
+            // declared constraint on a descendant trait satisfies a use of any
+            // ancestor trait via superclass entailment (e.g. `where g: Applicative`
+            // satisfies a Functor method call on `g`).
             let is_declared = declared_constraints.iter().any(|(t, declared_vars)| {
-                t.local_name == trait_name.local_name && declared_vars.as_slice() == vars.as_slice()
+                declared_vars.as_slice() == vars.as_slice()
+                    && (t.local_name == trait_name.local_name
+                        || (vars.len() == 1 && trait_registry.is_superclass_of(&trait_name, t)))
             });
             if !is_declared {
                 // For diagnostics, show the first position's name (existing

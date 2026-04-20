@@ -200,3 +200,37 @@ fn importing_map_functions_does_not_expose_map_as_value() {
         "Map should remain type-only, got:\n{snapshot}"
     );
 }
+
+#[test]
+fn applicative_constraint_satisfies_functor_method_call() {
+    // Superclass entailment: `where g: Applicative` should satisfy a Functor
+    // method call on g, since Applicative declares Functor as a superclass.
+    let snapshot = infer_module_snapshot(
+        r#"
+            import core/applicative.{Applicative}
+            import core/functor.{map}
+            fun lift_ap[g[_], a, b](ga: g[a], f: (a) -> b) -> g[b] where g: Applicative =
+                map(ga, f)
+        "#,
+    )
+    .expect("typecheck should succeed: g: Applicative implies g: Functor");
+    assert!(
+        snapshot.contains("lift_ap"),
+        "expected lift_ap in inferred fn types, got:\n{snapshot}"
+    );
+}
+
+#[test]
+fn applicative_constraint_does_not_satisfy_unrelated_trait() {
+    // Negative test: superclass entailment is single-direction.
+    // `where g: Functor` does NOT satisfy a call needing g: Applicative.
+    let result = infer_module_snapshot(
+        r#"
+            import core/applicative.{pure}
+            import core/functor.{Functor}
+            fun lift_pure[g[_], a](x: a) -> g[a] where g: Functor = pure(x)
+        "#,
+    );
+    let codes = result.expect_err("expected E0312 for missing Applicative bound");
+    assert!(codes.iter().any(|c| c == "E0312"), "got codes: {codes:?}");
+}

@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::Span;
 
@@ -450,6 +450,29 @@ impl TraitRegistry {
         });
         resolution_stack.pop();
         matched
+    }
+
+    /// Returns true iff `ancestor` is in the transitive superclass closure of `descendant`.
+    /// Walks `TraitInfo::superclasses` with a visited set so malformed cycles don't loop.
+    /// Returns false if `descendant` is not registered (treat as "no known relation").
+    pub fn is_superclass_of(&self, ancestor: &TraitName, descendant: &TraitName) -> bool {
+        let mut stack: Vec<&TraitName> = vec![descendant];
+        let mut visited: FxHashSet<&TraitName> = FxHashSet::default();
+        while let Some(cur) = stack.pop() {
+            if !visited.insert(cur) {
+                continue;
+            }
+            let Some(info) = self.lookup_trait(cur) else {
+                continue;
+            };
+            for sc in &info.superclasses {
+                if sc == ancestor {
+                    return true;
+                }
+                stack.push(sc);
+            }
+        }
+        false
     }
 
     pub fn check_superclasses(&self, instance: &InstanceInfo) -> Result<(), TypeError> {
