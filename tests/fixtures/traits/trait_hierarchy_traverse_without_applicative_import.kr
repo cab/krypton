@@ -1,0 +1,19 @@
+# expect: output "Some:8\nNone"
+
+import core/traversable.{traverse}
+
+fun main() = {
+    let o1: Option[Int] = Some(7);
+    match traverse(o1, x -> if x > 0 { Some(x + 1) } else { None }) {
+        Some(Some(v)) => println(combine("Some:", show(v))),
+        Some(None) => println("SomeNone"),
+        None => println("None"),
+    }
+
+    let o2: Option[Int] = Some(-1);
+    match traverse(o2, x -> if x > 0 { Some(x) } else { None }) {
+        Some(Some(v)) => println(combine("SomeVal:", show(v))),
+        Some(None) => println("SomeNone"),
+        None => println("None"),
+    }
+}

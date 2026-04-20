@@ -14,7 +14,6 @@ use krypton_typechecker::types::{
     self as types, SchemeVarId, Type, TypeScheme, TypeVarGen, TypeVarId,
 };
 
-use crate::pass::IrPass;
 use crate::Type as IrType;
 use crate::{
     Atom, CanonicalRef, Expr, ExprKind, ExternCallKind, ExternFnDef, ExternTarget,
@@ -7174,8 +7173,14 @@ pub fn lower_module(
         fn_exit_closes: ctx.fn_exit_closes,
     };
 
+    let reachable_trait_names: FxHashSet<String> = link_view
+        .all_traits()
+        .iter()
+        .map(|(_, t)| t.name.clone())
+        .collect();
+
     crate::lint::LintPass
-        .run(module)
+        .run_with_known_traits(module, reachable_trait_names)
         .map_err(|e| LowerError::InternalError(format!("{}: {}", e.pass, e.message)))
 }
 

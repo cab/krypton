@@ -326,6 +326,13 @@ impl LinkContext {
         })
     }
 
+    pub fn all_traits(&self) -> impl Iterator<Item = (&ModulePath, &TraitSummary)> {
+        self.interfaces.iter().flat_map(move |(mod_id, iface)| {
+            let path = self.interner.resolve(*mod_id);
+            iface.exported_traits.iter().map(move |t| (path, t))
+        })
+    }
+
     pub fn lookup_extern_type(&self, name: &str) -> Option<&ExternTypeSummary> {
         let &(mod_id, idx) = self.extern_type_index.get(name)?;
         self.interfaces.get(&mod_id)?.extern_types.get(idx)
@@ -429,6 +436,13 @@ impl<'a> ModuleLinkView<'a> {
     pub fn all_instances(&self) -> Vec<(&'a ModulePath, &'a InstanceSummary)> {
         self.ctx
             .all_instances()
+            .filter(|(path, _)| self.is_reachable(path))
+            .collect()
+    }
+
+    pub fn all_traits(&self) -> Vec<(&'a ModulePath, &'a TraitSummary)> {
+        self.ctx
+            .all_traits()
             .filter(|(path, _)| self.is_reachable(path))
             .collect()
     }

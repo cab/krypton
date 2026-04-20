@@ -7,17 +7,27 @@ use crate::{FnDef, FnId, Module, TraitName, Type, VarId};
 /// Validates structural invariants of an IR module.
 pub struct LintPass;
 
+impl LintPass {
+    pub fn run_with_known_traits(
+        self,
+        module: Module,
+        extra_known_traits: FxHashSet<String>,
+    ) -> Result<Module, IrPassError> {
+        let mut ctx = LintContext::new(&module, &extra_known_traits);
+        for func in &module.functions {
+            ctx.check_function(func)?;
+        }
+        Ok(module)
+    }
+}
+
 impl IrPass for LintPass {
     fn name(&self) -> &str {
         "ir_lint"
     }
 
     fn run(self, module: Module) -> Result<Module, IrPassError> {
-        let mut ctx = LintContext::new(&module);
-        for func in &module.functions {
-            ctx.check_function(func)?;
-        }
-        Ok(module)
+        self.run_with_known_traits(module, FxHashSet::default())
     }
 }
 
@@ -32,10 +42,12 @@ struct LintContext {
 }
 
 impl LintContext {
-    fn new(module: &Module) -> Self {
+    fn new(module: &Module, extra_known_traits: &FxHashSet<String>) -> Self {
         let known_fns: FxHashSet<FnId> = module.fn_names().keys().copied().collect();
 
-        let known_traits: FxHashSet<String> = module.traits.iter().map(|t| t.name.clone()).collect();
+        let mut known_traits: FxHashSet<String> =
+            module.traits.iter().map(|t| t.name.clone()).collect();
+        known_traits.extend(extra_known_traits.iter().cloned());
 
         let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
             .instances
