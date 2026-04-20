@@ -314,7 +314,7 @@ pub fn coerce_unify(
     subst: &mut Substitution,
     registry: Option<&TypeRegistry>,
 ) -> Result<(), TypeError> {
-    coerce_unify_inner(actual, expected, subst, false, registry)
+    coerce_unify_inner(actual, expected, subst, registry)
 }
 
 /// Raw (unsubstituted) parameter metadata used by [`coerce_unify_arg`] to
@@ -351,20 +351,19 @@ pub fn coerce_unify_arg(
                 return Err(TypeError::BareTypeVarResourceArg {
                     callee_name: ctx.callee_name.map(|s| s.to_string()),
                     param_index: ctx.param_index,
-                    param_ty: raw.clone(),
-                    arg_ty: subst.apply(arg_ty),
+                    param_ty: Box::new(raw.clone()),
+                    arg_ty: Box::new(subst.apply(arg_ty)),
                 });
             }
         }
     }
-    coerce_unify_inner(arg_ty, param_ty, subst, false, registry)
+    coerce_unify_inner(arg_ty, param_ty, subst, registry)
 }
 
 fn coerce_unify_inner(
     actual: &Type,
     expected: &Type,
     subst: &mut Substitution,
-    in_constructor: bool,
     registry: Option<&TypeRegistry>,
 ) -> Result<(), TypeError> {
     let actual = resolve_shape(walk(actual, subst), subst);
@@ -388,26 +387,26 @@ fn coerce_unify_inner(
     }
 
     // Reverse direction: non-empty-sum actual against empty-sum expected is a mismatch.
-    if is_empty_sum_type(&expected, registry) && !is_empty_sum_type(&actual, registry) {
-        if !matches!(&actual, Type::Var(_)) {
-            return Err(TypeError::Mismatch {
-                expected: expected.clone(),
-                actual: actual.clone(),
-            });
-        }
+    if is_empty_sum_type(&expected, registry)
+        && !is_empty_sum_type(&actual, registry)
+        && !matches!(&actual, Type::Var(_))
+    {
+        return Err(TypeError::Mismatch {
+            expected: expected.clone(),
+            actual: actual.clone(),
+        });
     }
 
-    // Var on expected side: handle Own/MaybeOwn binding with constructor awareness.
+    // Var on expected side: handle Own/MaybeOwn binding.
     if let Type::Var(b) = &expected {
         if subst.get(*b).is_none() {
             match &actual {
                 Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
-                    // Eager Own-preserving binding: bind `β := Own(T)`
-                    // regardless of `in_constructor`. See
-                    // `typechecker_DESIGN.md` §4.2. The `(x, x)` case is the
-                    // only shape that still needs `MaybeOwn` deferral (§5);
-                    // that path is retained at the consumer arms below but no
-                    // longer populated from this site.
+                    // Eager Own-preserving binding: bind `β := Own(T)`.
+                    // See `typechecker_DESIGN.md` §4.2. The `(x, x)` case is
+                    // the only shape that still needs `MaybeOwn` deferral
+                    // (§5); that path is retained at the consumer arms below
+                    // but no longer populated from this site.
                     //
                     // SOUNDNESS: the `actual = ~β, expected = β` self-reference
                     // arm below can only arise from instantiating a scheme of
@@ -483,17 +482,16 @@ fn coerce_unify_inner(
                         &resolved_actual,
                         &resolved_expected,
                         subst,
-                        in_constructor,
                         registry,
                     );
                 }
                 Type::MaybeOwn(q2, exp_inner) => {
                     subst.unify_qualifiers(*q, *q2)?;
-                    return coerce_unify_inner(inner, exp_inner, subst, in_constructor, registry);
+                    return coerce_unify_inner(inner, exp_inner, subst, registry);
                 }
                 _ => {
                     // Plain context: do NOT set Shared. Coerce inner against expected.
-                    return coerce_unify_inner(inner, &expected, subst, in_constructor, registry);
+                    return coerce_unify_inner(inner, &expected, subst, registry);
                 }
             }
         }
@@ -509,20 +507,20 @@ fn coerce_unify_inner(
             subst.get_qualifier(*q),
             Some(QualifierState::Pending) | None
         ) {
-            return coerce_unify_inner(&actual, inner, subst, in_constructor, registry);
+            return coerce_unify_inner(&actual, inner, subst, registry);
         }
     }
 
     // Both Own: recurse on inner
     if let (Type::Own(a_inner), Type::Own(e_inner)) = (&actual, &expected) {
-        return coerce_unify_inner(a_inner, e_inner, subst, in_constructor, registry);
+        return coerce_unify_inner(a_inner, e_inner, subst, registry);
     }
 
     // fn → ~fn: multi-use function satisfies single-use requirement
     if let Type::Fn(..) = &actual {
         if let Type::Own(inner) = &expected {
             if let Type::Fn(..) = inner.as_ref() {
-                return coerce_unify_inner(&actual, inner, subst, in_constructor, registry);
+                return coerce_unify_inner(&actual, inner, subst, registry);
             }
         }
     }
@@ -538,7 +536,7 @@ fn coerce_unify_inner(
         }
     }
 
-    // Fn: contravariant params, covariant return — stays in_constructor: false
+    // Fn: contravariant params, covariant return
     if let (Type::Fn(params_a, ret_a), Type::Fn(params_b, ret_b)) = (&actual, &expected) {
         if params_a.len() != params_b.len() {
             return Err(TypeError::WrongArity {
@@ -556,12 +554,12 @@ fn coerce_unify_inner(
                     actual_mode: *ma,
                 });
             }
-            coerce_unify_inner(pb, pa, subst, false, registry)?; // FLIP: contravariant; fn positions are not constructor
+            coerce_unify_inner(pb, pa, subst, registry)?; // FLIP: contravariant
         }
-        return coerce_unify_inner(ret_a, ret_b, subst, false, registry); // covariant
+        return coerce_unify_inner(ret_a, ret_b, subst, registry); // covariant
     }
 
-    // Named types: covariant — recurse with in_constructor: true
+    // Named types: covariant
     if let (Type::Named(n1, args1), Type::Named(n2, args2)) = (&actual, &expected) {
         if n1 == n2 {
             if args1.len() != args2.len() {
@@ -571,13 +569,13 @@ fn coerce_unify_inner(
                 });
             }
             for (a, e) in args1.iter().zip(args2.iter()) {
-                coerce_unify_inner(a, e, subst, true, registry)?; // inside constructor
+                coerce_unify_inner(a, e, subst, registry)?;
             }
             return Ok(());
         }
     }
 
-    // Tuple: covariant — recurse with in_constructor: true
+    // Tuple: covariant
     if let (Type::Tuple(elems_a), Type::Tuple(elems_b)) = (&actual, &expected) {
         if elems_a.len() != elems_b.len() {
             return Err(TypeError::WrongArity {
@@ -586,7 +584,7 @@ fn coerce_unify_inner(
             });
         }
         for (a, b) in elems_a.iter().zip(elems_b.iter()) {
-            coerce_unify_inner(a, b, subst, true, registry)?; // inside constructor
+            coerce_unify_inner(a, b, subst, registry)?;
         }
         return Ok(());
     }

@@ -990,7 +990,7 @@ impl<'a> InferenceContext<'a> {
         // 2. Filter candidates via candidate_matches, keeping match results
         let mut matches: Vec<(usize, crate::overload::CandidateMatch)> = Vec::new();
         for (i, c) in candidates.iter().enumerate() {
-            if let Some(m) = crate::overload::candidate_matches(&c.scheme, &arg_types, &mut self.gen) {
+            if let Some(m) = crate::overload::candidate_matches(&c.scheme, &arg_types, self.gen) {
                 matches.push((i, m));
             }
         }
@@ -1012,7 +1012,7 @@ impl<'a> InferenceContext<'a> {
             })
             .collect();
 
-        let has_unsolved = arg_types.iter().any(|t| contains_type_var(t));
+        let has_unsolved = arg_types.iter().any(contains_type_var);
 
         let (winner_idx, winner_match) = match matches.len() {
             0 if has_unsolved => {
@@ -1231,7 +1231,7 @@ impl<'a> InferenceContext<'a> {
             if let Some(m) = crate::overload::candidate_matches_expected_type(
                 &c.scheme,
                 &expected,
-                &mut self.gen,
+                self.gen,
             ) {
                 matches.push((i, m));
             }
@@ -1809,7 +1809,7 @@ impl<'a> InferenceContext<'a> {
         let match_ty = self.subst.apply(&match_ty);
         crate::exhaustiveness::check_exhaustiveness(&match_ty, &typed_arms, self.registry, span)?;
         let ty = if branch_types.is_empty() {
-            if self.registry.map_or(false, |r| {
+            if self.registry.is_some_and(|r| {
                 matches!(&match_ty, Type::Named(name, _) if r.is_empty_sum(name))
             }) {
                 match_ty.clone()

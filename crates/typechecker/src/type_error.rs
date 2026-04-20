@@ -564,8 +564,8 @@ pub enum TypeError {
     BareTypeVarResourceArg {
         callee_name: Option<String>,
         param_index: usize,
-        param_ty: Type,
-        arg_ty: Type,
+        param_ty: Box<Type>,
+        arg_ty: Box<Type>,
     },
     /// A shape-polymorphic impl body typechecked for one legal value form
     /// of a `shape` parameter but not the other. The failing form is
@@ -1118,7 +1118,7 @@ impl TypeError {
                     "{callee} declares parameter {} with a bare type variable `{param_ty}` (accepts only plain values in v0.1), but got `{arg_ty}`. To accept owned values too, change the parameter to `shape {param_ty}`.",
                     param_index + 1,
                 ))
-            }
+            },
             TypeError::BorrowedBindingMisuse { context, .. } => Some(match context {
                 BorrowMisuseContext::ConsumedOrReturned => {
                     "borrowed bindings may only be reborrowed into `&` slots; rebind the owner at the caller to consume it".to_string()
@@ -1999,7 +1999,7 @@ impl fmt::Display for TypeError {
                     .as_deref()
                     .map(|n| format!("`{n}`"))
                     .unwrap_or_else(|| "this function".to_string());
-                let renamed = renumber_types_for_display(&[param_ty, arg_ty]);
+                let renamed = renumber_types_for_display(&[&**param_ty, &**arg_ty]);
                 write!(
                     f,
                     "{callee} expects parameter {} of type `{}` (plain form), but got `{}`",

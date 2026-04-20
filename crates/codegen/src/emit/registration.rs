@@ -1045,7 +1045,7 @@ impl<'link> Compiler<'link> {
     }
 
     pub(super) fn register_vec(&mut self) -> Result<(), CodegenError> {
-        if self.types.struct_info.get("Vec").is_none() {
+        if !self.types.struct_info.contains_key("Vec") {
             return Ok(());
         }
         let Some(builder_struct) = self.types.struct_info.get("VecBuilder") else {

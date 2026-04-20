@@ -123,7 +123,7 @@ pub(super) fn process_deriving(
                 // a targeted diagnostic at the `deriving` clause instead so
                 // the user sees "remove the deriving or the impl".
                 if trait_registry
-                    .find_instance_multi(&derive_full_trait_name, &[target_type.clone()])
+                    .find_instance_multi(&derive_full_trait_name, std::slice::from_ref(&target_type))
                     .is_some()
                 {
                     return Err(spanned(
@@ -246,7 +246,7 @@ pub(super) fn process_deriving(
                     .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
 
                 if trait_registry
-                    .find_instance_multi(&derive_full_trait_name, &[target_type.clone()])
+                    .find_instance_multi(&derive_full_trait_name, std::slice::from_ref(&target_type))
                     .is_some()
                 {
                     return Err(spanned(

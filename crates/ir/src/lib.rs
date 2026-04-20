@@ -359,8 +359,8 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindConflict {
     pub var: TypeVarId,
-    pub existing: Type,
-    pub proposed: Type,
+    pub existing: Box<Type>,
+    pub proposed: Box<Type>,
 }
 
 /// Structurally match a type pattern (may contain type vars) against a concrete
@@ -383,8 +383,8 @@ pub fn bind_type_vars(
                 } else {
                     Err(BindConflict {
                         var: *id,
-                        existing: existing.clone(),
-                        proposed: actual.clone(),
+                        existing: Box::new(existing.clone()),
+                        proposed: Box::new(actual.clone()),
                     })
                 }
             }
@@ -1085,8 +1085,8 @@ mod tests {
             result,
             Err(BindConflict {
                 var: a,
-                existing: Type::Int,
-                proposed: Type::String,
+                existing: Box::new(Type::Int),
+                proposed: Box::new(Type::String),
             })
         );
     }
@@ -1111,8 +1111,8 @@ mod tests {
             result,
             Err(BindConflict {
                 var: a,
-                existing: Type::Int,
-                proposed: Type::String,
+                existing: Box::new(Type::Int),
+                proposed: Box::new(Type::String),
             })
         );
     }

@@ -100,12 +100,12 @@ pub(crate) fn retarget_bare_var_owned_arg(
         return;
     }
     let resolved_arg = subst.apply(arg_ty);
-    err.error = Box::new(TypeError::BareTypeVarResourceArg {
+    *err.error = TypeError::BareTypeVarResourceArg {
         callee_name: callee_name.map(|s| s.to_string()),
         param_index,
-        param_ty: raw.clone(),
-        arg_ty: resolved_arg,
-    });
+        param_ty: Box::new(raw.clone()),
+        arg_ty: Box::new(resolved_arg),
+    };
 }
 
 #[derive(Clone)]

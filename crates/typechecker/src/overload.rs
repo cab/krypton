@@ -33,12 +33,12 @@ fn write_canonical(
     qvars: &mut FxHashMap<crate::types::QualVarId, u32>,
 ) {
     match ty {
-        Type::Int => out.push_str("I"),
-        Type::Float => out.push_str("F"),
-        Type::Bool => out.push_str("B"),
-        Type::String => out.push_str("S"),
-        Type::Unit => out.push_str("U"),
-        Type::FnHole => out.push_str("H"),
+        Type::Int => out.push('I'),
+        Type::Float => out.push('F'),
+        Type::Bool => out.push('B'),
+        Type::String => out.push('S'),
+        Type::Unit => out.push('U'),
+        Type::FnHole => out.push('H'),
         Type::Var(v) => {
             let next = vars.len() as u32;
             let n = *vars.entry(*v).or_insert(next);
@@ -276,10 +276,7 @@ pub fn candidate_matches(
     gen: &mut TypeVarGen,
 ) -> Option<CandidateMatch> {
     let instantiated = scheme.instantiate(&mut || gen.fresh());
-    let params = match fn_param_types(&instantiated) {
-        Some(p) => p,
-        None => return None,
-    };
+    let params = fn_param_types(&instantiated)?;
     if params.len() != arg_types.len() {
         return None;
     }

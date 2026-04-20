@@ -244,41 +244,6 @@ pub fn infer_module_single(
     Ok(modules.remove(0))
 }
 
-
-/// Phase: Register traits (imported + local), process deriving, register impl instances.
-/// Returns (trait_registry, exported_trait_defs, derived_instance_defs, imported_instance_defs, trait_method_map).
-///
-/// Extracted from `infer_module_inner` so its locals are deallocated before the
-/// SCC function inference phase, reducing peak stack usage.
-
-/// Phase 1: Import instances from cached modules via orphan-rule lookup.
-
-/// Phase 2: Register trait definitions imported from other modules.
-
-/// Phase 2c: Register extern traits (Java interfaces exposed as Krypton traits).
-///
-/// Each `extern java "..." as trait Name[a] { ... }` is registered as a real trait
-/// in the TraitRegistry. Methods are bound into the environment via `bind_trait_method`,
-/// making them callable like any other trait method.
-
-/// Phase 3: Process local DefTrait declarations.
-
-/// Phase 4: Process deriving declarations.
-
-/// Phase 5: Process DefImpl declarations (register instances).
-
-
-/// Phase: SCC-based function body inference.
-/// Returns (fn_decls, result_schemes, fn_bodies, fn_constraint_requirements).
-///
-/// Extracted from `infer_module_inner` so that earlier phase locals are deallocated
-/// before the deep `infer_expr_inner` recursion.
-
-/// Phase: Type-check impl method bodies and produce InstanceDefInfo.
-///
-/// Extracted from `infer_module_inner` to reduce stack frame size.
-
-
 /// Internal per-module inference with pre-resolved module cache.
 ///
 /// The module graph has already been resolved and toposorted by `infer_module`.

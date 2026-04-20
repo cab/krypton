@@ -7564,8 +7564,8 @@ fn resolve_type_expr_simple(
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BindConflict {
     var: TypeVarId,
-    existing: Type,
-    proposed: Type,
+    existing: Box<Type>,
+    proposed: Box<Type>,
 }
 
 /// Wrap a [`BindConflict`] as a [`LowerError::InternalError`] carrying the
@@ -7600,8 +7600,8 @@ fn bind_type_vars(
                 } else {
                     Err(BindConflict {
                         var: *id,
-                        existing: existing.clone(),
-                        proposed: actual.clone(),
+                        existing: Box::new(existing.clone()),
+                        proposed: Box::new(actual.clone()),
                     })
                 }
             }

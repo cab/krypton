@@ -419,7 +419,7 @@ pub(super) fn typecheck_impl_methods(
             let mut trait_target_bindings: FxHashMap<TypeVarId, Type> =
                 FxHashMap::with_capacity_and_hasher(
                     trait_info.type_var_ids.len(),
-                    rustc_hash::FxBuildHasher::default(),
+                    rustc_hash::FxBuildHasher,
                 );
             for (i, &trait_tv) in trait_info.type_var_ids.iter().enumerate() {
                 let raw = &instance.target_types[i];
