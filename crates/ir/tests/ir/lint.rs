@@ -576,6 +576,7 @@ fn getdict_unknown_trait_is_error() {
             param_types: vec![Type::Int],
             return_type: Type::String,
         }],
+        direct_superclasses: vec![],
     });
     let result = LintPass.run(module);
     assert!(result.is_err());
@@ -626,6 +627,7 @@ fn getdict_valid_trait_and_instance_passes() {
         type_var: TypeVarGen::new().fresh(),
         is_imported: false,
         methods: vec![],
+        direct_superclasses: vec![],
     });
     module.instances.push(InstanceDef {
         trait_name: TraitName::new("core/show".into(), "Show".into()),

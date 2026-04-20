@@ -29,6 +29,7 @@ pub(super) struct BridgeMethodInfo {
 pub(super) fn generate_trait_interface_class(
     name: &str,
     methods: &[(String, usize)], // (method_name, param_count)
+    superclass_accessor_count: usize,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
 
@@ -36,7 +37,9 @@ pub(super) fn generate_trait_interface_class(
     let object_class = cp.add_class("java/lang/Object")?;
     let code_utf8 = cp.add_utf8("Code")?;
 
-    // For single-method traits, extend FunN so instances are usable as lambdas
+    // For single-method traits, extend FunN so instances are usable as lambdas.
+    // `dictN` accessor methods don't count against the "single method" check —
+    // they're synthesized, not user-declared.
     let mut interfaces = Vec::new();
     if methods.len() == 1 {
         let param_count = methods[0].1;
@@ -64,6 +67,25 @@ pub(super) fn generate_trait_interface_class(
             access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
             name_index: name_idx,
             descriptor_index: desc_idx,
+            attributes: vec![],
+        });
+    }
+
+    // Superclass-dict accessor methods: one `dictN()Ljava/lang/Object;` per
+    // direct superclass of this trait. Declared abstract on the interface so
+    // that ProjectDictField can invokeinterface through the descendant trait's
+    // interface class without knowing the concrete instance class at the
+    // call site. Every instance class implements these as field-getter
+    // bridges over its stored `dictN` slot.
+    let accessor_desc = "()Ljava/lang/Object;";
+    for i in 0..superclass_accessor_count {
+        let accessor_name = format!("dict{}", i);
+        let accessor_name_idx = cp.add_utf8(&accessor_name)?;
+        let accessor_desc_idx = cp.add_utf8(accessor_desc)?;
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC | MethodAccessFlags::ABSTRACT,
+            name_index: accessor_name_idx,
+            descriptor_index: accessor_desc_idx,
             attributes: vec![],
         });
     }
@@ -366,8 +388,21 @@ pub(super) fn generate_extern_trait_bridge_class(
     Ok(buffer)
 }
 
+/// A concrete superclass-dict slot for a singleton instance. The slot is an
+/// instance (non-static) field whose name follows the `dictN` convention used
+/// by parameterized instances; the `<clinit>` of the singleton class populates
+/// it by reading the source singleton's `INSTANCE` static field.
+pub(super) struct ConcreteSuperclassSlot<'a> {
+    /// Slot index — becomes `dict{index}` field name.
+    pub index: usize,
+    /// Fully qualified class name of the source singleton class (e.g.
+    /// `core/functor/Functor$$Option`).
+    pub source_class: &'a str,
+}
+
 /// Generate an instance singleton class (e.g., `Eq$Point.class`).
 /// Implements the trait interface, delegates to static methods on the main class.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn generate_instance_class(
     class_name: &str,
     trait_interface_name: &str,
@@ -376,6 +411,7 @@ pub(super) fn generate_instance_class(
     param_jvm_types: &HashMap<String, Vec<JvmType>>,
     return_jvm_types: &HashMap<String, JvmType>,
     param_class_names: &HashMap<String, Vec<Option<String>>>, // method_name → per-param class names for checkcast
+    superclass_slots: &[ConcreteSuperclassSlot<'_>],
 ) -> Result<Vec<u8>, CodegenError> {
     let mut cp = ConstantPool::default();
 
@@ -425,9 +461,39 @@ pub(super) fn generate_instance_class(
         }],
     };
 
-    // <clinit> — static initializer
+    // Resolve slot field refs + source INSTANCE field refs up front.
+    // The dict field on this class holds an Object-typed reference to the
+    // source trait's singleton; the source class's INSTANCE is itself an
+    // Object from the generated-dict perspective (bridge methods consume
+    // it as a dict).
+    let obj_desc = String::from("Ljava/lang/Object;");
+    let mut slot_resolutions: Vec<(u16, u16)> = Vec::with_capacity(superclass_slots.len());
+    for slot in superclass_slots {
+        let field_name = format!("dict{}", slot.index);
+        let dest_ref = cp.add_field_ref(this_class, &field_name, &obj_desc)?;
+        let source_class_idx = cp.add_class(slot.source_class)?;
+        let source_self_desc = format!("L{};", slot.source_class);
+        let source_instance_ref =
+            cp.add_field_ref(source_class_idx, "INSTANCE", &source_self_desc)?;
+        slot_resolutions.push((dest_ref, source_instance_ref));
+    }
+
+    // <clinit> — static initializer. First writes INSTANCE, then populates
+    // each superclass-dict slot by reading the source singleton.
     let clinit_name = cp.add_utf8("<clinit>")?;
     let clinit_desc = cp.add_utf8("()V")?;
+    let mut clinit_code = vec![
+        Instruction::New(this_class),
+        Instruction::Dup,
+        Instruction::Invokespecial(self_init),
+        Instruction::Putstatic(instance_field_ref),
+    ];
+    for (dest_ref, source_instance_ref) in &slot_resolutions {
+        clinit_code.push(Instruction::Getstatic(instance_field_ref));
+        clinit_code.push(Instruction::Getstatic(*source_instance_ref));
+        clinit_code.push(Instruction::Putfield(*dest_ref));
+    }
+    clinit_code.push(Instruction::Return);
     let clinit = Method {
         access_flags: MethodAccessFlags::STATIC,
         name_index: clinit_name,
@@ -436,19 +502,30 @@ pub(super) fn generate_instance_class(
             name_index: code_utf8,
             max_stack: 2,
             max_locals: 0,
-            code: vec![
-                Instruction::New(this_class),
-                Instruction::Dup,
-                Instruction::Invokespecial(self_init),
-                Instruction::Putstatic(instance_field_ref),
-                Instruction::Return,
-            ],
+            code: clinit_code,
             exception_table: vec![],
             attributes: vec![],
         }],
     };
 
     let mut jvm_methods = vec![constructor, clinit];
+
+    // Superclass-dict instance fields. Names match the parameterized-instance
+    // convention (`dict0`, `dict1`, …) so `ProjectDictField` codegen reads
+    // them with a single Getfield regardless of parameterization.
+    let mut slot_field_decls: Vec<Field> = Vec::with_capacity(superclass_slots.len());
+    for slot in superclass_slots {
+        let field_name = format!("dict{}", slot.index);
+        let name_idx = cp.add_utf8(&field_name)?;
+        let desc_idx = cp.add_utf8("Ljava/lang/Object;")?;
+        slot_field_decls.push(Field {
+            access_flags: FieldAccessFlags::PRIVATE,
+            name_index: name_idx,
+            descriptor_index: desc_idx,
+            field_type: FieldType::Object("java/lang/Object".to_string()),
+            attributes: vec![],
+        });
+    }
 
     // Bridge methods: implement interface methods delegating to static impls
     for (iface_method_name, static_method_name, param_count, static_desc) in methods {
@@ -538,6 +615,33 @@ pub(super) fn generate_instance_class(
         });
     }
 
+    // Emit `dictN()Ljava/lang/Object;` bridge methods: each implements the
+    // abstract accessor declared on the trait interface by returning
+    // `this.dictN`. See `generate_trait_interface_class` for the
+    // corresponding interface-side declaration.
+    for (slot_idx, (dest_ref, _)) in slot_resolutions.iter().enumerate() {
+        let accessor_name = format!("dict{}", slot_idx);
+        let accessor_name_idx = cp.add_utf8(&accessor_name)?;
+        let accessor_desc_idx = cp.add_utf8("()Ljava/lang/Object;")?;
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: accessor_name_idx,
+            descriptor_index: accessor_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 1,
+                max_locals: 1,
+                code: vec![
+                    Instruction::Aload_0,
+                    Instruction::Getfield(*dest_ref),
+                    Instruction::Areturn,
+                ],
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
     // INSTANCE field declaration
     let field = Field {
         access_flags: FieldAccessFlags::PUBLIC | FieldAccessFlags::STATIC | FieldAccessFlags::FINAL,
@@ -547,6 +651,9 @@ pub(super) fn generate_instance_class(
         attributes: vec![],
     };
 
+    let mut all_fields = vec![field];
+    all_fields.extend(slot_field_decls);
+
     let class_file = ClassFile {
         version: JAVA_21,
         access_flags: ClassAccessFlags::PUBLIC | ClassAccessFlags::SUPER | ClassAccessFlags::FINAL,
@@ -554,7 +661,7 @@ pub(super) fn generate_instance_class(
         this_class,
         super_class: object_class,
         interfaces: vec![interface_class],
-        fields: vec![field],
+        fields: all_fields,
         methods: jvm_methods,
         ..Default::default()
     };
@@ -818,10 +925,17 @@ pub(super) struct TraitMethodSignatures<'a> {
 }
 
 /// Generate a parameterized instance class with constructor taking subdictionaries.
+///
+/// `superclass_count` is how many of the first `subdict_count` sub-dict slots
+/// are superclass sub-dicts (they come first by the `InstanceDef` layout
+/// rule). Those slots get `dictN()Ljava/lang/Object;` bridge methods so the
+/// trait-interface-level accessor calls from `ProjectDictField` codegen can
+/// dispatch to them.
 pub(super) fn generate_parameterized_instance_class(
     names: TraitClassNames<'_>,
     sigs: TraitMethodSignatures<'_>,
     subdict_count: usize,
+    superclass_count: usize,
 ) -> Result<Vec<u8>, CodegenError> {
     let TraitClassNames {
         class: class_name,
@@ -929,8 +1043,15 @@ pub(super) fn generate_parameterized_instance_class(
 
         let mut bridge_code: Vec<Instruction> = Vec::new();
 
-        // Load subdicts from fields first (these become the dict params for the static method)
-        for &field_ref in subdict_field_refs.iter().take(subdict_count) {
+        // Load impl-head subdicts from fields first (these become the dict
+        // params for the static method). Superclass slots occupy the first
+        // `superclass_count` positions but are class-level storage only —
+        // they are not passed as static-method parameters.
+        for &field_ref in subdict_field_refs
+            .iter()
+            .skip(superclass_count)
+            .take(subdict_count - superclass_count)
+        {
             bridge_code.push(Instruction::Aload_0);
             bridge_code.push(Instruction::Getfield(field_ref));
         }
@@ -985,6 +1106,33 @@ pub(super) fn generate_parameterized_instance_class(
                 max_stack: 20,
                 max_locals: (1 + *param_count) as u16,
                 code: bridge_code,
+                exception_table: vec![],
+                attributes: vec![],
+            }],
+        });
+    }
+
+    // Superclass-dict accessor bridges: each `dictN()` implements the
+    // interface-level abstract accessor by returning the stored `dictN`
+    // field. Superclass slots are the first `superclass_count` entries in
+    // the instance's sub_dict layout.
+    for (slot_idx, &field_ref) in subdict_field_refs.iter().take(superclass_count).enumerate() {
+        let accessor_name = format!("dict{}", slot_idx);
+        let accessor_name_idx = cp.add_utf8(&accessor_name)?;
+        let accessor_desc_idx = cp.add_utf8("()Ljava/lang/Object;")?;
+        jvm_methods.push(Method {
+            access_flags: MethodAccessFlags::PUBLIC,
+            name_index: accessor_name_idx,
+            descriptor_index: accessor_desc_idx,
+            attributes: vec![Attribute::Code {
+                name_index: code_utf8,
+                max_stack: 1,
+                max_locals: 1,
+                code: vec![
+                    Instruction::Aload_0,
+                    Instruction::Getfield(field_ref),
+                    Instruction::Areturn,
+                ],
                 exception_table: vec![],
                 attributes: vec![],
             }],

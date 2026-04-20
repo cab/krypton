@@ -1,0 +1,26 @@
+# expect: output "Some:11\nNone\nFirst:2"
+
+import core/applicative.{Applicative}
+import core/functor.{map}
+
+fun lift_ap[g[_], a, b](ga: g[a], f: (a) -> b) -> g[b] where g: Applicative =
+    map(ga, f)
+
+fun main() = {
+    match lift_ap(Some(10), x -> x + 1) {
+        Some(v) => println(combine("Some:", show(v))),
+        None => println("None"),
+    }
+
+    let none: Option[Int] = None;
+    match lift_ap(none, x -> x + 1) {
+        Some(v) => println(combine("Some:", show(v))),
+        None => println("None"),
+    }
+
+    let xs: List[Int] = Cons(1, Cons(2, Nil));
+    match lift_ap(xs, x -> x + 1) {
+        Cons(h, _) => println(combine("First:", show(h))),
+        Nil => println("Empty"),
+    }
+}

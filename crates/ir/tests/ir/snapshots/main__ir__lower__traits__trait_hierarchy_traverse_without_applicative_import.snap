@@ -1,6 +1,5 @@
 ---
 source: crates/ir/tests/ir/lower.rs
-assertion_line: 80
 expression: ir_module.to_string()
 ---
 module traits__trait_hierarchy_traverse_without_applicative_import
@@ -19,61 +18,59 @@ declare println: (g) -> Unit
 
 fn main() -> Unit =
   let v0: Option[Int] = construct Option::Some#0(7)
-  let_join v53(v26: Unit) =
-    let v28: Int = neg_int(1)
-    let v27: Option[Int] = construct Option::Some#0(v28)
-    let v36: (Int) -> Option[Int] = make_closure(lambda$28, [])
-    let v37: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
-    let v38: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
-    let v39: Dict[core/functor.Functor, Option] = get_dict core/functor.Functor[Option]
-    let v40: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v37, v38, v39, v27, v36)
-    switch v40 {
-      0 (v41: f) ->
-        switch v41 {
-          0 (v42: Int) ->
-            let v44: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-            let v45: String = trait_call core/show.Show.show(v44, v42)
-            let v46: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
-            let v47: String = trait_call core/semigroup.Semigroup.combine(v46, "SomeVal:", v45)
-            let v43: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-            let v48: Unit = call println(v43, v47)
-            v48
+  let_join v51(v25: Unit) =
+    let v27: Int = neg_int(1)
+    let v26: Option[Int] = construct Option::Some#0(v27)
+    let v35: (Int) -> Option[Int] = make_closure(lambda$28, [])
+    let v36: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
+    let v37: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+    let v38: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v36, v37, v26, v35)
+    switch v38 {
+      0 (v39: f) ->
+        switch v39 {
+          0 (v40: Int) ->
+            let v42: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+            let v43: String = trait_call core/show.Show.show(v42, v40)
+            let v44: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+            let v45: String = trait_call core/semigroup.Semigroup.combine(v44, "SomeVal:", v43)
+            let v41: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+            let v46: Unit = call println(v41, v45)
+            v46
           1 ->
-            let v49: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-            let v50: Unit = call println(v49, "SomeNone")
-            v50
+            let v47: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+            let v48: Unit = call println(v47, "SomeNone")
+            v48
         }
       1 ->
-        let v51: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-        let v52: Unit = call println(v51, "None")
-        v52
+        let v49: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v50: Unit = call println(v49, "None")
+        v50
     }
   in
   let v9: (Int) -> Option[Int] = make_closure(lambda$27, [])
   let v10: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
   let v11: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
-  let v12: Dict[core/functor.Functor, Option] = get_dict core/functor.Functor[Option]
-  let v13: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v10, v11, v12, v0, v9)
-  switch v13 {
-    0 (v14: f) ->
-      switch v14 {
-        0 (v15: Int) ->
-          let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-          let v18: String = trait_call core/show.Show.show(v17, v15)
-          let v19: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
-          let v20: String = trait_call core/semigroup.Semigroup.combine(v19, "Some:", v18)
-          let v16: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-          let v21: Unit = call println(v16, v20)
-          jump v53(v21)
+  let v12: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v10, v11, v0, v9)
+  switch v12 {
+    0 (v13: f) ->
+      switch v13 {
+        0 (v14: Int) ->
+          let v16: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+          let v17: String = trait_call core/show.Show.show(v16, v14)
+          let v18: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+          let v19: String = trait_call core/semigroup.Semigroup.combine(v18, "Some:", v17)
+          let v15: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v20: Unit = call println(v15, v19)
+          jump v51(v20)
         1 ->
-          let v22: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-          let v23: Unit = call println(v22, "SomeNone")
-          jump v53(v23)
+          let v21: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v22: Unit = call println(v21, "SomeNone")
+          jump v51(v22)
       }
     1 ->
-      let v24: Dict[core/show.Show, String] = get_dict core/show.Show[String]
-      let v25: Unit = call println(v24, "None")
-      jump v53(v25)
+      let v23: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v24: Unit = call println(v23, "None")
+      jump v51(v24)
   }
 
 fn lambda$27(v1: Int) -> Option[Int] =
@@ -91,16 +88,16 @@ fn lambda$27(v1: Int) -> Option[Int] =
   let v3: Bool = trait_call core/ord.Ord.lt(v2, 0, v1)
   jump v8(v3)
 
-fn lambda$28(v29: Int) -> Option[Int] =
-  let_join v35(v32: Bool) =
-    if v32 {
-      let v33: Option[Int] = construct Option::Some#0(v29)
-      v33
+fn lambda$28(v28: Int) -> Option[Int] =
+  let_join v34(v31: Bool) =
+    if v31 {
+      let v32: Option[Int] = construct Option::Some#0(v28)
+      v32
     } else {
-      let v34: Option[Int] = construct Option::None#1()
-      v34
+      let v33: Option[Int] = construct Option::None#1()
+      v33
     }
   in
-  let v30: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
-  let v31: Bool = trait_call core/ord.Ord.lt(v30, 0, v29)
-  jump v35(v31)
+  let v29: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
+  let v30: Bool = trait_call core/ord.Ord.lt(v29, 0, v28)
+  jump v34(v30)

@@ -112,13 +112,13 @@ trait Monad[d] { flat_map(d[e], (e) -> d[f]): d[f] }
 module core/traversable
 
 trait Traversable[f] { traverse(f[h], (h) -> g[i]): g[f[i]] }
-fn sequence(v0: Dict[core/traversable.Traversable, o], v1: Dict[core/applicative.Applicative, p], v2: Dict[core/functor.Functor, p], v3: o[p[r]]) -> p[o[r]] =
-  let v8: (p[r]) -> p[r] = make_closure(lambda$4, [])
-  let v9: p[o[r]] = trait_call core/traversable.Traversable.traverse(v0, v1, v2, v3, v8)
-  v9
-
-fn lambda$4(v7: p[r]) -> p[r] =
+fn sequence(v0: Dict[core/traversable.Traversable, o], v1: Dict[core/applicative.Applicative, p], v2: o[p[r]]) -> p[o[r]] =
+  let v6: (p[r]) -> p[r] = make_closure(lambda$4, [])
+  let v7: p[o[r]] = trait_call core/traversable.Traversable.traverse(v0, v1, v2, v6)
   v7
+
+fn lambda$4(v5: p[r]) -> p[r] =
+  v5
 module core/option
 
 type Option[f] = Some#0(f) | None#1
@@ -190,13 +190,14 @@ fn Monad$$Option$$flat_map(v24: Option[q2], v25: (q2) -> Option[r2]) -> Option[r
       v28
   }
 
-fn Traversable$$Option$$traverse(v29: Dict[core/applicative.Applicative, i3], v30: Dict[core/functor.Functor, i3], v31: Option[h3], v32: (h3) -> i3[k3]) -> i3[Option[k3]] =
-  switch v31 {
-    0 (v33: h3) ->
-      let v34: i3[k3] = call_closure v32(v33)
+fn Traversable$$Option$$traverse(v29: Dict[core/applicative.Applicative, i3], v30: Option[h3], v31: (h3) -> i3[k3]) -> i3[Option[k3]] =
+  switch v30 {
+    0 (v32: h3) ->
+      let v34: i3[k3] = call_closure v31(v32)
       let v37: (k3) -> Option[k3] = make_closure(ctor$Some$13, [])
       let v38: (k3) -> Option[k3] = v37
-      let v39: i3[Option[k3]] = trait_call core/functor.Functor.map(v30, v34, v38)
+      let v33: Dict[core/functor.Functor, i3] = project_dict_field v29.dict0 : core/functor.Functor[i3]
+      let v39: i3[Option[k3]] = trait_call core/functor.Functor.map(v33, v34, v38)
       v39
     1 ->
       let v40: Option[k3] = construct Option::None#1()
@@ -543,19 +544,20 @@ fn Monad$$List$$flat_map(v145: List[e8], v146: (e8) -> List[x7]) -> List[x7] =
       v154
   }
 
-fn Traversable$$List$$traverse(v155: Dict[core/applicative.Applicative, l9], v156: Dict[core/functor.Functor, l9], v157: List[z8], v158: (z8) -> l9[x8]) -> l9[List[x8]] =
-  switch v157 {
+fn Traversable$$List$$traverse(v155: Dict[core/applicative.Applicative, l9], v156: List[z8], v157: (z8) -> l9[x8]) -> l9[List[x8]] =
+  switch v156 {
     1 ->
-      let v159: List[x8] = construct List::Nil#1()
-      let v160: List[x8] = v159
-      let v161: l9[List[x8]] = trait_call core/applicative.Applicative.pure(v155, v160)
-      v161
-    0 (v162: z8, v163: List[z8]) ->
-      let v164: l9[x8] = call_closure v158(v162)
-      let v165: (x8) -> (List[x8]) -> List[x8] = make_closure(cons_partial, [])
-      let v166: l9[(List[x8]) -> List[x8]] = trait_call core/functor.Functor.map(v156, v164, v165)
+      let v158: List[x8] = construct List::Nil#1()
+      let v159: List[x8] = v158
+      let v160: l9[List[x8]] = trait_call core/applicative.Applicative.pure(v155, v159)
+      v160
+    0 (v161: z8, v162: List[z8]) ->
+      let v163: l9[x8] = call_closure v157(v161)
+      let v164: (x8) -> (List[x8]) -> List[x8] = make_closure(cons_partial, [])
+      let v165: Dict[core/functor.Functor, l9] = project_dict_field v155.dict0 : core/functor.Functor[l9]
+      let v166: l9[(List[x8]) -> List[x8]] = trait_call core/functor.Functor.map(v165, v163, v164)
       let v167: Dict[core/traversable.Traversable, List] = get_dict core/traversable.Traversable[List]
-      let v168: l9[List[x8]] = trait_call core/traversable.Traversable.traverse(v167, v155, v156, v163, v158)
+      let v168: l9[List[x8]] = trait_call core/traversable.Traversable.traverse(v167, v155, v162, v157)
       let v169: l9[List[x8]] = trait_call core/applicative.Applicative.apply(v155, v166, v168)
       v169
   }
@@ -899,14 +901,14 @@ fn Monad$$Vec$$flat_map(v223: Vec[h15], v224: (h15) -> Vec[i15]) -> Vec[i15] =
   let v235: Vec[i15] = trait_call core/foldable.Foldable.fold(v225, v223, v227, v234)
   v235
 
-fn Traversable$$Vec$$traverse(v236: Dict[core/applicative.Applicative, t16], v237: Dict[core/functor.Functor, t16], v238: Vec[y15], v239: (y15) -> t16[r16]) -> t16[Vec[r16]] =
-  let v241: Dict[core/monoid.Monoid, Vec[r16]] = get_dict core/monoid.Monoid[Vec[r16]]
-  let v242: Vec[r16] = trait_call core/monoid.Monoid.empty(v241)
-  let v243: t16[Vec[r16]] = trait_call core/applicative.Applicative.pure(v236, v242)
-  let v262: (t16[Vec[r16]], y15) -> t16[Vec[r16]] = make_closure(lambda$51, [v239, v236, v237])
-  let v240: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
-  let v263: t16[Vec[r16]] = trait_call core/foldable.Foldable.fold(v240, v238, v243, v262)
-  v263
+fn Traversable$$Vec$$traverse(v236: Dict[core/applicative.Applicative, t16], v237: Vec[y15], v238: (y15) -> t16[r16]) -> t16[Vec[r16]] =
+  let v240: Dict[core/monoid.Monoid, Vec[r16]] = get_dict core/monoid.Monoid[Vec[r16]]
+  let v241: Vec[r16] = trait_call core/monoid.Monoid.empty(v240)
+  let v242: t16[Vec[r16]] = trait_call core/applicative.Applicative.pure(v236, v241)
+  let v259: (t16[Vec[r16]], y15) -> t16[Vec[r16]] = make_closure(lambda$51, [v238, v236])
+  let v239: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v260: t16[Vec[r16]] = trait_call core/foldable.Foldable.fold(v239, v237, v242, v259)
+  v260
 
 fn lambda$49(v214: Vec[n14], v215: Vec[o14], v216: (n14) -> o14) -> Vec[o14] =
   let v218: Dict[core/functor.Functor, Vec] = get_dict core/functor.Functor[Vec]
@@ -921,20 +923,21 @@ fn lambda$50(v228: (h15) -> Vec[i15], v229: Vec[i15], v230: h15) -> Vec[i15] =
   let v233: Vec[i15] = trait_call core/semigroup.Semigroup.combine(v231, v229, v232)
   v233
 
-fn lambda$53(v252: Vec[r16], v255: r16) -> Vec[r16] =
-  let v256: Vec[r16] = call push(v252, v255)
-  v256
+fn lambda$53(v249: Vec[r16], v251: r16) -> Vec[r16] =
+  let v252: Vec[r16] = call push(v249, v251)
+  v252
 
-fn lambda$52(v251: Vec[r16]) -> (r16) -> Vec[r16] =
-  let v257: (r16) -> Vec[r16] = make_closure(lambda$53, [v251])
-  v257
+fn lambda$52(v248: Vec[r16]) -> (r16) -> Vec[r16] =
+  let v253: (r16) -> Vec[r16] = make_closure(lambda$53, [v248])
+  v253
 
-fn lambda$51(v244: (y15) -> t16[r16], v245: Dict[core/applicative.Applicative, t16], v246: Dict[core/functor.Functor, t16], v247: t16[Vec[r16]], v248: y15) -> t16[Vec[r16]] =
-  let v258: (Vec[r16]) -> (r16) -> Vec[r16] = make_closure(lambda$52, [])
-  let v259: t16[(r16) -> Vec[r16]] = trait_call core/functor.Functor.map(v246, v247, v258)
-  let v260: t16[r16] = call_closure v244(v248)
-  let v261: t16[Vec[r16]] = trait_call core/applicative.Applicative.apply(v245, v259, v260)
-  v261
+fn lambda$51(v243: (y15) -> t16[r16], v244: Dict[core/applicative.Applicative, t16], v245: t16[Vec[r16]], v246: y15) -> t16[Vec[r16]] =
+  let v254: (Vec[r16]) -> (r16) -> Vec[r16] = make_closure(lambda$52, [])
+  let v255: Dict[core/functor.Functor, t16] = project_dict_field v244.dict0 : core/functor.Functor[t16]
+  let v256: t16[(r16) -> Vec[r16]] = trait_call core/functor.Functor.map(v255, v245, v254)
+  let v257: t16[r16] = call_closure v243(v246)
+  let v258: t16[Vec[r16]] = trait_call core/applicative.Applicative.apply(v244, v256, v257)
+  v258
 module core/ordering
 
 type Ordering = LT#0 | EQ#1 | GT#2

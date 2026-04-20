@@ -211,7 +211,11 @@ fn compile_module_inner(
     // Build instance map from local + imported instances
     let instance_class_map = build_instance_class_map(ir_module, link_view);
     compiler.register_imported_instances(&instance_class_map)?;
-    result_classes.extend(compiler.register_instance_defs_ir(ir_module, class_name)?);
+    result_classes.extend(compiler.register_instance_defs_ir(
+        ir_module,
+        class_name,
+        &instance_class_map,
+    )?);
 
     // Phase 3: Register functions
     compiler.register_functions_ir(ir_module, compiler.this_class)?;

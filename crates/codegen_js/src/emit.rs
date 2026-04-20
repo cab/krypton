@@ -1650,6 +1650,7 @@ impl<'a> JsEmitter<'a> {
             }
 
             let dict_name = self.resolve_dict_js_name(&inst.trait_name, &inst.target_types);
+            let target_parameterized = inst.target_types.iter().any(has_type_vars);
 
             if inst.sub_dict_requirements.is_empty() {
                 // Constant dict object (singleton or parametric without sub-dicts).
@@ -1665,18 +1666,54 @@ impl<'a> JsEmitter<'a> {
                     "export const {dict_name} = {{ {} }};",
                     methods.join(", ")
                 ));
+            } else if !target_parameterized {
+                // Concrete target with superclass slots: emit a const with an
+                // IIFE initializer that fills each `dictN` from the
+                // concrete superclass singleton.
+                let slot_entries: Vec<(usize, String)> = inst
+                    .sub_dict_requirements
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, (sc_trait, _))| {
+                        let sc_dict_name =
+                            self.resolve_dict_js_name(sc_trait, &inst.target_types);
+                        (idx, sc_dict_name)
+                    })
+                    .collect();
+                let methods: Vec<String> = inst
+                    .method_fn_ids
+                    .iter()
+                    .map(|(method_name, fn_id)| {
+                        let fn_name = self.fn_name(*fn_id);
+                        format!("{method_name}: {fn_name}")
+                    })
+                    .collect();
+                self.writeln(&format!("export const {dict_name} = (function () {{"));
+                self.indent += 1;
+                self.writeln(&format!("const d = {{ {} }};", methods.join(", ")));
+                for (idx, sc_name) in &slot_entries {
+                    self.writeln(&format!("d.dict{idx} = {sc_name};"));
+                }
+                self.writeln("return d;");
+                self.indent -= 1;
+                self.writeln("})();");
             } else {
-                // Parameterized instance — factory function
+                // Parameterized instance — factory function.
                 let dict_params: Vec<String> = inst
                     .sub_dict_requirements
                     .iter()
-                    .map(|(tn, tvs)| {
+                    .enumerate()
+                    .map(|(idx, (tn, tvs))| {
                         let joined = tvs
                             .iter()
                             .map(|v| v.display_name())
                             .collect::<Vec<_>>()
                             .join("$");
-                        format!("dict$${}$${}", tn.local_name, joined)
+                        if joined.is_empty() {
+                            format!("dict$${}$${}", tn.local_name, idx)
+                        } else {
+                            format!("dict$${}$${}", tn.local_name, joined)
+                        }
                     })
                     .collect();
                 let methods: Vec<String> = inst
@@ -1695,7 +1732,20 @@ impl<'a> JsEmitter<'a> {
                     dict_params.join(", ")
                 ));
                 self.indent += 1;
-                self.writeln(&format!("return {{ {} }};", methods.join(", ")));
+                self.writeln("const d = {");
+                self.indent += 1;
+                for m in &methods {
+                    self.writeln(&format!("{m},"));
+                }
+                self.indent -= 1;
+                self.writeln("};");
+                // Attach superclass sub-dicts and impl-head sub-dicts as
+                // `dictN` properties so `ProjectDictField` can read them via
+                // plain property access.
+                for (idx, _) in inst.sub_dict_requirements.iter().enumerate() {
+                    self.writeln(&format!("d.dict{idx} = {};", dict_params[idx]));
+                }
+                self.writeln("return d;");
                 self.indent -= 1;
                 self.writeln("}");
             }
@@ -2371,6 +2421,12 @@ impl<'a> JsEmitter<'a> {
                 let factory_name = self.resolve_dict_js_name(trait_name, target_types);
                 let args: Vec<String> = sub_dicts.iter().map(|a| self.emit_atom(a)).collect();
                 self.write(&format!("{factory_name}({})", args.join(", ")));
+            }
+            SimpleExprKind::ProjectDictField {
+                dict, field_index, ..
+            } => {
+                let dict_expr = self.emit_atom(dict);
+                self.write(&format!("{dict_expr}.dict{field_index}"));
             }
             SimpleExprKind::MakeVec { elements, .. } => {
                 let mut expr = format!("{}()", Self::VEC_BUILDER_NEW_ALIAS);

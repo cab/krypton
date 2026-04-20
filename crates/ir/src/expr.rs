@@ -174,6 +174,19 @@ pub enum SimpleExprKind {
         sub_dicts: Vec<Atom>,
     },
 
+    /// Project a stored superclass-dict slot from a descendant dict value.
+    /// Used when a generic function's `where` constraint provides a descendant
+    /// dict (e.g. `Applicative[g]`) but the body needs an ancestor dict
+    /// (e.g. `Functor[g]`): the descendant's dict carries the ancestor as a
+    /// precomputed field, and this node reads that field.
+    ProjectDictField {
+        dict: Atom,
+        field_index: usize,
+        /// Trait/type pair this slot holds; kept for lint and codegen sanity.
+        result_trait: TraitName,
+        result_target_types: Vec<Type>,
+    },
+
     /// Construct a Vec from elements.
     MakeVec {
         element_type: Type,

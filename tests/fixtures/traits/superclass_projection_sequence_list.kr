@@ -1,0 +1,23 @@
+# expect: output "HasSome\nAllNone"
+
+import core/traversable.{Traversable, sequence}
+import core/applicative.{Applicative}
+
+# sequence on Option[List[Int]] yields List[Option[Int]]-ish shape — use the
+# opposite pairing: sequence on `Option[List[a]]` typechecks because Option
+# is both Traversable and Applicative. Verify both branches of the inner
+# traversal actually run.
+
+fun main() = {
+    let a: Option[List[Int]] = Some(Cons(1, Cons(2, Nil)));
+    match sequence(a) {
+        Cons(Some(1), Cons(Some(2), Nil)) => println("HasSome"),
+        _ => println("unexpectedA"),
+    }
+
+    let b: Option[List[Int]] = None;
+    match sequence(b) {
+        Cons(None, Nil) => println("AllNone"),
+        _ => println("unexpectedB"),
+    }
+}

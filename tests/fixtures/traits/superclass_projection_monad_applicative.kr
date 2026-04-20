@@ -1,0 +1,24 @@
+# expect: output "Some:10\nNone"
+
+import core/monad.{Monad, flat_map}
+import core/applicative.{pure}
+import core/functor.{map}
+
+# A generic function where g: Monad calls pure (needs Applicative superclass,
+# one hop) and map (needs Functor superclass, two hops via
+# Applicative → Functor). This exercises transitive projection.
+fun double_mapped[g[_], a](ga: g[a], f: (a) -> a) -> g[a] where g: Monad =
+    flat_map(ga, x -> map(pure(f(x)), f))
+
+fun main() = {
+    match double_mapped(Some(8), x -> x + 1) {
+        Some(v) => println(combine("Some:", show(v))),
+        None => println("None"),
+    }
+
+    let none: Option[Int] = None;
+    match double_mapped(none, x -> x + 1) {
+        Some(_) => println("unexpected"),
+        None => println("None"),
+    }
+}

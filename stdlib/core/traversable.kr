@@ -9,14 +9,11 @@ import core/functor.{Functor}
 import core/foldable.{Foldable}
 import core/applicative.{Applicative}
 
-# NOTE: `g: Applicative` implies `g: Functor` by the Applicative superclass,
-# but the compiler does not auto-propagate superclass constraints (see E0312),
-# so we spell them both on the method signature.
 pub trait Traversable[t[_]] where t: Functor, t: Foldable {
     fun traverse[g[_], a, b](ta: t[a], k: (a) -> g[b]) -> g[t[b]]
-        where g: Applicative, g: Functor
+        where g: Applicative
 }
 
 pub fun sequence[t[_], g[_], a](tga: t[g[a]]) -> g[t[a]]
-    where t: Traversable, g: Applicative, g: Functor =
+    where t: Traversable, g: Applicative =
     traverse(tga, x -> x)

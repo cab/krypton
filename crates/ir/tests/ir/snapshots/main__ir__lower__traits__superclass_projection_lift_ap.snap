@@ -1,0 +1,97 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__superclass_projection_lift_ap
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn lift_ap(v0: Dict[core/applicative.Applicative, p11], v1: p11[l11], v2: (l11) -> r11) -> p11[r11] =
+  let v3: Dict[core/functor.Functor, p11] = project_dict_field v0.dict0 : core/functor.Functor[p11]
+  let v4: p11[r11] = trait_call core/functor.Functor.map(v3, v1, v2)
+  v4
+
+fn main() -> Unit =
+  let_join v57(v20: Unit) =
+    let v22: Option[Int] = construct Option::None#1()
+    let v21: Option[Int] = v22
+    let_join v56(v37: Unit) =
+      let v39: List[Int] = construct List::Nil#1()
+      let v40: List[Int] = construct List::Cons#0(2, v39)
+      let v38: List[Int] = construct List::Cons#0(1, v40)
+      let v43: (Int) -> Int = make_closure(lambda$29, [])
+      let v44: Dict[core/applicative.Applicative, List] = get_dict core/applicative.Applicative[List]
+      let v45: List[Int] = call lift_ap(v44, v38, v43)
+      switch v45 {
+        0 (v46: Int, v47: List[j]) ->
+          let v49: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+          let v50: String = trait_call core/show.Show.show(v49, v46)
+          let v51: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+          let v52: String = trait_call core/semigroup.Semigroup.combine(v51, "First:", v50)
+          let v48: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v53: Unit = call println(v48, v52)
+          v53
+        1 ->
+          let v54: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v55: Unit = call println(v54, "Empty")
+          v55
+      }
+    in
+    let v25: (Int) -> Int = make_closure(lambda$28, [])
+    let v26: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+    let v27: Option[Int] = call lift_ap(v26, v21, v25)
+    switch v27 {
+      0 (v28: Int) ->
+        let v30: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v31: String = trait_call core/show.Show.show(v30, v28)
+        let v32: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+        let v33: String = trait_call core/semigroup.Semigroup.combine(v32, "Some:", v31)
+        let v29: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v34: Unit = call println(v29, v33)
+        jump v56(v34)
+      1 ->
+        let v35: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v36: Unit = call println(v35, "None")
+        jump v56(v36)
+    }
+  in
+  let v5: Option[Int] = construct Option::Some#0(10)
+  let v8: (Int) -> Int = make_closure(lambda$27, [])
+  let v9: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+  let v10: Option[Int] = call lift_ap(v9, v5, v8)
+  switch v10 {
+    0 (v11: Int) ->
+      let v13: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v14: String = trait_call core/show.Show.show(v13, v11)
+      let v15: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+      let v16: String = trait_call core/semigroup.Semigroup.combine(v15, "Some:", v14)
+      let v12: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v17: Unit = call println(v12, v16)
+      jump v57(v17)
+    1 ->
+      let v18: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v19: Unit = call println(v18, "None")
+      jump v57(v19)
+  }
+
+fn lambda$27(v6: Int) -> Int =
+  let v7: Int = add_int(v6, 1)
+  v7
+
+fn lambda$28(v23: Int) -> Int =
+  let v24: Int = add_int(v23, 1)
+  v24
+
+fn lambda$29(v41: Int) -> Int =
+  let v42: Int = add_int(v41, 1)
+  v42

@@ -1,0 +1,20 @@
+# expect: output "Some:1,2,3\nNone"
+
+import core/traversable.{Traversable, sequence}
+import core/applicative.{Applicative}
+
+fun main() = {
+    let xs: List[Option[Int]] = Cons(Some(1), Cons(Some(2), Cons(Some(3), Nil)));
+    match sequence(xs) {
+        Some(Cons(h1, Cons(h2, Cons(h3, Nil)))) => {
+            println(combine("Some:", combine(show(h1), combine(",", combine(show(h2), combine(",", show(h3)))))));
+        },
+        _ => println("unexpected"),
+    }
+
+    let ys: List[Option[Int]] = Cons(Some(1), Cons(None, Cons(Some(3), Nil)));
+    match sequence(ys) {
+        Some(_) => println("unexpected"),
+        None => println("None"),
+    }
+}

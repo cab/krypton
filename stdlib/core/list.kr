@@ -65,7 +65,7 @@ impl Monad[List] {
 fun cons_partial[a](h: a) -> (List[a]) -> List[a] = (rest) -> Cons(h, rest)
 
 impl Traversable[List] {
-    fun traverse[g[_], a, b](xs: List[a], k: (a) -> g[b]) -> g[List[b]] where g: Applicative, g: Functor = match xs {
+    fun traverse[g[_], a, b](xs: List[a], k: (a) -> g[b]) -> g[List[b]] where g: Applicative = match xs {
         Nil => pure(Nil),
         Cons(h, rest) => apply(map(k(h), cons_partial), traverse(rest, k)),
     }

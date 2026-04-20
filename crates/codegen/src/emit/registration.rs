@@ -629,8 +629,11 @@ impl<'link> Compiler<'link> {
                     .iter()
                     .map(|m| (m.name.clone(), m.param_count))
                     .collect();
-                let interface_bytes =
-                    generate_trait_interface_class(&qualified_trait, &methods_for_gen)?;
+                let interface_bytes = generate_trait_interface_class(
+                    &qualified_trait,
+                    &methods_for_gen,
+                    trait_def.direct_superclasses.len(),
+                )?;
                 result_classes.push((qualified_trait.clone(), interface_bytes));
             }
 
@@ -830,6 +833,10 @@ impl<'link> Compiler<'link> {
         &mut self,
         ir_module: &krypton_ir::Module,
         class_name: &str,
+        instance_class_map: &HashMap<
+            (TraitName, Vec<krypton_ir::Type>),
+            ImportedInstanceInfo,
+        >,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
@@ -858,6 +865,20 @@ impl<'link> Compiler<'link> {
                 })
                 .collect();
 
+            // Superclass slots are stored on the instance class at class-load
+            // time, not passed as static-method parameters. Only impl-head
+            // sub_dicts appear in FnDef params (see lower.rs instance method
+            // assembly). Split the dict count along the layout boundary:
+            // sub_dict_requirements[..superclass_count] are slot-only;
+            // sub_dict_requirements[superclass_count..] are fn-def params.
+            let superclass_count = ir_module
+                .traits
+                .iter()
+                .find(|t| t.trait_name == inst.trait_name)
+                .map(|t| t.direct_superclasses.len())
+                .unwrap_or(0);
+            let impl_head_count = dict_requirements.len() - superclass_count;
+
             let mut method_info = Vec::new();
             let mut param_jvm_types_map: HashMap<String, Vec<JvmType>> = HashMap::new();
             let mut return_jvm_types_map: HashMap<String, JvmType> = HashMap::new();
@@ -874,12 +895,12 @@ impl<'link> Compiler<'link> {
                     continue; // Intrinsic method — no FnDef exists
                 };
 
-                // Extract user param types (skip dict params at the front)
-                let dict_count = dict_requirements.len();
+                // Skip impl-head dict params (the FnDef params), NOT the
+                // superclass-slot count.
                 let user_params: Vec<&Type> = fn_def
                     .params
                     .iter()
-                    .skip(dict_count)
+                    .skip(impl_head_count)
                     .map(|(_vid, ty)| ty)
                     .collect();
 
@@ -894,7 +915,8 @@ impl<'link> Compiler<'link> {
                     .insert(*fn_id, dict_requirements.clone());
 
                 let mut all_param_jvm = Vec::new();
-                for _ in 0..dict_requirements.len() {
+                // Static method signature: impl-head dict params + user params.
+                for _ in 0..impl_head_count {
                     all_param_jvm.push(JvmType::StructRef(self.builder.refs.object_class));
                 }
                 all_param_jvm.extend(param_jvm.iter().copied());
@@ -929,6 +951,32 @@ impl<'link> Compiler<'link> {
             let is_parameterized = inst.target_types.iter().any(type_has_vars);
 
             if !is_parameterized {
+                // Resolve each superclass slot to its concrete source class
+                // name. For a concrete instance at this target, any
+                // superclass slot's target is the same target (single-
+                // parameter-trait scope), so we look it up in the shared
+                // instance-class map built from local + imported instances.
+                let mut superclass_slots: Vec<super::trait_class_gen::ConcreteSuperclassSlot<'_>> =
+                    Vec::new();
+                for (slot_idx, (sc_trait, _)) in inst.sub_dict_requirements.iter().enumerate() {
+                    let key = (sc_trait.clone(), inst.target_types.clone());
+                    let src_info = instance_class_map.get(&key).ok_or_else(|| {
+                        CodegenError::TypeError(
+                            format!(
+                                "ICE: no class entry for superclass slot {}[{}] of {}[{}]",
+                                sc_trait.local_name,
+                                inst.target_type_name,
+                                inst.trait_name.local_name,
+                                inst.target_type_name,
+                            ),
+                            None,
+                        )
+                    })?;
+                    superclass_slots.push(super::trait_class_gen::ConcreteSuperclassSlot {
+                        index: slot_idx,
+                        source_class: src_info.class_name.as_str(),
+                    });
+                }
                 let instance_bytes = generate_instance_class(
                     &instance_class_name,
                     &q_trait,
@@ -937,6 +985,7 @@ impl<'link> Compiler<'link> {
                     &param_jvm_types_map,
                     &return_jvm_types_map,
                     &param_class_names_map,
+                    &superclass_slots,
                 )?;
                 result_classes.push((instance_class_name.clone(), instance_bytes));
 
@@ -954,6 +1003,15 @@ impl<'link> Compiler<'link> {
                     InstanceSingletonInfo { instance_field_ref },
                 );
             } else {
+                // Look up the superclass count for this instance's trait.
+                // Direct superclasses always lay out at the front of the
+                // sub_dict slots (see InstanceDef layout rule).
+                let superclass_count = ir_module
+                    .traits
+                    .iter()
+                    .find(|t| t.trait_name == inst.trait_name)
+                    .map(|t| t.direct_superclasses.len())
+                    .unwrap_or(0);
                 let instance_bytes = generate_parameterized_instance_class(
                     TraitClassNames {
                         class: &instance_class_name,
@@ -967,6 +1025,7 @@ impl<'link> Compiler<'link> {
                         param_class_names: &param_class_names_map,
                     },
                     dict_requirements.len(),
+                    superclass_count,
                 )?;
                 result_classes.push((instance_class_name.clone(), instance_bytes));
 

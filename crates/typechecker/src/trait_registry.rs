@@ -452,6 +452,38 @@ impl TraitRegistry {
         matched
     }
 
+    /// Drop any constraint `(t, vars)` if another constraint in `cs` shares
+    /// `vars` and has a trait that `t` is a superclass of (i.e. the sibling
+    /// entails `t` via `is_superclass_of`). Stable order over the survivors.
+    /// Only applies the single-parameter rule — multi-param superclass
+    /// entailment is TRAIT-CLEANUP-T3 scope.
+    pub fn drop_entailed_constraints(&self, cs: &mut Vec<(TraitName, Vec<TypeVarId>)>) {
+        if cs.len() < 2 {
+            return;
+        }
+        let mut drop = vec![false; cs.len()];
+        for i in 0..cs.len() {
+            if cs[i].1.len() != 1 {
+                continue;
+            }
+            for j in 0..cs.len() {
+                if i == j || drop[j] {
+                    continue;
+                }
+                if cs[j].1 == cs[i].1 && self.is_superclass_of(&cs[i].0, &cs[j].0) {
+                    drop[i] = true;
+                    break;
+                }
+            }
+        }
+        let mut idx = 0;
+        cs.retain(|_| {
+            let keep = !drop[idx];
+            idx += 1;
+            keep
+        });
+    }
+
     /// Returns true iff `ancestor` is in the transitive superclass closure of `descendant`.
     /// Walks `TraitInfo::superclasses` with a visited set so malformed cycles don't loop.
     /// Returns false if `descendant` is not registered (treat as "no known relation").

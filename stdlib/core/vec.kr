@@ -159,7 +159,7 @@ impl Monad[Vec] {
 }
 
 impl Traversable[Vec] {
-    fun traverse[g[_], a, b](xs: Vec[a], k: (a) -> g[b]) -> g[Vec[b]] where g: Applicative, g: Functor =
+    fun traverse[g[_], a, b](xs: Vec[a], k: (a) -> g[b]) -> g[Vec[b]] where g: Applicative =
         fold(xs, pure(empty()), (acc, x) -> apply(map(acc, (ys) -> (y) -> push(ys, y)), k(x)))
 }
 

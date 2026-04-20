@@ -1,0 +1,107 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__superclass_projection_sequence_option
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+declare println: (g) -> Unit
+declare sequence: (o[p[r]]) -> p[o[r]]
+
+fn main() -> Unit =
+  let v1: Option[Int] = construct Option::Some#0(1)
+  let v2: Option[Int] = construct Option::Some#0(2)
+  let v3: Option[Int] = construct Option::Some#0(3)
+  let v4: List[Option[Int]] = construct List::Nil#1()
+  let v5: List[Option[Int]] = construct List::Cons#0(v3, v4)
+  let v6: List[Option[Int]] = construct List::Cons#0(v2, v5)
+  let v0: List[Option[Int]] = construct List::Cons#0(v1, v6)
+  let_join v61(v45: Unit) =
+    let v47: Option[Int] = construct Option::Some#0(1)
+    let v48: Option[Int] = construct Option::None#1()
+    let v49: Option[Int] = construct Option::Some#0(3)
+    let v50: List[Option[Int]] = construct List::Nil#1()
+    let v51: List[Option[Int]] = construct List::Cons#0(v49, v50)
+    let v52: List[Option[Int]] = construct List::Cons#0(v48, v51)
+    let v46: List[Option[Int]] = construct List::Cons#0(v47, v52)
+    let v53: Dict[core/traversable.Traversable, List] = get_dict core/traversable.Traversable[List]
+    let v54: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+    let v55: Option[List[Int]] = call sequence(v53, v54, v46)
+    switch v55 {
+      0 (v56: f) ->
+        let v57: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v58: Unit = call println(v57, "unexpected")
+        v58
+      1 ->
+        let v59: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v60: Unit = call println(v59, "None")
+        v60
+    }
+  in
+  let v7: Dict[core/traversable.Traversable, List] = get_dict core/traversable.Traversable[List]
+  let v8: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+  let v9: Option[List[Int]] = call sequence(v7, v8, v0)
+  switch v9 {
+    0 (v10: f) ->
+      switch v10 {
+        0 (v11: Int, v12: List[j]) ->
+          switch v12 {
+            0 (v13: Int, v14: List[j]) ->
+              switch v14 {
+                0 (v15: Int, v16: List[j]) ->
+                  switch v16 {
+                    1 ->
+                      let v18: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+                      let v19: String = trait_call core/show.Show.show(v18, v11)
+                      let v20: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+                      let v21: String = trait_call core/show.Show.show(v20, v13)
+                      let v22: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+                      let v23: String = trait_call core/show.Show.show(v22, v15)
+                      let v24: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+                      let v25: String = trait_call core/semigroup.Semigroup.combine(v24, ",", v23)
+                      let v26: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+                      let v27: String = trait_call core/semigroup.Semigroup.combine(v26, v21, v25)
+                      let v28: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+                      let v29: String = trait_call core/semigroup.Semigroup.combine(v28, ",", v27)
+                      let v30: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+                      let v31: String = trait_call core/semigroup.Semigroup.combine(v30, v19, v29)
+                      let v32: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+                      let v33: String = trait_call core/semigroup.Semigroup.combine(v32, "Some:", v31)
+                      let v17: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                      let v34: Unit = call println(v17, v33)
+                      jump v61(v34)
+                    _ ->
+                      let v35: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                      let v36: Unit = call println(v35, "unexpected")
+                      jump v61(v36)
+                  }
+                _ ->
+                  let v37: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                  let v38: Unit = call println(v37, "unexpected")
+                  jump v61(v38)
+              }
+            _ ->
+              let v39: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+              let v40: Unit = call println(v39, "unexpected")
+              jump v61(v40)
+          }
+        _ ->
+          let v41: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v42: Unit = call println(v41, "unexpected")
+          jump v61(v42)
+      }
+    _ ->
+      let v43: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v44: Unit = call println(v43, "unexpected")
+      jump v61(v44)
+  }

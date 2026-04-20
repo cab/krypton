@@ -1,0 +1,111 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__superclass_projection_sequence_list
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+declare println: (g) -> Unit
+declare sequence: (o[p[r]]) -> p[o[r]]
+
+fn main() -> Unit =
+  let v1: List[Int] = construct List::Nil#1()
+  let v2: List[Int] = construct List::Cons#0(2, v1)
+  let v3: List[Int] = construct List::Cons#0(1, v2)
+  let v0: Option[List[Int]] = construct Option::Some#0(v3)
+  let_join v47(v31: Unit) =
+    let v33: Option[List[Int]] = construct Option::None#1()
+    let v32: Option[List[Int]] = v33
+    let v34: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
+    let v35: Dict[core/applicative.Applicative, List] = get_dict core/applicative.Applicative[List]
+    let v36: List[Option[Int]] = call sequence(v34, v35, v32)
+    switch v36 {
+      0 (v37: j, v38: List[j]) ->
+        switch v37 {
+          1 ->
+            switch v38 {
+              1 ->
+                let v39: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                let v40: Unit = call println(v39, "AllNone")
+                v40
+              _ ->
+                let v41: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                let v42: Unit = call println(v41, "unexpectedB")
+                v42
+            }
+          _ ->
+            let v43: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+            let v44: Unit = call println(v43, "unexpectedB")
+            v44
+        }
+      _ ->
+        let v45: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v46: Unit = call println(v45, "unexpectedB")
+        v46
+    }
+  in
+  let v4: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
+  let v5: Dict[core/applicative.Applicative, List] = get_dict core/applicative.Applicative[List]
+  let v6: List[Option[Int]] = call sequence(v4, v5, v0)
+  switch v6 {
+    0 (v7: j, v8: List[j]) ->
+      switch v7 {
+        0 (v9: f) ->
+          let v26: Bool = eq_int(v9, 1)
+          if v26 {
+            switch v8 {
+              0 (v12: j, v13: List[j]) ->
+                switch v12 {
+                  0 (v14: f) ->
+                    let v21: Bool = eq_int(v14, 2)
+                    if v21 {
+                      switch v13 {
+                        1 ->
+                          let v17: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                          let v18: Unit = call println(v17, "HasSome")
+                          jump v47(v18)
+                        _ ->
+                          let v19: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                          let v20: Unit = call println(v19, "unexpectedA")
+                          jump v47(v20)
+                      }
+                    } else {
+                      let v15: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                      let v16: Unit = call println(v15, "unexpectedA")
+                      jump v47(v16)
+                    }
+                  _ ->
+                    let v22: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                    let v23: Unit = call println(v22, "unexpectedA")
+                    jump v47(v23)
+                }
+              _ ->
+                let v24: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+                let v25: Unit = call println(v24, "unexpectedA")
+                jump v47(v25)
+            }
+          } else {
+            let v10: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+            let v11: Unit = call println(v10, "unexpectedA")
+            jump v47(v11)
+          }
+        _ ->
+          let v27: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+          let v28: Unit = call println(v27, "unexpectedA")
+          jump v47(v28)
+      }
+    _ ->
+      let v29: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v30: Unit = call println(v29, "unexpectedA")
+      jump v47(v30)
+  }

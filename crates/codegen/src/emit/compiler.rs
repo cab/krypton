@@ -832,6 +832,29 @@ impl<'link> Compiler<'link> {
     // -----------------------------------------------------------------------
 
     /// Compile an IR Atom (variable reference or literal).
+    /// Return the descendant trait name of a dict-typed atom, if any. Used
+    /// by `ProjectDictField` codegen to resolve the interface class that
+    /// declares the `dictN` accessor.
+    pub(super) fn descendant_trait_of_dict_atom(
+        &self,
+        atom: &krypton_ir::Atom,
+    ) -> Option<TraitName> {
+        let var_id = match atom {
+            krypton_ir::Atom::Var(v) => *v,
+            _ => return None,
+        };
+        let ty = self.var_types.get(&var_id)?;
+        let dict = match ty {
+            Type::Dict { trait_name, .. } => trait_name,
+            Type::Own(inner) => match inner.as_ref() {
+                Type::Dict { trait_name, .. } => trait_name,
+                _ => return None,
+            },
+            _ => return None,
+        };
+        Some(dict.clone())
+    }
+
     pub(super) fn compile_ir_atom(
         &mut self,
         atom: &krypton_ir::Atom,
@@ -1950,6 +1973,70 @@ impl<'link> Compiler<'link> {
                     self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
                     Ok(JvmType::StructRef(pushed_class))
                 }
+            }
+
+            SimpleExprKind::ProjectDictField {
+                dict,
+                field_index,
+                result_trait,
+                result_target_types: _,
+            } => {
+                // Project a stored superclass-dict slot via an
+                // interface-declared accessor method `dictN()Ljava/lang/Object;`.
+                //
+                // We cannot use `Getfield` here: at a generic-function call
+                // site, the descendant dict is bound through a type-var
+                // dict param whose runtime class isn't known at compile
+                // time, and JVM `fieldref` resolution demands a concrete
+                // owner class. Every trait interface that has superclasses
+                // therefore declares accessor methods `dict0 … dictN`,
+                // implemented on each concrete/parameterized instance
+                // class as field getters — see `generate_trait_interface_class`.
+                let descendant_trait = self
+                    .descendant_trait_of_dict_atom(dict)
+                    .ok_or_else(|| {
+                        CodegenError::TypeError(
+                            "ICE: ProjectDictField dict atom is not dict-typed".to_string(),
+                            None,
+                        )
+                    })?;
+                let iface_class_idx = self
+                    .traits
+                    .trait_dispatch
+                    .get(&descendant_trait)
+                    .map(|d| d.interface_class)
+                    .ok_or_else(|| {
+                        CodegenError::TypeError(
+                            format!(
+                                "ICE: no trait_dispatch entry for descendant {}",
+                                descendant_trait.local_name
+                            ),
+                            None,
+                        )
+                    })?;
+
+                self.compile_ir_atom(dict)?;
+                let accessor_name = format!("dict{}", field_index);
+                let accessor_desc = String::from("()Ljava/lang/Object;");
+                let method_ref = self.cp.add_interface_method_ref(
+                    iface_class_idx,
+                    &accessor_name,
+                    &accessor_desc,
+                )?;
+                self.builder
+                    .emit(Instruction::Invokeinterface(method_ref, 1));
+                self.builder.frame.pop_type();
+
+                let pushed_class = self
+                    .traits
+                    .trait_dispatch
+                    .get(result_trait)
+                    .map(|d| d.interface_class)
+                    .unwrap_or(self.builder.refs.object_class);
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: pushed_class,
+                });
+                Ok(JvmType::StructRef(pushed_class))
             }
 
             SimpleExprKind::MakeVec {

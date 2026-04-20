@@ -968,7 +968,7 @@ mod tests {
             "should emit factory function, got: {js:?}"
         );
         assert!(
-            js.contains("return { show:"),
+            js.contains("show:") && js.contains("return d;"),
             "should return dict object, got: {js:?}"
         );
     }

@@ -803,6 +803,12 @@ pub struct TraitDef {
     pub type_var: TypeVarId,
     pub methods: Vec<TraitMethodDef>,
     pub is_imported: bool,
+    /// Direct superclasses in declaration order. The length determines how
+    /// many `dictN` accessor methods the codegen adds to the trait's
+    /// interface class (one per direct superclass, since descendant →
+    /// ancestor projections go one hop at a time through
+    /// `SimpleExprKind::ProjectDictField`).
+    pub direct_superclasses: Vec<TraitName>,
 }
 
 /// A method signature within a trait declaration.
@@ -815,6 +821,23 @@ pub struct TraitMethodDef {
 }
 
 /// A trait instance declaration linking method FnDefs to a trait/type pair.
+///
+/// `sub_dict_requirements` uses a trait-wide fixed layout so that projections
+/// through a type-var dict param (e.g. `g: Applicative` entailing
+/// `Functor[g]`) can compute field indices without knowing the concrete
+/// impl's impl-head count:
+///
+/// - **Superclass slots** come first, in the declaration order of the
+///   instance's trait's direct superclasses. For any impl of a given trait,
+///   superclass slot N is always at dict field `N`. This is what makes
+///   `SimpleExprKind::ProjectDictField` a constant-index Getfield.
+/// - **Impl-head constraint sub-dicts** follow, taken from the instance's
+///   own `where` clause in declaration order.
+///
+/// For concrete-type instances the singleton initializer populates each
+/// superclass slot once from the superclass's concrete singleton; for
+/// parameterized instances the slots are passed through `MakeDict`'s
+/// `sub_dicts` list in the same order.
 #[derive(Debug, Clone)]
 pub struct InstanceDef {
     pub trait_name: TraitName,
@@ -823,6 +846,8 @@ pub struct InstanceDef {
     pub target_types: Vec<Type>,
     pub target_type_name: String,
     pub method_fn_ids: Vec<(String, FnId)>,
+    /// Direct-superclass sub-dicts first (fixed trait-wide layout), then
+    /// impl-head constraint sub-dicts. See the type-level doc above.
     pub sub_dict_requirements: Vec<(TraitName, Vec<TypeVarId>)>,
     pub is_intrinsic: bool,
     pub is_imported: bool,

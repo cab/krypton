@@ -172,6 +172,18 @@ impl fmt::Display for SimpleExpr {
                     fmt_atoms(sub_dicts)
                 )
             }
+            SimpleExprKind::ProjectDictField {
+                dict,
+                field_index,
+                result_trait,
+                result_target_types,
+            } => {
+                write!(
+                    f,
+                    "project_dict_field {dict}.dict{field_index} : {result_trait}[{}]",
+                    fmt_types(result_target_types)
+                )
+            }
             SimpleExprKind::MakeVec { elements, .. } => {
                 write!(f, "make_vec({})", fmt_atoms(elements))
             }
@@ -305,6 +317,18 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
                     "make_dict {trait_name}[{}]({})",
                     fmt_types(target_types),
                     fmt_atoms(sub_dicts)
+                )
+            }
+            SimpleExprKind::ProjectDictField {
+                dict,
+                field_index,
+                result_trait,
+                result_target_types,
+            } => {
+                write!(
+                    self.f,
+                    "project_dict_field {dict}.dict{field_index} : {result_trait}[{}]",
+                    fmt_types(result_target_types)
                 )
             }
             SimpleExprKind::MakeVec { elements, .. } => {

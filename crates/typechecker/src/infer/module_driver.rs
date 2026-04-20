@@ -664,6 +664,9 @@ impl ModuleInferenceState {
                     }
                 }
             }
+            if let Some(reqs) = fn_constraint_requirements.get_mut(&func.name) {
+                trait_registry.drop_entailed_constraints(reqs);
+            }
         }
 
         // Fold final constraints into TypeSchemes in fn_types (results) so they

@@ -358,6 +358,19 @@ impl LintContext {
                 Ok(())
             }
 
+            SimpleExprKind::ProjectDictField {
+                dict,
+                result_trait,
+                ..
+            } => {
+                if !self.known_traits.contains(&result_trait.local_name) {
+                    return Err(self.err(format!(
+                        "ProjectDictField references unknown trait '{result_trait}'"
+                    )));
+                }
+                self.check_atom_not_join(dict)
+            }
+
             SimpleExprKind::Atom(atom) => self.check_atom_not_join(atom),
         }
     }

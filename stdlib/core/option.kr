@@ -47,7 +47,7 @@ impl Monad[Option] {
 
 impl Traversable[Option] {
     fun traverse[g[_], a, b](o: Option[a], k: (a) -> g[b]) -> g[Option[b]]
-        where g: Applicative, g: Functor = match o {
+        where g: Applicative = match o {
             Some(x) => map(k(x), Some),
             None => pure(None),
         }

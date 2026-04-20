@@ -460,6 +460,9 @@ pub(super) fn infer_function_bodies<'a>(
             }
         }
     }
+    for reqs in fn_constraint_requirements.values_mut() {
+        trait_registry.drop_entailed_constraints(reqs);
+    }
 
     // Fold constraints into TypeSchemes so they propagate via normal import mechanisms
     for (idx, decl) in fn_decls.iter().enumerate() {

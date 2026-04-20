@@ -1,0 +1,9 @@
+# expect: error E0312
+
+import core/functor.{Functor}
+import core/applicative.{pure}
+
+# Negative: where g: Functor cannot satisfy a call needing g: Applicative —
+# entailment is one-directional. E0312 fires at typecheck time; projection
+# never gets a chance to run.
+fun bad[g[_], a](x: a) -> g[a] where g: Functor = pure(x)
