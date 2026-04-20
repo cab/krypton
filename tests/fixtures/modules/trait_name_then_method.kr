@@ -1,0 +1,5 @@
+# expect: output "hi"
+import core/io.{println}
+import trait_name_then_method_lib.{Greet}
+import trait_name_then_method_lib.{greet, Hello, MkHello}
+fun main() = println(greet(MkHello("x")))

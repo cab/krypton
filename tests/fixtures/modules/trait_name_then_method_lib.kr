@@ -1,0 +1,7 @@
+pub trait Greet[a] {
+  fun greet(x: a) -> String
+}
+pub type Hello = MkHello(String)
+impl Greet[Hello] {
+  fun greet(h: Hello) -> String = "hi"
+}

@@ -730,77 +730,89 @@ impl ModuleInferenceState {
                     .methods
                     .iter()
                     .any(|m| requested.contains(m.name.as_str()));
-            if (explicitly_requested || import_all)
-                && !self.imported_trait_names.contains(&effective_name)
-            {
-                if matches!(trait_def.visibility, Visibility::Private) {
-                    if explicitly_requested {
-                        return Err(spanned(
-                            TypeError::PrivateName {
-                                name: trait_def.name.clone(),
-                                module_path: path.to_string(),
-                            },
-                            span,
-                        ));
-                    }
-                    continue;
+
+            if !(explicitly_requested || import_all) {
+                continue;
+            }
+
+            // Private check stays — every import of a private trait must error
+            // consistently, even if an earlier (e.g. alias-punned) registration
+            // happened.
+            if matches!(trait_def.visibility, Visibility::Private) {
+                if explicitly_requested {
+                    return Err(spanned(
+                        TypeError::PrivateName {
+                            name: trait_def.name.clone(),
+                            module_path: path.to_string(),
+                        },
+                        span,
+                    ));
                 }
+                continue;
+            }
+
+            // Build canonical TraitName (always uses original name, not alias)
+            let trait_id = TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
+            let trait_already_registered = self.imported_trait_names.contains(&effective_name);
+
+            // Register the trait def only on first sight.
+            if !trait_already_registered {
                 self.imported_trait_defs.push(trait_def.clone());
                 self.imported_trait_names.insert(effective_name.clone());
-                // Build canonical TraitName (always uses original name, not alias)
-                let trait_id =
-                    TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
-                // Register alias if different from original
                 if effective_name != trait_def.name {
                     self.trait_aliases
                         .push((effective_name.clone(), trait_id.clone()));
                 }
-                let origin = Some(trait_id);
-                // Bind visible trait methods as imported functions (skip if already imported via fn_types)
-                for method in &trait_def.methods {
-                    let is_visible = import_all || requested.contains(method.name.as_str());
-                    let already_imported = self.imports.contains_name(&method.name);
-                    if is_visible && !already_imported {
-                        let fn_ty = Type::Fn(
-                            method.param_types.clone(),
-                            Box::new(method.return_type.clone()),
-                        );
-                        // Generalize over both trait-level params and the
-                        // method's own type parameters, preserving source
-                        // order: trait-declaration order first (so `[a, b]`
-                        // on `Convert[a, b]` stays `a, b`), then
-                        // method-signature order for the remaining vars.
-                        // Ordering here is load-bearing — user pins like
-                        // `xs.map[String]` resolve positionally against this
-                        // list.
-                        let mut vars: Vec<crate::types::TypeVarId> =
-                            trait_def.type_var_ids.clone();
-                        let mut seen: FxHashSet<crate::types::TypeVarId> =
-                            vars.iter().copied().collect();
-                        for tv in super::free_vars_ordered(&fn_ty) {
-                            if seen.insert(tv) {
-                                vars.push(tv);
-                            }
+            }
+
+            let origin = Some(trait_id);
+            // Bind visible trait methods as imported functions (skip if already
+            // imported via fn_types). This runs on every import that names the
+            // trait or one of its methods, so a name-only first import does not
+            // poison a later method import of the same trait.
+            for method in &trait_def.methods {
+                let is_visible = import_all || requested.contains(method.name.as_str());
+                let already_imported = self.imports.contains_name(&method.name);
+                if is_visible && !already_imported {
+                    let fn_ty = Type::Fn(
+                        method.param_types.clone(),
+                        Box::new(method.return_type.clone()),
+                    );
+                    // Generalize over both trait-level params and the
+                    // method's own type parameters, preserving source
+                    // order: trait-declaration order first (so `[a, b]`
+                    // on `Convert[a, b]` stays `a, b`), then
+                    // method-signature order for the remaining vars.
+                    // Ordering here is load-bearing — user pins like
+                    // `xs.map[String]` resolve positionally against this
+                    // list.
+                    let mut vars: Vec<crate::types::TypeVarId> =
+                        trait_def.type_var_ids.clone();
+                    let mut seen: FxHashSet<crate::types::TypeVarId> =
+                        vars.iter().copied().collect();
+                    for tv in super::free_vars_ordered(&fn_ty) {
+                        if seen.insert(tv) {
+                            vars.push(tv);
                         }
-                        let scheme = TypeScheme {
-                            vars,
-                            constraints: Vec::new(),
-                            ty: fn_ty,
-                            var_names: FxHashMap::default(),
-                        };
-                        self.imports.bind_import(
-                            &mut self.env,
-                            crate::infer::ImportBinding {
-                                name: method.name.clone(),
-                                scheme,
-                                origin: origin.clone(),
-                                source_module: path.to_string(),
-                                original_name: method.name.clone(),
-                                is_prelude: is_synthetic_prelude_import,
-                                span,
-                            },
-                        )?;
                     }
+                    let scheme = TypeScheme {
+                        vars,
+                        constraints: Vec::new(),
+                        ty: fn_ty,
+                        var_names: FxHashMap::default(),
+                    };
+                    self.imports.bind_import(
+                        &mut self.env,
+                        crate::infer::ImportBinding {
+                            name: method.name.clone(),
+                            scheme,
+                            origin: origin.clone(),
+                            source_module: path.to_string(),
+                            original_name: method.name.clone(),
+                            is_prelude: is_synthetic_prelude_import,
+                            span,
+                        },
+                    )?;
                 }
             }
         }

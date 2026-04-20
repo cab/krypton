@@ -1,0 +1,26 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module modules__trait_name_then_method
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/io/println as println(g) -> Unit
+import trait_name_then_method_lib/MkHello as MkHello(String) -> Hello
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: Hello = construct Hello::MkHello#0("x")
+  let v2: Dict[trait_name_then_method_lib.Greet, Hello] = get_dict trait_name_then_method_lib.Greet[Hello]
+  let v3: String = trait_call trait_name_then_method_lib.Greet.greet(v2, v1)
+  let v0: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v4: Unit = call println(v0, v3)
+  v4
