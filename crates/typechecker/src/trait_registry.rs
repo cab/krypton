@@ -102,14 +102,15 @@ impl TraitRegistry {
     ///
     /// Bare-name ambiguity (two modules defining traits with the same bare
     /// name) is detected upstream in `TraitNameResolver`; this method only
-    /// rejects an exact-duplicate `TraitName` (same module_path + name).
+    /// rejects an exact-duplicate `TraitName` (same module_path + name),
+    /// returning `DuplicateTrait`. That arises when the same imported trait
+    /// def reaches this module via multiple import paths; callers at that
+    /// registration site treat it as a benign dedup.
     pub fn register_trait(&mut self, info: TraitInfo) -> Result<(), TypeError> {
         let key = info.trait_name();
         if self.traits.contains_key(&key) {
-            return Err(TypeError::OrphanInstance {
-                trait_name: info.name.clone(),
-                ty: info.name.clone(),
-                modules_checked: vec![],
+            return Err(TypeError::DuplicateTrait {
+                name: info.name.clone(),
             });
         }
         self.traits.insert(key, info);

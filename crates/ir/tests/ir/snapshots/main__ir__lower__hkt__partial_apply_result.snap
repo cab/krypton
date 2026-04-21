@@ -5,7 +5,6 @@ expression: ir_module.to_string()
 module hkt__partial_apply_result
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Functor[j11] { map(j11[d], (d) -> e): j11[e] }
 trait Functor[l11] { fmap(l11[m11], (m11) -> n11): l11[n11] }
 instance hkt__partial_apply_result.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d

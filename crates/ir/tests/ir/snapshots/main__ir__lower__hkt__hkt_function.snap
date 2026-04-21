@@ -6,7 +6,6 @@ module hkt__hkt_function
 
 type Box[a] = Box#0(a)
 trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
-trait Functor[i11] { map(i11[d], (d) -> e): i11[e] }
 trait Hoist[n11] { hoist(o11[n11], (o11[n11]) -> p11[n11]): p11[n11] }
 instance hkt__hkt_function.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance hkt__hkt_function.Hoist[Int] { hoist=Hoist$$Int$$hoist }

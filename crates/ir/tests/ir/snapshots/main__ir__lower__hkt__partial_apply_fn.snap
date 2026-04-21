@@ -5,7 +5,6 @@ expression: ir_module.to_string()
 module hkt__partial_apply_fn
 
 trait Functor[j11] { fmap(j11[k11], (k11) -> l11): j11[l11] }
-trait Functor[h11] { map(h11[d], (d) -> e): h11[e] }
 instance hkt__partial_apply_fn.Functor[$Fun1$$Var0$$Var1] { fmap=Functor$$$Fun1$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

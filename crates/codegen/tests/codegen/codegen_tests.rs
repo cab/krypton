@@ -1354,3 +1354,68 @@ fun main() = counter(0)
         "counter() should contain goto for recur, got:\n{javap_out}"
     );
 }
+
+#[test]
+fn silently_imported_functor_does_not_duplicate_interface_class() {
+    // Regression: a consumer module that silently imports `core/functor::Functor`
+    // via a prelude method (`map`) AND declares its own local `trait Functor[f[_]]`
+    // must not emit a duplicate interface class for the silently-imported trait.
+    // Before the fix, `TraitNameResolver::is_imported` was keyed by bare name, so
+    // the local declaration made `core/functor::Functor` look local and codegen
+    // emitted `core/functor/Functor` from the consumer alongside its legitimate
+    // `test/Functor`.
+    let src = r#"
+type Box[a] = Box(a)
+trait Functor[f[_]] {
+    fun hmap[a, b](fa: f[a], g: (a) -> b) -> f[b]
+}
+impl Functor[Box] {
+    fun hmap[a, b](fa: Box[a], g: (a) -> b) -> Box[b] =
+        match fa { Box(x) => Box(g(x)) }
+}
+fun main() = {
+    let xs: Vec[Int] = [1, 2, 3];
+    let ys = map(xs, x -> x * 2);
+    let bx = hmap(Box(5), x -> x + 1);
+    println(fold(ys, 0, (a, x) -> a + x))
+}
+"#;
+    let full_source = format!("{PRINTLN_EXTERN}\n{src}");
+    let (module, errors) = parse(&full_source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check should succeed");
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let (ir_modules, module_sources) =
+        lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
+    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+        .expect("compile should succeed");
+
+    let functor_classes: Vec<&str> = classes
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .filter(|name| name.ends_with("/Functor") || *name == "Functor")
+        .collect();
+    // Expect exactly one emission per defining module: `test/Functor` from the
+    // local declaration and `core/functor/Functor` from its own module. Before
+    // the fix, each consumer module that silently imported `core/functor`
+    // re-emitted `core/functor/Functor`, so this list grew with every consumer
+    // in the compile graph.
+    let core_functor_count = functor_classes
+        .iter()
+        .filter(|n| **n == "core/functor/Functor")
+        .count();
+    assert_eq!(
+        core_functor_count, 1,
+        "core/functor/Functor must be emitted exactly once (by its defining module); got {functor_classes:?}",
+    );
+    assert!(
+        functor_classes.contains(&"test/Functor"),
+        "local trait Functor should emit test/Functor; got {functor_classes:?}",
+    );
+}

@@ -87,31 +87,6 @@ impl TraitNameResolver {
             .or_else(|| self.aliases.get(name))
     }
 
-    /// True if any path — bare, alias, or internal — has registered this bare
-    /// name. Used by re-export visibility checks so that an internally
-    /// imported trait still satisfies a "name exists" query without leaking
-    /// into user resolution.
-    pub fn is_known(&self, name: &str) -> bool {
-        self.bare_names.contains_key(name)
-            || self.aliases.contains_key(name)
-            || self.internal_imported.contains(name)
-    }
-
-    /// True if this bare trait name was either imported directly (user-visible
-    /// or aliased) or registered internally. Consumed by downstream IR to
-    /// distinguish "defined here" vs "imported from elsewhere".
-    pub fn is_imported(&self, name: &str) -> bool {
-        // A locally-declared trait is not imported, even if it shares a name
-        // with an internal registration (e.g. prelude silent-import of a trait
-        // whose bare name a fixture then redeclares locally).
-        if self.local_names.iter().any(|n| n == name) {
-            return false;
-        }
-        self.bare_names.contains_key(name)
-            || self.aliases.contains_key(name)
-            || self.internal_imported.contains(name)
-    }
-
     /// Bare names of traits declared in the current module, in declaration
     /// order.
     pub fn local_names(&self) -> &[String] {
@@ -167,8 +142,6 @@ mod tests {
         let functor = tn("core/functor", "Functor");
         r.register_internal(&functor);
         assert!(r.resolve("Functor").is_none());
-        assert!(r.is_known("Functor"));
-        assert!(r.is_imported("Functor"));
     }
 
     #[test]
@@ -211,31 +184,4 @@ mod tests {
         assert_eq!(r.resolve("Foo"), Some(&foo));
     }
 
-    #[test]
-    fn local_shadows_internal_for_is_imported() {
-        // A module that silently imports `Functor` via prelude and then
-        // declares its own `trait Functor[f[_]]` must report "not imported"
-        // so downstream IR treats it as a local trait.
-        let mut r = TraitNameResolver::new();
-        let prelude_functor = tn("core/functor", "Functor");
-        r.register_internal(&prelude_functor);
-        let local_functor = tn("test", "Functor");
-        r.register_local("Functor".into(), local_functor.clone())
-            .unwrap();
-        assert!(!r.is_imported("Functor"));
-        assert_eq!(r.resolve("Functor"), Some(&local_functor));
-    }
-
-    #[test]
-    fn is_known_union_semantics() {
-        let mut r = TraitNameResolver::new();
-        r.register_imported("Eq".into(), tn("core/eq", "Eq"))
-            .unwrap();
-        r.register_alias("MyShow".into(), tn("core/show", "Show"));
-        r.register_internal(&tn("core/functor", "Functor"));
-        assert!(r.is_known("Eq"));
-        assert!(r.is_known("MyShow"));
-        assert!(r.is_known("Functor"));
-        assert!(!r.is_known("Nothing"));
-    }
 }

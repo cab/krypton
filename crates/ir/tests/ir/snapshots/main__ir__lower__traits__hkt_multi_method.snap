@@ -5,7 +5,6 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[i11] { map(i11[d], (d) -> e): i11[e] }
 trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d

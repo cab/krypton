@@ -691,7 +691,7 @@ impl ModuleInferenceState {
 
         let mut trait_defs = Vec::new();
         for info in trait_registry.traits().values() {
-            let is_imported = self.trait_names.is_imported(&info.name);
+            let is_imported = info.module_path != module_path;
             let method_info: Vec<(String, usize)> = info
                 .methods
                 .iter()

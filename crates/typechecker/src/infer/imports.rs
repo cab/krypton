@@ -866,7 +866,8 @@ impl ModuleInferenceState {
                     .imports
                     .imported_type_info
                     .contains_key(&effective_name);
-                let found_trait = self.trait_names.is_known(&effective_name);
+                let canonical_trait = self.trait_names.resolve(&effective_name).cloned();
+                let found_trait = canonical_trait.is_some();
 
                 if !found_fn && !found_type && !found_trait {
                     return Err(spanned(
@@ -920,12 +921,11 @@ impl ModuleInferenceState {
                     self.reexported_type_visibility
                         .insert(effective_name.clone(), original_vis);
                 }
-                if found_trait {
-                    if let Some(td) = self
-                        .imported_trait_defs
-                        .iter()
-                        .find(|td| td.name == effective_name)
-                    {
+                if let Some(canonical) = canonical_trait {
+                    if let Some(td) = self.imported_trait_defs.iter().find(|td| {
+                        td.name == canonical.local_name
+                            && td.module_path == canonical.module_path
+                    }) {
                         self.reexported_trait_defs.push(td.clone());
                     }
                 }

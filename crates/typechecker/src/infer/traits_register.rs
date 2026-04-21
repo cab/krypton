@@ -291,11 +291,13 @@ pub(super) fn register_imported_trait_defs(
                 )
             })
             .collect();
-        // Bare-name ambiguity is now caught in `TraitNameResolver`; the
-        // registry only rejects an exact-duplicate `TraitName` (same
-        // module_path + name), which happens when the same trait def arrives
-        // from multiple import paths. Silently skip in that case.
-        if let Err(_e) = trait_registry.register_trait(TraitInfo {
+        // Bare-name ambiguity is now caught in `TraitNameResolver`; aliases
+        // are recorded via `TraitNameResolver::register_alias` before this
+        // phase. The only remaining error this `register_trait` call can
+        // surface is `DuplicateTrait` — the same trait def arrived via
+        // multiple import paths (e.g. direct `import core/eq` plus transitive
+        // via prelude). Keep the first registration.
+        match trait_registry.register_trait(TraitInfo {
             name: trait_def.name.clone(),
             module_path: trait_def.module_path.clone(),
             type_var: trait_def.type_var.clone(),
@@ -308,8 +310,11 @@ pub(super) fn register_imported_trait_defs(
             span: (0, 0),
             is_prelude,
         }) {
-            // For now, silently skip traits that collide — aliasing will resolve this
-            continue;
+            Ok(()) => {}
+            Err(TypeError::DuplicateTrait { .. }) => continue,
+            Err(other) => {
+                panic!("ICE: unexpected error registering imported trait def: {other:?}");
+            }
         }
     }
 }
