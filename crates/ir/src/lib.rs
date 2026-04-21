@@ -4,8 +4,8 @@ pub mod lower;
 pub mod pass;
 pub mod pretty;
 
-use std::collections::BTreeSet;
 use rustc_hash::FxHashMap;
+use std::collections::BTreeSet;
 
 pub use expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
 use krypton_parser::ast::Span;
@@ -519,6 +519,67 @@ fn bind_instance_target(
 /// Array-level counterpart to [`bind_instance_target`]: zips instance-target
 /// tuples with dispatch tuples. Restores `bindings` to its pre-call state on
 /// failure so callers can probe multiple candidates against a shared map.
+/// Substitute `Type::Var(params[i])` with `args[i]` throughout `ty`.
+///
+/// Used by superclass-slot resolvers (codegen + IR lowering) to derive an
+/// ancestor's concrete target types from a descendant instance's targets.
+/// A `params`/`args` length mismatch returns `ty` unchanged.
+pub fn substitute_type_vars(ty: &Type, params: &[TypeVarId], args: &[Type]) -> Type {
+    if params.len() != args.len() {
+        return ty.clone();
+    }
+    match ty {
+        Type::Var(id) => {
+            for (i, &p) in params.iter().enumerate() {
+                if p == *id {
+                    return args[i].clone();
+                }
+            }
+            ty.clone()
+        }
+        Type::Fn(ps, ret) => Type::Fn(
+            ps.iter()
+                .map(|p| substitute_type_vars(p, params, args))
+                .collect(),
+            Box::new(substitute_type_vars(ret, params, args)),
+        ),
+        Type::Named(name, nargs) => Type::Named(
+            name.clone(),
+            nargs
+                .iter()
+                .map(|a| substitute_type_vars(a, params, args))
+                .collect(),
+        ),
+        Type::App(ctor, aargs) => Type::App(
+            Box::new(substitute_type_vars(ctor, params, args)),
+            aargs
+                .iter()
+                .map(|a| substitute_type_vars(a, params, args))
+                .collect(),
+        ),
+        Type::Own(inner) => Type::Own(Box::new(substitute_type_vars(inner, params, args))),
+        Type::Tuple(elems) => Type::Tuple(
+            elems
+                .iter()
+                .map(|e| substitute_type_vars(e, params, args))
+                .collect(),
+        ),
+        Type::Dict {
+            trait_name,
+            target_types,
+        } => Type::Dict {
+            trait_name: trait_name.clone(),
+            target_types: target_types
+                .iter()
+                .map(|t| substitute_type_vars(t, params, args))
+                .collect(),
+        },
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {
+            ty.clone()
+        }
+    }
+}
+
 pub fn bind_instance_targets(
     patterns: &[Type],
     dispatch_tys: &[Type],
@@ -801,6 +862,11 @@ pub struct TraitDef {
     pub name: String,
     pub trait_name: TraitName,
     pub type_var: TypeVarId,
+    /// All trait type parameter ids in declaration order. Length 1 for
+    /// single-parameter traits, N for multi-parameter traits. Used by
+    /// superclass-slot resolvers to substitute instance target types into
+    /// `direct_superclasses` arg lists at codegen time.
+    pub type_var_ids: Vec<TypeVarId>,
     pub methods: Vec<TraitMethodDef>,
     pub is_imported: bool,
     /// Direct superclasses in declaration order. The length determines how
@@ -808,7 +874,12 @@ pub struct TraitDef {
     /// interface class (one per direct superclass, since descendant →
     /// ancestor projections go one hop at a time through
     /// `SimpleExprKind::ProjectDictField`).
-    pub direct_superclasses: Vec<TraitName>,
+    ///
+    /// Each entry carries the list of types the ancestor is applied to,
+    /// expressed over this trait's own type parameters. For a direct hop
+    /// `trait Codec[a, b] where a: Convert[b]`, the entry is
+    /// `(Convert, [Var(a_id), Var(b_id)])`.
+    pub direct_superclasses: Vec<(TraitName, Vec<Type>)>,
 }
 
 /// A method signature within a trait declaration.

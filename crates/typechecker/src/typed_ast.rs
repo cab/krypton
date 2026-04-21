@@ -430,6 +430,10 @@ pub struct TraitDefInfo {
     pub method_tc_types: FxHashMap<String, (Vec<(crate::types::ParamMode, Type)>, Type)>, // name -> (param_types, return_type)
     /// Method-level constraints: method_name -> Vec<(TraitName, Vec<TypeVarId>)>
     pub method_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
+    /// Direct superclasses with resolved type arguments over this trait's own
+    /// `type_var_ids` (always in the local TypeVarId namespace — for imported
+    /// traits, the args are remapped at import time, not core's originals).
+    pub superclasses: Vec<(TraitName, Vec<Type>)>,
 }
 
 #[derive(Clone)]
@@ -446,7 +450,9 @@ pub struct ExportedTraitDef {
     pub type_var_names: Vec<String>,
     /// 0 = kind *, 1 = * -> *, etc.
     pub type_var_arity: usize,
-    pub superclasses: Vec<TraitName>,
+    /// Superclass constraints as resolved type arguments over this trait's
+    /// own `type_var_ids`. See `TraitInfo.superclasses` for the shape rationale.
+    pub superclasses: Vec<(TraitName, Vec<crate::types::Type>)>,
     pub methods: Vec<ExportedTraitMethod>,
 }
 

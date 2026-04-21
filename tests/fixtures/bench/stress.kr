@@ -62,6 +62,16 @@ impl Convert[Int, Bool] {
     fun convert(x: Int) -> Bool = x > 0
 }
 
+# Multi-parameter trait with a superclass on a non-first parameter. Exercises
+# the substitution-driven superclass entailment and dict-projection paths.
+trait Coder[fmt, ty] where ty: Measurable {
+    fun coder_encode(x: ty) -> fmt
+}
+
+impl Coder[Int, Shape] {
+    fun coder_encode(x: Shape) -> Int = measure(x)
+}
+
 
 # --- Higher-kinded types ---
 

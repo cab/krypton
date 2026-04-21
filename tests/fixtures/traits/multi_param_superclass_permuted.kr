@@ -1,0 +1,26 @@
+# expect: ok
+
+# Non-identity superclass mapping: `Swap[a, b]` superclass is `MyShow[b]`, so
+# the superclass slot receives position `[1]` (not `[0]`). Exercises the
+# substitution-driven entailment path for non-identity argument mappings.
+
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+type MyPair[x, y] = MyPair(x, y)
+
+trait Swap[a, b] where b: MyShow {
+  fun swap(x: a, y: b) -> MyPair[b, a]
+}
+
+fun render[a, b](x: a, y: b) -> String where Swap[a, b] =
+  my_show(y)
+
+impl MyShow[Bool] {
+  fun my_show(x: Bool) -> String = show(x)
+}
+
+impl Swap[Int, Bool] {
+  fun swap(x: Int, y: Bool) -> MyPair[Bool, Int] = MyPair(y, x)
+}

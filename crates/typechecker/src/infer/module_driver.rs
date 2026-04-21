@@ -212,7 +212,9 @@ pub fn infer_module(
 
 /// Convert a non-parse `ModuleGraphError` into a `SpannedTypeError`.
 /// ParseError is handled separately as `InferError::ModuleParseError`.
-pub(super) fn map_graph_error(e: krypton_modules::module_graph::ModuleGraphError) -> SpannedTypeError {
+pub(super) fn map_graph_error(
+    e: krypton_modules::module_graph::ModuleGraphError,
+) -> SpannedTypeError {
     use krypton_modules::module_graph::ModuleGraphError;
     match e {
         ModuleGraphError::CircularImport { cycle, span } => {
@@ -720,6 +722,7 @@ impl ModuleInferenceState {
                 type_var_ids: info.type_var_ids.clone(),
                 method_tc_types,
                 method_constraints,
+                superclasses: info.superclasses.clone(),
             });
         }
 
@@ -852,7 +855,8 @@ impl ModuleInferenceState {
 
         // Build exported_type_infos from fully-resolved TypeInfo in the registry.
         // This allows importers to register types without re-resolving from AST.
-        let mut exported_type_infos: FxHashMap<String, typed_ast::ExportedTypeInfo> = FxHashMap::default();
+        let mut exported_type_infos: FxHashMap<String, typed_ast::ExportedTypeInfo> =
+            FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
                 if matches!(td.visibility, Visibility::Private) {
@@ -947,10 +951,8 @@ impl ModuleInferenceState {
         // re-implementing the rule. `params_per_decl` carries per-decl
         // param-type fingerprints built alongside the decls so overloaded
         // siblings can be distinguished by structure, not by name alone.
-        let mangled_symbols = crate::module_interface::mangle_typed_fn_decls(
-            &functions,
-            &params_per_decl,
-        );
+        let mangled_symbols =
+            crate::module_interface::mangle_typed_fn_decls(&functions, &params_per_decl);
         for (f, m) in functions.iter_mut().zip(mangled_symbols.into_iter()) {
             f.exported_symbol = m;
         }

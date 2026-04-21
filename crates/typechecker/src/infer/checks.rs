@@ -401,16 +401,45 @@ pub(super) fn validate_trait_constraints(
                 return;
             }
             // A declared constraint satisfies the use if it names the same trait
-            // and its type-var tuple matches position-by-position. For single-param
-            // traits this degrades to the previous `contains(&var)` check because
-            // both sides are length 1. Additionally, for single-parameter traits a
-            // declared constraint on a descendant trait satisfies a use of any
-            // ancestor trait via superclass entailment (e.g. `where g: Applicative`
-            // satisfies a Functor method call on `g`).
+            // with the same type-var tuple, or if it names a descendant whose
+            // transitive superclass closure reaches `trait_name` at the
+            // substituted positions. The single-param case short-circuits
+            // through `is_superclass_of` to avoid substitution overhead on the
+            // hot path; multi-param falls through to substitution.
             let is_declared = declared_constraints.iter().any(|(t, declared_vars)| {
-                declared_vars.as_slice() == vars.as_slice()
-                    && (t.local_name == trait_name.local_name
-                        || (vars.len() == 1 && trait_registry.is_superclass_of(&trait_name, t)))
+                if t.local_name == trait_name.local_name
+                    && declared_vars.as_slice() == vars.as_slice()
+                {
+                    return true;
+                }
+                if vars.len() == 1
+                    && declared_vars.len() == 1
+                    && declared_vars.as_slice() == vars.as_slice()
+                    && trait_registry.is_superclass_of(&trait_name, t)
+                {
+                    return true;
+                }
+                let Some(ancestor_args) = trait_registry.superclass_substitution(&trait_name, t)
+                else {
+                    return false;
+                };
+                let Some(descendant_info) = trait_registry.lookup_trait(t) else {
+                    return false;
+                };
+                if descendant_info.type_var_ids.len() != declared_vars.len() {
+                    return false;
+                }
+                let mut subst = Substitution::new();
+                for (&param_id, &var_id) in descendant_info
+                    .type_var_ids
+                    .iter()
+                    .zip(declared_vars.iter())
+                {
+                    subst.insert(param_id, Type::Var(var_id));
+                }
+                let substituted: Vec<Type> = ancestor_args.iter().map(|a| subst.apply(a)).collect();
+                let expected: Vec<Type> = vars.iter().copied().map(Type::Var).collect();
+                substituted == expected
             });
             if !is_declared {
                 // For diagnostics, show the first position's name (existing

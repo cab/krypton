@@ -204,7 +204,9 @@ pub struct TraitSummary {
     pub type_var_ids: Vec<TypeVarId>,
     pub type_var_names: Vec<String>,
     pub type_var_arity: usize,
-    pub superclasses: Vec<TraitName>,
+    /// Superclass constraints as resolved type arguments over this trait's
+    /// own `type_var_ids`. See `TraitInfo.superclasses` for the shape rationale.
+    pub superclasses: Vec<(TraitName, Vec<Type>)>,
     pub methods: Vec<TraitMethodSummary>,
 }
 
@@ -369,8 +371,7 @@ fn mangle_overload_symbols(exported: &[ExportedFn]) -> Vec<String> {
                 _ => vec![],
             })
             .collect();
-        let def_spans: Vec<Option<Span>> =
-            indices.iter().map(|&i| exported[i].def_span).collect();
+        let def_spans: Vec<Option<Span>> = indices.iter().map(|&i| exported[i].def_span).collect();
         let mangled = crate::overload::mangle_group(name, &params, &def_spans);
         for (pos, &idx) in indices.iter().enumerate() {
             out[idx] = mangled[pos].clone();
@@ -401,8 +402,10 @@ pub fn mangle_typed_fn_decls(
     }
     let mut out = vec![String::new(); decls.len()];
     for (name, indices) in groups {
-        let params: Vec<Vec<Type>> =
-            indices.iter().map(|&i| params_per_decl[i].clone()).collect();
+        let params: Vec<Vec<Type>> = indices
+            .iter()
+            .map(|&i| params_per_decl[i].clone())
+            .collect();
         let def_spans: Vec<Option<Span>> =
             indices.iter().map(|&i| Some(decls[i].def_span)).collect();
         let mangled = crate::overload::mangle_group(name, &params, &def_spans);
@@ -419,10 +422,7 @@ fn extract_reexported_fns(typed: &TypedModule) -> Vec<ReexportedFnEntry> {
         .iter()
         .map(|ef| {
             let qn = ef.qualified_name.as_ref().unwrap_or_else(|| {
-                panic!(
-                    "ICE: re-exported fn '{}' missing qualified_name",
-                    ef.name
-                )
+                panic!("ICE: re-exported fn '{}' missing qualified_name", ef.name)
             });
             let (canonical_module, canonical_name) =
                 (qn.module_path.clone(), qn.local_name.clone());

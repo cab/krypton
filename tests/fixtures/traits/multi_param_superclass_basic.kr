@@ -1,0 +1,24 @@
+# expect: ok
+
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+trait Codec[fmt, ty] where ty: MyShow {
+  fun encode(x: ty) -> fmt
+}
+
+# Exercises the `vars.len() != 1` entailment path: the declared constraint
+# `Codec[fmt, ty]` has length 2 and must satisfy the length-1 use of
+# `MyShow[ty]` (the function body calls `my_show` on `ty`) via position
+# mapping.
+fun describe[fmt, ty](x: ty, fmt_hint: fmt) -> String where Codec[fmt, ty] =
+  my_show(x)
+
+impl MyShow[Int] {
+  fun my_show(x: Int) -> String = show(x)
+}
+
+impl Codec[String, Int] {
+  fun encode(x: Int) -> String = my_show(x)
+}

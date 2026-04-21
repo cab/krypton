@@ -1,0 +1,35 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_superclass_permuted
+
+type MyPair[a, b] = MyPair#0(a, b)
+trait MyShow[j11] { my_show(j11): String }
+trait Swap[k11] { swap(k11, l11): MyPair[l11, k11] }
+instance traits__multi_param_superclass_permuted.MyShow[Bool] { my_show=MyShow$$Bool$$my_show }
+instance traits__multi_param_superclass_permuted.Swap[Int$$Bool] { swap=Swap$$Int$$Bool$$swap }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+
+fn render(v0: Dict[traits__multi_param_superclass_permuted.Swap, n11, o11], v1: n11, v2: o11) -> String =
+  let v3: Dict[traits__multi_param_superclass_permuted.MyShow, o11] = project_dict_field v0.dict0 : traits__multi_param_superclass_permuted.MyShow[o11]
+  let v4: String = trait_call traits__multi_param_superclass_permuted.MyShow.my_show(v3, v2)
+  v4
+
+fn MyShow$$Bool$$my_show(v5: Bool) -> String =
+  let v6: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
+  let v7: String = trait_call core/show.Show.show(v6, v5)
+  v7
+
+fn Swap$$Int$$Bool$$swap(v8: Int, v9: Bool) -> MyPair[Bool, Int] =
+  let v10: MyPair[Bool, Int] = construct MyPair::MyPair#0(v9, v8)
+  v10

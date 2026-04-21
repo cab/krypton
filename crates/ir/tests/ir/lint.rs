@@ -569,6 +569,7 @@ fn getdict_unknown_trait_is_error() {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),
         type_var: TypeVarGen::new().fresh(),
+        type_var_ids: vec![],
         is_imported: false,
         methods: vec![TraitMethodDef {
             name: "show".into(),
@@ -625,6 +626,7 @@ fn getdict_valid_trait_and_instance_passes() {
         name: "Show".into(),
         trait_name: TraitName::new("core/show".into(), "Show".into()),
         type_var: TypeVarGen::new().fresh(),
+        type_var_ids: vec![],
         is_imported: false,
         methods: vec![],
         direct_superclasses: vec![],

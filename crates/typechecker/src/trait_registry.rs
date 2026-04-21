@@ -28,7 +28,17 @@ pub struct TraitInfo {
     pub type_var_names: Vec<String>,
     /// 0 = kind *, 1 = * -> *, 2 = * -> * -> *, etc.
     pub type_var_arity: usize,
-    pub superclasses: Vec<TraitName>,
+    /// Each superclass constraint as a resolved list of types over the
+    /// declaring trait's type variables. For `trait Applicative[f] where
+    /// f: Functor`, after sugar expansion `Functor[f]`, stored as
+    /// `(Functor, [Type::Var(f_id)])`. For `trait Codec[a, b] where
+    /// a: Convert[b]`, `(Convert, [Type::Var(a_id), Type::Var(b_id)])`.
+    /// For `Codec2[a, b] where b: Show`, `(Show, [Type::Var(b_id)])`.
+    ///
+    /// The `Type`s may mention only this trait's `type_var_ids` today
+    /// (enforced by `require_param_vars` at registration); the shape admits
+    /// richer type expressions in the future without reworking consumers.
+    pub superclasses: Vec<(TraitName, Vec<Type>)>,
     pub methods: Vec<TraitMethod>,
     pub span: Span,
     /// True if this trait was imported from the prelude.
@@ -151,12 +161,11 @@ impl TraitRegistry {
                     .iter()
                     .map(|(name, &id)| (id, name.as_str()))
                     .collect();
-                let existing_names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> =
-                    existing
-                        .type_var_ids
-                        .iter()
-                        .map(|(name, &id)| (id, name.as_str()))
-                        .collect();
+                let existing_names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> = existing
+                    .type_var_ids
+                    .iter()
+                    .map(|(name, &id)| (id, name.as_str()))
+                    .collect();
                 return Err(Box::new((
                     TypeError::DuplicateInstance {
                         trait_name: info.trait_name.local_name.clone(),
@@ -454,23 +463,49 @@ impl TraitRegistry {
 
     /// Drop any constraint `(t, vars)` if another constraint in `cs` shares
     /// `vars` and has a trait that `t` is a superclass of (i.e. the sibling
-    /// entails `t` via `is_superclass_of`). Stable order over the survivors.
-    /// Only applies the single-parameter rule — multi-param superclass
-    /// entailment is TRAIT-CLEANUP-T3 scope.
+    /// entails `t` via superclass resolution).
+    ///
+    /// Fast path: if both siblings are single-parameter and share the same
+    /// single `vars`, the old name-only reachability check suffices.
+    /// General path: compute the sibling's substituted superclass args and
+    /// compare slot-for-slot against `cs[i].1` (lifted to `Type::Var`s).
     pub fn drop_entailed_constraints(&self, cs: &mut Vec<(TraitName, Vec<TypeVarId>)>) {
         if cs.len() < 2 {
             return;
         }
         let mut drop = vec![false; cs.len()];
         for i in 0..cs.len() {
-            if cs[i].1.len() != 1 {
-                continue;
-            }
             for j in 0..cs.len() {
                 if i == j || drop[j] {
                     continue;
                 }
-                if cs[j].1 == cs[i].1 && self.is_superclass_of(&cs[i].0, &cs[j].0) {
+                // Fast path: single-param siblings with matching single var —
+                // reachability alone decides entailment.
+                if cs[i].1.len() == 1
+                    && cs[j].1.len() == 1
+                    && cs[i].1 == cs[j].1
+                    && self.is_superclass_of(&cs[i].0, &cs[j].0)
+                {
+                    drop[i] = true;
+                    break;
+                }
+                // General path: substitute sibling's vars into ancestor args.
+                let Some(ancestor_args) = self.superclass_substitution(&cs[i].0, &cs[j].0) else {
+                    continue;
+                };
+                let Some(sibling_info) = self.lookup_trait(&cs[j].0) else {
+                    continue;
+                };
+                if sibling_info.type_var_ids.len() != cs[j].1.len() {
+                    continue;
+                }
+                let mut subst = Substitution::new();
+                for (&param_id, &var_id) in sibling_info.type_var_ids.iter().zip(cs[j].1.iter()) {
+                    subst.insert(param_id, Type::Var(var_id));
+                }
+                let substituted: Vec<Type> = ancestor_args.iter().map(|a| subst.apply(a)).collect();
+                let expected: Vec<Type> = cs[i].1.iter().copied().map(Type::Var).collect();
+                if substituted == expected {
                     drop[i] = true;
                     break;
                 }
@@ -484,9 +519,10 @@ impl TraitRegistry {
         });
     }
 
-    /// Returns true iff `ancestor` is in the transitive superclass closure of `descendant`.
-    /// Walks `TraitInfo::superclasses` with a visited set so malformed cycles don't loop.
-    /// Returns false if `descendant` is not registered (treat as "no known relation").
+    /// Returns true iff `ancestor` is in the transitive superclass closure of
+    /// `descendant`. Walks `TraitInfo::superclasses` by trait name only (no
+    /// substitution); this is a cheap pre-filter and a fast path for
+    /// reachability queries that don't care about argument mapping.
     pub fn is_superclass_of(&self, ancestor: &TraitName, descendant: &TraitName) -> bool {
         let mut stack: Vec<&TraitName> = vec![descendant];
         let mut visited: FxHashSet<&TraitName> = FxHashSet::default();
@@ -497,7 +533,7 @@ impl TraitRegistry {
             let Some(info) = self.lookup_trait(cur) else {
                 continue;
             };
-            for sc in &info.superclasses {
+            for (sc, _) in &info.superclasses {
                 if sc == ancestor {
                     return true;
                 }
@@ -507,23 +543,100 @@ impl TraitRegistry {
         false
     }
 
+    /// BFS through direct-superclass maps from `descendant` → `ancestor`,
+    /// composing substitutions hop-by-hop. Returns the `Vec<Type>` arguments
+    /// that reach `ancestor` in terms of `descendant`'s own `type_var_ids`.
+    ///
+    /// Returns `None` if `ancestor` is unreachable, if `descendant` is not
+    /// registered, or if the hop chain is malformed (defensive).
+    ///
+    /// For a direct hop, the result is simply the stored superclass args.
+    /// For a transitive hop `D → M → A`, the ancestor args `A[...]` (in terms
+    /// of `M`'s type vars) are substituted with `M`'s args (in terms of `D`'s
+    /// type vars), giving the composed map `D.type_vars → A[...]`.
+    pub fn superclass_substitution(
+        &self,
+        ancestor: &TraitName,
+        descendant: &TraitName,
+    ) -> Option<Vec<Type>> {
+        if ancestor == descendant {
+            let info = self.lookup_trait(descendant)?;
+            return Some(info.type_var_ids.iter().copied().map(Type::Var).collect());
+        }
+        let descendant_info = self.lookup_trait(descendant)?;
+        // Early return: if descendant has no superclasses, nothing to walk.
+        if descendant_info.superclasses.is_empty() {
+            return None;
+        }
+        // BFS: each queue entry carries (trait_name, args-in-terms-of-descendant).
+        use std::collections::VecDeque;
+        let mut visited: FxHashSet<TraitName> = FxHashSet::default();
+        visited.insert(descendant.clone());
+        let mut queue: VecDeque<(TraitName, Vec<Type>)> = VecDeque::new();
+        for (sc_name, sc_args) in &descendant_info.superclasses {
+            if visited.insert(sc_name.clone()) {
+                queue.push_back((sc_name.clone(), sc_args.clone()));
+            }
+        }
+        while let Some((cur, cur_args)) = queue.pop_front() {
+            if &cur == ancestor {
+                return Some(cur_args);
+            }
+            let Some(cur_info) = self.lookup_trait(&cur) else {
+                continue;
+            };
+            if cur_info.type_var_ids.len() != cur_args.len() {
+                continue;
+            }
+            // Build substitution from `cur`'s own type vars to the args that
+            // express them in descendant's vars.
+            let mut subst = Substitution::new();
+            for (&param_id, arg) in cur_info.type_var_ids.iter().zip(cur_args.iter()) {
+                subst.insert(param_id, arg.clone());
+            }
+            for (next_name, next_args) in &cur_info.superclasses {
+                if !visited.insert(next_name.clone()) {
+                    continue;
+                }
+                let composed: Vec<Type> = next_args.iter().map(|a| subst.apply(a)).collect();
+                queue.push_back((next_name.clone(), composed));
+            }
+        }
+        None
+    }
+
     pub fn check_superclasses(&self, instance: &InstanceInfo) -> Result<(), TypeError> {
         let trait_info = match self.lookup_trait(&instance.trait_name) {
             Some(t) => t,
             None => return Ok(()),
         };
-        assert!(
-            instance.target_types.len() == 1 || trait_info.superclasses.is_empty(),
-            "multi-parameter traits with superclasses are not supported yet"
-        );
-        for superclass in &trait_info.superclasses {
-            if self
-                .find_instance_for(superclass, &instance.target_types)
-                .is_none()
-            {
+        if trait_info.superclasses.is_empty() {
+            return Ok(());
+        }
+        if trait_info.type_var_ids.len() != instance.target_types.len() {
+            // Mismatch between trait arity and instance target arity — let
+            // instance registration surface the real diagnostic.
+            return Ok(());
+        }
+        let mut subst = Substitution::new();
+        for (&param_id, target) in trait_info
+            .type_var_ids
+            .iter()
+            .zip(instance.target_types.iter())
+        {
+            subst.insert(param_id, target.clone());
+        }
+        for (sc_name, sc_args) in &trait_info.superclasses {
+            let substituted: Vec<Type> = sc_args.iter().map(|a| subst.apply(a)).collect();
+            if self.find_instance_for(sc_name, &substituted).is_none() {
+                let ty = substituted
+                    .iter()
+                    .map(|t| format!("{}", t.strip_own()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 return Err(TypeError::NoInstance {
-                    trait_name: superclass.local_name.clone(),
-                    ty: instance.target_type_name.clone(),
+                    trait_name: sc_name.local_name.clone(),
+                    ty,
                     call_site_ty: None,
                     cause: crate::type_error::NoInstanceCause::Superclass {
                         required_by: instance.trait_name.local_name.clone(),
@@ -1296,7 +1409,10 @@ mod tests {
                 trait_name: tn("Traversable"),
                 target_types: vec![Type::Named("List".to_string(), vec![])],
                 target_type_name: "List".to_string(),
-                type_var_ids: FxHashMap::from_iter([(String::from("f"), TypeVarGen::new().fresh())]),
+                type_var_ids: FxHashMap::from_iter([(
+                    String::from("f"),
+                    TypeVarGen::new().fresh(),
+                )]),
                 constraints: vec![rc("Functor", "f"), rc("Foldable", "f")],
 
                 span: (0, 0),
@@ -1399,7 +1515,8 @@ mod tests {
             .unwrap();
 
         let vec_string = Type::Named("Vec".to_string(), vec![Type::String]);
-        let diag = registry.diagnose_missing_instance(&tn("Test"), std::slice::from_ref(&vec_string));
+        let diag =
+            registry.diagnose_missing_instance(&tn("Test"), std::slice::from_ref(&vec_string));
         assert!(diag.is_some());
         let diag = diag.unwrap();
         assert_eq!(diag.unsatisfied.len(), 1);
@@ -1456,7 +1573,8 @@ mod tests {
     #[test]
     fn diagnose_no_candidate_returns_none() {
         let registry = TraitRegistry::new();
-        let result = registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
+        let result =
+            registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
         assert!(result.is_none());
     }
 
@@ -1507,7 +1625,8 @@ mod tests {
             .register_instance(instance("Show", Type::Int, "Int", vec![]))
             .unwrap();
         // Int has Show unconditionally, so diagnosis returns None
-        let result = registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
+        let result =
+            registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
         assert!(result.is_none());
     }
 
@@ -1743,7 +1862,11 @@ mod tests {
         let mut registry = TraitRegistry::new();
         registry.register_trait(trait_info("Convert")).unwrap();
         registry
-            .register_instance(instance_multi("Convert", vec![Type::Int], FxHashMap::default()))
+            .register_instance(instance_multi(
+                "Convert",
+                vec![Type::Int],
+                FxHashMap::default(),
+            ))
             .unwrap();
         registry
             .register_instance(instance_multi(
@@ -1916,10 +2039,7 @@ mod tests {
         registry
             .register_instance(instance_multi(
                 "BoxConvert",
-                vec![
-                    Type::Named("Box".to_string(), vec![]),
-                    Type::Int,
-                ],
+                vec![Type::Named("Box".to_string(), vec![]), Type::Int],
                 FxHashMap::default(),
             ))
             .unwrap();
@@ -1945,20 +2065,14 @@ mod tests {
         registry
             .register_instance(instance_multi(
                 "BoxConvert",
-                vec![
-                    Type::Named("Box".to_string(), vec![]),
-                    Type::Int,
-                ],
+                vec![Type::Named("Box".to_string(), vec![]), Type::Int],
                 FxHashMap::default(),
             ))
             .unwrap();
         registry
             .register_instance(instance_multi(
                 "BoxConvert",
-                vec![
-                    Type::Named("List".to_string(), vec![]),
-                    Type::Int,
-                ],
+                vec![Type::Named("List".to_string(), vec![]), Type::Int],
                 FxHashMap::default(),
             ))
             .unwrap();
@@ -1968,11 +2082,17 @@ mod tests {
         let matched_box = registry
             .find_instance_for(&tn("BoxConvert"), &[box_int, Type::Int])
             .expect("Box impl should match");
-        assert_eq!(matched_box.target_types[0], Type::Named("Box".to_string(), vec![]));
+        assert_eq!(
+            matched_box.target_types[0],
+            Type::Named("Box".to_string(), vec![])
+        );
         let matched_list = registry
             .find_instance_for(&tn("BoxConvert"), &[list_int, Type::Int])
             .expect("List impl should match");
-        assert_eq!(matched_list.target_types[0], Type::Named("List".to_string(), vec![]));
+        assert_eq!(
+            matched_list.target_types[0],
+            Type::Named("List".to_string(), vec![])
+        );
     }
 
     #[test]
@@ -1984,19 +2104,13 @@ mod tests {
         registry
             .register_instance(instance_multi(
                 "BoxConvert",
-                vec![
-                    Type::Named("Box".to_string(), vec![]),
-                    Type::Int,
-                ],
+                vec![Type::Named("Box".to_string(), vec![]), Type::Int],
                 FxHashMap::default(),
             ))
             .unwrap();
         let result = registry.register_instance(instance_multi(
             "BoxConvert",
-            vec![
-                Type::Named("Box".to_string(), vec![]),
-                Type::Int,
-            ],
+            vec![Type::Named("Box".to_string(), vec![]), Type::Int],
             FxHashMap::default(),
         ));
         assert!(matches!(
@@ -2020,10 +2134,7 @@ mod tests {
         registry
             .register_instance(InstanceInfo {
                 trait_name: tn("BoxConvert"),
-                target_types: vec![
-                    Type::Named("Box".to_string(), vec![]),
-                    Type::Var(var_a),
-                ],
+                target_types: vec![Type::Named("Box".to_string(), vec![]), Type::Var(var_a)],
                 target_type_name: "Box, a".to_string(),
                 type_var_ids: FxHashMap::from_iter([(String::from("a"), var_a)]),
                 constraints: vec![rc("Show", "a")],

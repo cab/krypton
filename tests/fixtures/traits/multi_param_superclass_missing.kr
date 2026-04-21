@@ -1,0 +1,20 @@
+# expect: error E0312
+
+# Negative: `where Codec[fmt, ty]` does not entail `Eq[ty]`; `eq_method`
+# needs an unrelated `Eq[ty]` constraint on the function. The superclass
+# chain only reaches `MyShow`, never `Eq`.
+
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+trait MyEq[a] {
+  fun my_eq(x: a, y: a) -> Bool
+}
+
+trait Codec[fmt, ty] where ty: MyShow {
+  fun encode(x: ty) -> fmt
+}
+
+fun bad[fmt, ty](x: ty, y: ty) -> Bool where Codec[fmt, ty] =
+  my_eq(x, y)

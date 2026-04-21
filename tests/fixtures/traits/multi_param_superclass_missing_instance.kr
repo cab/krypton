@@ -1,0 +1,18 @@
+# expect: error E0303
+
+# Negative: `impl Codec[String, Bool]` requires a `MyShow[Bool]` instance
+# in scope (via the Codec → MyShow superclass mapping at position 1). The
+# substituted target is `Bool` alone, not the descendant's `(String, Bool)`
+# tuple. `check_superclasses` must surface `MyShow` not-implemented for `Bool`.
+
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+trait Codec[fmt, ty] where ty: MyShow {
+  fun encode(x: ty) -> fmt
+}
+
+impl Codec[String, Bool] {
+  fun encode(x: Bool) -> String = "?"
+}

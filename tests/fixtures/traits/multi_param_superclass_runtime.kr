@@ -1,0 +1,33 @@
+# expect: output "Wrapped(42)"
+
+trait MyShow[a] {
+  fun my_show(x: a) -> String
+}
+
+trait Codec[fmt, ty] where ty: MyShow {
+  fun encode(x: ty) -> fmt
+}
+
+type Wrapped = Wrapped(Int)
+
+# Generic consumer: exercises multi-param superclass dict projection.
+# The body's `my_show(x)` requires `MyShow[ty]`, which is entailed by the
+# descendant `Codec[fmt, ty]` constraint through the superclass chain.
+# The dummy `fmt_hint` parameter disambiguates `fmt` at the call site.
+fun describe[fmt, ty](x: ty, fmt_hint: fmt) -> String where Codec[fmt, ty] =
+  my_show(x)
+
+impl MyShow[Wrapped] {
+  fun my_show(x: Wrapped) -> String = match x {
+    Wrapped(n) => combine("Wrapped(", combine(show(n), ")")),
+  }
+}
+
+impl Codec[String, Wrapped] {
+  fun encode(x: Wrapped) -> String = my_show(x)
+}
+
+fun main() = {
+  let hint: String = ""
+  println(describe(Wrapped(42), hint))
+}

@@ -234,3 +234,27 @@ fn applicative_constraint_does_not_satisfy_unrelated_trait() {
     let codes = result.expect_err("expected E0312 for missing Applicative bound");
     assert!(codes.iter().any(|c| c == "E0312"), "got codes: {codes:?}");
 }
+
+#[test]
+fn codec_constraint_satisfies_my_show_method_call() {
+    // Multi-parameter superclass entailment: `where Codec[fmt, ty]` should
+    // satisfy a MyShow method call on `ty`, since Codec declares MyShow as a
+    // superclass at position 1.
+    let snapshot = infer_module_snapshot(
+        r#"
+            trait MyShow[a] {
+                fun my_show(x: a) -> String
+            }
+            trait Codec[fmt, ty] where ty: MyShow {
+                fun encode(x: ty) -> fmt
+            }
+            fun describe[fmt, ty](x: ty, hint: fmt) -> String where Codec[fmt, ty] =
+                my_show(x)
+        "#,
+    )
+    .expect("typecheck should succeed: Codec[fmt, ty] implies MyShow[ty]");
+    assert!(
+        snapshot.contains("describe"),
+        "expected describe in inferred fn types, got:\n{snapshot}"
+    );
+}

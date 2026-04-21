@@ -1,0 +1,34 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_superclass_basic
+
+trait Codec[i11] { encode(j11): i11 }
+trait MyShow[h11] { my_show(h11): String }
+instance traits__multi_param_superclass_basic.MyShow[Int] { my_show=MyShow$$Int$$my_show }
+instance traits__multi_param_superclass_basic.Codec[String$$Int] { encode=Codec$$String$$Int$$encode }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+fn describe(v0: Dict[traits__multi_param_superclass_basic.Codec, l11, m11], v1: m11, v2: l11) -> String =
+  let v3: Dict[traits__multi_param_superclass_basic.MyShow, m11] = project_dict_field v0.dict0 : traits__multi_param_superclass_basic.MyShow[m11]
+  let v4: String = trait_call traits__multi_param_superclass_basic.MyShow.my_show(v3, v1)
+  v4
+
+fn MyShow$$Int$$my_show(v5: Int) -> String =
+  let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v7: String = trait_call core/show.Show.show(v6, v5)
+  v7
+
+fn Codec$$String$$Int$$encode(v8: Int) -> String =
+  let v9: Dict[traits__multi_param_superclass_basic.MyShow, Int] = get_dict traits__multi_param_superclass_basic.MyShow[Int]
+  let v10: String = trait_call traits__multi_param_superclass_basic.MyShow.my_show(v9, v8)
+  v10

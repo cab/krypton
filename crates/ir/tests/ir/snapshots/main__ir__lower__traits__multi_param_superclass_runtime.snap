@@ -1,0 +1,53 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module traits__multi_param_superclass_runtime
+
+type Wrapped = Wrapped#0(Int)
+trait Codec[i11] { encode(j11): i11 }
+trait MyShow[h11] { my_show(h11): String }
+instance traits__multi_param_superclass_runtime.MyShow[Wrapped] { my_show=MyShow$$Wrapped$$my_show }
+instance traits__multi_param_superclass_runtime.Codec[String$$Wrapped] { encode=Codec$$String$$Wrapped$$encode }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn describe(v0: Dict[traits__multi_param_superclass_runtime.Codec, l11, m11], v1: m11, v2: l11) -> String =
+  let v3: Dict[traits__multi_param_superclass_runtime.MyShow, m11] = project_dict_field v0.dict0 : traits__multi_param_superclass_runtime.MyShow[m11]
+  let v4: String = trait_call traits__multi_param_superclass_runtime.MyShow.my_show(v3, v1)
+  v4
+
+fn main() -> Unit =
+  let v5: String = ""
+  let v7: Wrapped = construct Wrapped::Wrapped#0(42)
+  let v8: Dict[traits__multi_param_superclass_runtime.Codec, String, Wrapped] = get_dict traits__multi_param_superclass_runtime.Codec[String, Wrapped]
+  let v9: String = call describe(v8, v7, v5)
+  let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v10: Unit = call println(v6, v9)
+  v10
+
+fn MyShow$$Wrapped$$my_show(v11: Wrapped) -> String =
+  switch v11 {
+    0 (v12: Int) ->
+      let v14: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v15: String = trait_call core/show.Show.show(v14, v12)
+      let v16: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+      let v17: String = trait_call core/semigroup.Semigroup.combine(v16, v15, ")")
+      let v13: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+      let v18: String = trait_call core/semigroup.Semigroup.combine(v13, "Wrapped(", v17)
+      v18
+  }
+
+fn Codec$$String$$Wrapped$$encode(v19: Wrapped) -> String =
+  let v20: Dict[traits__multi_param_superclass_runtime.MyShow, Wrapped] = get_dict traits__multi_param_superclass_runtime.MyShow[Wrapped]
+  let v21: String = trait_call traits__multi_param_superclass_runtime.MyShow.my_show(v20, v19)
+  v21

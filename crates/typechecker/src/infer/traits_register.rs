@@ -6,8 +6,8 @@ use crate::overload::types_overlap;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
-    ExportedTraitDef, ExportedTraitMethod, ExternTraitInfo, ExternTraitMethodInfo,
-    InstanceDefInfo, TraitName,
+    ExportedTraitDef, ExportedTraitMethod, ExternTraitInfo, ExternTraitMethodInfo, InstanceDefInfo,
+    TraitName,
 };
 use crate::types::{Type, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
@@ -87,7 +87,8 @@ pub(super) fn process_traits_and_deriving(
                 .is_some_and(|info| info.is_prelude);
             if !existing_is_prelude && !is_prelude {
                 // Two non-prelude traits with same method name — check overlap
-                let existing_params = trait_method_param_types(&trait_registry, existing, &method_name);
+                let existing_params =
+                    trait_method_param_types(&trait_registry, existing, &method_name);
                 let new_params = trait_method_param_types(&trait_registry, &trait_id, &method_name);
                 let overlaps = match (&existing_params, &new_params) {
                     (Some(a), Some(b)) => {
@@ -122,7 +123,13 @@ pub(super) fn process_traits_and_deriving(
     }
 
     // Phase 6: Conflict and reserved-name checks
-    check_trait_name_conflicts(module, &trait_method_map, &trait_registry, &state.registry, is_core_module)?;
+    check_trait_name_conflicts(
+        module,
+        &trait_method_map,
+        &trait_registry,
+        &state.registry,
+        is_core_module,
+    )?;
 
     Ok((
         trait_registry,
@@ -250,7 +257,19 @@ pub(super) fn register_imported_trait_defs(
         }
 
         let is_prelude = prelude_imported_names.contains(&trait_def.name);
-        let superclass_names: Vec<TraitName> = trait_def.superclasses.clone();
+        // Remap each stored superclass arg so it references the local
+        // namespace's TypeVarIds (parallel to how method signatures were
+        // remapped above).
+        let remapped_superclasses: Vec<(TraitName, Vec<Type>)> = trait_def
+            .superclasses
+            .iter()
+            .map(|(tn, args)| {
+                (
+                    tn.clone(),
+                    args.iter().map(|t| remap_type_vars(t, &remap)).collect(),
+                )
+            })
+            .collect();
         // register_trait checks for bare-name collisions and returns AmbiguousTraitName
         // if two different modules define traits with the same bare name
         if let Err(_e) = trait_registry.register_trait(TraitInfo {
@@ -261,7 +280,7 @@ pub(super) fn register_imported_trait_defs(
             type_var_ids: new_type_var_ids,
             type_var_names: trait_def.type_var_names.clone(),
             type_var_arity: trait_def.type_var_arity,
-            superclasses: superclass_names,
+            superclasses: remapped_superclasses,
             methods: trait_methods,
             span: (0, 0),
             is_prelude,
@@ -715,21 +734,34 @@ pub(super) fn register_local_traits(
             }
 
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
-            // Validation deferred to instance resolution phase.
+            // Validation deferred to instance resolution phase. `require_param_vars`
+            // also rejects any arg that isn't a bare type variable.
+            let mut superclass_entries: Vec<(TraitName, Vec<Type>)> =
+                Vec::with_capacity(superclasses.len());
             for sc in superclasses {
                 require_param_vars(sc)?;
+                let sc_trait_name = trait_registry
+                    .lookup_trait_by_name(&sc.trait_name)
+                    .map(|ti| ti.trait_name())
+                    .unwrap_or_else(|| {
+                        TraitName::new(module_path.to_string(), sc.trait_name.clone())
+                    });
+                let mut sc_args: Vec<Type> = Vec::with_capacity(sc.type_args.len());
+                for ta in &sc.type_args {
+                    let ty = type_registry::resolve_type_expr(
+                        ta,
+                        &type_param_map,
+                        &type_param_arity,
+                        &state.registry,
+                        ResolutionContext::UserAnnotation,
+                        None,
+                    )
+                    .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
+                    .map_err(|e| spanned(e, sc.span))?;
+                    sc_args.push(ty);
+                }
+                superclass_entries.push((sc_trait_name, sc_args));
             }
-            let superclass_names: Vec<TraitName> = superclasses
-                .iter()
-                .map(|sc| {
-                    trait_registry
-                        .lookup_trait_by_name(&sc.trait_name)
-                        .map(|ti| ti.trait_name())
-                        .unwrap_or_else(|| {
-                            TraitName::new(module_path.to_string(), sc.trait_name.clone())
-                        })
-                })
-                .collect();
             trait_registry
                 .register_trait(TraitInfo {
                     name: name.clone(),
@@ -739,7 +771,7 @@ pub(super) fn register_local_traits(
                     type_var_ids: trait_all_tv_ids.clone(),
                     type_var_names: trait_all_tv_names.clone(),
                     type_var_arity,
-                    superclasses: superclass_names.clone(),
+                    superclasses: superclass_entries.clone(),
                     methods: trait_methods,
                     span: *span,
                     is_prelude: false,
@@ -755,7 +787,7 @@ pub(super) fn register_local_traits(
                 type_var_ids: trait_all_tv_ids,
                 type_var_names: trait_all_tv_names,
                 type_var_arity,
-                superclasses: superclass_names,
+                superclasses: superclass_entries,
                 methods: exported_methods,
             });
         }
@@ -805,7 +837,13 @@ pub(super) fn trait_method_param_types(
 ) -> Option<Vec<Type>> {
     let info = trait_registry.lookup_trait(trait_name)?;
     let method = info.methods.iter().find(|m| m.name == method_name)?;
-    Some(method.param_types.iter().map(|(_, ty)| ty.clone()).collect())
+    Some(
+        method
+            .param_types
+            .iter()
+            .map(|(_, ty)| ty.clone())
+            .collect(),
+    )
 }
 
 /// Phase 6: Check for trait method name conflicts and reserved name usage.
@@ -842,10 +880,18 @@ pub(super) fn check_trait_name_conflicts(
             if let Decl::DefFn(f) = decl {
                 if let Some((trait_name, method_span)) = user_trait_methods.get(&f.name) {
                     // Try overlap check: resolve free fn params and trait method params
-                    let should_error = if let Some(fn_params) = resolve_fn_param_types_for_overlap(f, type_registry) {
+                    let should_error = if let Some(fn_params) =
+                        resolve_fn_param_types_for_overlap(f, type_registry)
+                    {
                         if let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) {
-                            if let Some(method) = trait_info.methods.iter().find(|m| m.name == f.name) {
-                                let method_params: Vec<Type> = method.param_types.iter().map(|(_, ty)| ty.clone()).collect();
+                            if let Some(method) =
+                                trait_info.methods.iter().find(|m| m.name == f.name)
+                            {
+                                let method_params: Vec<Type> = method
+                                    .param_types
+                                    .iter()
+                                    .map(|(_, ty)| ty.clone())
+                                    .collect();
                                 if fn_params.len() != method_params.len() {
                                     true // arity mismatch
                                 } else {
@@ -881,8 +927,12 @@ pub(super) fn check_trait_name_conflicts(
                 if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
                     if let Some(trait_id) = trait_method_map.get(&f.name) {
                         // Try overlap check for imported trait method
-                        let should_error = if let Some(fn_params) = resolve_fn_param_types_for_overlap(f, type_registry) {
-                            if let Some(method_params) = trait_method_param_types(trait_registry, trait_id, &f.name) {
+                        let should_error = if let Some(fn_params) =
+                            resolve_fn_param_types_for_overlap(f, type_registry)
+                        {
+                            if let Some(method_params) =
+                                trait_method_param_types(trait_registry, trait_id, &f.name)
+                            {
                                 if fn_params.len() != method_params.len() {
                                     true // arity mismatch
                                 } else {

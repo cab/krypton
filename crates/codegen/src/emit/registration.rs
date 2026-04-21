@@ -26,6 +26,7 @@ use super::{
     jvm_type_to_field_descriptor, qualify_ir, type_has_vars, type_references_var,
     ImportedInstanceInfo, JvmQualifiedName,
 };
+use krypton_ir::substitute_type_vars;
 
 fn name_to_builtin_type(name: &str) -> Type {
     match name {
@@ -833,10 +834,7 @@ impl<'link> Compiler<'link> {
         &mut self,
         ir_module: &krypton_ir::Module,
         class_name: &str,
-        instance_class_map: &HashMap<
-            (TraitName, Vec<krypton_ir::Type>),
-            ImportedInstanceInfo,
-        >,
+        instance_class_map: &HashMap<(TraitName, Vec<krypton_ir::Type>), ImportedInstanceInfo>,
     ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
         let mut result_classes = Vec::new();
 
@@ -952,20 +950,50 @@ impl<'link> Compiler<'link> {
 
             if !is_parameterized {
                 // Resolve each superclass slot to its concrete source class
-                // name. For a concrete instance at this target, any
-                // superclass slot's target is the same target (single-
-                // parameter-trait scope), so we look it up in the shared
-                // instance-class map built from local + imported instances.
+                // name. The slot's target is the ancestor's trait applied to
+                // the substituted position tuple: look up the trait's stored
+                // superclass args, substitute `inst.target_types` for the
+                // trait's own `type_var_ids`, and use the result as the lookup
+                // key. For single-parameter traits this is the same target
+                // tuple as the descendant's; for multi-parameter traits it
+                // may be a permutation or subset (e.g. `Codec[fmt, ty]` with
+                // superclass `MyShow[ty]` substitutes to `[Int]`).
+                let trait_def = ir_module
+                    .traits
+                    .iter()
+                    .find(|t| t.trait_name == inst.trait_name);
                 let mut superclass_slots: Vec<super::trait_class_gen::ConcreteSuperclassSlot<'_>> =
                     Vec::new();
+                let direct_scs = trait_def
+                    .map(|t| t.direct_superclasses.as_slice())
+                    .unwrap_or(&[]);
+                let trait_params = trait_def.map(|t| t.type_var_ids.as_slice()).unwrap_or(&[]);
                 for (slot_idx, (sc_trait, _)) in inst.sub_dict_requirements.iter().enumerate() {
-                    let key = (sc_trait.clone(), inst.target_types.clone());
+                    // Superclass slots come first in sub_dict_requirements,
+                    // in the same order as direct_superclasses.
+                    let sc_target_types: Vec<Type> = if slot_idx < direct_scs.len()
+                        && trait_params.len() == inst.target_types.len()
+                    {
+                        direct_scs[slot_idx]
+                            .1
+                            .iter()
+                            .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
+                            .collect()
+                    } else {
+                        inst.target_types.clone()
+                    };
+                    let key = (sc_trait.clone(), sc_target_types.clone());
                     let src_info = instance_class_map.get(&key).ok_or_else(|| {
+                        let target_display = sc_target_types
+                            .iter()
+                            .map(|t| format!("{}", t))
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         CodegenError::TypeError(
                             format!(
                                 "ICE: no class entry for superclass slot {}[{}] of {}[{}]",
                                 sc_trait.local_name,
-                                inst.target_type_name,
+                                target_display,
                                 inst.trait_name.local_name,
                                 inst.target_type_name,
                             ),
@@ -1111,9 +1139,11 @@ impl<'link> Compiler<'link> {
             return Ok(());
         };
         let builder_class = builder_struct.class_index;
-        let builder_new = self
-            .cp
-            .add_method_ref(builder_class, "builderNew", "()Lkrypton/runtime/KryptonArrayBuilder;")?;
+        let builder_new = self.cp.add_method_ref(
+            builder_class,
+            "builderNew",
+            "()Lkrypton/runtime/KryptonArrayBuilder;",
+        )?;
         let builder_push = self.cp.add_method_ref(
             builder_class,
             "builderPush",
@@ -1188,9 +1218,10 @@ impl<'link> Compiler<'link> {
                 .entry(name.clone())
                 .or_default()
                 .push(fn_info.clone());
-            self.types
-                .fn_tc_types
-                .insert(name.clone(), (tc_param_types.clone(), fn_def.return_type.clone()));
+            self.types.fn_tc_types.insert(
+                name.clone(),
+                (tc_param_types.clone(), fn_def.return_type.clone()),
+            );
             // Overload-safe mirrors keyed by FnId.
             self.types.fn_info_by_id.insert(fn_def.id, fn_info);
             self.types

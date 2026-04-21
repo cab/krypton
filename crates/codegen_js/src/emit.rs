@@ -4,9 +4,9 @@ use std::fmt;
 use rustc_hash::FxHashMap;
 
 use krypton_ir::{
-    bind_instance_targets, canonical_type_name, has_type_vars, head_type_name, Atom, CanonicalRef,
-    Expr, ExprKind, FnId, FnIdentity, Literal, Module, PrimOp, SimpleExpr, SimpleExprKind,
-    StructDef, SumTypeDef, Type, VarId,
+    bind_instance_targets, canonical_type_name, has_type_vars, head_type_name,
+    substitute_type_vars, Atom, CanonicalRef, Expr, ExprKind, FnId, FnIdentity, Literal, Module,
+    PrimOp, SimpleExpr, SimpleExprKind, StructDef, SumTypeDef, Type, VarId,
 };
 use krypton_parser::ast::Span;
 use krypton_typechecker::link_context::ModuleLinkView;
@@ -1669,14 +1669,35 @@ impl<'a> JsEmitter<'a> {
             } else if !target_parameterized {
                 // Concrete target with superclass slots: emit a const with an
                 // IIFE initializer that fills each `dictN` from the
-                // concrete superclass singleton.
+                // concrete superclass singleton. The ancestor's target types
+                // are derived by substituting `inst.target_types` for the
+                // trait's own `type_var_ids` into the stored superclass args.
+                let trait_def = self
+                    .module
+                    .traits
+                    .iter()
+                    .find(|t| t.trait_name == inst.trait_name);
+                let direct_scs = trait_def
+                    .map(|t| t.direct_superclasses.as_slice())
+                    .unwrap_or(&[]);
+                let trait_params = trait_def.map(|t| t.type_var_ids.as_slice()).unwrap_or(&[]);
                 let slot_entries: Vec<(usize, String)> = inst
                     .sub_dict_requirements
                     .iter()
                     .enumerate()
                     .map(|(idx, (sc_trait, _))| {
-                        let sc_dict_name =
-                            self.resolve_dict_js_name(sc_trait, &inst.target_types);
+                        let sc_target_types: Vec<Type> = if idx < direct_scs.len()
+                            && trait_params.len() == inst.target_types.len()
+                        {
+                            direct_scs[idx]
+                                .1
+                                .iter()
+                                .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
+                                .collect()
+                        } else {
+                            inst.target_types.clone()
+                        };
+                        let sc_dict_name = self.resolve_dict_js_name(sc_trait, &sc_target_types);
                         (idx, sc_dict_name)
                     })
                     .collect();
