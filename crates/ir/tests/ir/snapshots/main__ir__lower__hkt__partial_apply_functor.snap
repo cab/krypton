@@ -5,7 +5,8 @@ expression: ir_module.to_string()
 module hkt__partial_apply_functor
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Functor[j11] { fmap(j11[k11], (k11) -> l11): j11[l11] }
+trait Functor[l11] { fmap(l11[m11], (m11) -> n11): l11[n11] }
+trait Functor[j11] { map(j11[d], (d) -> e): j11[e] }
 instance hkt__partial_apply_functor.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -24,14 +25,14 @@ fn double_ok(v0: Result[String, Int]) -> Result[String, Int] =
   let v5: Result[String, Int] = trait_call hkt__partial_apply_functor.Functor.fmap(v1, v0, v4)
   v5
 
-fn Functor$$Result$$Var0$$Var1$$fmap(v6: Result[h12, i12], v7: (i12) -> k12) -> Result[h12, k12] =
+fn Functor$$Result$$Var0$$Var1$$fmap(v6: Result[j12, k12], v7: (k12) -> m12) -> Result[j12, m12] =
   switch v6 {
-    0 (v8: i12) ->
-      let v9: k12 = call_closure v7(v8)
-      let v10: Result[h12, k12] = construct Result::Ok#0(v9)
+    0 (v8: k12) ->
+      let v9: m12 = call_closure v7(v8)
+      let v10: Result[j12, m12] = construct Result::Ok#0(v9)
       v10
-    1 (v11: h12) ->
-      let v12: Result[h12, k12] = construct Result::Err#1(v11)
+    1 (v11: j12) ->
+      let v12: Result[j12, m12] = construct Result::Err#1(v11)
       v12
   }
 

@@ -16,7 +16,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn both_less(v0: Dict[core/ord.Ord, i11], v1: Dict[core/ord.Ord, j11], v2: i11, v3: i11, v4: j11, v5: j11) -> Bool =
+fn both_less(v0: Dict[core/ord.Ord, k11], v1: Dict[core/ord.Ord, l11], v2: k11, v3: k11, v4: l11, v5: l11) -> Bool =
   let_join v13(v6: Bool) =
     let_join v12(v8: Bool) =
       let_join v11(v10: Bool) =

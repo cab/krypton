@@ -6,7 +6,7 @@ module traits__multi_param_hkt_two_ctors
 
 type Box[a] = Box#0(a)
 type Bag[b] = Bag#0(b)
-trait BoxConvert[j11] { box_convert(j11[k11]): k11 }
+trait BoxConvert[l11] { box_convert(l11[m11]): m11 }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Box$$Int] { box_convert=BoxConvert$$Box$$Int$$box_convert }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Bag$$Int] { box_convert=BoxConvert$$Bag$$Int$$box_convert }
 import core/peek/peek as peek(d) -> d

@@ -28,7 +28,7 @@ declare put: (~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
 declare size: (Map[o14, p14]) -> Int
 
 fn main() -> Unit =
-  let v0: ~MapBuilder[c15, d15] = call builder()
+  let v0: ~MapBuilder[e15, f15] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 1)

@@ -5,7 +5,8 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[i11] { fmap(i11[j11], (j11) -> k11): i11[k11] }
+trait Functor[i11] { map(i11[d], (d) -> e): i11[e] }
+trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -34,11 +35,11 @@ fn main() -> Unit =
       jump v10(v7)
   }
 
-fn Functor$$Box$$fmap(v11: Box[c12], v12: (c12) -> e12) -> Box[e12] =
+fn Functor$$Box$$fmap(v11: Box[e12], v12: (e12) -> g12) -> Box[g12] =
   switch v11 {
-    0 (v13: c12) ->
-      let v14: e12 = call_closure v12(v13)
-      let v15: Box[e12] = construct Box::Box#0(v14)
+    0 (v13: e12) ->
+      let v14: g12 = call_closure v12(v13)
+      let v15: Box[g12] = construct Box::Box#0(v14)
       v15
   }
 

@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{BinOp, Lit, Span};
 
+use crate::trait_name_resolver::TraitNameResolver;
 use crate::trait_registry::TraitRegistry;
 use crate::type_registry::TypeInfo;
 use crate::typed_ast::{
@@ -11,8 +12,10 @@ use crate::types::{ParamMode, Type, TypeVarId};
 
 use super::match_type_with_bindings;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn collect_derived_constraints_for_type(
     trait_registry: &TraitRegistry,
+    trait_names: &TraitNameResolver,
     trait_name: &str,
     field_type: &Type,
     local_type_params: &FxHashMap<TypeVarId, String>,
@@ -25,7 +28,10 @@ pub(super) fn collect_derived_constraints_for_type(
         return true;
     }
 
-    let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) else {
+    let Some(trait_info) = trait_names
+        .resolve(trait_name)
+        .and_then(|tn| trait_registry.lookup_trait(tn))
+    else {
         // The caller checks trait existence before calling this function,
         // so this can only happen on recursive calls for superclass constraints.
         // If a trait isn't in the registry at this point, the import pipeline is broken.
@@ -58,6 +64,7 @@ pub(super) fn collect_derived_constraints_for_type(
             for arg in args {
                 if !collect_derived_constraints_for_type(
                     trait_registry,
+                    trait_names,
                     trait_name,
                     arg,
                     local_type_params,
@@ -100,6 +107,7 @@ pub(super) fn collect_derived_constraints_for_type(
             };
             if !collect_derived_constraints_for_type(
                 trait_registry,
+                trait_names,
                 &constraint.trait_name.local_name,
                 required_type,
                 local_type_params,
@@ -894,10 +902,7 @@ pub(super) fn synthesize_dispose_body(
 /// Extern types are opaque — they can't be destructured. The generated dispose
 /// uses `Discharge` to consume the owned `__a` parameter (satisfying linearity)
 /// without requiring a pattern match or extern call.
-pub(super) fn synthesize_extern_dispose_body(
-    target_type: &Type,
-    span: Span,
-) -> (TypedExpr, Type) {
+pub(super) fn synthesize_extern_dispose_body(target_type: &Type, span: Span) -> (TypedExpr, Type) {
     let owned_target = Type::Own(Box::new(target_type.clone()));
     let param_a = TypedExpr {
         kind: TypedExprKind::Var("__a".to_string()),

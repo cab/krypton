@@ -14,5 +14,5 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn use_once(v0: i11[~j11]) -> i11[~j11] =
+fn use_once(v0: k11[~l11]) -> k11[~l11] =
   v0

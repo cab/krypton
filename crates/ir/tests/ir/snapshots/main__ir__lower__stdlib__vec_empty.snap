@@ -19,7 +19,7 @@ declare len: (Vec[j7]) -> Int
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v1: Vec[l11] = make_vec()
+  let v1: Vec[n11] = make_vec()
   let v2: Int = call len(v1)
   let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v3: Unit = call println(v0, v2)

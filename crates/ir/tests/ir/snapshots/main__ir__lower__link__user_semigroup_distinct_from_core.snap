@@ -1163,7 +1163,7 @@ import core/io/println as println(g) -> Unit
 module user_semigroup_distinct_lib
 
 struct MaxInt { val: Int }
-trait MaxSemigroup[h11] { pick(h11, h11): h11 }
+trait MaxSemigroup[j11] { pick(j11, j11): j11 }
 instance user_semigroup_distinct_lib.MaxSemigroup[MaxInt] { pick=MaxSemigroup$$MaxInt$$pick }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -3,19 +3,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use krypton_parser::ast::{Decl, FnDecl, Module, Span, Visibility};
 
 use crate::overload::types_overlap;
-use crate::trait_registry::TraitRegistry;
+use crate::trait_name_resolver::TraitNameResolver;
+use crate::trait_registry::{TraitInfo, TraitRegistry};
 use crate::type_registry::{self, TypeRegistry};
 use crate::typed_ast::{
     self, ExportedTraitDef, ExternTraitInfo, InstanceDefInfo, TraitName, TypedExpr,
 };
-use crate::types::{
-    BindingSource, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId,
-};
+use crate::types::{BindingSource, Substitution, Type, TypeEnv, TypeScheme, TypeVarGen, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::helpers::{constructor_binding_kind_for_decl, spanned, QualifiedModuleBinding};
 use super::import_ctx::ImportContext;
-
 
 /// Result of `infer_function_bodies`: fn decls, schemes, typed bodies,
 /// constraint requirements.
@@ -51,7 +49,7 @@ pub(crate) struct ModuleInferenceState {
     // Import accumulation
     pub(super) imports: ImportContext,
     pub(super) imported_trait_defs: Vec<ExportedTraitDef>,
-    pub(super) imported_trait_names: FxHashSet<String>,
+    pub(super) trait_names: TraitNameResolver,
     pub(super) trait_aliases: Vec<(String, TraitName)>,
     pub(super) qualified_modules: FxHashMap<String, QualifiedModuleBinding>,
     // Re-export state
@@ -81,7 +79,7 @@ impl ModuleInferenceState {
             lambda_own_captures: FxHashMap::default(),
             imports: ImportContext::new(),
             imported_trait_defs: Vec::new(),
-            imported_trait_names: FxHashSet::default(),
+            trait_names: TraitNameResolver::new(),
             trait_aliases: Vec::new(),
             qualified_modules: FxHashMap::default(),
             reexported_fn_types: Vec::new(),
@@ -90,6 +88,20 @@ impl ModuleInferenceState {
             reexported_trait_defs: Vec::new(),
             prelude_imported_names: FxHashSet::default(),
         }
+    }
+
+    /// Two-step trait lookup: resolve the bare name through the name resolver,
+    /// then fetch the full `TraitInfo` from the registry. Returns `None` if the
+    /// user wrote a trait name the resolver doesn't know (even if the registry
+    /// has an internally-imported def under the same bare name).
+    pub(super) fn resolve_trait<'a>(
+        &self,
+        registry: &'a TraitRegistry,
+        name: &str,
+    ) -> Option<&'a TraitInfo> {
+        self.trait_names
+            .resolve(name)
+            .and_then(|tn| registry.lookup_trait(tn))
     }
 
     pub(super) fn cleanup_prelude_shadows(&mut self, module: &Module) {
@@ -108,7 +120,10 @@ impl ModuleInferenceState {
         }
     }
 
-    pub(super) fn check_duplicate_function_names(&self, module: &Module) -> Result<(), SpannedTypeError> {
+    pub(super) fn check_duplicate_function_names(
+        &self,
+        module: &Module,
+    ) -> Result<(), SpannedTypeError> {
         // Collect all extern method names (same name across targets is fine)
         let mut extern_names: FxHashSet<&str> = FxHashSet::default();
         for decl in &module.decls {
@@ -143,7 +158,10 @@ impl ModuleInferenceState {
             let param_types: Vec<Vec<Type>> = {
                 let mut pts = Vec::new();
                 for f in fns {
-                    match super::traits_register::resolve_fn_param_types_for_overlap(f, &self.registry) {
+                    match super::traits_register::resolve_fn_param_types_for_overlap(
+                        f,
+                        &self.registry,
+                    ) {
                         Some(tys) => pts.push(tys),
                         None => {
                             return Err(spanned(
@@ -226,7 +244,9 @@ impl ModuleInferenceState {
                     match (&type_decl.kind, &info.kind) {
                         (
                             krypton_parser::ast::TypeDeclKind::Record { fields: ast_fields },
-                            crate::type_registry::TypeKind::Record { fields: info_fields },
+                            crate::type_registry::TypeKind::Record {
+                                fields: info_fields,
+                            },
                         ) => {
                             for ((_, ast_ty), (_, resolved_ty)) in
                                 ast_fields.iter().zip(info_fields.iter())
@@ -240,12 +260,14 @@ impl ModuleInferenceState {
                             }
                         }
                         (
-                            krypton_parser::ast::TypeDeclKind::Sum { variants: ast_variants },
-                            crate::type_registry::TypeKind::Sum { variants: info_variants },
+                            krypton_parser::ast::TypeDeclKind::Sum {
+                                variants: ast_variants,
+                            },
+                            crate::type_registry::TypeKind::Sum {
+                                variants: info_variants,
+                            },
                         ) => {
-                            for (ast_v, info_v) in
-                                ast_variants.iter().zip(info_variants.iter())
-                            {
+                            for (ast_v, info_v) in ast_variants.iter().zip(info_variants.iter()) {
                                 for (ast_ty, resolved_ty) in
                                     ast_v.fields.iter().zip(info_v.fields.iter())
                                 {
@@ -304,5 +326,4 @@ impl ModuleInferenceState {
         }
         Ok(constructor_schemes)
     }
-
 }

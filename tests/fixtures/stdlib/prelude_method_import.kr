@@ -1,0 +1,6 @@
+# expect: output "12"
+fun main() = {
+    let xs: Vec[Int] = [1, 2, 3];
+    let ys = map(xs, x -> x * 2);
+    println(fold(ys, 0, (a, x) -> a + x))
+}

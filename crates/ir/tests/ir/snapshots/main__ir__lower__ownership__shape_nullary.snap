@@ -14,8 +14,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn empty_vec() -> Vec[j11] =
-  let v0: Vec[j11] = make_vec()
+fn empty_vec() -> Vec[l11] =
+  let v0: Vec[l11] = make_vec()
   v0
 
 fn use_it() -> Vec[String] =

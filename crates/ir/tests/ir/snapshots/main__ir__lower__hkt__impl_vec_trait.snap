@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__impl_vec_trait
 
-trait MyTrait[h11] { check(h11): String }
+trait MyTrait[j11] { check(j11): String }
 instance hkt__impl_vec_trait.MyTrait[Vec$$Var0] { check=MyTrait$$Vec$$Var0$$check }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -16,5 +16,5 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn MyTrait$$Vec$$Var0$$check(v0: Dict[hkt__impl_vec_trait.MyTrait, i11], v1: Vec[i11]) -> String =
+fn MyTrait$$Vec$$Var0$$check(v0: Dict[hkt__impl_vec_trait.MyTrait, k11], v1: Vec[k11]) -> String =
   "vec"

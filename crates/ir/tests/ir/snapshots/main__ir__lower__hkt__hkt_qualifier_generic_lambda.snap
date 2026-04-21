@@ -14,6 +14,6 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn apply_fn(v0: i11[j11], v1: (i11[j11]) -> i11[j11]) -> i11[j11] =
-  let v2: i11[j11] = call_closure v1(v0)
+fn apply_fn(v0: k11[l11], v1: (k11[l11]) -> k11[l11]) -> k11[l11] =
+  let v2: k11[l11] = call_closure v1(v0)
   v2

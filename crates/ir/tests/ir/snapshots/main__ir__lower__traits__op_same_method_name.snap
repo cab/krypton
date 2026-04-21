@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__op_same_method_name
 
-trait Joinable[h11] { join(h11, h11): h11 }
+trait Joinable[j11] { join(j11, j11): j11 }
 instance traits__op_same_method_name.Joinable[String] { join=Joinable$$String$$join }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -18,12 +18,12 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn apply_combine(v0: Dict[core/semigroup.Semigroup, n11], v1: n11, v2: n11) -> n11 =
-  let v3: n11 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
+fn apply_combine(v0: Dict[core/semigroup.Semigroup, p11], v1: p11, v2: p11) -> p11 =
+  let v3: p11 = trait_call core/semigroup.Semigroup.combine(v0, v1, v2)
   v3
 
-fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, t11], v5: t11, v6: t11) -> t11 =
-  let v7: t11 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
+fn apply_join(v4: Dict[traits__op_same_method_name.Joinable, v11], v5: v11, v6: v11) -> v11 =
+  let v7: v11 = trait_call traits__op_same_method_name.Joinable.join(v4, v5, v6)
   v7
 
 fn main() -> Unit =

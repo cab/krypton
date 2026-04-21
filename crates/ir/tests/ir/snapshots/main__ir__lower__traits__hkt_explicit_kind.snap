@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__hkt_explicit_kind
 
-trait Container[h11] { wrap(i11): h11[i11] }
+trait Container[j11] { wrap(k11): j11[k11] }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]

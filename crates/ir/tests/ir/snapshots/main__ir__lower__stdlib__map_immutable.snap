@@ -24,7 +24,7 @@ declare println: (g) -> Unit
 declare put: (Map[s9, t9], s9, t9) -> Map[s9, t9]
 
 fn main() -> Unit =
-  let v0: Map[z11, a12] = call empty()
+  let v0: Map[b12, c12] = call empty()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: Map[String, Int] = call put(v2, v3, v0, "x", 1)

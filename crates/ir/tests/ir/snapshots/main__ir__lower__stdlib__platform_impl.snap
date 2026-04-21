@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module stdlib__platform_impl
 
 type Wrapper = Wrapper#0(Int)
-trait Describe[h11] { describe(h11): String }
+trait Describe[j11] { describe(j11): String }
 instance stdlib__platform_impl.Describe[Wrapper] { describe=Describe$$Wrapper$$describe }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

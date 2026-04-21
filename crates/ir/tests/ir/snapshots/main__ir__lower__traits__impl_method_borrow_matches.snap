@@ -6,7 +6,7 @@ module traits__impl_method_borrow_matches
 
 struct File { fd: Int }
 struct Bytes { data: Int }
-trait Reader[h11] { read(~h11): Bytes }
+trait Reader[j11] { read(~j11): Bytes }
 instance traits__impl_method_borrow_matches.Reader[File] { read=Reader$$File$$read }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

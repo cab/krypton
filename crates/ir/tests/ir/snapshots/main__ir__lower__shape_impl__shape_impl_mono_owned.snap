@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module shape_impl__shape_impl_mono_owned
 
 type Handle = MkHandle#0
-trait Identity[h11] { identify(h11): h11 }
+trait Identity[j11] { identify(j11): j11 }
 instance core/disposable.Disposable[Handle] { dispose=Disposable$$Handle$$dispose }
 instance shape_impl__shape_impl_mono_owned.Identity[Vec$Handle] { identify=Identity$$Vec$Handle$$identify }
 import core/peek/peek as peek(d) -> d

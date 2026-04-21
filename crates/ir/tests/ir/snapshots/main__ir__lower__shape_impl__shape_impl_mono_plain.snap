@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module shape_impl__shape_impl_mono_plain
 
-trait Combiner[h11] { combine(h11, h11): h11 }
+trait Combiner[j11] { combine(j11, j11): j11 }
 instance shape_impl__shape_impl_mono_plain.Combiner[Int] { combine=Combiner$$Int$$combine }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

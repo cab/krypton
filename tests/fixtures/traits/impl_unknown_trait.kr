@@ -1,0 +1,6 @@
+# expect: error E0307
+type Foo = Foo
+
+impl NoSuchTrait[Foo] {
+    fun whatever(x: Foo) -> Foo = x
+}

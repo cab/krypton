@@ -14,6 +14,6 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn singleton(v0: k11) -> Vec[k11] =
-  let v1: Vec[k11] = make_vec(v0)
+fn singleton(v0: m11) -> Vec[m11] =
+  let v1: Vec[m11] = make_vec(v0)
   v1

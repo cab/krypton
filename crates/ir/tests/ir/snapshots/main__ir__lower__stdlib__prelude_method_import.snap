@@ -1,0 +1,37 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__prelude_method_import
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v0: Vec[Int] = make_vec(1, 2, 3)
+  let v4: (Int) -> Int = make_closure(lambda$26, [])
+  let v5: Dict[core/functor.Functor, Vec] = get_dict core/functor.Functor[Vec]
+  let v1: Vec[Int] = trait_call core/functor.Functor.map(v5, v0, v4)
+  let v10: (Int, Int) -> Int = make_closure(lambda$27, [])
+  let v11: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v12: Int = trait_call core/foldable.Foldable.fold(v11, v1, 0, v10)
+  let v6: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v13: Unit = call println(v6, v12)
+  v13
+
+fn lambda$26(v2: Int) -> Int =
+  let v3: Int = mul_int(v2, 2)
+  v3
+
+fn lambda$27(v7: Int, v8: Int) -> Int =
+  let v9: Int = add_int(v7, v8)
+  v9

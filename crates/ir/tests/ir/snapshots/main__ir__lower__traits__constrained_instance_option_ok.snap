@@ -32,5 +32,5 @@ fn main() -> Unit =
   let v6: Bool = trait_call core/eq.Eq.eq(v1, v5, "ok")
   jump v9(v6)
 
-fn Show$$Option$$Var0$$show(v10: Dict[core/show.Show, i11], v11: Option[i11]) -> String =
+fn Show$$Option$$Var0$$show(v10: Dict[core/show.Show, k11], v11: Option[k11]) -> String =
   "ok"

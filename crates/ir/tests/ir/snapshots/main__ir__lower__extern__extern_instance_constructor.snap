@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module extern__extern_instance_constructor
 
-trait Runnable[i11] { run(i11): Unit }
+trait Runnable[k11] { run(k11): Unit }
 instance extern__extern_instance_constructor.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
 extern java "java.lang.Thread" new(x10) -> ~JThread
 extern java "java.lang.Thread" start(~JThread) -> Unit

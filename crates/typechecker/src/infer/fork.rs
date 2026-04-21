@@ -8,7 +8,9 @@ use crate::typed_ast::{self, TraitName};
 use crate::types::{ParamMode, Type, TypeScheme, TypeVarId};
 use crate::unify::{coerce_unify, unify, SpannedTypeError, TypeError};
 
-use super::{require_param_vars, spanned, spanned_with_names, InferenceContext, ModuleInferenceState};
+use super::{
+    require_param_vars, spanned, spanned_with_names, InferenceContext, ModuleInferenceState,
+};
 
 /// Output of a committed fork: the typed body plus supporting metadata to
 /// be reused by the caller (`typecheck_impl_methods`) when recording the
@@ -78,8 +80,8 @@ where
             .filter_map(|n| impl_method_tpm.get(*n).copied())
             .collect();
         if tvs.len() == tv_names.len() && !tvs.is_empty() {
-            let tn = trait_registry
-                .lookup_trait_by_name(&constraint.trait_name)
+            let tn = state
+                .resolve_trait(trait_registry, &constraint.trait_name)
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| {
                     TraitName::new(module_path.to_string(), constraint.trait_name.clone())
@@ -234,7 +236,13 @@ where
     let final_ret_type = state.subst.apply(&body_typed.ty);
 
     let expected_ret_type = state.subst.apply(&fork_apply(&trait_method.return_type));
-    coerce_unify(&final_ret_type, &expected_ret_type, &mut state.subst, Some(&state.registry)).map_err(|_| {
+    coerce_unify(
+        &final_ret_type,
+        &expected_ret_type,
+        &mut state.subst,
+        Some(&state.registry),
+    )
+    .map_err(|_| {
         spanned_with_names(
             TypeError::Mismatch {
                 expected: expected_ret_type.clone(),

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_single_param_regression
 
-trait Shown[h11] { shown(h11): String }
+trait Shown[j11] { shown(j11): String }
 instance traits__multi_param_single_param_regression.Shown[Int] { shown=Shown$$Int$$shown }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

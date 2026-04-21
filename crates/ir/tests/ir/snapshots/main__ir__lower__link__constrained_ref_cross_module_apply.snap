@@ -15,10 +15,10 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 import constrained_ref_hof/apply_to_int as apply_to_int((Int) -> String, Int) -> String
-import constrained_ref_lib/render_it as render_it(i11) -> String
+import constrained_ref_lib/render_it as render_it(k11) -> String
 declare apply_to_int: ((Int) -> String, Int) -> String
 declare println: (g) -> Unit
-declare render_it: (i11) -> String
+declare render_it: (k11) -> String
 
 fn main() -> Unit =
   let v1: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
@@ -1194,6 +1194,6 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn render_it(v0: Dict[core/show.Show, i11], v1: i11) -> String =
+fn render_it(v0: Dict[core/show.Show, k11], v1: k11) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2

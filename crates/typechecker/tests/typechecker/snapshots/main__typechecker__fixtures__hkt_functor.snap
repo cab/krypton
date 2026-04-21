@@ -30,4 +30,4 @@ LT: Ordering
 EQ: Ordering
 GT: Ordering
 Box: forall a. (a) -> Box[a]
-Functor$$Box$$fmap: (Box[r11], (r11) -> t11) -> Box[t11]
+Functor$$Box$$fmap: (Box[t11], (t11) -> v11) -> Box[v11]

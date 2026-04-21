@@ -1162,7 +1162,7 @@ import core/io/println as println(g) -> Unit
 module user_trait_lib
 
 type Point = MkPoint#0(Int, Int)
-trait Printable[h11] { display(h11): String }
+trait Printable[j11] { display(j11): String }
 instance user_trait_lib.Printable[Point] { display=Printable$$Point$$display }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

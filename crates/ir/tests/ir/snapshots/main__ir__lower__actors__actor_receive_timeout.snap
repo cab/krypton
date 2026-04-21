@@ -15,8 +15,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/receive_timeout as receive_timeout(Mailbox[v12], Int) -> Option[v12]
-declare receive_timeout: (Mailbox[v12], Int) -> Option[v12]
+import core/actor/receive_timeout as receive_timeout(Mailbox[x12], Int) -> Option[x12]
+declare receive_timeout: (Mailbox[x12], Int) -> Option[x12]
 
 fn actor(v0: Mailbox[Msg]) -> Unit =
   let_join [recur] v1(v2: Mailbox[Msg]) =

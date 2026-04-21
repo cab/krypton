@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module actors__async_closure
 
 type Msg = Ping#0(Int, Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(k13) -> Unit
+extern java "krypton.runtime.KryptonIO" println(m13) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -15,17 +15,17 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[e12]) -> Unit) -> Ref[e12]
-import core/actor/send as send(Ref[h12], h12) -> Unit
-import core/actor/receive as receive(Mailbox[q12]) -> q12
-import core/actor/actor_ref as actor_ref(Mailbox[a13]) -> Ref[a13]
-import core/actor/mailbox as mailbox() -> Mailbox[j13]
-declare actor_ref: (Mailbox[a13]) -> Ref[a13]
-declare mailbox: () -> Mailbox[j13]
-declare println: (k13) -> Unit
-declare receive: (Mailbox[q12]) -> q12
-declare send: (Ref[h12], h12) -> Unit
-declare spawn: ((Mailbox[e12]) -> Unit) -> Ref[e12]
+import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
+import core/actor/send as send(Ref[j12], j12) -> Unit
+import core/actor/receive as receive(Mailbox[s12]) -> s12
+import core/actor/actor_ref as actor_ref(Mailbox[c13]) -> Ref[c13]
+import core/actor/mailbox as mailbox() -> Mailbox[l13]
+declare actor_ref: (Mailbox[c13]) -> Ref[c13]
+declare mailbox: () -> Mailbox[l13]
+declare println: (m13) -> Unit
+declare receive: (Mailbox[s12]) -> s12
+declare send: (Ref[j12], j12) -> Unit
+declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
 
 fn echo(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

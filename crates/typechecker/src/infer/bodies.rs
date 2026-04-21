@@ -11,9 +11,7 @@ use crate::unify::{coerce_unify, unify, SecondaryLabel, SpannedTypeError, TypeEr
 
 use super::checks;
 use super::expr::{self, InferenceContext};
-use super::helpers::{
-    build_type_param_maps, free_vars, generalize, require_param_vars, spanned,
-};
+use super::helpers::{build_type_param_maps, free_vars, generalize, require_param_vars, spanned};
 use super::resolve_multi;
 use super::resolve_overloads;
 use super::state::{InferFunctionBodiesResult, ModuleInferenceState};
@@ -73,7 +71,8 @@ pub(super) fn infer_function_bodies<'a>(
     // the rekey through consumers in this phase.
     let mut fn_constraint_requirements: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
         FxHashMap::default();
-    let mut saved_type_param_maps: FxHashMap<usize, FxHashMap<String, TypeVarId>> = FxHashMap::default();
+    let mut saved_type_param_maps: FxHashMap<usize, FxHashMap<String, TypeVarId>> =
+        FxHashMap::default();
 
     for component in &sccs {
         let mut deferred_overloads: Vec<expr::DeferredOverload> = Vec::new();
@@ -101,8 +100,8 @@ pub(super) fn infer_function_bodies<'a>(
                 saved_type_param_maps.insert(idx, type_param_map.clone());
                 if !decl.constraints.is_empty() {
                     for constraint in &decl.constraints {
-                        if trait_registry
-                            .lookup_trait_by_name(&constraint.trait_name)
+                        if state
+                            .resolve_trait(trait_registry, &constraint.trait_name)
                             .is_none()
                         {
                             return Err(spanned(
@@ -128,8 +127,8 @@ pub(super) fn infer_function_bodies<'a>(
                             }
                             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                             // Validation deferred to instance resolution phase.
-                            let tn = trait_registry
-                                .lookup_trait_by_name(&constraint.trait_name)
+                            let tn = state
+                                .resolve_trait(trait_registry, &constraint.trait_name)
                                 .map(|ti| ti.trait_name())
                                 .unwrap_or_else(|| {
                                     TraitName::new(
@@ -275,7 +274,13 @@ pub(super) fn infer_function_bodies<'a>(
                     )
                     .map_err(|e| e.enrich_unknown_type_with_env(&state.env))
                     .map_err(|e| spanned(e, decl.span))?;
-                    coerce_unify(&body_ty, &annotated_ret, &mut state.subst, Some(&state.registry)).map_err(|e| {
+                    coerce_unify(
+                        &body_ty,
+                        &annotated_ret,
+                        &mut state.subst,
+                        Some(&state.registry),
+                    )
+                    .map_err(|e| {
                         if let TypeError::InfiniteType { ref var, ref ty } = e {
                             if crate::type_error::is_own_wrapper_of(*var, ty) {
                                 let var_names: Vec<(TypeVarId, String)> = type_param_map
@@ -418,8 +423,15 @@ pub(super) fn infer_function_bodies<'a>(
             let fn_name = fn_decls[idx].name.clone();
             // Check if this name has multiple definitions in this SCC or
             // already has overload candidates (from imports).
-            let is_overloaded = pre_bound.iter().filter(|(i, _)| fn_decls[*i].name == fn_name).count() > 1
-                || state.env.lookup_entry(&fn_name).is_some_and(|e| e.overload_candidates.is_some());
+            let is_overloaded = pre_bound
+                .iter()
+                .filter(|(i, _)| fn_decls[*i].name == fn_name)
+                .count()
+                > 1
+                || state
+                    .env
+                    .lookup_entry(&fn_name)
+                    .is_some_and(|e| e.overload_candidates.is_some());
             if is_overloaded {
                 if let Some(existing) = state.env.lookup_entry_mut(&fn_name) {
                     existing.add_overload_candidate(scheme.clone(), local_source);

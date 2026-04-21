@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module tuples__tuple_trait_instance_owned
 
-trait Summarize[h11] { summarize(h11): String }
+trait Summarize[j11] { summarize(j11): String }
 instance tuples__tuple_trait_instance_owned.Summarize[$Tuple2$Int$Option$String] { summarize=Summarize$$$Tuple2$Int$Option$String$$summarize }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

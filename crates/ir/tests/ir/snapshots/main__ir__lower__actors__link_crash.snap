@@ -6,7 +6,7 @@ module actors__link_crash
 
 type WorkerMsg = Die#0(String)
 type SupervisorMsg = ChildRef#0(Ref[WorkerMsg]) | Exit#1(ActorId, ExitReason)
-extern java "krypton.runtime.KryptonIO" println(a15) -> Unit
+extern java "krypton.runtime.KryptonIO" println(c15) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -18,16 +18,16 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/actor/ActorId as ActorId(Int) -> ActorId
 import core/actor/Crashed as Crashed(String) -> ExitReason
-import core/actor/spawn as spawn((Mailbox[e12]) -> Unit) -> Ref[e12]
-import core/actor/send as send(Ref[h12], h12) -> Unit
-import core/actor/receive as receive(Mailbox[q12]) -> q12
-import core/actor/link as link(Mailbox[z14], Ref[m14], (ActorId, ExitReason) -> z14) -> Unit
-declare link: (Mailbox[z14], Ref[m14], (ActorId, ExitReason) -> z14) -> Unit
+import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
+import core/actor/send as send(Ref[j12], j12) -> Unit
+import core/actor/receive as receive(Mailbox[s12]) -> s12
+import core/actor/link as link(Mailbox[b15], Ref[o14], (ActorId, ExitReason) -> b15) -> Unit
+declare link: (Mailbox[b15], Ref[o14], (ActorId, ExitReason) -> b15) -> Unit
 declare panic
-declare println: (a15) -> Unit
-declare receive: (Mailbox[q12]) -> q12
-declare send: (Ref[h12], h12) -> Unit
-declare spawn: ((Mailbox[e12]) -> Unit) -> Ref[e12]
+declare println: (c15) -> Unit
+declare receive: (Mailbox[s12]) -> s12
+declare send: (Ref[j12], j12) -> Unit
+declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
 
 fn worker(v0: Mailbox[WorkerMsg]) -> Never =
   let v1: WorkerMsg = call receive(v0)

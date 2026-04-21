@@ -5,8 +5,9 @@ expression: ir_module.to_string()
 module hkt__hkt_function
 
 type Box[a] = Box#0(a)
-trait Functor[i11] { fmap(i11[j11], (j11) -> k11): i11[k11] }
-trait Hoist[l11] { hoist(m11[l11], (m11[l11]) -> n11[l11]): n11[l11] }
+trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
+trait Functor[i11] { map(i11[d], (d) -> e): i11[e] }
+trait Hoist[n11] { hoist(o11[n11], (o11[n11]) -> p11[n11]): p11[n11] }
 instance hkt__hkt_function.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance hkt__hkt_function.Hoist[Int] { hoist=Hoist$$Int$$hoist }
 import core/peek/peek as peek(d) -> d
@@ -21,9 +22,9 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn apply(v0: Dict[hkt__hkt_function.Functor, s11], v1: s11[u11]) -> s11[u11] =
-  let v4: (u11) -> u11 = make_closure(lambda$29, [])
-  let v5: s11[u11] = trait_call hkt__hkt_function.Functor.fmap(v0, v1, v4)
+fn apply(v0: Dict[hkt__hkt_function.Functor, u11], v1: u11[w11]) -> u11[w11] =
+  let v4: (w11) -> w11 = make_closure(lambda$29, [])
+  let v5: u11[w11] = trait_call hkt__hkt_function.Functor.fmap(v0, v1, v4)
   v5
 
 fn main() -> Unit =
@@ -37,17 +38,17 @@ fn main() -> Unit =
       v11
   }
 
-fn Functor$$Box$$fmap(v12: Box[m12], v13: (m12) -> o12) -> Box[o12] =
+fn Functor$$Box$$fmap(v12: Box[o12], v13: (o12) -> q12) -> Box[q12] =
   switch v12 {
-    0 (v14: m12) ->
-      let v15: o12 = call_closure v13(v14)
-      let v16: Box[o12] = construct Box::Box#0(v15)
+    0 (v14: o12) ->
+      let v15: q12 = call_closure v13(v14)
+      let v16: Box[q12] = construct Box::Box#0(v15)
       v16
   }
 
-fn Hoist$$Int$$hoist(v17: q12[Int], v18: (q12[Int]) -> r12[Int]) -> r12[Int] =
-  let v19: r12[Int] = call_closure v18(v17)
+fn Hoist$$Int$$hoist(v17: s12[Int], v18: (s12[Int]) -> t12[Int]) -> t12[Int] =
+  let v19: t12[Int] = call_closure v18(v17)
   v19
 
-fn lambda$29(v3: u11) -> u11 =
+fn lambda$29(v3: w11) -> w11 =
   v3

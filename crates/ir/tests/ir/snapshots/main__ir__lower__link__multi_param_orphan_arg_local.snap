@@ -1159,7 +1159,7 @@ import core/io/println as println(g) -> Unit
 module multi_param_convert_lib
 
 type Foo = Foo#0(Int)
-trait Convert[h11] { convert(h11): i11 }
+trait Convert[j11] { convert(j11): k11 }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]

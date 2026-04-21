@@ -1158,7 +1158,7 @@ import core/io/println as println(g) -> Unit
 module trait_selective_lib
 
 type Widget = MkWidget#0(String)
-trait Describable[h11] { describe(h11): String; label(h11): String }
+trait Describable[j11] { describe(j11): String; label(j11): String }
 instance trait_selective_lib.Describable[Widget] { describe=Describable$$Widget$$describe, label=Describable$$Widget$$label }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -5,8 +5,9 @@ expression: ir_module.to_string()
 module traits__hkt_multi_trait
 
 type Box[a] = Box#0(a)
-trait Container[l11] { wrap(m11): l11[m11] }
-trait Functor[i11] { fmap(i11[j11], (j11) -> k11): i11[k11] }
+trait Container[n11] { wrap(o11): n11[o11] }
+trait Functor[i11] { map(i11[d], (d) -> e): i11[e] }
+trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
 instance traits__hkt_multi_trait.Functor[Box] { fmap=Functor$$Box$$fmap }
 instance traits__hkt_multi_trait.Container[Box] { wrap=Container$$Box$$wrap }
 import core/peek/peek as peek(d) -> d
@@ -20,14 +21,14 @@ import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Functor$$Box$$fmap(v0: Box[t11], v1: (t11) -> v11) -> Box[v11] =
+fn Functor$$Box$$fmap(v0: Box[v11], v1: (v11) -> x11) -> Box[x11] =
   switch v0 {
-    0 (v2: t11) ->
-      let v3: v11 = call_closure v1(v2)
-      let v4: Box[v11] = construct Box::Box#0(v3)
+    0 (v2: v11) ->
+      let v3: x11 = call_closure v1(v2)
+      let v4: Box[x11] = construct Box::Box#0(v3)
       v4
   }
 
-fn Container$$Box$$wrap(v5: x11) -> Box[x11] =
-  let v6: Box[x11] = construct Box::Box#0(v5)
+fn Container$$Box$$wrap(v5: z11) -> Box[z11] =
+  let v6: Box[z11] = construct Box::Box#0(v5)
   v6

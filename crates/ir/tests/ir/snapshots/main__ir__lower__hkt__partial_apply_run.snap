@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module hkt__partial_apply_run
 
 type Result[a, b] = Ok#0(b) | Err#1(a)
-trait Fmap[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
+trait Fmap[l11] { fmap(l11[m11], (m11) -> n11): l11[n11] }
 instance hkt__partial_apply_run.Fmap[Result$$Var0$$Var1] { fmap=Fmap$$Result$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -27,7 +27,7 @@ declare println: (g) -> Unit
 declare put: (~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
 
 fn build_map() -> Map[String, Int] =
-  let v0: ~MapBuilder[q11, r11] = call builder()
+  let v0: ~MapBuilder[r11, s11] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 3)
@@ -63,14 +63,14 @@ fn main() -> Unit =
       v32
   }
 
-fn Fmap$$Result$$Var0$$Var1$$fmap(v33: Result[w13, x13], v34: (x13) -> z13) -> Result[w13, z13] =
+fn Fmap$$Result$$Var0$$Var1$$fmap(v33: Result[x13, y13], v34: (y13) -> a14) -> Result[x13, a14] =
   switch v33 {
-    0 (v35: x13) ->
-      let v36: z13 = call_closure v34(v35)
-      let v37: Result[w13, z13] = construct Result::Ok#0(v36)
+    0 (v35: y13) ->
+      let v36: a14 = call_closure v34(v35)
+      let v37: Result[x13, a14] = construct Result::Ok#0(v36)
       v37
-    1 (v38: w13) ->
-      let v39: Result[w13, z13] = construct Result::Err#1(v38)
+    1 (v38: x13) ->
+      let v39: Result[x13, a14] = construct Result::Err#1(v38)
       v39
   }
 

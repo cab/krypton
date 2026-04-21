@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module shape_impl__shape_impl_three_params
 
-trait Zip3[h11] { pick_first(h11, i11, j11): h11 }
+trait Zip3[j11] { pick_first(j11, k11, l11): j11 }
 instance shape_impl__shape_impl_three_params.Zip3[$Var0$$$Var0$$$Var0] { pick_first=Zip3$$$Var0$$$Var0$$$Var0$$pick_first }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -16,5 +16,5 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn Zip3$$$Var0$$$Var0$$$Var0$$pick_first(v0: n11, v1: o11, v2: p11) -> n11 =
+fn Zip3$$$Var0$$$Var0$$$Var0$$pick_first(v0: p11, v1: q11, v2: r11) -> p11 =
   v0

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_nonoverlap
 
-trait Convert[h11] { convert(h11): i11 }
+trait Convert[j11] { convert(j11): k11 }
 instance traits__multi_param_nonoverlap.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
 instance traits__multi_param_nonoverlap.Convert[Int$$Float] { convert=Convert$$Int$$Float$$convert }
 import core/peek/peek as peek(d) -> d

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__monoid_empty
 
-trait Monoid[h11] { empty(): h11; combine(h11, h11): h11 }
+trait Monoid[j11] { empty(): j11; combine(j11, j11): j11 }
 instance traits__monoid_empty.Monoid[Int] { empty=Monoid$$Int$$empty, combine=Monoid$$Int$$combine }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

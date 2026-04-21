@@ -20,7 +20,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare foo_consume: (~Foo[z10]) -> Unit
 declare foo_new: () -> ~Foo[y10]
 
-fn consume_loop(v0: ~Foo[l11], v1: Int) -> Unit =
+fn consume_loop(v0: ~Foo[n11], v1: Int) -> Unit =
   let_join v8(v4: Bool) =
     if v4 {
       let v5: Unit = call foo_consume(v0)
@@ -36,7 +36,7 @@ fn consume_loop(v0: ~Foo[l11], v1: Int) -> Unit =
   jump v8(v3)
 
 fn user() -> Unit =
-  let v9: ~Foo[u11] = call foo_new()
+  let v9: ~Foo[w11] = call foo_new()
   let v10: Unit = call consume_loop(v9, 3)
   v10
 

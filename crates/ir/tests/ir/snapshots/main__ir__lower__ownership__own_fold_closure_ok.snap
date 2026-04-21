@@ -14,13 +14,13 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn fold(v0: List[o11], v1: q11, v2: (q11, o11) -> q11) -> q11 =
+fn fold(v0: List[q11], v1: s11, v2: (s11, q11) -> s11) -> s11 =
   switch v0 {
     1 ->
       v1
-    0 (v3: o11, v4: List[o11]) ->
-      let v5: q11 = call_closure v2(v1, v3)
-      let v6: q11 = call fold(v4, v5, v2)
+    0 (v3: q11, v4: List[q11]) ->
+      let v5: s11 = call_closure v2(v1, v3)
+      let v6: s11 = call fold(v4, v5, v2)
       v6
   }
 

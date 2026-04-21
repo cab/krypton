@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type
 
-trait Callable[h11] { call(h11): String }
+trait Callable[j11] { call(j11): String }
 instance traits__trait_fn_type.Callable[$Fun1$Int$String] { call=Callable$$$Fun1$Int$String$$call }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

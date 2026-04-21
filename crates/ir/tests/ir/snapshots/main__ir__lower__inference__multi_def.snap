@@ -14,8 +14,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn id(v0: i11) -> i11 =
+fn id(v0: k11) -> k11 =
   v0
 
-fn always(v1: l11, v2: m11) -> l11 =
+fn always(v1: n11, v2: o11) -> n11 =
   v1

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_zero_arg_context
 
-trait Default[h11] { default(): h11 }
+trait Default[j11] { default(): j11 }
 instance traits__trait_zero_arg_context.Default[Int] { default=Default$$Int$$default }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -23,8 +23,8 @@ fn int_default() -> Int =
   let v1: Int = trait_call traits__trait_zero_arg_context.Default.default(v0)
   v1
 
-fn default2(v2: Dict[traits__trait_zero_arg_context.Default, o11]) -> o11 =
-  let v3: o11 = trait_call traits__trait_zero_arg_context.Default.default(v2)
+fn default2(v2: Dict[traits__trait_zero_arg_context.Default, q11]) -> q11 =
+  let v3: q11 = trait_call traits__trait_zero_arg_context.Default.default(v2)
   v3
 
 fn main() -> Unit =

@@ -3,6 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use krypton_parser::ast::{Decl, FnDecl, Module, Span, Visibility};
 
 use crate::overload::types_overlap;
+use crate::trait_name_resolver::TraitNameResolver;
 use crate::trait_registry::{InstanceInfo, TraitInfo, TraitMethod, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext, TypeRegistry};
 use crate::typed_ast::{
@@ -37,6 +38,7 @@ pub(super) fn process_traits_and_deriving(
     // Phase 2: Register imported trait definitions
     register_imported_trait_defs(
         &mut trait_registry,
+        &mut state.trait_names,
         &state.imported_trait_defs,
         &mut state.gen,
         &state.prelude_imported_names,
@@ -45,6 +47,7 @@ pub(super) fn process_traits_and_deriving(
     // Phase 2b: Register trait aliases from imports
     for (alias, canonical) in &state.trait_aliases {
         trait_registry.register_trait_alias(alias.clone(), canonical.clone());
+        state.trait_names.register_alias(alias.clone(), canonical.clone());
     }
 
     // Phase 2c: Register extern traits (Java interfaces exposed as Krypton traits)
@@ -73,6 +76,7 @@ pub(super) fn process_traits_and_deriving(
     // Phase 5: Deriving pass
     let derived_instance_defs = super::deriving_pass::process_deriving(
         &mut trait_registry,
+        &state.trait_names,
         module,
         &state.registry,
         module_path,
@@ -127,6 +131,7 @@ pub(super) fn process_traits_and_deriving(
         module,
         &trait_method_map,
         &trait_registry,
+        &state.trait_names,
         &state.registry,
         is_core_module,
     )?;
@@ -205,8 +210,15 @@ pub(super) fn import_cached_instances(
 }
 
 /// Phase 2: Register trait definitions imported from other modules.
+///
+/// The bare-name map is owned by `trait_names` (populated at import time by
+/// `process_single_import`); this function only pushes the trait defs into
+/// `trait_registry.traits`. Internally-imported origins (from re-exported trait
+/// methods) are already tagged via `trait_names.register_internal`, so their
+/// defs land here without any bare-name entry.
 pub(super) fn register_imported_trait_defs(
     trait_registry: &mut TraitRegistry,
+    trait_names: &mut TraitNameResolver,
     imported_trait_defs: &[ExportedTraitDef],
     gen: &mut TypeVarGen,
     prelude_imported_names: &FxHashSet<String>,
@@ -256,7 +268,16 @@ pub(super) fn register_imported_trait_defs(
             });
         }
 
-        let is_prelude = prelude_imported_names.contains(&trait_def.name);
+        // Silently-imported trait defs (origin of a re-exported trait method
+        // whose bare name is not user-visible in this module) behave like
+        // prelude traits for method-dispatch priority: a local `trait Functor`
+        // declared in the same module should win over the silent import.
+        // At this phase no locals are registered yet, so a bare-name hit
+        // means the user explicitly imported the trait; a miss means it
+        // arrived silently via a re-exported method origin.
+        let is_silently_imported = trait_names.resolve(&trait_def.name).is_none();
+        let is_prelude =
+            prelude_imported_names.contains(&trait_def.name) || is_silently_imported;
         // Remap each stored superclass arg so it references the local
         // namespace's TypeVarIds (parallel to how method signatures were
         // remapped above).
@@ -270,8 +291,10 @@ pub(super) fn register_imported_trait_defs(
                 )
             })
             .collect();
-        // register_trait checks for bare-name collisions and returns AmbiguousTraitName
-        // if two different modules define traits with the same bare name
+        // Bare-name ambiguity is now caught in `TraitNameResolver`; the
+        // registry only rejects an exact-duplicate `TraitName` (same
+        // module_path + name), which happens when the same trait def arrives
+        // from multiple import paths. Silently skip in that case.
         if let Err(_e) = trait_registry.register_trait(TraitInfo {
             name: trait_def.name.clone(),
             module_path: trait_def.module_path.clone(),
@@ -472,6 +495,10 @@ pub(super) fn register_extern_traits(
                 is_prelude: false,
             })
             .map_err(|e| spanned(e, ext.span))?;
+        state
+            .trait_names
+            .register_local(ext.name.clone(), trait_name.clone())
+            .map_err(|e| spanned(e, ext.span))?;
 
         exported_defs.push(ExportedTraitDef {
             visibility: Visibility::Pub,
@@ -528,7 +555,7 @@ pub(super) fn register_local_traits(
             }
             // Type-namespace check: `name` must not already be declared as a
             // trait in this module. Prelude traits are shadowable.
-            if let Some(existing_trait) = trait_registry.lookup_trait_by_name(name) {
+            if let Some(existing_trait) = state.resolve_trait(trait_registry, name) {
                 if !existing_trait.is_prelude {
                     return Err(spanned(
                         TypeError::DuplicateTrait { name: name.clone() },
@@ -699,8 +726,8 @@ pub(super) fn register_local_traits(
                     if tvs.len() == tv_names.len() && !tvs.is_empty() {
                         // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                         // Validation deferred to instance resolution phase.
-                        let tn = trait_registry
-                            .lookup_trait_by_name(&constraint.trait_name)
+                        let tn = state
+                            .resolve_trait(trait_registry, &constraint.trait_name)
                             .map(|ti| ti.trait_name())
                             .unwrap_or_else(|| {
                                 TraitName::new(
@@ -740,8 +767,8 @@ pub(super) fn register_local_traits(
                 Vec::with_capacity(superclasses.len());
             for sc in superclasses {
                 require_param_vars(sc)?;
-                let sc_trait_name = trait_registry
-                    .lookup_trait_by_name(&sc.trait_name)
+                let sc_trait_name = state
+                    .resolve_trait(trait_registry, &sc.trait_name)
                     .map(|ti| ti.trait_name())
                     .unwrap_or_else(|| {
                         TraitName::new(module_path.to_string(), sc.trait_name.clone())
@@ -762,6 +789,8 @@ pub(super) fn register_local_traits(
                 }
                 superclass_entries.push((sc_trait_name, sc_args));
             }
+            let local_trait_name =
+                TraitName::new(module_path.to_string(), name.clone());
             trait_registry
                 .register_trait(TraitInfo {
                     name: name.clone(),
@@ -776,6 +805,10 @@ pub(super) fn register_local_traits(
                     span: *span,
                     is_prelude: false,
                 })
+                .map_err(|e| spanned(e, *span))?;
+            state
+                .trait_names
+                .register_local(name.clone(), local_trait_name)
                 .map_err(|e| spanned(e, *span))?;
 
             exported_trait_defs.push(ExportedTraitDef {
@@ -851,6 +884,7 @@ pub(super) fn check_trait_name_conflicts(
     module: &Module,
     trait_method_map: &FxHashMap<String, TraitName>,
     trait_registry: &TraitRegistry,
+    trait_names: &TraitNameResolver,
     type_registry: &TypeRegistry,
     is_core_module: bool,
 ) -> Result<(), SpannedTypeError> {
@@ -883,7 +917,10 @@ pub(super) fn check_trait_name_conflicts(
                     let should_error = if let Some(fn_params) =
                         resolve_fn_param_types_for_overlap(f, type_registry)
                     {
-                        if let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) {
+                        if let Some(trait_info) = trait_names
+                            .resolve(trait_name)
+                            .and_then(|tn| trait_registry.lookup_trait(tn))
+                        {
                             if let Some(method) =
                                 trait_info.methods.iter().find(|m| m.name == f.name)
                             {

@@ -2,6 +2,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Module, Span};
 
+use crate::trait_name_resolver::TraitNameResolver;
 use crate::trait_registry::{InstanceInfo, TraitRegistry};
 use crate::type_registry::TypeRegistry;
 use crate::typed_ast::{self, InstanceDefInfo, ResolvedConstraint, TraitName};
@@ -13,6 +14,7 @@ use super::helpers::{duplicate_instance_spanned, spanned};
 
 pub(super) fn process_deriving(
     trait_registry: &mut TraitRegistry,
+    trait_names: &TraitNameResolver,
     module: &Module,
     registry: &TypeRegistry,
     module_path: &str,
@@ -27,7 +29,11 @@ pub(super) fn process_deriving(
             let type_info = registry.lookup_type(&type_decl.name).unwrap();
 
             for trait_name in &type_decl.deriving {
-                if trait_registry.lookup_trait_by_name(trait_name).is_none() {
+                if trait_names
+                    .resolve(trait_name)
+                    .and_then(|tn| trait_registry.lookup_trait(tn))
+                    .is_none()
+                {
                     return Err(spanned(
                         TypeError::UnknownTrait {
                             name: trait_name.clone(),
@@ -72,6 +78,7 @@ pub(super) fn process_deriving(
                     };
                     if !derive::collect_derived_constraints_for_type(
                         trait_registry,
+                        trait_names,
                         trait_name,
                         check_ty,
                         &local_type_params,
@@ -108,8 +115,9 @@ pub(super) fn process_deriving(
 
                 // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
                 // Validation deferred to instance resolution phase.
-                let derive_full_trait_name = trait_registry
-                    .lookup_trait_by_name(trait_name)
+                let derive_full_trait_name = trait_names
+                    .resolve(trait_name)
+                    .and_then(|tn| trait_registry.lookup_trait(tn))
                     .map(|ti| ti.trait_name())
                     .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
                 // A hand-written `impl Trait[T]` for the same (trait, type)
@@ -123,7 +131,10 @@ pub(super) fn process_deriving(
                 // a targeted diagnostic at the `deriving` clause instead so
                 // the user sees "remove the deriving or the impl".
                 if trait_registry
-                    .find_instance_multi(&derive_full_trait_name, std::slice::from_ref(&target_type))
+                    .find_instance_multi(
+                        &derive_full_trait_name,
+                        std::slice::from_ref(&target_type),
+                    )
                     .is_some()
                 {
                     return Err(spanned(
@@ -240,13 +251,17 @@ pub(super) fn process_deriving(
                     .collect();
                 let target_type = Type::Named(name.clone(), type_args);
 
-                let derive_full_trait_name = trait_registry
-                    .lookup_trait_by_name(trait_name)
+                let derive_full_trait_name = trait_names
+                    .resolve(trait_name)
+                    .and_then(|tn| trait_registry.lookup_trait(tn))
                     .map(|ti| ti.trait_name())
                     .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
 
                 if trait_registry
-                    .find_instance_multi(&derive_full_trait_name, std::slice::from_ref(&target_type))
+                    .find_instance_multi(
+                        &derive_full_trait_name,
+                        std::slice::from_ref(&target_type),
+                    )
                     .is_some()
                 {
                     return Err(spanned(
@@ -275,8 +290,7 @@ pub(super) fn process_deriving(
                     })?;
 
                 let syn_span: Span = (0, 0);
-                let (body, fn_ty) =
-                    derive::synthesize_extern_dispose_body(&target_type, syn_span);
+                let (body, fn_ty) = derive::synthesize_extern_dispose_body(&target_type, syn_span);
 
                 let mk_param = |n: &str| crate::typed_ast::TypedParam {
                     name: n.to_string(),

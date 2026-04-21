@@ -17,12 +17,12 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v0: (j11) -> j11 = make_closure(lambda$26, [])
+  let v0: (l11) -> l11 = make_closure(lambda$26, [])
   let v2: Int = call_closure v0(1)
   let v3: Bool = call_closure v0(true)
   let v4: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
   let v5: Unit = call println(v4, v3)
   v5
 
-fn lambda$26(v1: j11) -> j11 =
+fn lambda$26(v1: l11) -> l11 =
   v1

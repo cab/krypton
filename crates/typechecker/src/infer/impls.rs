@@ -2,11 +2,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{Decl, Expr, Module, Span, TypeConstraint};
 
+use crate::trait_name_resolver::TraitNameResolver;
 use crate::trait_registry::{InstanceInfo, TraitRegistry};
 use crate::type_registry::{self, ResolutionContext};
-use crate::typed_ast::{
-    self, ExternFnInfo, InstanceDefInfo, ResolvedConstraint, TraitName,
-};
+use crate::typed_ast::{self, ExternFnInfo, InstanceDefInfo, ResolvedConstraint, TraitName};
 use crate::types::{type_to_canonical_name, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
@@ -19,7 +18,6 @@ use super::helpers::{
 };
 use super::state::ModuleInferenceState;
 
-
 /// Resolve parser `TypeConstraint`s (bare string trait names) to `ResolvedConstraint`s
 /// using the trait registry to look up the full `TraitName`.
 // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
@@ -27,6 +25,7 @@ use super::state::ModuleInferenceState;
 pub(super) fn resolve_constraints(
     constraints: &[TypeConstraint],
     trait_registry: &TraitRegistry,
+    trait_names: &TraitNameResolver,
     module_path: &str,
 ) -> Result<Vec<ResolvedConstraint>, SpannedTypeError> {
     constraints
@@ -34,8 +33,9 @@ pub(super) fn resolve_constraints(
         .map(|tc| {
             let tv_names = require_param_vars(tc)?;
             Ok(ResolvedConstraint {
-                trait_name: trait_registry
-                    .lookup_trait_by_name(&tc.trait_name)
+                trait_name: trait_names
+                    .resolve(&tc.trait_name)
+                    .and_then(|tn| trait_registry.lookup_trait(tn))
                     .map(|ti| ti.trait_name())
                     .unwrap_or_else(|| {
                         TraitName::new(module_path.to_string(), tc.trait_name.clone())
@@ -227,11 +227,10 @@ pub(super) fn register_impl_instances(
             // Final orphan check: either the trait is local, or at least one type
             // argument has its head type defined locally.
             let joined_display = {
-                let names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> =
-                    type_param_map
-                        .iter()
-                        .map(|(n, &id)| (id, n.as_str()))
-                        .collect();
+                let names: rustc_hash::FxHashMap<crate::types::TypeVarId, &str> = type_param_map
+                    .iter()
+                    .map(|(n, &id)| (id, n.as_str()))
+                    .collect();
                 resolved_targets
                     .iter()
                     .map(|rt| {
@@ -269,8 +268,8 @@ pub(super) fn register_impl_instances(
             let target_display_name = joined_display.clone();
 
             for constraint in type_constraints {
-                if trait_registry
-                    .lookup_trait_by_name(&constraint.trait_name)
+                if state
+                    .resolve_trait(trait_registry, &constraint.trait_name)
                     .is_none()
                 {
                     return Err(spanned(
@@ -282,7 +281,7 @@ pub(super) fn register_impl_instances(
                 }
             }
 
-            if let Some(trait_info) = trait_registry.lookup_trait_by_name(trait_name) {
+            if let Some(trait_info) = state.resolve_trait(trait_registry, trait_name) {
                 let expected_arity = trait_info.type_var_arity;
                 if expected_arity > 0 {
                     if wildcard_count > 0 {
@@ -347,12 +346,16 @@ pub(super) fn register_impl_instances(
                 .join("$$");
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
             // Validation deferred to instance resolution phase.
-            let impl_full_trait_name = trait_registry
-                .lookup_trait_by_name(trait_name)
+            let impl_full_trait_name = state
+                .resolve_trait(trait_registry, trait_name)
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
-            let resolved_constraints =
-                resolve_constraints(type_constraints, trait_registry, module_path)?;
+            let resolved_constraints = resolve_constraints(
+                type_constraints,
+                trait_registry,
+                &state.trait_names,
+                module_path,
+            )?;
             let instance = InstanceInfo {
                 trait_name: impl_full_trait_name,
                 target_types: resolved_targets,
@@ -396,7 +399,20 @@ pub(super) fn typecheck_impl_methods(
             ..
         } = decl
         {
-            let trait_info = trait_registry.lookup_trait_by_name(trait_name).unwrap();
+            let resolved_trait_name = match state.trait_names.resolve(trait_name) {
+                Some(tn) => tn.clone(),
+                None => {
+                    return Err(spanned(
+                        TypeError::UnknownTrait {
+                            name: trait_name.clone(),
+                        },
+                        *span,
+                    ));
+                }
+            };
+            let trait_info = trait_registry
+                .lookup_trait(&resolved_trait_name)
+                .expect("resolver maps to a trait_registry entry by construction");
             let impl_trait_name = trait_info.trait_name();
             let tv_id = trait_info.type_var_id;
 
@@ -497,8 +513,9 @@ pub(super) fn typecheck_impl_methods(
                         .get(&sv)
                         .filter(|t| free_vars(t).is_empty());
                     match concrete_target {
-                        Some(t) => per_var_candidates
-                            .push((sv, vec![ShapeCandidate::Concrete(t.clone())])),
+                        Some(t) => {
+                            per_var_candidates.push((sv, vec![ShapeCandidate::Concrete(t.clone())]))
+                        }
                         None => per_var_candidates
                             .push((sv, vec![ShapeCandidate::Plain, ShapeCandidate::Owned])),
                     }
@@ -532,10 +549,8 @@ pub(super) fn typecheck_impl_methods(
                 // unioned with later forks. After the loop, the committed
                 // fork's captured metadata is restored.
                 let mut committed: Option<ForkCommit> = None;
-                let mut committed_metadata: Option<(
-                    FxHashSet<Span>,
-                    FxHashMap<Span, String>,
-                )> = None;
+                let mut committed_metadata: Option<(FxHashSet<Span>, FxHashMap<Span, String>)> =
+                    None;
                 let mut dual_check_failure: Option<(String, SpannedTypeError)> = None;
                 let is_multi_fork = combos.len() > 1;
                 let pre_loop_let_own_spans = state.let_own_spans.clone();
@@ -635,11 +650,9 @@ pub(super) fn typecheck_impl_methods(
                     match fork_result {
                         Ok(result) => {
                             if committed.is_none() && !all_intrinsic {
-                                committed = Some(
-                                    result.expect(
-                                        "non-intrinsic check_fork must yield Some(ForkCommit)",
-                                    ),
-                                );
+                                committed = Some(result.expect(
+                                    "non-intrinsic check_fork must yield Some(ForkCommit)",
+                                ));
                                 // Capture the committed fork's post-inference
                                 // metadata so we can restore it after all
                                 // validation forks finish.
@@ -694,9 +707,8 @@ pub(super) fn typecheck_impl_methods(
                     body_typed,
                     method_constraint_pairs,
                     fn_ty,
-                } = committed.expect(
-                    "check_fork returned no error and no commit for non-intrinsic impl",
-                );
+                } = committed
+                    .expect("check_fork returned no error and no commit for non-intrinsic impl");
                 let scheme = TypeScheme {
                     vars: vec![],
                     constraints: Vec::new(),
@@ -721,8 +733,8 @@ pub(super) fn typecheck_impl_methods(
 
             // TraitName synthesis: trait may not be registered yet (forward reference or self-reference).
             // Validation deferred to instance resolution phase.
-            let inst_trait_name = trait_registry
-                .lookup_trait_by_name(trait_name)
+            let inst_trait_name = state
+                .resolve_trait(trait_registry, trait_name)
                 .map(|ti| ti.trait_name())
                 .unwrap_or_else(|| TraitName::new(module_path.to_string(), trait_name.clone()));
             // Preserve the full multi-param tuple; only the first is used for

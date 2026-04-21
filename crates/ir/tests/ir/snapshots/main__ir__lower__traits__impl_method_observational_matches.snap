@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__impl_method_observational_matches
 
 struct File { fd: Int }
-trait MyShow[h11] { show(h11): String }
+trait MyShow[j11] { show(j11): String }
 instance traits__impl_method_observational_matches.MyShow[File] { show=MyShow$$File$$show }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

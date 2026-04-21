@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__type_qualify_trait
 
-trait MyEq[i11] { my_eq(i11, i11): Bool }
+trait MyEq[k11] { my_eq(k11, k11): Bool }
 instance modules__type_qualify_trait.MyEq[Int] { my_eq=MyEq$$Int$$my_eq }
 extern java "krypton.runtime.KryptonIO" println(x10) -> Unit
 import core/peek/peek as peek(d) -> d

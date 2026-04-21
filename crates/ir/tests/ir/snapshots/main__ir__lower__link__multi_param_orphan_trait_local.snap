@@ -4,7 +4,7 @@ expression: output
 ---
 module multi_param_orphan_trait_local
 
-trait MyConvert[h11] { my_convert(h11): i11 }
+trait MyConvert[j11] { my_convert(j11): k11 }
 instance multi_param_orphan_trait_local.MyConvert[Int$$String] { my_convert=MyConvert$$Int$$String$$my_convert }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

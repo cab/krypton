@@ -16,8 +16,8 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn negate(v0: Dict[core/neg.Neg, i11], v1: i11) -> i11 =
-  let v2: i11 = trait_call core/neg.Neg.neg(v0, v1)
+fn negate(v0: Dict[core/neg.Neg, k11], v1: k11) -> k11 =
+  let v2: k11 = trait_call core/neg.Neg.neg(v0, v1)
   v2
 
 fn main() -> Unit =

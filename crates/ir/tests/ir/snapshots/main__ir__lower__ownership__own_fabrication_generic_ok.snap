@@ -14,7 +14,7 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn ok(v0: (i11) -> String, v1: i11) -> String =
+fn ok(v0: (k11) -> String, v1: k11) -> String =
   let v2: String = call_closure v0(v1)
   v2
 

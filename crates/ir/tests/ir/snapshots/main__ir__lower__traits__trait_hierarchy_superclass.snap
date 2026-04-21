@@ -33,25 +33,25 @@ fn main() -> Unit =
       v10
   }
 
-fn Functor$$Box$$map(v11: Box[g12], v12: (g12) -> i12) -> Box[i12] =
+fn Functor$$Box$$map(v11: Box[h12], v12: (h12) -> j12) -> Box[j12] =
   switch v11 {
-    0 (v13: g12) ->
-      let v14: i12 = call_closure v12(v13)
-      let v15: Box[i12] = construct Box::Box#0(v14)
+    0 (v13: h12) ->
+      let v14: j12 = call_closure v12(v13)
+      let v15: Box[j12] = construct Box::Box#0(v14)
       v15
   }
 
-fn Applicative$$Box$$pure(v16: k12) -> Box[k12] =
-  let v17: Box[k12] = construct Box::Box#0(v16)
+fn Applicative$$Box$$pure(v16: l12) -> Box[l12] =
+  let v17: Box[l12] = construct Box::Box#0(v16)
   v17
 
-fn Applicative$$Box$$apply(v18: Box[(w12) -> y12], v19: Box[w12]) -> Box[y12] =
+fn Applicative$$Box$$apply(v18: Box[(x12) -> z12], v19: Box[x12]) -> Box[z12] =
   switch v18 {
-    0 (v20: (w12) -> y12) ->
+    0 (v20: (x12) -> z12) ->
       switch v19 {
-        0 (v21: w12) ->
-          let v22: y12 = call_closure v20(v21)
-          let v23: Box[y12] = construct Box::Box#0(v22)
+        0 (v21: x12) ->
+          let v22: z12 = call_closure v20(v21)
+          let v23: Box[z12] = construct Box::Box#0(v22)
           v23
       }
   }

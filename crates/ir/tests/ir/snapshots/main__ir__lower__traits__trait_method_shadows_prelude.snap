@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_method_shadows_prelude
 
-trait Multiply[h11] { times(h11, h11): h11 }
+trait Multiply[j11] { times(j11, j11): j11 }
 instance traits__trait_method_shadows_prelude.Multiply[Int] { times=Multiply$$Int$$times }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

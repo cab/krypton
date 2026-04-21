@@ -1158,7 +1158,7 @@ import core/io/println as println(g) -> Unit
 module trait_name_then_method_lib
 
 type Hello = MkHello#0(String)
-trait Greet[h11] { greet(h11): String }
+trait Greet[j11] { greet(j11): String }
 instance trait_name_then_method_lib.Greet[Hello] { greet=Greet$$Hello$$greet }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__own_deferred_trait_method
 
-trait Default[h11] { default(): ~h11 }
+trait Default[j11] { default(): ~j11 }
 instance ownership__own_deferred_trait_method.Default[Option$Int] { default=Default$$Option$Int$$default }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -32,7 +32,7 @@ fn mk_closed() -> ~ConnState =
   let v4: ~ConnState = construct ConnState::Closed#1()
   v4
 
-fn identity(v5: o11) -> o11 =
+fn identity(v5: q11) -> q11 =
   v5
 
 fn mk_via_identity(v6: ~Socket) -> ~Conn =

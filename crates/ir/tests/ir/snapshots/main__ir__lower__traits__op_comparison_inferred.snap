@@ -16,7 +16,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn is_equal(v0: Dict[core/eq.Eq, i11], v1: i11, v2: i11) -> Bool =
+fn is_equal(v0: Dict[core/eq.Eq, k11], v1: k11, v2: k11) -> Bool =
   let v3: Bool = trait_call core/eq.Eq.eq(v0, v1, v2)
   v3
 

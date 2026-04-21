@@ -16,13 +16,13 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, i11], v1: i11) -> String =
+fn show_it(v0: Dict[core/show.Show, k11], v1: k11) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 
-fn use_it(v3: Dict[core/show.Show, n11], v4: n11) -> String =
-  let v9: (p11) -> String = make_closure(fn_ref$28, [v3])
-  let v5: (p11) -> String = v9
+fn use_it(v3: Dict[core/show.Show, p11], v4: p11) -> String =
+  let v9: (r11) -> String = make_closure(fn_ref$28, [v3])
+  let v5: (r11) -> String = v9
   let v10: String = call_closure v5(v4)
   v10
 
@@ -38,6 +38,6 @@ fn main() -> Unit =
   let v15: Bool = trait_call core/eq.Eq.eq(v12, v14, "42")
   jump v18(v15)
 
-fn fn_ref$28(v6: Dict[core/show.Show, p11], v7: p11) -> String =
+fn fn_ref$28(v6: Dict[core/show.Show, r11], v7: r11) -> String =
   let v8: String = call show_it(v6, v7)
   v8

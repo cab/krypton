@@ -14,8 +14,8 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn apply(v0: ~(i11) -> m11, v1: i11) -> m11 =
-  let v2: m11 = call_closure v0(v1)
+fn apply(v0: ~(k11) -> o11, v1: k11) -> o11 =
+  let v2: o11 = call_closure v0(v1)
   v2
 
 fn double(v3: Int) -> Int =

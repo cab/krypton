@@ -17,11 +17,11 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn extract(v0: Wrapper[m11]) -> m11 =
+fn extract(v0: Wrapper[o11]) -> o11 =
   switch v0 {
-    0 (v1: m11) ->
+    0 (v1: o11) ->
       v1
-    1 (v2: m11) ->
+    1 (v2: o11) ->
       v2
   }
 

@@ -39,7 +39,9 @@ impl ModuleInferenceState {
         def_span: Span,
         source_module: String,
     ) {
-        let has_overloads = self.env.lookup_entry(&effective_name)
+        let has_overloads = self
+            .env
+            .lookup_entry(&effective_name)
             .is_some_and(|e| e.overload_candidates.is_some());
         let ds = crate::types::DefSpan {
             span: def_span,
@@ -48,12 +50,8 @@ impl ModuleInferenceState {
         if has_overloads {
             self.env.set_def_span(effective_name, ds);
         } else {
-            self.env.bind_with_source_and_def_span(
-                effective_name,
-                scheme,
-                binding_source,
-                ds,
-            );
+            self.env
+                .bind_with_source_and_def_span(effective_name, scheme, binding_source, ds);
         }
     }
 
@@ -463,6 +461,31 @@ impl ModuleInferenceState {
                         .imported_fn_qualifiers
                         .insert(effective_name, quals.clone());
                 }
+                // Silent trait-def import: when the re-exported fn is a trait
+                // method (`ef.origin: Some(TraitName)`), pull the origin
+                // trait's full def into `imported_trait_defs` so the consumer's
+                // trait registry can resolve dicts at call sites, but MARK the
+                // name as internal so `impl Functor[X]` without an explicit
+                // import still errors with `UnknownTrait`.
+                if let Some(origin) = &ef.origin {
+                    if let Some(origin_iface) = interface_cache.get(origin.module_path.as_str()) {
+                        if let Some(trait_summary) = origin_iface
+                            .exported_traits
+                            .iter()
+                            .find(|t| t.name == origin.local_name)
+                        {
+                            let td =
+                                module_interface::trait_summary_to_exported_def(trait_summary);
+                            let already = self.imported_trait_defs.iter().any(|x| {
+                                x.name == td.name && x.module_path == td.module_path
+                            });
+                            if !already {
+                                self.imported_trait_defs.push(td);
+                            }
+                            self.trait_names.register_internal(origin);
+                        }
+                    }
+                }
             }
         }
 
@@ -753,16 +776,30 @@ impl ModuleInferenceState {
 
             // Build canonical TraitName (always uses original name, not alias)
             let trait_id = TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
-            let trait_already_registered = self.imported_trait_names.contains(&effective_name);
-
-            // Register the trait def only on first sight.
-            if !trait_already_registered {
+            // Dedup imported_trait_defs so the registry doesn't see the same
+            // canonical TraitName twice; trait_names handles bare-name
+            // registration and ambiguity separately.
+            let def_already_pushed = self
+                .imported_trait_defs
+                .iter()
+                .any(|x| x.name == trait_def.name && x.module_path == trait_def.module_path);
+            if !def_already_pushed {
                 self.imported_trait_defs.push(trait_def.clone());
-                self.imported_trait_names.insert(effective_name.clone());
-                if effective_name != trait_def.name {
-                    self.trait_aliases
-                        .push((effective_name.clone(), trait_id.clone()));
-                }
+            }
+            // Upgrade a prior silent (internal) registration by recording the
+            // bare name here; `register_imported` is idempotent for matching
+            // `TraitName`s so a duplicate user-level import is harmless.
+            self.trait_names
+                .register_imported(effective_name.clone(), trait_id.clone())
+                .map_err(|e| spanned(e, span))?;
+            if effective_name != trait_def.name
+                && !self
+                    .trait_aliases
+                    .iter()
+                    .any(|(a, tn)| a == &effective_name && tn == &trait_id)
+            {
+                self.trait_aliases
+                    .push((effective_name.clone(), trait_id.clone()));
             }
 
             let origin = Some(trait_id);
@@ -786,8 +823,7 @@ impl ModuleInferenceState {
                     // Ordering here is load-bearing — user pins like
                     // `xs.map[String]` resolve positionally against this
                     // list.
-                    let mut vars: Vec<crate::types::TypeVarId> =
-                        trait_def.type_var_ids.clone();
+                    let mut vars: Vec<crate::types::TypeVarId> = trait_def.type_var_ids.clone();
                     let mut seen: FxHashSet<crate::types::TypeVarId> =
                         vars.iter().copied().collect();
                     for tv in super::free_vars_ordered(&fn_ty) {
@@ -830,7 +866,7 @@ impl ModuleInferenceState {
                     .imports
                     .imported_type_info
                     .contains_key(&effective_name);
-                let found_trait = self.imported_trait_names.contains(&effective_name);
+                let found_trait = self.trait_names.is_known(&effective_name);
 
                 if !found_fn && !found_type && !found_trait {
                     return Err(spanned(
@@ -846,8 +882,7 @@ impl ModuleInferenceState {
                         .get_by_name(&effective_name)
                         .map(|f| (f.scheme.clone(), f.origin.clone(), f.qualified_name.clone()))
                         .collect();
-                    let reexport_def_span =
-                        self.env.get_def_span(&effective_name).map(|d| d.span);
+                    let reexport_def_span = self.env.get_def_span(&effective_name).map(|d| d.span);
                     for (scheme, origin, qualified_name) in candidates {
                         // Dedup key is (qualified_name, normalized param types):
                         // the param types distinguish overloads that share a
@@ -857,13 +892,11 @@ impl ModuleInferenceState {
                         // would double-count when a single overload is reached
                         // via multiple re-export statements in this module.
                         let new_params = crate::overload::fn_param_types(&scheme.ty);
-                        let already_reexported =
-                            self.reexported_fn_types.iter().any(|ef| {
-                                ef.name == effective_name
-                                    && ef.qualified_name.as_ref() == Some(&qualified_name)
-                                    && crate::overload::fn_param_types(&ef.scheme.ty)
-                                        == new_params
-                            });
+                        let already_reexported = self.reexported_fn_types.iter().any(|ef| {
+                            ef.name == effective_name
+                                && ef.qualified_name.as_ref() == Some(&qualified_name)
+                                && crate::overload::fn_param_types(&ef.scheme.ty) == new_params
+                        });
                         if already_reexported {
                             continue;
                         }

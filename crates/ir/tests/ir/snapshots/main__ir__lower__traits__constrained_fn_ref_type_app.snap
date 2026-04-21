@@ -16,7 +16,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 declare println: (g) -> Unit
 
-fn show_it(v0: Dict[core/show.Show, i11], v1: i11) -> String =
+fn show_it(v0: Dict[core/show.Show, k11], v1: k11) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2
 

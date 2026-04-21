@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module modules__local_trait_imported_type
 
-trait Describable[h11] { describe(h11): String }
+trait Describable[j11] { describe(j11): String }
 instance modules__local_trait_imported_type.Describable[Point] { describe=Describable$$Point$$describe }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

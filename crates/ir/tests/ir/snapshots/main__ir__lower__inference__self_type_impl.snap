@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module inference__self_type_impl
 
 struct Point { x: Int, y: Int }
-trait MyEq[h11] { my_eq(h11, h11): Bool }
+trait MyEq[j11] { my_eq(j11, j11): Bool }
 instance inference__self_type_impl.MyEq[Point] { my_eq=MyEq$$Point$$my_eq }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

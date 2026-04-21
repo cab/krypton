@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_nonoverlap_constructor
 
-trait MyTrait[h11] { length(Vec[h11]): Int }
+trait MyTrait[j11] { length(Vec[j11]): Int }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]

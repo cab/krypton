@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__trait_collision_nonoverlap
 
-trait Bar[i11] { act(i11, String): i11 }
-trait Foo[h11] { act(h11, Int): h11 }
+trait Bar[k11] { act(k11, String): k11 }
+trait Foo[j11] { act(j11, Int): j11 }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]

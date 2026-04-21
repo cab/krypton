@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__impl_vec_distinct_params
 
-trait Tag[h11] { tag(h11): String }
+trait Tag[j11] { tag(j11): String }
 instance hkt__impl_vec_distinct_params.Tag[Vec$Int] { tag=Tag$$Vec$Int$$tag }
 instance hkt__impl_vec_distinct_params.Tag[Vec$String] { tag=Tag$$Vec$String$$tag }
 import core/peek/peek as peek(d) -> d

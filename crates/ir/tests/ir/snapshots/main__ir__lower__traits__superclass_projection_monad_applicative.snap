@@ -16,9 +16,9 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn double_mapped(v0: Dict[core/monad.Monad, w11], v1: w11[y11], v2: (y11) -> y11) -> w11[y11] =
-  let v12: (y11) -> w11[y11] = make_closure(lambda$29, [v2, v0])
-  let v13: w11[y11] = trait_call core/monad.Monad.flat_map(v0, v1, v12)
+fn double_mapped(v0: Dict[core/monad.Monad, x11], v1: x11[z11], v2: (z11) -> z11) -> x11[z11] =
+  let v12: (z11) -> x11[z11] = make_closure(lambda$29, [v2, v0])
+  let v13: x11[z11] = trait_call core/monad.Monad.flat_map(v0, v1, v12)
   v13
 
 fn main() -> Unit =
@@ -58,13 +58,13 @@ fn main() -> Unit =
       jump v42(v28)
   }
 
-fn lambda$29(v3: (y11) -> y11, v4: Dict[core/monad.Monad, w11], v5: y11) -> w11[y11] =
-  let v8: y11 = call_closure v3(v5)
-  let v9: Dict[core/applicative.Applicative, w11] = project_dict_field v4.dict0 : core/applicative.Applicative[w11]
-  let v10: w11[y11] = trait_call core/applicative.Applicative.pure(v9, v8)
-  let v6: Dict[core/applicative.Applicative, w11] = project_dict_field v4.dict0 : core/applicative.Applicative[w11]
-  let v7: Dict[core/functor.Functor, w11] = project_dict_field v6.dict0 : core/functor.Functor[w11]
-  let v11: w11[y11] = trait_call core/functor.Functor.map(v7, v10, v3)
+fn lambda$29(v3: (z11) -> z11, v4: Dict[core/monad.Monad, x11], v5: z11) -> x11[z11] =
+  let v8: z11 = call_closure v3(v5)
+  let v9: Dict[core/applicative.Applicative, x11] = project_dict_field v4.dict0 : core/applicative.Applicative[x11]
+  let v10: x11[z11] = trait_call core/applicative.Applicative.pure(v9, v8)
+  let v6: Dict[core/applicative.Applicative, x11] = project_dict_field v4.dict0 : core/applicative.Applicative[x11]
+  let v7: Dict[core/functor.Functor, x11] = project_dict_field v6.dict0 : core/functor.Functor[x11]
+  let v11: x11[z11] = trait_call core/functor.Functor.map(v7, v10, v3)
   v11
 
 fn lambda$30(v15: Int) -> Int =

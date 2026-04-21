@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module tuples__tuple_trait_instance
 
-trait Describe[h11] { describe(h11): String }
+trait Describe[j11] { describe(j11): String }
 instance tuples__tuple_trait_instance.Describe[$Tuple2$Int$String] { describe=Describe$$$Tuple2$Int$String$$describe }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

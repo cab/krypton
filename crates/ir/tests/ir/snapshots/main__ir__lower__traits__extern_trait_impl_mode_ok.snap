@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__extern_trait_impl_mode_ok
 
-trait Runnable[h11] { run(h11): Unit }
+trait Runnable[j11] { run(j11): Unit }
 instance traits__extern_trait_impl_mode_ok.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

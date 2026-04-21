@@ -20,12 +20,12 @@ declare println: (g) -> Unit
 declare read_file: (String) -> Result[String, String]
 declare write_file: (String, String) -> Result[String, Unit]
 
-fn handle(v0: Dict[core/show.Show, o11], v1: Dict[core/show.Show, p11], v2: Result[o11, p11]) -> Unit =
+fn handle(v0: Dict[core/show.Show, q11], v1: Dict[core/show.Show, r11], v2: Result[q11, r11]) -> Unit =
   switch v2 {
-    0 (v3: p11) ->
+    0 (v3: r11) ->
       let v4: Unit = call println(v1, v3)
       v4
-    1 (v5: o11) ->
+    1 (v5: q11) ->
       let v6: Unit = call println(v0, v5)
       v6
   }

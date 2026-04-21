@@ -1158,7 +1158,7 @@ import core/io/println as println(g) -> Unit
 module trait_origin_lib
 
 type Msg = MkMsg#0(String)
-trait Render[h11] { render(h11): String }
+trait Render[j11] { render(j11): String }
 instance trait_origin_lib.Render[Msg] { render=Render$$Msg$$render }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -76,8 +76,6 @@ pub struct InstanceInfo {
 
 pub struct TraitRegistry {
     traits: FxHashMap<TraitName, TraitInfo>,
-    /// Secondary index: bare trait name → TraitName, for O(1) lookup_trait_by_name.
-    bare_name_index: FxHashMap<String, TraitName>,
     instances: Vec<InstanceInfo>,
     /// Index: trait_name → indices into `instances`, for fast overlap/lookup.
     instances_by_trait: FxHashMap<TraitName, Vec<usize>>,
@@ -94,13 +92,17 @@ impl TraitRegistry {
     pub fn new() -> Self {
         TraitRegistry {
             traits: FxHashMap::default(),
-            bare_name_index: FxHashMap::default(),
             instances: Vec::new(),
             instances_by_trait: FxHashMap::default(),
             trait_aliases: FxHashMap::default(),
         }
     }
 
+    /// Register a trait definition under its canonical `TraitName`.
+    ///
+    /// Bare-name ambiguity (two modules defining traits with the same bare
+    /// name) is detected upstream in `TraitNameResolver`; this method only
+    /// rejects an exact-duplicate `TraitName` (same module_path + name).
     pub fn register_trait(&mut self, info: TraitInfo) -> Result<(), TypeError> {
         let key = info.trait_name();
         if self.traits.contains_key(&key) {
@@ -110,18 +112,6 @@ impl TraitRegistry {
                 modules_checked: vec![],
             });
         }
-        // Check bare-name collision with a trait from a different module
-        if let Some(existing_key) = self.bare_name_index.get(&info.name) {
-            if *existing_key != key {
-                let existing = &self.traits[existing_key];
-                return Err(TypeError::AmbiguousTraitName {
-                    name: info.name.clone(),
-                    existing_module: existing.module_path.clone(),
-                    new_module: info.module_path.clone(),
-                });
-            }
-        }
-        self.bare_name_index.insert(info.name.clone(), key.clone());
         self.traits.insert(key, info);
         Ok(())
     }
@@ -190,18 +180,6 @@ impl TraitRegistry {
 
     pub fn lookup_trait(&self, name: &TraitName) -> Option<&TraitInfo> {
         self.traits.get(name)
-    }
-
-    /// Look up a trait by bare name. Also checks trait aliases as a fallback.
-    pub fn lookup_trait_by_name(&self, name: &str) -> Option<&TraitInfo> {
-        self.bare_name_index
-            .get(name)
-            .and_then(|tn| self.traits.get(tn))
-            .or_else(|| {
-                self.trait_aliases
-                    .get(name)
-                    .and_then(|tn| self.traits.get(tn))
-            })
     }
 
     pub fn find_instance(&self, trait_name: &TraitName, ty: &Type) -> Option<&InstanceInfo> {
@@ -1628,88 +1606,6 @@ mod tests {
         let result =
             registry.diagnose_missing_instance(&tn("Show"), std::slice::from_ref(&Type::Int));
         assert!(result.is_none());
-    }
-
-    #[test]
-    fn trait_alias_lookup() {
-        let mut registry = TraitRegistry::new();
-        let trait_name = TraitName::new("other/module".to_string(), "Eq".to_string());
-        let var_a = TypeVarGen::new().fresh();
-        registry
-            .register_trait(TraitInfo {
-                name: "Eq".to_string(),
-                module_path: "other/module".to_string(),
-                type_var: "a".to_string(),
-                type_var_id: var_a,
-                type_var_ids: vec![var_a],
-                type_var_names: vec!["a".to_string()],
-                type_var_arity: 0,
-                superclasses: vec![],
-                methods: Vec::<TraitMethod>::new(),
-                span: (0, 0),
-                is_prelude: false,
-            })
-            .unwrap();
-        registry.register_trait_alias("MyEq".to_string(), trait_name.clone());
-
-        // Lookup by alias should work
-        let info = registry.lookup_trait_by_name("MyEq");
-        assert!(info.is_some());
-        assert_eq!(info.unwrap().name, "Eq");
-
-        // Lookup by original name should also work
-        let info = registry.lookup_trait_by_name("Eq");
-        assert!(info.is_some());
-    }
-
-    #[test]
-    fn bare_name_collision_detected() {
-        let mut registry = TraitRegistry::new();
-        let var_a = TypeVarGen::new().fresh();
-        registry
-            .register_trait(TraitInfo {
-                name: "Eq".to_string(),
-                module_path: "module_a".to_string(),
-                type_var: "a".to_string(),
-                type_var_id: var_a,
-                type_var_ids: vec![var_a],
-                type_var_names: vec!["a".to_string()],
-                type_var_arity: 0,
-                superclasses: vec![],
-                methods: Vec::<TraitMethod>::new(),
-                span: (0, 0),
-                is_prelude: false,
-            })
-            .unwrap();
-
-        // Registering a trait with the same bare name from a different module should error
-        let var_a2 = TypeVarGen::new().fresh();
-        let result = registry.register_trait(TraitInfo {
-            name: "Eq".to_string(),
-            module_path: "module_b".to_string(),
-            type_var: "a".to_string(),
-            type_var_id: var_a2,
-            type_var_ids: vec![var_a2],
-            type_var_names: vec!["a".to_string()],
-            type_var_arity: 0,
-            superclasses: vec![],
-            methods: Vec::<TraitMethod>::new(),
-            span: (0, 0),
-            is_prelude: false,
-        });
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            TypeError::AmbiguousTraitName {
-                name,
-                existing_module,
-                new_module,
-            } => {
-                assert_eq!(name, "Eq");
-                assert_eq!(existing_module, "module_a");
-                assert_eq!(new_module, "module_b");
-            }
-            other => panic!("expected AmbiguousTraitName, got {:?}", other),
-        }
     }
 
     #[test]

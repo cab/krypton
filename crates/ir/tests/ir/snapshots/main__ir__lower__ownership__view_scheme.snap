@@ -14,7 +14,7 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn view(v0: ~i11) -> i11 =
+fn view(v0: ~k11) -> k11 =
   v0
 
 fn test(v1: ~String) -> String =

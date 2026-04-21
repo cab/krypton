@@ -15,20 +15,20 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[e12]) -> Unit) -> Ref[e12]
-import core/actor/send as send(Ref[h12], h12) -> Unit
-import core/actor/receive as receive(Mailbox[q12]) -> q12
-import core/actor/actor_ref as actor_ref(Mailbox[a13]) -> Ref[a13]
-import core/actor/mailbox as mailbox() -> Mailbox[j13]
+import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
+import core/actor/send as send(Ref[j12], j12) -> Unit
+import core/actor/receive as receive(Mailbox[s12]) -> s12
+import core/actor/actor_ref as actor_ref(Mailbox[c13]) -> Ref[c13]
+import core/actor/mailbox as mailbox() -> Mailbox[l13]
 import core/vec/push as push(~VecBuilder[w6], w6) -> ~VecBuilder[w6]
 import core/vec/push as push(Vec[b7], b7) -> Vec[b7]
-declare actor_ref: (Mailbox[a13]) -> Ref[a13]
-declare mailbox: () -> Mailbox[j13]
+declare actor_ref: (Mailbox[c13]) -> Ref[c13]
+declare mailbox: () -> Mailbox[l13]
 declare println: (g) -> Unit
 declare push: (Vec[b7], b7) -> Vec[b7]
-declare receive: (Mailbox[q12]) -> q12
-declare send: (Ref[h12], h12) -> Unit
-declare spawn: ((Mailbox[e12]) -> Unit) -> Ref[e12]
+declare receive: (Mailbox[s12]) -> s12
+declare send: (Ref[j12], j12) -> Unit
+declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
 
 fn build_vec(v0: Vec[Int], v1: Int, v2: Int) -> Vec[Int] =
   let_join [recur] v3(v4: Vec[Int], v5: Int, v6: Int) =

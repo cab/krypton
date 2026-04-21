@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__multi_param_hkt
 
 type Box[a] = Box#0(a)
-trait BoxConvert[i11] { box_convert(i11[j11]): j11 }
+trait BoxConvert[k11] { box_convert(k11[l11]): l11 }
 instance traits__multi_param_hkt.BoxConvert[Box$$Int] { box_convert=BoxConvert$$Box$$Int$$box_convert }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module extern__extern_trait_multi_method
 
 struct MyHandler { name: String }
-trait Callback[h11] { on_failure(h11, String): Unit; on_response(h11, String): Unit }
+trait Callback[j11] { on_failure(j11, String): Unit; on_response(j11, String): Unit }
 instance extern__extern_trait_multi_method.Callback[MyHandler] { on_failure=Callback$$MyHandler$$on_failure, on_response=Callback$$MyHandler$$on_response }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -19,7 +19,7 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, j11], v1: j11) -> Unit =
+fn handle(v0: Dict[extern__extern_trait_multi_method.Callback, l11], v1: l11) -> Unit =
   let v2: Unit = trait_call extern__extern_trait_multi_method.Callback.on_failure(v0, v1, "test")
   v2
 

@@ -19,7 +19,7 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn is_less(v0: Dict[core/ord.Ord, i11], v1: i11, v2: i11) -> Bool =
+fn is_less(v0: Dict[core/ord.Ord, k11], v1: k11, v2: k11) -> Bool =
   let v3: Bool = trait_call core/ord.Ord.lt(v0, v1, v2)
   v3
 

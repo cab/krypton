@@ -16,6 +16,6 @@ import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn wrap(v0: j11) -> Option[j11] =
-  let v1: Option[j11] = construct Option::Some#0(v0)
+fn wrap(v0: l11) -> Option[l11] =
+  let v1: Option[l11] = construct Option::Some#0(v0)
   v1

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module shape_impl__shape_impl_generic_both_ok
 
-trait Identity[h11] { identify(h11): h11 }
+trait Identity[j11] { identify(j11): j11 }
 instance shape_impl__shape_impl_generic_both_ok.Identity[$Var0] { identify=Identity$$$Var0$$identify }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
@@ -16,5 +16,5 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn Identity$$$Var0$$identify(v0: j11) -> j11 =
+fn Identity$$$Var0$$identify(v0: l11) -> l11 =
   v0

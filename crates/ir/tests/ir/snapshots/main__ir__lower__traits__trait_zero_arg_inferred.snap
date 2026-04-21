@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__trait_zero_arg_inferred
 
 type MyStruct = MyStruct#0(Int)
-trait Default[h11] { default(): h11 }
+trait Default[j11] { default(): j11 }
 instance traits__trait_zero_arg_inferred.Default[Int] { default=Default$$Int$$default }
 instance traits__trait_zero_arg_inferred.Default[MyStruct] { default=Default$$MyStruct$$default }
 instance core/show.Show[MyStruct] { show=Show$$MyStruct$$show }

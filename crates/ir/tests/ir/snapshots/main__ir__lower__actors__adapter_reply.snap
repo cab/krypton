@@ -6,7 +6,7 @@ module actors__adapter_reply
 
 type Msg = Get#0(Ref[Int])
 type MainMsg = Reply#0(Int)
-extern java "krypton.runtime.KryptonIO" println(s13) -> Unit
+extern java "krypton.runtime.KryptonIO" println(u13) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -16,19 +16,19 @@ import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[e12]) -> Unit) -> Ref[e12]
-import core/actor/send as send(Ref[h12], h12) -> Unit
-import core/actor/receive as receive(Mailbox[q12]) -> q12
-import core/actor/actor_ref as actor_ref(Mailbox[a13]) -> Ref[a13]
-import core/actor/mailbox as mailbox() -> Mailbox[j13]
-import core/actor/adapter as adapter(Ref[m13], (r13) -> m13) -> Ref[r13]
-declare actor_ref: (Mailbox[a13]) -> Ref[a13]
-declare adapter: (Ref[m13], (r13) -> m13) -> Ref[r13]
-declare mailbox: () -> Mailbox[j13]
-declare println: (s13) -> Unit
-declare receive: (Mailbox[q12]) -> q12
-declare send: (Ref[h12], h12) -> Unit
-declare spawn: ((Mailbox[e12]) -> Unit) -> Ref[e12]
+import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
+import core/actor/send as send(Ref[j12], j12) -> Unit
+import core/actor/receive as receive(Mailbox[s12]) -> s12
+import core/actor/actor_ref as actor_ref(Mailbox[c13]) -> Ref[c13]
+import core/actor/mailbox as mailbox() -> Mailbox[l13]
+import core/actor/adapter as adapter(Ref[o13], (t13) -> o13) -> Ref[t13]
+declare actor_ref: (Mailbox[c13]) -> Ref[c13]
+declare adapter: (Ref[o13], (t13) -> o13) -> Ref[t13]
+declare mailbox: () -> Mailbox[l13]
+declare println: (u13) -> Unit
+declare receive: (Mailbox[s12]) -> s12
+declare send: (Ref[j12], j12) -> Unit
+declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)

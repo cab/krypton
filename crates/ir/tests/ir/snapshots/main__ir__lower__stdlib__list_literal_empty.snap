@@ -22,8 +22,8 @@ fn main() -> Unit =
     let v6: Unit = call println(v0, v5)
     v6
   in
-  let v1: List[m11] = construct List::Nil#1()
-  let v2: List[m11] = v1
+  let v1: List[o11] = construct List::Nil#1()
+  let v2: List[o11] = v1
   switch v2 {
     0 (v3: j, v4: List[j]) ->
       jump v7(1)

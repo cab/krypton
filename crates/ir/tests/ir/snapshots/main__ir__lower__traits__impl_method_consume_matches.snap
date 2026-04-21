@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module traits__impl_method_consume_matches
 
 struct File { fd: Int }
-trait Consumer[h11] { consume(~h11): Unit }
+trait Consumer[j11] { consume(~j11): Unit }
 instance traits__impl_method_consume_matches.Consumer[File] { consume=Consumer$$File$$consume }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
