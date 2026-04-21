@@ -441,7 +441,10 @@ pub(crate) fn free_vars_env(env: &TypeEnv, subst: &Substitution) -> FxHashSet<Ty
     s
 }
 
-pub(crate) fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr, out: &mut FxHashSet<String>) {
+pub(crate) fn collect_type_expr_var_names(
+    texpr: &krypton_parser::ast::TypeExpr,
+    out: &mut FxHashSet<String>,
+) {
     match texpr {
         krypton_parser::ast::TypeExpr::Var { name, .. } => {
             out.insert(name.clone());
@@ -475,7 +478,9 @@ pub(crate) fn collect_type_expr_var_names(texpr: &krypton_parser::ast::TypeExpr,
 /// Validate wildcards in an impl target type expression.
 /// Returns the count of wildcards at the outermost App level.
 /// Errors if wildcards are nested or appear outside an App.
-pub(crate) fn validate_impl_wildcards(texpr: &krypton_parser::ast::TypeExpr) -> Result<usize, TypeError> {
+pub(crate) fn validate_impl_wildcards(
+    texpr: &krypton_parser::ast::TypeExpr,
+) -> Result<usize, TypeError> {
     match texpr {
         krypton_parser::ast::TypeExpr::App { args, .. } => {
             let mut wildcard_count = 0;
@@ -544,7 +549,9 @@ pub(crate) fn contains_wildcard(texpr: &krypton_parser::ast::TypeExpr) -> bool {
     }
 }
 
-pub(crate) fn wildcard_span(texpr: &krypton_parser::ast::TypeExpr) -> Option<krypton_parser::ast::Span> {
+pub(crate) fn wildcard_span(
+    texpr: &krypton_parser::ast::TypeExpr,
+) -> Option<krypton_parser::ast::Span> {
     match texpr {
         krypton_parser::ast::TypeExpr::Wildcard { span } => Some(*span),
         krypton_parser::ast::TypeExpr::App { args, .. } => args.iter().find_map(wildcard_span),
@@ -668,8 +675,7 @@ pub(crate) fn resolve_impl_target(
 /// Used for HKT partial application: Named("Result", [Var(e), Var(anon)]) becomes
 /// Named("Result", [Var(e)]) when anon is not a tracked type var.
 pub(crate) fn strip_anon_type_args(ty: &Type, type_var_ids: &FxHashMap<String, TypeVarId>) -> Type {
-    let known_var_ids: rustc_hash::FxHashSet<TypeVarId> =
-        type_var_ids.values().copied().collect();
+    let known_var_ids: rustc_hash::FxHashSet<TypeVarId> = type_var_ids.values().copied().collect();
     match ty {
         Type::Named(name, args) => {
             let kept: Vec<Type> = args

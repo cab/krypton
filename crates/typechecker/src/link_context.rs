@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::VecDeque;
 
 use crate::module_interface::{
     CanonicalRef, ExportedFnSummary, ExternTypeSummary, InstanceSummary, ModuleInterface,

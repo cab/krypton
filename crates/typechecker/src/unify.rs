@@ -185,9 +185,7 @@ pub fn unify(t1: &Type, t2: &Type, subst: &mut Substitution) -> Result<(), TypeE
         // Shape: both sides are unresolved shapes — unify inners
         (Type::Shape(a), Type::Shape(b)) => unify(a, b, subst),
         // Shape vs concrete: unify the Shape inner with the other side
-        (Type::Shape(inner), other) | (other, Type::Shape(inner)) => {
-            unify(inner, other, subst)
-        }
+        (Type::Shape(inner), other) | (other, Type::Shape(inner)) => unify(inner, other, subst),
 
         // MaybeOwn structural cases
         (Type::MaybeOwn(q1, inner1), Type::MaybeOwn(q2, inner2)) => {

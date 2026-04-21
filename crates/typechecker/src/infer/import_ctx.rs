@@ -244,11 +244,9 @@ impl ImportContext {
                 let is_duplicate = env
                     .lookup_entry(&name)
                     .map(|entry| {
-                        let primary_match = binding_sources_share_identity(
-                            &entry.source,
-                            &binding_source,
-                        ) && crate::overload::fn_param_types(&entry.scheme.ty)
-                            == new_params;
+                        let primary_match =
+                            binding_sources_share_identity(&entry.source, &binding_source)
+                                && crate::overload::fn_param_types(&entry.scheme.ty) == new_params;
                         let candidate_match = entry
                             .overload_candidates
                             .as_ref()
@@ -417,16 +415,13 @@ fn binding_sources_share_identity(a: &BindingSource, b: &BindingSource) -> bool 
             },
         ) => qa == qb && ca == cb,
         (
-            BindingSource::TopLevelLocalFunction {
-                qualified_name: qa,
-            },
-            BindingSource::TopLevelLocalFunction {
-                qualified_name: qb,
-            },
+            BindingSource::TopLevelLocalFunction { qualified_name: qa },
+            BindingSource::TopLevelLocalFunction { qualified_name: qb },
         ) => qa == qb,
-        (BindingSource::IntrinsicFunction { name: a }, BindingSource::IntrinsicFunction { name: b }) => {
-            a == b
-        }
+        (
+            BindingSource::IntrinsicFunction { name: a },
+            BindingSource::IntrinsicFunction { name: b },
+        ) => a == b,
         _ => false,
     }
 }
@@ -445,7 +440,10 @@ pub(crate) struct ImportBinding {
 }
 
 impl ModuleInferenceState {
-    pub(super) fn check_explicit_import_shadows(&self, module: &Module) -> Result<(), SpannedTypeError> {
+    pub(super) fn check_explicit_import_shadows(
+        &self,
+        module: &Module,
+    ) -> Result<(), SpannedTypeError> {
         for decl in &module.decls {
             match decl {
                 Decl::DefFn(f) => {
@@ -458,20 +456,24 @@ impl ModuleInferenceState {
                         continue;
                     }
                     // Try to resolve local param types for overload checking
-                    let local_params = match super::traits_register::resolve_fn_param_types_for_overlap(f, &self.registry) {
-                        Some(params) => params,
-                        None => {
-                            // Unannotated — keep current error behavior
-                            let imp = &non_prelude_imports[0];
-                            return Err(spanned(
-                                TypeError::DefinitionConflictsWithImport {
-                                    def_name: f.name.clone(),
-                                    source_module: imp.qualified_name.module_path.clone(),
-                                },
-                                f.span,
-                            ));
-                        }
-                    };
+                    let local_params =
+                        match super::traits_register::resolve_fn_param_types_for_overlap(
+                            f,
+                            &self.registry,
+                        ) {
+                            Some(params) => params,
+                            None => {
+                                // Unannotated — keep current error behavior
+                                let imp = &non_prelude_imports[0];
+                                return Err(spanned(
+                                    TypeError::DefinitionConflictsWithImport {
+                                        def_name: f.name.clone(),
+                                        source_module: imp.qualified_name.module_path.clone(),
+                                    },
+                                    f.span,
+                                ));
+                            }
+                        };
                     for imp in &non_prelude_imports {
                         let imp_params = match fn_param_types(&imp.scheme.ty) {
                             Some(params) => params,
@@ -492,10 +494,7 @@ impl ModuleInferenceState {
                                     name: f.name.clone(),
                                     arities: vec![
                                         ("(local)".to_string(), local_params.len()),
-                                        (
-                                            imp.qualified_name.module_path.clone(),
-                                            imp_params.len(),
-                                        ),
+                                        (imp.qualified_name.module_path.clone(), imp_params.len()),
                                     ],
                                 },
                                 f.span,

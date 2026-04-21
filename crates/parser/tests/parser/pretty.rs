@@ -1071,9 +1071,7 @@ fn fn_type_observational_borrow_roundtrip() {
 
 #[test]
 fn roundtrip_if_let() {
-    assert_surface_roundtrip(
-        "fun f(x: Option[Int]) -> Int = if let Some(v) = x { v } else { 0 }",
-    );
+    assert_surface_roundtrip("fun f(x: Option[Int]) -> Int = if let Some(v) = x { v } else { 0 }");
 }
 
 #[test]

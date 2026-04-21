@@ -202,9 +202,7 @@ fn type_contains_own_syntactic(ty: &Type) -> bool {
         Type::Named(_, args) => args.iter().any(type_contains_own_syntactic),
         Type::Tuple(elems) => elems.iter().any(type_contains_own_syntactic),
         Type::Fn(params, ret) => {
-            params
-                .iter()
-                .any(|(_, p)| type_contains_own_syntactic(p))
+            params.iter().any(|(_, p)| type_contains_own_syntactic(p))
                 || type_contains_own_syntactic(ret)
         }
         Type::App(ctor, args) => {
@@ -259,9 +257,7 @@ fn lift_compounds(ty: Type) -> Type {
                 .collect();
             Type::Named(name, new_args)
         }
-        Type::Tuple(elems) => {
-            Type::Tuple(elems.into_iter().map(lift_compounds).collect())
-        }
+        Type::Tuple(elems) => Type::Tuple(elems.into_iter().map(lift_compounds).collect()),
         other => other,
     }
 }
@@ -1197,7 +1193,6 @@ impl Substitution {
     pub fn current_scope_depth(&self) -> u32 {
         self.current_scope_depth
     }
-
 }
 
 /// Span of a function definition, optionally in a different source module.
@@ -1310,7 +1305,14 @@ impl TypeEnv {
         source: BindingSource,
     ) {
         if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, EnvEntry { scheme, source, overload_candidates: None });
+            scope.insert(
+                name,
+                EnvEntry {
+                    scheme,
+                    source,
+                    overload_candidates: None,
+                },
+            );
         }
     }
 

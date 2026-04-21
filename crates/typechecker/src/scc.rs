@@ -126,7 +126,13 @@ pub fn build_dependency_graph(fn_decls: &[&FnDecl]) -> Vec<Vec<usize>> {
             collect_refs(&decl.body, &names, &mut refs);
             let mut edges: Vec<usize> = refs
                 .iter()
-                .flat_map(|r| name_to_indices.get(r.as_str()).into_iter().flatten().copied())
+                .flat_map(|r| {
+                    name_to_indices
+                        .get(r.as_str())
+                        .into_iter()
+                        .flatten()
+                        .copied()
+                })
                 .collect();
             // Add synthetic edges between same-named overloads so they
             // land in the same SCC and get registered as an overload set.

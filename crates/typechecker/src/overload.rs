@@ -215,8 +215,14 @@ pub fn types_overlap(a: &[Type], b: &[Type]) -> bool {
     let mut gen = TypeVarGen::new();
     let mut a_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
     let mut b_map: FxHashMap<TypeVarId, TypeVarId> = FxHashMap::default();
-    let a_fresh: Vec<Type> = a.iter().map(|t| freshen_type(t, &mut a_map, &mut gen)).collect();
-    let b_fresh: Vec<Type> = b.iter().map(|t| freshen_type(t, &mut b_map, &mut gen)).collect();
+    let a_fresh: Vec<Type> = a
+        .iter()
+        .map(|t| freshen_type(t, &mut a_map, &mut gen))
+        .collect();
+    let b_fresh: Vec<Type> = b
+        .iter()
+        .map(|t| freshen_type(t, &mut b_map, &mut gen))
+        .collect();
     let mut subst = Substitution::new();
     for (x, y) in a_fresh.iter().zip(b_fresh.iter()) {
         if unify(x, y, &mut subst).is_err() {

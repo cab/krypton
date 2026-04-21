@@ -184,7 +184,6 @@ fn own_fn_capture_note_correct_name() {
     );
 }
 
-
 #[test]
 fn own_fn_capture_note_return_site() {
     let output =
@@ -786,9 +785,8 @@ fn e0301_unary_neg_names_operator() {
 
 #[test]
 fn e0301_where_bound_names_bound() {
-    let output = render_fixture_error(
-        "../../tests/fixtures/traits/constrained_fn_ref_missing_instance.kr",
-    );
+    let output =
+        render_fixture_error("../../tests/fixtures/traits/constrained_fn_ref_missing_instance.kr");
     insta::assert_snapshot!(output);
     assert!(output.contains("E0301"), "expected E0301 in:\n{output}");
     assert!(
@@ -904,9 +902,8 @@ fn e0108_recur_back() {
 
 #[test]
 fn e0111_recur_borrowed_to_consume() {
-    let output = render_fixture_error(
-        "../../tests/fixtures/linear/recur_mode_mismatch_diagnostic.kr",
-    );
+    let output =
+        render_fixture_error("../../tests/fixtures/linear/recur_mode_mismatch_diagnostic.kr");
     insta::assert_snapshot!(output);
     assert!(output.contains("E0111"), "expected E0111 in:\n{output}");
 }
@@ -1019,8 +1016,9 @@ fn e0109_let_binding_wording() {
 
 #[test]
 fn e0509_overlapping_imports_diagnostic() {
-    let output =
-        render_fixture_module_error("../../tests/fixtures/modules/overload_import_overlap_error.kr");
+    let output = render_fixture_module_error(
+        "../../tests/fixtures/modules/overload_import_overlap_error.kr",
+    );
     insta::assert_snapshot!(output);
 }
 
@@ -1110,7 +1108,5 @@ fn main_with_params_diagnostic() {
 
 #[test]
 fn main_wrong_return_type_diagnostic() {
-    insta::assert_snapshot!(parse_and_infer_module_error(
-        "fun main() -> Int = 42"
-    ));
+    insta::assert_snapshot!(parse_and_infer_module_error("fun main() -> Int = 42"));
 }

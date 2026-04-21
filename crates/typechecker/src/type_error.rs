@@ -1149,7 +1149,11 @@ impl TypeError {
 
     pub fn note(&self) -> Option<String> {
         match self {
-            TypeError::DuplicateImport { name, modules, signatures } => {
+            TypeError::DuplicateImport {
+                name,
+                modules,
+                signatures,
+            } => {
                 let mut lines = Vec::new();
                 for (i, sig) in signatures.iter().enumerate() {
                     lines.push(format!("  {}.{}: {}", modules[i], name, sig));
@@ -1158,14 +1162,24 @@ impl TypeError {
                 Some(lines.join("\n"))
             }
             TypeError::UnresolvedOverload { candidates, .. } => {
-                let mut lines = vec!["type of argument is not known; cannot select among candidates:".to_string()];
+                let mut lines = vec![
+                    "type of argument is not known; cannot select among candidates:".to_string(),
+                ];
                 for c in candidates {
                     lines.push(format!("  {c}"));
                 }
                 Some(lines.join("\n"))
             }
-            TypeError::NoMatchingOverload { candidates, arg_types, .. } => {
-                let arg_list = arg_types.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join(", ");
+            TypeError::NoMatchingOverload {
+                candidates,
+                arg_types,
+                ..
+            } => {
+                let arg_list = arg_types
+                    .iter()
+                    .map(|t| format!("{t}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let mut lines = vec![format!("argument types: ({arg_list})")];
                 lines.push("candidates considered:".to_string());
                 for c in candidates {
@@ -1228,7 +1242,12 @@ impl TypeError {
                     format_type_with_var_map(actual, names),
                 )
             }
-            TypeError::BareTypeVarResourceArg { callee_name, param_index, param_ty, arg_ty } => {
+            TypeError::BareTypeVarResourceArg {
+                callee_name,
+                param_index,
+                param_ty,
+                arg_ty,
+            } => {
                 let callee = callee_name
                     .as_deref()
                     .map(|n| format!("`{n}`"))

@@ -67,9 +67,7 @@ pub(crate) fn leading_type_var(ty: &Type) -> Option<TypeVarId> {
     match ty {
         Type::Var(v) => Some(*v),
         Type::App(ctor, _) => leading_type_var(ctor),
-        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
-            leading_type_var(inner)
-        }
+        Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => leading_type_var(inner),
         _ => None,
     }
 }

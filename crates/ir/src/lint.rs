@@ -359,9 +359,7 @@ impl LintContext {
             }
 
             SimpleExprKind::ProjectDictField {
-                dict,
-                result_trait,
-                ..
+                dict, result_trait, ..
             } => {
                 if !self.known_traits.contains(&result_trait.local_name) {
                     return Err(self.err(format!(

@@ -195,7 +195,11 @@ where
             .delimited_by(symbol(Token::LParen), closing_symbol(Token::RParen))
             .then(symbol(Token::Arrow).ignore_then(ty.clone()).or_not())
             .validate(|(params, ret), e, emitter| {
-                if ret.is_none() && params.iter().any(|p| matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow)) {
+                if ret.is_none()
+                    && params.iter().any(|p| {
+                        matches!(p.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow)
+                    })
+                {
                     emitter.emit(Rich::custom(e.span(), SLOT_NOT_A_TYPE.to_string()));
                 }
                 if let Some(r) = ret.as_ref() {
@@ -524,14 +528,16 @@ where
             .then(symbol(Token::If).ignore_then(expr.clone()).or_not())
             .then(expr.clone())
             .then(symbol(Token::Else).ignore_then(expr.clone()).or_not())
-            .map_with(|((((pat, scrutinee), guard), then_), else_), e| Expr::IfLet {
-                pattern: pat,
-                scrutinee: Box::new(scrutinee),
-                guard: guard.map(Box::new),
-                then_: Box::new(then_),
-                else_: else_.map(Box::new),
-                span: to_span(e.span()),
-            });
+            .map_with(
+                |((((pat, scrutinee), guard), then_), else_), e| Expr::IfLet {
+                    pattern: pat,
+                    scrutinee: Box::new(scrutinee),
+                    guard: guard.map(Box::new),
+                    then_: Box::new(then_),
+                    else_: else_.map(Box::new),
+                    span: to_span(e.span()),
+                },
+            );
 
         // If expression: if cond { then } else { else }
         let if_expr = symbol(Token::If)
@@ -1229,7 +1235,8 @@ where
     // --- Function declaration ---
     // fun name[tparams](params) -> RetType where constraints = expr
     // fun name(params) { body }
-    let fun_decl = doc.clone()
+    let fun_decl = doc
+        .clone()
         .then(platform_attr.clone())
         .then(vis.clone())
         .then_ignore(symbol(Token::Fun))
@@ -1349,7 +1356,8 @@ where
         })
         .or_not();
 
-    let type_decl = doc.clone()
+    let type_decl = doc
+        .clone()
         .then(platform_attr.clone())
         .then(type_vis)
         .then_ignore(symbol(Token::Type))
@@ -1405,7 +1413,8 @@ where
                 }
             });
 
-    let trait_method = doc.clone()
+    let trait_method = doc
+        .clone()
         .then(
             symbol(Token::Pub)
                 .map_with(|_, e| Some(to_span(e.span())))
@@ -1474,7 +1483,8 @@ where
 
     let trait_superclasses = where_clause_parser().then(old_superclass_syntax.or_not());
 
-    let trait_decl = doc.clone()
+    let trait_decl = doc
+        .clone()
         .then(platform_attr.clone())
         .then(vis.clone())
         .then_ignore(symbol(Token::Trait))
@@ -1553,7 +1563,8 @@ where
 
     // --- Impl declaration ---
     // impl Trait[Type] { methods } or impl Trait[Type] where constraints { methods }
-    let impl_method = doc.clone()
+    let impl_method = doc
+        .clone()
         .then_ignore(symbol(Token::Fun))
         .then(select! { Token::Ident(s) => s.to_string() })
         .then(fn_type_params.clone())
@@ -1589,7 +1600,8 @@ where
 
     let impl_constraints = where_clause_parser();
 
-    let impl_decl = doc.clone()
+    let impl_decl = doc
+        .clone()
         .then(platform_attr.clone())
         .then_ignore(symbol(Token::Impl))
         .then(fn_type_params.clone())
@@ -1611,10 +1623,7 @@ where
         )
         .map_with(
             |(
-                (
-                    ((((doc, platform), type_params), trait_name), type_args),
-                    type_constraints,
-                ),
+                (((((doc, platform), type_params), trait_name), type_args), type_constraints),
                 methods,
             ),
              e| {
@@ -1746,7 +1755,8 @@ where
             (nullable, throws, instance, constructor)
         });
 
-    let extern_method = doc.clone()
+    let extern_method = doc
+        .clone()
         .then(extern_annotations)
         .then(symbol(Token::Pub).or_not())
         .then_ignore(symbol(Token::Fun))
@@ -1760,10 +1770,7 @@ where
                 (
                     (
                         (
-                            (
-                                ((doc, (nullable, throws, instance, constructor)), pub_opt),
-                                name,
-                            ),
+                            (((doc, (nullable, throws, instance, constructor)), pub_opt), name),
                             method_type_params,
                         ),
                         params,
@@ -1843,7 +1850,8 @@ where
         )
         .or_not();
 
-    let extern_decl = doc.clone()
+    let extern_decl = doc
+        .clone()
         .then(platform_attr.clone())
         .then_ignore(symbol(Token::Extern))
         .then(extern_target)
@@ -1869,7 +1877,10 @@ where
                 .map(|d| d.unwrap_or_default()),
         )
         .map_with(
-            |(((((((doc, platform), target), module_path), as_clause), lifts), methods), deriving),
+            |(
+                ((((((doc, platform), target), module_path), as_clause), lifts), methods),
+                deriving,
+            ),
              e| {
                 let (is_trait, alias, alias_visibility, type_params) = match as_clause {
                     Some((is_trait, is_pub, name, params)) => {
@@ -1977,9 +1988,7 @@ fn classify_parse_error(e: &Rich<Token, LexSpan>) -> ErrorCode {
 /// Fast path: when the token stream contains no `DocComment`, the input Vec
 /// is returned unchanged. Doc comments are rare, so the hot path is a single
 /// scan of the token tags.
-fn fold_doc_blocks<'src>(
-    tokens: Vec<(Token<'src>, LexSpan)>,
-) -> Vec<(Token<'src>, LexSpan)> {
+fn fold_doc_blocks<'src>(tokens: Vec<(Token<'src>, LexSpan)>) -> Vec<(Token<'src>, LexSpan)> {
     if !tokens
         .iter()
         .any(|(t, _)| matches!(t, Token::DocComment(_)))

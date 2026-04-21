@@ -194,7 +194,13 @@ fn coerce_own_to_var_then_own_own_structural() {
 fn coerce_bare_to_own_fails() {
     let mut subst = Substitution::new();
     // coerce_unify(Int, Own(Int)) → OwnershipMismatch (fabrication rejected)
-    let err = coerce_unify(&Type::Int, &Type::Own(Box::new(Type::Int)), &mut subst, None).unwrap_err();
+    let err = coerce_unify(
+        &Type::Int,
+        &Type::Own(Box::new(Type::Int)),
+        &mut subst,
+        None,
+    )
+    .unwrap_err();
     assert!(matches!(err, TypeError::OwnershipMismatch { .. }));
 }
 
@@ -203,7 +209,13 @@ fn coerce_own_to_bare_rejected() {
     let mut subst = Substitution::new();
     // coerce_unify(Own(Int), Int) → rejected (no silent drop; linear-by-default
     // requires an explicit consume, per disposable.md §"No ~T → T coercion").
-    let err = coerce_unify(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst, None).unwrap_err();
+    let err = coerce_unify(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::Int,
+        &mut subst,
+        None,
+    )
+    .unwrap_err();
     assert!(matches!(err, TypeError::Mismatch { .. }));
 }
 
@@ -273,7 +285,13 @@ fn join_own_own_preserves() {
 fn join_own_bare_strips() {
     let mut subst = Substitution::new();
     // join_types(Own(Int), Int) → OK (strips to common)
-    assert!(join_types(&Type::Own(Box::new(Type::Int)), &Type::Int, &mut subst, None).is_ok());
+    assert!(join_types(
+        &Type::Own(Box::new(Type::Int)),
+        &Type::Int,
+        &mut subst,
+        None
+    )
+    .is_ok());
 }
 
 #[test]

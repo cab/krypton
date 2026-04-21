@@ -532,21 +532,21 @@ fn format_witness(witness: &[Pat]) -> Vec<String> {
 /// Check if a surface (parser) pattern is irrefutable — i.e., it matches every
 /// possible value. Used by `if let` to reject patterns that always succeed
 /// (those should be plain `let` bindings instead).
-pub fn is_irrefutable(pattern: &krypton_parser::ast::Pattern, registry: Option<&TypeRegistry>) -> bool {
+pub fn is_irrefutable(
+    pattern: &krypton_parser::ast::Pattern,
+    registry: Option<&TypeRegistry>,
+) -> bool {
     use krypton_parser::ast::Pattern;
     match pattern {
         Pattern::Wildcard { .. } | Pattern::Var { .. } => true,
         Pattern::Lit { .. } => false,
-        Pattern::Tuple { elements, .. } => {
-            elements.iter().all(|e| is_irrefutable(e, registry))
-        }
+        Pattern::Tuple { elements, .. } => elements.iter().all(|e| is_irrefutable(e, registry)),
         Pattern::StructPat { name, fields, .. } => {
             // A struct pattern is irrefutable only if the type is a single-constructor
             // type (record) and all explicit field patterns are irrefutable.
             let is_single_constructor = registry.is_some_and(|r| {
-                r.lookup_type(name).is_some_and(|info| {
-                    matches!(&info.kind, TypeKind::Record { .. })
-                })
+                r.lookup_type(name)
+                    .is_some_and(|info| matches!(&info.kind, TypeKind::Record { .. }))
             });
             is_single_constructor && fields.iter().all(|(_, p)| is_irrefutable(p, registry))
         }

@@ -239,10 +239,7 @@ impl CodegenTypeInfo {
     /// Resolve a call site's `FnId` to its registered FunctionInfo.
     /// Overload-safe — unlike `get_function`, this does not collapse
     /// siblings sharing a bare name.
-    pub(super) fn get_function_by_id(
-        &self,
-        fn_id: krypton_ir::FnId,
-    ) -> Option<&FunctionInfo> {
+    pub(super) fn get_function_by_id(&self, fn_id: krypton_ir::FnId) -> Option<&FunctionInfo> {
         self.fn_info_by_id.get(&fn_id)
     }
 
@@ -1295,9 +1292,7 @@ impl<'link> Compiler<'link> {
                     .clone();
 
                 // Intrinsics
-                if is_intrinsic
-                    && (name == "panic" || name == "todo" || name == "unreachable")
-                {
+                if is_intrinsic && (name == "panic" || name == "todo" || name == "unreachable") {
                     let re_class = self.builder.refs.runtime_exception_class;
                     let re_init = self.builder.refs.runtime_exception_init;
                     self.builder.emit_new_dup(re_class);
@@ -1992,9 +1987,8 @@ impl<'link> Compiler<'link> {
                 // therefore declares accessor methods `dict0 … dictN`,
                 // implemented on each concrete/parameterized instance
                 // class as field getters — see `generate_trait_interface_class`.
-                let descendant_trait = self
-                    .descendant_trait_of_dict_atom(dict)
-                    .ok_or_else(|| {
+                let descendant_trait =
+                    self.descendant_trait_of_dict_atom(dict).ok_or_else(|| {
                         CodegenError::TypeError(
                             "ICE: ProjectDictField dict atom is not dict-typed".to_string(),
                             None,
@@ -2055,10 +2049,7 @@ impl<'link> Compiler<'link> {
                     .vec_builder_info
                     .as_ref()
                     .ok_or_else(|| {
-                        CodegenError::TypeError(
-                            "VecBuilder info not registered".to_string(),
-                            None,
-                        )
+                        CodegenError::TypeError("VecBuilder info not registered".to_string(), None)
                     })?
                     .clone();
                 let builder_vtype = VerificationType::Object {

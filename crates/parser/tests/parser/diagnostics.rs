@@ -111,7 +111,10 @@ fn test_pub_opaque_on_type_still_works() {
 fn test_observational_borrow_no_error() {
     let source = "fun read(&r: File) -> Int = 0";
     let (_module, errors) = parse(source);
-    assert!(errors.is_empty(), "expected no errors for observational borrow, got: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "expected no errors for observational borrow, got: {errors:?}"
+    );
 }
 
 #[test]

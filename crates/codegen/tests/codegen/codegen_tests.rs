@@ -1229,10 +1229,7 @@ fun main() = diverge()
 
     // Check that core/never/Never.class exists
     let never_class = dir.path().join("core/never/Never.class");
-    assert!(
-        never_class.exists(),
-        "core/never/Never.class should exist"
-    );
+    assert!(never_class.exists(), "core/never/Never.class should exist");
     let javap_out = javap_output(&never_class, true);
     assert!(
         javap_out.contains("interface"),
@@ -1263,10 +1260,7 @@ fun main() = println(0)
     let dir = compile_typed_modules(&typed_modules, &link_ctx);
 
     let class_path = dir.path().join("test/NoMessages.class");
-    assert!(
-        class_path.exists(),
-        "test/NoMessages.class should exist"
-    );
+    assert!(class_path.exists(), "test/NoMessages.class should exist");
     let javap_out = javap_output(&class_path, true);
     assert!(
         javap_out.contains("interface"),

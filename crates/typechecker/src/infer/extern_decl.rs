@@ -80,7 +80,8 @@ pub(crate) fn process_extern_methods(
     };
     let mut extern_fns = Vec::new();
     let mut bindings = Vec::new();
-    let mut fn_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> = FxHashMap::default();
+    let mut fn_constraints: FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>> =
+        FxHashMap::default();
     for method in methods {
         let bind_name = &method.name;
 

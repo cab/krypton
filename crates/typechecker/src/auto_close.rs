@@ -503,7 +503,10 @@ impl<'a> AutoCloseAnalyzer<'a> {
                 if let Some(param_ty) = fn_param_types.get(i) {
                     // Borrow-mode params (`&~T`) do not transfer ownership to
                     // the function; the caller still owns the value. Skip them.
-                    if matches!(param.mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
+                    if matches!(
+                        param.mode,
+                        ParamMode::Borrow | ParamMode::ObservationalBorrow
+                    ) {
                         continue;
                     }
                     // Inside an `impl Disposable[T] { fun dispose(...) }`, the
@@ -1067,10 +1070,7 @@ mod tests {
     /// `find_instance`.
     #[test]
     fn fn_is_never_disposable() {
-        let fn_ty = Type::Fn(
-            vec![(ParamMode::Consume, Type::Int)],
-            Box::new(Type::Unit),
-        );
+        let fn_ty = Type::Fn(vec![(ParamMode::Consume, Type::Int)], Box::new(Type::Unit));
         let owned = Type::Own(Box::new(fn_ty));
         let registry = TraitRegistry::new();
         let result = classify_owned(&owned, &registry, true, &[]);

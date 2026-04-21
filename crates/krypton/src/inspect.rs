@@ -160,7 +160,11 @@ impl<'a> TypedFormatter<'a> {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            if matches!(param.mode, krypton_typechecker::types::ParamMode::Borrow | krypton_typechecker::types::ParamMode::ObservationalBorrow) {
+            if matches!(
+                param.mode,
+                krypton_typechecker::types::ParamMode::Borrow
+                    | krypton_typechecker::types::ParamMode::ObservationalBorrow
+            ) {
                 self.buf.push('&');
             }
             self.buf.push_str(&param.name);
@@ -212,7 +216,11 @@ impl<'a> TypedFormatter<'a> {
             if i > 0 {
                 self.buf.push_str(", ");
             }
-            if matches!(param.mode, krypton_typechecker::types::ParamMode::Borrow | krypton_typechecker::types::ParamMode::ObservationalBorrow) {
+            if matches!(
+                param.mode,
+                krypton_typechecker::types::ParamMode::Borrow
+                    | krypton_typechecker::types::ParamMode::ObservationalBorrow
+            ) {
                 self.buf.push('&');
             }
             self.buf.push_str(&param.name);
@@ -829,9 +837,7 @@ fn type_expr_base_name(ty: &TypeExpr) -> &str {
         | TypeExpr::Var { name, .. }
         | TypeExpr::App { name, .. }
         | TypeExpr::Qualified { name, .. } => name,
-        TypeExpr::Own { inner, .. } | TypeExpr::Shape { inner, .. } => {
-            type_expr_base_name(inner)
-        }
+        TypeExpr::Own { inner, .. } | TypeExpr::Shape { inner, .. } => type_expr_base_name(inner),
         _ => "",
     }
 }

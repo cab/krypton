@@ -124,8 +124,7 @@ fn suggest_owned_spelling(ty: &Type, registry: &TypeRegistry) -> String {
                 }
             }
             Type::Tuple(elems) => {
-                let parts: Vec<String> =
-                    elems.iter().map(|e| inner(e, registry, false)).collect();
+                let parts: Vec<String> = elems.iter().map(|e| inner(e, registry, false)).collect();
                 let body = format!("({})", parts.join(", "));
                 if top && type_is_affine(ty, registry) {
                     format!("~{}", body)
@@ -261,11 +260,7 @@ pub(crate) fn type_is_affine(ty: &Type, registry: &TypeRegistry) -> bool {
     type_is_affine_rec(ty, registry, &mut visited)
 }
 
-fn type_is_affine_rec(
-    ty: &Type,
-    registry: &TypeRegistry,
-    visited: &mut FxHashSet<String>,
-) -> bool {
+fn type_is_affine_rec(ty: &Type, registry: &TypeRegistry, visited: &mut FxHashSet<String>) -> bool {
     match ty {
         Type::Own(_) => true,
         Type::Shape(inner) => type_is_affine_rec(inner, registry, visited),
@@ -283,13 +278,19 @@ fn type_is_affine_rec(
                 }
             }
             type_has_affine_field_after_subst(name, args, registry, visited)
-                || args.iter().any(|a| type_is_affine_rec(a, registry, visited))
+                || args
+                    .iter()
+                    .any(|a| type_is_affine_rec(a, registry, visited))
         }
         Type::App(ctor, args) => {
             type_is_affine_rec(ctor, registry, visited)
-                || args.iter().any(|a| type_is_affine_rec(a, registry, visited))
+                || args
+                    .iter()
+                    .any(|a| type_is_affine_rec(a, registry, visited))
         }
-        Type::Tuple(elems) => elems.iter().any(|e| type_is_affine_rec(e, registry, visited)),
+        Type::Tuple(elems) => elems
+            .iter()
+            .any(|e| type_is_affine_rec(e, registry, visited)),
         Type::Fn(_, _) => false,
         _ => false,
     }
@@ -453,9 +454,7 @@ fn count_max_uses(expr: &Expr, name: &str, bound: &FxHashSet<String>) -> usize {
                 .as_ref()
                 .map_or(0, |g| count_max_uses(g, name, &inner_bound));
             let t = guard_uses + count_max_uses(then_, name, &inner_bound);
-            let e = else_
-                .as_ref()
-                .map_or(0, |e| count_max_uses(e, name, bound));
+            let e = else_.as_ref().map_or(0, |e| count_max_uses(e, name, bound));
             s + t.max(e)
         }
 
@@ -671,8 +670,12 @@ where
                 for_each_tail_position(last, on_tail);
             }
         }
-        TypedExprKind::Let { body: Some(body), .. }
-        | TypedExprKind::LetPattern { body: Some(body), .. } => {
+        TypedExprKind::Let {
+            body: Some(body), ..
+        }
+        | TypedExprKind::LetPattern {
+            body: Some(body), ..
+        } => {
             for_each_tail_position(body, on_tail);
         }
         TypedExprKind::If { then_, else_, .. } => {
@@ -1158,7 +1161,12 @@ impl<'a> OwnershipChecker<'a> {
                 Ok(())
             }
 
-            TypedExprKind::App { func, args, param_modes, .. } => {
+            TypedExprKind::App {
+                func,
+                args,
+                param_modes,
+                ..
+            } => {
                 // Borrow regions (AC #9):
                 // - Arguments are evaluated left-to-right.
                 // - A nested call that borrows a place releases its borrow when the
@@ -1304,7 +1312,8 @@ impl<'a> OwnershipChecker<'a> {
 
                     // Borrow vs consume: borrow slots do not consume the argument.
                     let mode = get_mode(i);
-                    let is_borrow = matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
+                    let is_borrow =
+                        matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
                     if is_borrow {
                         if let Some(root) = place_root(arg) {
                             // Place expression (variable or field chain) — keep live.
@@ -1505,8 +1514,8 @@ impl<'a> OwnershipChecker<'a> {
                 // always owned: Krypton has no `&T`-returning functions,
                 // so these expressions cannot yield a borrow. If that
                 // invariant ever changes, this line must be revisited.
-                let scrutinee_is_borrowed = place_root(scrutinee)
-                    .is_some_and(|root| self.borrowed.contains(root));
+                let scrutinee_is_borrowed =
+                    place_root(scrutinee).is_some_and(|root| self.borrowed.contains(root));
                 let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
                 let n = arms.len();
                 let mut per_arm_new: Vec<FxHashMap<String, Span>> = Vec::new();
@@ -1569,8 +1578,7 @@ impl<'a> OwnershipChecker<'a> {
                 // borrow. Check before walking the body so this diagnostic
                 // wins over any generic Var-arm error the body walk would
                 // produce for the same reference.
-                let borrowed_captures =
-                    free_borrowed_vars(body, &self.borrowed, &lambda_params);
+                let borrowed_captures = free_borrowed_vars(body, &self.borrowed, &lambda_params);
                 if let Some(name) = borrowed_captures.into_iter().next() {
                     return Err(SpannedTypeError {
                         error: Box::new(TypeError::BorrowedBindingMisuse {
@@ -1931,8 +1939,11 @@ mod tests {
 
     #[test]
     fn has_own_field_lifts_params() {
-        let registry =
-            make_registry_with_lifts("ForeignMap", vec!["k", "v"], Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])));
+        let registry = make_registry_with_lifts(
+            "ForeignMap",
+            vec!["k", "v"],
+            Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])),
+        );
         assert!(!has_own_field("ForeignMap", &registry));
     }
 
@@ -1960,7 +1971,10 @@ mod tests {
         // ForeignMap[Int, ~Socket] — v is own → affine
         let ty = Type::Named(
             "ForeignMap".to_string(),
-            vec![Type::Int, Type::Own(Box::new(Type::Named("Socket".to_string(), vec![])))],
+            vec![
+                Type::Int,
+                Type::Own(Box::new(Type::Named("Socket".to_string(), vec![]))),
+            ],
         );
         assert!(type_is_affine(&ty, &registry));
     }
@@ -1973,10 +1987,7 @@ mod tests {
             Some(Lifts::Params(vec!["k".to_string(), "v".to_string()])),
         );
         // ForeignMap[Int, String] — neither arg is own → not affine
-        let ty = Type::Named(
-            "ForeignMap".to_string(),
-            vec![Type::Int, Type::String],
-        );
+        let ty = Type::Named("ForeignMap".to_string(), vec![Type::Int, Type::String]);
         assert!(!type_is_affine(&ty, &registry));
     }
 }

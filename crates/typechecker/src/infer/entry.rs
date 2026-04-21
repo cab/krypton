@@ -132,7 +132,12 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
         }
 
         // Function application: check param types and modes to decide shared vs own
-        TypedExprKind::App { func, args, param_modes, .. } => {
+        TypedExprKind::App {
+            func,
+            args,
+            param_modes,
+            ..
+        } => {
             let func_ty = subst.apply(&func.ty);
             let fn_params = match &func_ty {
                 Type::Fn(p, _) => Some(p.as_slice()),
@@ -155,7 +160,10 @@ fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitutio
                     let demands = if let Some(params) = fn_params {
                         if let Some((_, pty)) = params.get(i) {
                             let resolved = subst.apply(pty);
-                            matches!(resolved, Type::Own(_) | Type::Var(_) | Type::Shape(_) | Type::MaybeOwn(_, _))
+                            matches!(
+                                resolved,
+                                Type::Own(_) | Type::Var(_) | Type::Shape(_) | Type::MaybeOwn(_, _)
+                            )
                         } else {
                             true // conservative: can't determine param type
                         }
@@ -382,14 +390,16 @@ pub(crate) fn find_first_recur_span(body: &TypedExpr) -> Option<Span> {
         K::Recur { .. } => Some(body.span),
         K::Lambda { .. } => None,
         K::Lit(_) | K::Var(_) => None,
-        K::App { func, args, .. } => find_first_recur_span(func)
-            .or_else(|| args.iter().find_map(find_first_recur_span)),
+        K::App { func, args, .. } => {
+            find_first_recur_span(func).or_else(|| args.iter().find_map(find_first_recur_span))
+        }
         K::TypeApp { expr, .. } => find_first_recur_span(expr),
         K::If { cond, then_, else_ } => find_first_recur_span(cond)
             .or_else(|| find_first_recur_span(then_))
             .or_else(|| find_first_recur_span(else_)),
-        K::Let { value, body, .. } => find_first_recur_span(value)
-            .or_else(|| body.as_deref().and_then(find_first_recur_span)),
+        K::Let { value, body, .. } => {
+            find_first_recur_span(value).or_else(|| body.as_deref().and_then(find_first_recur_span))
+        }
         K::Do(exprs) => exprs.iter().find_map(find_first_recur_span),
         K::Match { scrutinee, arms } => find_first_recur_span(scrutinee).or_else(|| {
             arms.iter().find_map(|arm| {
@@ -408,8 +418,9 @@ pub(crate) fn find_first_recur_span(body: &TypedExpr) -> Option<Span> {
         K::StructLit { fields, .. } => fields.iter().find_map(|(_, v)| find_first_recur_span(v)),
         K::StructUpdate { base, fields } => find_first_recur_span(base)
             .or_else(|| fields.iter().find_map(|(_, v)| find_first_recur_span(v))),
-        K::LetPattern { value, body, .. } => find_first_recur_span(value)
-            .or_else(|| body.as_deref().and_then(find_first_recur_span)),
+        K::LetPattern { value, body, .. } => {
+            find_first_recur_span(value).or_else(|| body.as_deref().and_then(find_first_recur_span))
+        }
         K::QuestionMark { expr, .. } => find_first_recur_span(expr),
         K::Discharge(inner) => find_first_recur_span(inner),
     }

@@ -112,17 +112,13 @@ impl<'a> InferenceContext<'a> {
         expected: &Type,
         span: Span,
     ) -> Result<(), SpannedTypeError> {
-        coerce_unify(actual, expected, self.subst, self.registry).map_err(|e| super::spanned(e, span))
+        coerce_unify(actual, expected, self.subst, self.registry)
+            .map_err(|e| super::spanned(e, span))
     }
 
     /// When a UFCS call `name(receiver, ...)` fails, check whether the
     /// receiver has a callable field named `name` and suggest parenthesized syntax.
-    fn ufcs_field_call_note(
-        &mut self,
-        func: &Expr,
-        args: &[Expr],
-        span: Span,
-    ) -> Option<String> {
+    fn ufcs_field_call_note(&mut self, func: &Expr, args: &[Expr], span: Span) -> Option<String> {
         let func_name = match func {
             Expr::Var { name, .. } => name.as_str(),
             _ => return None,
@@ -188,13 +184,10 @@ impl<'a> InferenceContext<'a> {
             .iter()
             .find(|t| !is_empty(t))
             .unwrap_or(&branch_types[0]);
-        let all_own = branch_types
-            .iter()
-            .filter(|t| !is_empty(t))
-            .all(|t| {
-                let resolved = self.subst.apply(t);
-                matches!(&resolved, Type::Own(_))
-            });
+        let all_own = branch_types.iter().filter(|t| !is_empty(t)).all(|t| {
+            let resolved = self.subst.apply(t);
+            matches!(&resolved, Type::Own(_))
+        });
         let resolved = self.subst.apply(representative);
         if all_own {
             resolved
@@ -386,10 +379,7 @@ impl<'a> InferenceContext<'a> {
                     // ownership_shape_draft — the ownership-erased unifier
                     // accepts the pair, but the post-unification mode check
                     // rejects it here with a targeted `shape a` hint.
-                    let raw_param_ty = func_param_types
-                        .as_ref()
-                        .and_then(|ps| ps.get(i))
-                        .cloned();
+                    let raw_param_ty = func_param_types.as_ref().and_then(|ps| ps.get(i)).cloned();
                     let arg_ctx = crate::unify::ArgCoerceCtx {
                         raw_param_ty: raw_param_ty.as_ref(),
                         is_constructor,
@@ -824,7 +814,11 @@ impl<'a> InferenceContext<'a> {
                             param_index: i,
                         };
                         if let Err(e) = crate::unify::coerce_unify_arg(
-                            &a_ty, expected_param_ty, &arg_ctx, self.subst, self.registry,
+                            &a_ty,
+                            expected_param_ty,
+                            &arg_ctx,
+                            self.subst,
+                            self.registry,
                         ) {
                             if matches!(e, TypeError::BareTypeVarResourceArg { .. }) {
                                 return Err(super::spanned(e, span));
@@ -1001,10 +995,16 @@ impl<'a> InferenceContext<'a> {
             .map(|c| {
                 let display_name = match &c.source {
                     crate::types::BindingSource::ImportedFunction { qualified_name, .. } => {
-                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                        format!(
+                            "{}.{}",
+                            qualified_name.module_path, qualified_name.local_name
+                        )
                     }
                     crate::types::BindingSource::TopLevelLocalFunction { qualified_name } => {
-                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                        format!(
+                            "{}.{}",
+                            qualified_name.module_path, qualified_name.local_name
+                        )
                     }
                     _ => name.to_string(),
                 };
@@ -1033,7 +1033,8 @@ impl<'a> InferenceContext<'a> {
                     owning_fn: self.owning_fn_idx,
                     deferred_id,
                 });
-                let placeholder_param_modes = arg_types.iter().map(|_| ParamMode::Consume).collect();
+                let placeholder_param_modes =
+                    arg_types.iter().map(|_| ParamMode::Consume).collect();
                 let func_typed = TypedExpr {
                     kind: TypedExprKind::Var(name.to_string()),
                     ty: Type::Unit,
@@ -1083,7 +1084,8 @@ impl<'a> InferenceContext<'a> {
                     owning_fn: self.owning_fn_idx,
                     deferred_id,
                 });
-                let placeholder_param_modes = arg_types.iter().map(|_| ParamMode::Consume).collect();
+                let placeholder_param_modes =
+                    arg_types.iter().map(|_| ParamMode::Consume).collect();
                 let func_typed = TypedExpr {
                     kind: TypedExprKind::Var(name.to_string()),
                     ty: Type::Unit,
@@ -1137,9 +1139,7 @@ impl<'a> InferenceContext<'a> {
         let resolved_func_ty = self.subst.apply(&func_ty);
         let unwrapped = self.unwrap_own_fn(&resolved_func_ty);
         let param_modes = match &unwrapped {
-            Type::Fn(param_types, _) => {
-                param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>()
-            }
+            Type::Fn(param_types, _) => param_types.iter().map(|(m, _)| *m).collect::<Vec<_>>(),
             _ => {
                 return Err(super::spanned(
                     TypeError::NotAFunction { actual: unwrapped },
@@ -1149,13 +1149,10 @@ impl<'a> InferenceContext<'a> {
         };
 
         // 7. Build result
-        let overload_sig = make_overload_signature(
-            &self.unwrap_own_fn(&self.subst.apply(&func_ty)),
-        );
-        let resolved_ref = super::resolved_ref_from_binding_source_with_overload(
-            &winning.source,
-            overload_sig,
-        );
+        let overload_sig =
+            make_overload_signature(&self.unwrap_own_fn(&self.subst.apply(&func_ty)));
+        let resolved_ref =
+            super::resolved_ref_from_binding_source_with_overload(&winning.source, overload_sig);
         let ty = self.subst.apply(&func_ty);
         let ret_ty = match &ty {
             Type::Fn(_, ret) => self.subst.apply(ret),
@@ -1202,10 +1199,16 @@ impl<'a> InferenceContext<'a> {
             .map(|c| {
                 let display_name = match &c.source {
                     crate::types::BindingSource::ImportedFunction { qualified_name, .. } => {
-                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                        format!(
+                            "{}.{}",
+                            qualified_name.module_path, qualified_name.local_name
+                        )
                     }
                     crate::types::BindingSource::TopLevelLocalFunction { qualified_name } => {
-                        format!("{}.{}", qualified_name.module_path, qualified_name.local_name)
+                        format!(
+                            "{}.{}",
+                            qualified_name.module_path, qualified_name.local_name
+                        )
                     }
                     _ => name.to_string(),
                 };
@@ -1228,11 +1231,9 @@ impl<'a> InferenceContext<'a> {
 
         let mut matches: Vec<(usize, crate::overload::CandidateMatch)> = Vec::new();
         for (i, c) in candidates.iter().enumerate() {
-            if let Some(m) = crate::overload::candidate_matches_expected_type(
-                &c.scheme,
-                &expected,
-                self.gen,
-            ) {
+            if let Some(m) =
+                crate::overload::candidate_matches_expected_type(&c.scheme, &expected, self.gen)
+            {
                 matches.push((i, m));
             }
         }
@@ -1270,10 +1271,8 @@ impl<'a> InferenceContext<'a> {
         let overload_sig = make_overload_signature(
             &self.unwrap_own_fn(&self.subst.apply(&winner_match.instantiated_ty)),
         );
-        let resolved_ref = super::resolved_ref_from_binding_source_with_overload(
-            &winning.source,
-            overload_sig,
-        );
+        let resolved_ref =
+            super::resolved_ref_from_binding_source_with_overload(&winning.source, overload_sig);
         let ty = self.subst.apply(&winner_match.instantiated_ty);
 
         Ok(TypedExpr {
@@ -1521,27 +1520,29 @@ impl<'a> InferenceContext<'a> {
             // this coerce_unify is a no-op for constructor RHS in the common case
             // and remains the safety net for non-constructor flows.
             let binding_ty = if let Some(annotated_ty) = resolved_ann {
-                coerce_unify(&val_typed.ty, &annotated_ty, self.subst, self.registry).map_err(|e| {
-                    let mut err = super::spanned(e, span);
-                    if matches!(
-                        &*err.error,
-                        TypeError::Mismatch { .. }
-                            | TypeError::FnCapabilityMismatch { .. }
-                            | TypeError::ParamModeMismatch { .. }
-                    ) {
-                        if let Expr::Lambda { span: lspan, .. } = value {
-                            if let Some(ref captures) = self.lambda_own_captures {
-                                if let Some(cap_name) = captures.get(lspan) {
-                                    err.note = Some(format!(
+                coerce_unify(&val_typed.ty, &annotated_ty, self.subst, self.registry).map_err(
+                    |e| {
+                        let mut err = super::spanned(e, span);
+                        if matches!(
+                            &*err.error,
+                            TypeError::Mismatch { .. }
+                                | TypeError::FnCapabilityMismatch { .. }
+                                | TypeError::ParamModeMismatch { .. }
+                        ) {
+                            if let Expr::Lambda { span: lspan, .. } = value {
+                                if let Some(ref captures) = self.lambda_own_captures {
+                                    if let Some(cap_name) = captures.get(lspan) {
+                                        err.note = Some(format!(
                                         "closure is single-use because it captures `~` value `{}`",
                                         cap_name
                                     ));
+                                    }
                                 }
                             }
                         }
-                    }
-                    err
-                })?;
+                        err
+                    },
+                )?;
                 annotated_ty
             } else {
                 val_typed.ty.clone()
@@ -1809,9 +1810,10 @@ impl<'a> InferenceContext<'a> {
         let match_ty = self.subst.apply(&match_ty);
         crate::exhaustiveness::check_exhaustiveness(&match_ty, &typed_arms, self.registry, span)?;
         let ty = if branch_types.is_empty() {
-            if self.registry.is_some_and(|r| {
-                matches!(&match_ty, Type::Named(name, _) if r.is_empty_sum(name))
-            }) {
+            if self
+                .registry
+                .is_some_and(|r| matches!(&match_ty, Type::Named(name, _) if r.is_empty_sum(name)))
+            {
                 match_ty.clone()
             } else {
                 Type::Unit
@@ -2573,7 +2575,15 @@ impl<'a> InferenceContext<'a> {
                 then_,
                 else_,
                 span,
-            } => self.infer_if_let(pattern, scrutinee, guard.as_deref(), then_, else_.as_deref(), expected_type, *span),
+            } => self.infer_if_let(
+                pattern,
+                scrutinee,
+                guard.as_deref(),
+                then_,
+                else_.as_deref(),
+                expected_type,
+                *span,
+            ),
 
             Expr::StructLit { name, fields, span } => {
                 self.infer_struct_lit(name, fields, expected_type, *span)

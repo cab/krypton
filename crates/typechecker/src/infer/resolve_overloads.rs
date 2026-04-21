@@ -1,4 +1,6 @@
-use crate::typed_ast::{DeferredId, OverloadSignature, ResolvedBindingRef, TypedExpr, TypedExprKind};
+use crate::typed_ast::{
+    DeferredId, OverloadSignature, ResolvedBindingRef, TypedExpr, TypedExprKind,
+};
 use crate::types::{ParamMode, Substitution, Type, TypeVarGen};
 use crate::unify::{unify, SpannedTypeError, TypeError};
 
@@ -57,9 +59,7 @@ pub(super) fn resolve_deferred_overloads(
             // Re-filter candidates
             let mut matches: Vec<(usize, crate::overload::CandidateMatch)> = Vec::new();
             for (ci, c) in deferred[i].candidates.iter().enumerate() {
-                if let Some(m) =
-                    crate::overload::candidate_matches(&c.scheme, &arg_types, gen)
-                {
+                if let Some(m) = crate::overload::candidate_matches(&c.scheme, &arg_types, gen) {
                     matches.push((ci, m));
                 }
             }
@@ -223,18 +223,13 @@ fn patch_deferred_app(
                 patch_deferred_app(e, target_id, resolved_ref, func_ty, param_modes);
             }
         }
-        TypedExprKind::Let { value, body, .. }
-        | TypedExprKind::LetPattern { value, body, .. } => {
+        TypedExprKind::Let { value, body, .. } | TypedExprKind::LetPattern { value, body, .. } => {
             patch_deferred_app(value, target_id, resolved_ref, func_ty, param_modes);
             if let Some(body) = body {
                 patch_deferred_app(body, target_id, resolved_ref, func_ty, param_modes);
             }
         }
-        TypedExprKind::If {
-            cond,
-            then_,
-            else_,
-        } => {
+        TypedExprKind::If { cond, then_, else_ } => {
             patch_deferred_app(cond, target_id, resolved_ref, func_ty, param_modes);
             patch_deferred_app(then_, target_id, resolved_ref, func_ty, param_modes);
             patch_deferred_app(else_, target_id, resolved_ref, func_ty, param_modes);
