@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_fn_type_nonoverlap
 
-trait Convert[j11] { convert(j11): String }
+trait Convert[n11] { convert(n11): String }
 instance traits__trait_fn_type_nonoverlap.Convert[$Fun1$$Var0$Int] { convert=Convert$$$Fun1$$Var0$Int$$convert }
 instance traits__trait_fn_type_nonoverlap.Convert[$Fun1$$Var0$Bool] { convert=Convert$$$Fun1$$Var0$Bool$$convert }
 import core/peek/peek as peek(d) -> d
@@ -12,6 +12,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -38,8 +39,8 @@ fn main() -> Unit =
   let v11: Unit = call println(v7, v10)
   v11
 
-fn Convert$$$Fun1$$Var0$Int$$convert(v12: (k11) -> Int) -> String =
+fn Convert$$$Fun1$$Var0$Int$$convert(v12: (o11) -> Int) -> String =
   "to-int"
 
-fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (l11) -> Bool) -> String =
+fn Convert$$$Fun1$$Var0$Bool$$convert(v13: (p11) -> Bool) -> String =
   "to-bool"

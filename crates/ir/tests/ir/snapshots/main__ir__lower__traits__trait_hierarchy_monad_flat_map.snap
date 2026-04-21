@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -19,17 +20,17 @@ declare println: (g) -> Unit
 fn main() -> Unit =
   let_join v46(v13: Unit) =
     let v15: Option[Int] = construct Option::Some#0(3)
-    let v18: (Int) -> Option[Int] = make_closure(lambda$28, [])
+    let v18: (Int) -> Option[Int] = make_closure(lambda$32, [])
     let v19: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
     let v14: Option[Int] = trait_call core/monad.Monad.flat_map(v19, v15, v18)
     let_join v45(v26: Unit) =
       let v28: List[Int] = construct List::Nil#1()
       let v29: List[Int] = construct List::Cons#0(2, v28)
       let v30: List[Int] = construct List::Cons#0(1, v29)
-      let v35: (Int) -> List[Int] = make_closure(lambda$29, [])
+      let v35: (Int) -> List[Int] = make_closure(lambda$33, [])
       let v36: Dict[core/monad.Monad, List] = get_dict core/monad.Monad[List]
       let v27: List[Int] = trait_call core/monad.Monad.flat_map(v36, v30, v35)
-      let v41: (Int, Int) -> Int = make_closure(lambda$30, [])
+      let v41: (Int, Int) -> Int = make_closure(lambda$34, [])
       let v42: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
       let v43: Int = trait_call core/foldable.Foldable.fold(v42, v27, 0, v41)
       let v37: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
@@ -49,7 +50,7 @@ fn main() -> Unit =
     }
   in
   let v0: Option[Int] = construct Option::Some#0(5)
-  let v4: (Int) -> Option[Int] = make_closure(lambda$27, [])
+  let v4: (Int) -> Option[Int] = make_closure(lambda$31, [])
   let v5: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
   let v6: Option[Int] = trait_call core/monad.Monad.flat_map(v5, v0, v4)
   switch v6 {
@@ -64,21 +65,21 @@ fn main() -> Unit =
       jump v46(v12)
   }
 
-fn lambda$27(v1: Int) -> Option[Int] =
+fn lambda$31(v1: Int) -> Option[Int] =
   let v2: Int = mul_int(v1, 2)
   let v3: Option[Int] = construct Option::Some#0(v2)
   v3
 
-fn lambda$28(v16: Int) -> Option[Int] =
+fn lambda$32(v16: Int) -> Option[Int] =
   let v17: Option[Int] = construct Option::None#1()
   v17
 
-fn lambda$29(v31: Int) -> List[Int] =
+fn lambda$33(v31: Int) -> List[Int] =
   let v32: List[Int] = construct List::Nil#1()
   let v33: List[Int] = construct List::Cons#0(v31, v32)
   let v34: List[Int] = construct List::Cons#0(v31, v33)
   v34
 
-fn lambda$30(v38: Int, v39: Int) -> Int =
+fn lambda$34(v38: Int, v39: Int) -> Int =
   let v40: Int = add_int(v38, v39)
   v40

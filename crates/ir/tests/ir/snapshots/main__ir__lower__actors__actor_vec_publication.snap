@@ -10,25 +10,26 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
-import core/actor/send as send(Ref[j12], j12) -> Unit
-import core/actor/receive as receive(Mailbox[s12]) -> s12
-import core/actor/actor_ref as actor_ref(Mailbox[c13]) -> Ref[c13]
-import core/actor/mailbox as mailbox() -> Mailbox[l13]
+import core/actor/spawn as spawn((Mailbox[k12]) -> Unit) -> Ref[k12]
+import core/actor/send as send(Ref[n12], n12) -> Unit
+import core/actor/receive as receive(Mailbox[w12]) -> w12
+import core/actor/actor_ref as actor_ref(Mailbox[g13]) -> Ref[g13]
+import core/actor/mailbox as mailbox() -> Mailbox[p13]
 import core/vec/push as push(~VecBuilder[w6], w6) -> ~VecBuilder[w6]
 import core/vec/push as push(Vec[b7], b7) -> Vec[b7]
-declare actor_ref: (Mailbox[c13]) -> Ref[c13]
-declare mailbox: () -> Mailbox[l13]
+declare actor_ref: (Mailbox[g13]) -> Ref[g13]
+declare mailbox: () -> Mailbox[p13]
 declare println: (g) -> Unit
 declare push: (Vec[b7], b7) -> Vec[b7]
-declare receive: (Mailbox[s12]) -> s12
-declare send: (Ref[j12], j12) -> Unit
-declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
+declare receive: (Mailbox[w12]) -> w12
+declare send: (Ref[n12], n12) -> Unit
+declare spawn: ((Mailbox[k12]) -> Unit) -> Ref[k12]
 
 fn build_vec(v0: Vec[Int], v1: Int, v2: Int) -> Vec[Int] =
   let_join [recur] v3(v4: Vec[Int], v5: Int, v6: Int) =
@@ -51,7 +52,7 @@ fn worker(v13: Mailbox[Msg]) -> Unit =
   let v14: Msg = call receive(v13)
   switch v14 {
     0 (v15: Vec[Int], v16: Ref[Int]) ->
-      let v20: (Int, Int) -> Int = make_closure(lambda$35, [])
+      let v20: (Int, Int) -> Int = make_closure(lambda$40, [])
       let v21: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
       let v22: Int = trait_call core/foldable.Foldable.fold(v21, v15, 0, v20)
       let v23: Unit = call send(v16, v22)
@@ -72,6 +73,6 @@ fn main() -> Unit =
   let v34: Unit = call println(v32, v33)
   v34
 
-fn lambda$35(v17: Int, v18: Int) -> Int =
+fn lambda$40(v17: Int, v18: Int) -> Int =
   let v19: Int = add_int(v17, v18)
   v19

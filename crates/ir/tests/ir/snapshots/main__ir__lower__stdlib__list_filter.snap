@@ -8,6 +8,7 @@ import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -24,14 +25,14 @@ fn main() -> Unit =
   let v2: List[Int] = construct List::Cons#0(3, v1)
   let v3: List[Int] = construct List::Cons#0(2, v2)
   let v4: List[Int] = construct List::Cons#0(1, v3)
-  let v8: (Int) -> Bool = make_closure(lambda$27, [])
+  let v8: (Int) -> Bool = make_closure(lambda$32, [])
   let v9: List[Int] = call filter(v4, v8)
   let v10: Int = call length(v9)
   let v0: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v11: Unit = call println(v0, v10)
   v11
 
-fn lambda$27(v5: Int) -> Bool =
+fn lambda$32(v5: Int) -> Bool =
   let v6: Dict[core/ord.Ord, Int] = get_dict core/ord.Ord[Int]
   let v7: Bool = trait_call core/ord.Ord.lt(v6, 1, v5)
   v7

@@ -6,7 +6,7 @@ module traits__multi_param_hkt_two_ctors
 
 type Box[a] = Box#0(a)
 type Bag[b] = Bag#0(b)
-trait BoxConvert[l11] { box_convert(l11[m11]): m11 }
+trait BoxConvert[p11] { box_convert(p11[q11]): q11 }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Box$$Int] { box_convert=BoxConvert$$Box$$Int$$box_convert }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Bag$$Int] { box_convert=BoxConvert$$Bag$$Int$$box_convert }
 import core/peek/peek as peek(d) -> d
@@ -14,6 +14,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

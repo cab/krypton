@@ -5,12 +5,13 @@ expression: ir_module.to_string()
 module hkt__hkt_codegen_erasure
 
 type Box[a] = Box#0(a)
-trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
+trait Functor[o11] { fmap(o11[p11], (p11) -> q11): o11[q11] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,13 +22,13 @@ import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 declare println: (g) -> Unit
 declare to_list: (Vec[w10]) -> List[w10]
 
-fn fold_box(v0: List[u11], v1: o11[u11], v2: (o11[u11], u11) -> o11[u11]) -> o11[u11] =
-  let_join [recur] v3(v4: List[u11], v5: o11[u11], v6: (o11[u11], u11) -> o11[u11]) =
+fn fold_box(v0: List[y11], v1: s11[y11], v2: (s11[y11], y11) -> s11[y11]) -> s11[y11] =
+  let_join [recur] v3(v4: List[y11], v5: s11[y11], v6: (s11[y11], y11) -> s11[y11]) =
     switch v4 {
       1 ->
         v5
-      0 (v7: u11, v8: List[u11]) ->
-        let v9: o11[u11] = call_closure v6(v5, v7)
+      0 (v7: y11, v8: List[y11]) ->
+        let v9: s11[y11] = call_closure v6(v5, v7)
         jump v3(v8, v9, v6)
     }
   in
@@ -37,7 +38,7 @@ fn main() -> Unit =
   let v11: Vec[Int] = make_vec(1, 2, 4)
   let v12: List[Int] = call to_list(v11)
   let v13: Box[Int] = construct Box::Box#0(0)
-  let v19: (Box[Int], Int) -> Box[Int] = make_closure(lambda$28, [])
+  let v19: (Box[Int], Int) -> Box[Int] = make_closure(lambda$33, [])
   let v10: Box[Int] = call fold_box(v12, v13, v19)
   switch v10 {
     0 (v20: Int) ->
@@ -46,15 +47,15 @@ fn main() -> Unit =
       v22
   }
 
-fn Functor$$Box$$fmap(v23: Box[t12], v24: (t12) -> v12) -> Box[v12] =
+fn Functor$$Box$$fmap(v23: Box[x12], v24: (x12) -> z12) -> Box[z12] =
   switch v23 {
-    0 (v25: t12) ->
-      let v26: v12 = call_closure v24(v25)
-      let v27: Box[v12] = construct Box::Box#0(v26)
+    0 (v25: x12) ->
+      let v26: z12 = call_closure v24(v25)
+      let v27: Box[z12] = construct Box::Box#0(v26)
       v27
   }
 
-fn lambda$28(v14: Box[Int], v15: Int) -> Box[Int] =
+fn lambda$33(v14: Box[Int], v15: Int) -> Box[Int] =
   switch v14 {
     0 (v16: Int) ->
       let v17: Int = add_int(v16, v15)

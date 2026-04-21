@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -22,10 +23,10 @@ fn use_twice(v0: (Int) -> Int) -> Int =
 
 fn test() -> Int =
   let v4: Int = 2
-  let v5: (Int) -> Int = make_closure(lambda$27, [v4])
+  let v5: (Int) -> Int = make_closure(lambda$32, [v4])
   let v9: Int = call use_twice(v5)
   v9
 
-fn lambda$27(v6: Int, v7: Int) -> Int =
+fn lambda$32(v6: Int, v7: Int) -> Int =
   let v8: Int = add_int(v7, v6)
   v8

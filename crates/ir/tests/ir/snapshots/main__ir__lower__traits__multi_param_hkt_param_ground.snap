@@ -5,13 +5,14 @@ expression: ir_module.to_string()
 module traits__multi_param_hkt_param_ground
 
 type Box[a] = Box#0(a)
-trait BoxConvert[k11] { box_convert(k11[l11]): l11 }
+trait BoxConvert[o11] { box_convert(o11[p11]): p11 }
 instance traits__multi_param_hkt_param_ground.BoxConvert[Box$$$Var0] { box_convert=BoxConvert$$Box$$$Var0$$box_convert }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -27,8 +28,8 @@ fn main() -> Unit =
   let v4: Unit = call println(v0, v3)
   v4
 
-fn BoxConvert$$Box$$$Var0$$box_convert(v5: Box[x11]) -> x11 =
+fn BoxConvert$$Box$$$Var0$$box_convert(v5: Box[b12]) -> b12 =
   switch v5 {
-    0 (v6: x11) ->
+    0 (v6: b12) ->
       v6
   }

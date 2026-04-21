@@ -369,7 +369,12 @@ fn infer_forward_reference() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -420,7 +425,12 @@ fn infer_module_forward_ref() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -460,7 +470,12 @@ fn infer_mutual_recursion() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -514,7 +529,12 @@ fn infer_record_constructor() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -554,7 +574,12 @@ fn infer_sum_constructor() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -595,7 +620,12 @@ fn infer_bare_variant() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -646,7 +676,12 @@ fn infer_scc_generalization_order() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -687,7 +722,12 @@ fn infer_field_access() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -727,7 +767,12 @@ fn infer_struct_update() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -797,7 +842,12 @@ fn infer_match_option() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -838,7 +888,12 @@ fn infer_match_literal() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -877,7 +932,12 @@ fn infer_match_variable() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -916,7 +976,12 @@ fn infer_match_nested_constructor() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -967,7 +1032,12 @@ fn infer_tuple_in_match() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1011,7 +1081,12 @@ fn infer_tuple_polymorphic() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1060,7 +1135,12 @@ fn test_exhaustive_complete() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -1111,7 +1191,12 @@ fn test_exhaustive_wildcard_covers_all() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
@@ -3061,7 +3146,12 @@ fn lambda_params_inferred_from_higher_order_fn() {
     filter: forall a. (List[a], (a) -> Bool) -> List[a]
     to_list: forall a. (Vec[a]) -> List[a]
     map: forall a b c. (a[b], (b) -> c) -> a[c]
+    pure: forall a b. (b) -> a[b]
+    flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
     fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+    traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+    sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+    empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]

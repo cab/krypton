@@ -14,6 +14,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -32,7 +33,7 @@ fn mk_closed() -> ~ConnState =
   let v4: ~ConnState = construct ConnState::Closed#1()
   v4
 
-fn identity(v5: q11) -> q11 =
+fn identity(v5: u11) -> u11 =
   v5
 
 fn mk_via_identity(v6: ~Socket) -> ~Conn =

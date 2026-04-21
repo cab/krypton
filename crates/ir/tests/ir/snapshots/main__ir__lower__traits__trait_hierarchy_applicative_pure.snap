@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -22,12 +23,12 @@ fn main() -> Unit =
   let_join v32(v8: Unit) =
     let v10: Dict[core/applicative.Applicative, List] = get_dict core/applicative.Applicative[List]
     let v9: List[Int] = trait_call core/applicative.Applicative.pure(v10, 3)
-    let v14: (Int, Int) -> Int = make_closure(lambda$28, [])
+    let v14: (Int, Int) -> Int = make_closure(lambda$32, [])
     let v15: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
     let v16: Int = trait_call core/foldable.Foldable.fold(v15, v9, 0, v14)
     let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
     let v18: Unit = call println(v17, v16)
-    let v22: (Int) -> Int = make_closure(lambda$29, [])
+    let v22: (Int) -> Int = make_closure(lambda$33, [])
     let v19: Option[(Int) -> Int] = construct Option::Some#0(v22)
     let v23: Option[Int] = construct Option::Some#0(3)
     let v24: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
@@ -56,10 +57,10 @@ fn main() -> Unit =
       jump v32(v7)
   }
 
-fn lambda$28(v11: Int, v12: Int) -> Int =
+fn lambda$32(v11: Int, v12: Int) -> Int =
   let v13: Int = add_int(v11, v12)
   v13
 
-fn lambda$29(v20: Int) -> Int =
+fn lambda$33(v20: Int) -> Int =
   let v21: Int = mul_int(v20, 2)
   v21

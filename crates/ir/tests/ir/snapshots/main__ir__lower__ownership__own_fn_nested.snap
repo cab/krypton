@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -18,7 +19,7 @@ fn consume(v0: ~String) -> String =
   ""
 
 fn make_nested(v1: ~String) -> ~() -> ~() -> String =
-  let v6: ~() -> ~() -> String = make_closure(lambda$28, [v1])
+  let v6: ~() -> ~() -> String = make_closure(lambda$33, [v1])
   v6
 
 fn test(v7: ~String) -> String =
@@ -27,10 +28,10 @@ fn test(v7: ~String) -> String =
   let v10: String = call_closure v9()
   v10
 
-fn lambda$29(v3: ~String) -> String =
+fn lambda$34(v3: ~String) -> String =
   let v4: String = call consume(v3)
   v4
 
-fn lambda$28(v2: ~String) -> ~() -> String =
-  let v5: ~() -> String = make_closure(lambda$29, [v2])
+fn lambda$33(v2: ~String) -> ~() -> String =
+  let v5: ~() -> String = make_closure(lambda$34, [v2])
   v5

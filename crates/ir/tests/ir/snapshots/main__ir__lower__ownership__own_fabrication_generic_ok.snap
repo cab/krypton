@@ -9,20 +9,21 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn ok(v0: (k11) -> String, v1: k11) -> String =
+fn ok(v0: (o11) -> String, v1: o11) -> String =
   let v2: String = call_closure v0(v1)
   v2
 
 fn test() -> String =
-  let v3: (~Option[Int]) -> String = make_closure(lambda$27, [])
+  let v3: (~Option[Int]) -> String = make_closure(lambda$32, [])
   let v5: ~Option[Int] = construct Option::Some#0(42)
   let v6: String = call ok(v3, v5)
   v6
 
-fn lambda$27(v4: ~Option[Int]) -> String =
+fn lambda$32(v4: ~Option[Int]) -> String =
   "hi"

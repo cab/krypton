@@ -5,24 +5,25 @@ expression: ir_module.to_string()
 module traits__hkt_arity2
 
 type Pair[a, b] = Pair#0(a, b)
-trait Bifunctor[l11] { bimap(l11[m11, n11], (m11) -> o11, (n11) -> p11): l11[o11, p11] }
+trait Bifunctor[p11] { bimap(p11[q11, r11], (q11) -> s11, (r11) -> t11): p11[s11, t11] }
 instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 
-fn Bifunctor$$Pair$$bimap(v0: Pair[b12, c12], v1: (b12) -> f12, v2: (c12) -> g12) -> Pair[f12, g12] =
+fn Bifunctor$$Pair$$bimap(v0: Pair[f12, g12], v1: (f12) -> j12, v2: (g12) -> k12) -> Pair[j12, k12] =
   switch v0 {
-    0 (v3: b12, v4: c12) ->
-      let v5: f12 = call_closure v1(v3)
-      let v6: g12 = call_closure v2(v4)
-      let v7: Pair[f12, g12] = construct Pair::Pair#0(v5, v6)
+    0 (v3: f12, v4: g12) ->
+      let v5: j12 = call_closure v1(v3)
+      let v6: k12 = call_closure v2(v4)
+      let v7: Pair[j12, k12] = construct Pair::Pair#0(v5, v6)
       v7
   }

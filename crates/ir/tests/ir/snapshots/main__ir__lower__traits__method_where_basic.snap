@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__method_where_basic
 
-trait Default[j11] { default(): j11 }
-trait R[k11] { lol(k11[l11]): k11[l11] }
+trait Default[n11] { default(): n11 }
+trait R[o11] { lol(o11[p11]): o11[p11] }
 instance traits__method_where_basic.Default[Int] { default=Default$$Int$$default }
 instance traits__method_where_basic.R[List] { lol=R$$List$$lol }
 import core/peek/peek as peek(d) -> d
@@ -13,6 +13,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,7 +22,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v2: List[r11] = construct List::Nil#1()
+  let v2: List[v11] = construct List::Nil#1()
   let v3: Dict[traits__method_where_basic.R, List] = get_dict traits__method_where_basic.R[List]
   let v4: Dict[traits__method_where_basic.Default, Int] = get_dict traits__method_where_basic.Default[Int]
   let v5: List[Int] = trait_call traits__method_where_basic.R.lol(v3, v4, v2)
@@ -33,7 +34,7 @@ fn main() -> Unit =
 fn Default$$Int$$default() -> Int =
   0
 
-fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, v11], v8: List[v11]) -> List[v11] =
-  let v9: v11 = trait_call traits__method_where_basic.Default.default(v7)
-  let v10: List[v11] = construct List::Cons#0(v9, v8)
+fn R$$List$$lol(v7: Dict[traits__method_where_basic.Default, z11], v8: List[z11]) -> List[z11] =
+  let v9: z11 = trait_call traits__method_where_basic.Default.default(v7)
+  let v10: List[z11] = construct List::Cons#0(v9, v8)
   v10

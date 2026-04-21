@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -53,7 +54,7 @@ fn main() -> Unit =
   let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v18: Unit = call println(v17, v16)
   let v19: Vec[Int] = call values(v5)
-  let v23: (Int, Int) -> Int = make_closure(lambda$35, [])
+  let v23: (Int, Int) -> Int = make_closure(lambda$39, [])
   let v24: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
   let v25: Int = trait_call core/foldable.Foldable.fold(v24, v19, 0, v23)
   let v26: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
@@ -66,6 +67,6 @@ fn main() -> Unit =
   let v33: Unit = call println(v28, v32)
   v33
 
-fn lambda$35(v20: Int, v21: Int) -> Int =
+fn lambda$39(v20: Int, v21: Int) -> Int =
   let v22: Int = add_int(v20, v21)
   v22

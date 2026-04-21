@@ -5,25 +5,26 @@ expression: ir_module.to_string()
 module actors__ask_ok
 
 type Msg = Get#0(Ref[Int])
-extern java "krypton.runtime.KryptonIO" println(l14) -> Unit
+extern java "krypton.runtime.KryptonIO" println(p14) -> Unit
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
-import core/actor/send as send(Ref[j12], j12) -> Unit
-import core/actor/receive as receive(Mailbox[s12]) -> s12
-import core/actor/ask as ask(Ref[w13], (Ref[k14]) -> w13, Int) -> Result[Timeout, k14]
-declare ask: (Ref[w13], (Ref[k14]) -> w13, Int) -> Result[Timeout, k14]
-declare println: (l14) -> Unit
-declare receive: (Mailbox[s12]) -> s12
-declare send: (Ref[j12], j12) -> Unit
-declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
+import core/actor/spawn as spawn((Mailbox[k12]) -> Unit) -> Ref[k12]
+import core/actor/send as send(Ref[n12], n12) -> Unit
+import core/actor/receive as receive(Mailbox[w12]) -> w12
+import core/actor/ask as ask(Ref[a14], (Ref[o14]) -> a14, Int) -> Result[Timeout, o14]
+declare ask: (Ref[a14], (Ref[o14]) -> a14, Int) -> Result[Timeout, o14]
+declare println: (p14) -> Unit
+declare receive: (Mailbox[w12]) -> w12
+declare send: (Ref[n12], n12) -> Unit
+declare spawn: ((Mailbox[k12]) -> Unit) -> Ref[k12]
 
 fn value_actor(v0: Mailbox[Msg]) -> Unit =
   let v1: Msg = call receive(v0)
@@ -36,7 +37,7 @@ fn value_actor(v0: Mailbox[Msg]) -> Unit =
 fn main() -> Unit =
   let v5: (Mailbox[Msg]) -> Unit = make_closure(value_actor, [])
   let v4: Ref[Msg] = call spawn(v5)
-  let v8: (Ref[Int]) -> Msg = make_closure(ctor$Get$31, [])
+  let v8: (Ref[Int]) -> Msg = make_closure(ctor$Get$36, [])
   let v9: Result[Timeout, Int] = call ask(v4, v8, 5000)
   switch v9 {
     0 (v10: Int) ->
@@ -50,6 +51,6 @@ fn main() -> Unit =
       }
   }
 
-fn ctor$Get$31(v6: Ref[Int]) -> Msg =
+fn ctor$Get$36(v6: Ref[Int]) -> Msg =
   let v7: Msg = construct Msg::Get#0(v6)
   v7

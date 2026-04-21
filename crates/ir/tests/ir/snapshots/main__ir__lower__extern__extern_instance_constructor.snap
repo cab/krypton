@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module extern__extern_instance_constructor
 
-trait Runnable[k11] { run(k11): Unit }
+trait Runnable[o11] { run(o11): Unit }
 instance extern__extern_instance_constructor.Runnable[$Fun0$Unit] { run=Runnable$$$Fun0$Unit$$run }
 extern java "java.lang.Thread" new(x10) -> ~JThread
 extern java "java.lang.Thread" start(~JThread) -> Unit
@@ -14,6 +14,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -24,7 +25,7 @@ declare println: (g) -> Unit
 declare start: (~JThread) -> Unit
 
 fn main() -> Unit =
-  let v3: () -> Unit = make_closure(lambda$29, [])
+  let v3: () -> Unit = make_closure(lambda$34, [])
   let v4: Dict[extern__extern_instance_constructor.Runnable, () -> Unit] = get_dict extern__extern_instance_constructor.Runnable[() -> Unit]
   let v0: ~JThread = call new(v4, v3)
   let v5: Unit = call start(v0)
@@ -34,7 +35,7 @@ fn Runnable$$$Fun0$Unit$$run(v6: () -> Unit) -> Unit =
   let v7: Unit = call_closure v6()
   v7
 
-fn lambda$29() -> Unit =
+fn lambda$34() -> Unit =
   let v1: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v2: Unit = call println(v1, "hello from bridge")
   v2

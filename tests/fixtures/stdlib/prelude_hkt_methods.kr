@@ -1,0 +1,33 @@
+# expect: ok
+# AC1 + AC4: HKT method functions (map, flat_map, fold, pure, traverse,
+# sequence, empty, combine) must be callable with no explicit `import
+# core/...` line — the prelude alone has to make dispatch work.
+
+fun main() -> Unit = {
+    # Functor[Option]
+    let _a: Option[Int] = map(Some(1), x -> x + 1)
+
+    # Monad[Option]
+    let _b: Option[Int] = flat_map(Some(1), x -> Some(x + 1))
+
+    # Foldable[Vec]
+    let _c: Int = fold([1, 2, 3], 0, (acc, x) -> acc + x)
+
+    # Applicative[Option] (annotation picks the instance)
+    let _d: Option[Int] = pure(1)
+
+    # Traversable[Option] + Applicative[Result]
+    let _e: Result[String, Option[Int]] = traverse(Some(1), x -> Ok(x))
+
+    # Monoid[Int] (annotation picks the instance; tests overload resolution
+    # vs. core/map.empty)
+    let _f: Int = empty()
+
+    # Semigroup[String]
+    let _g: String = combine("a", "b")
+
+    # Traversable[Option] + Applicative[Result] via sequence
+    let _h: Result[String, Option[Int]] = sequence(Some(Ok(1)))
+
+    ()
+}

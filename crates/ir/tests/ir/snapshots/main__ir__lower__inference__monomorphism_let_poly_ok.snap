@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -17,7 +18,7 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v0: (k11) -> k11 = make_closure(lambda$26, [])
+  let v0: (o11) -> o11 = make_closure(lambda$31, [])
   let v2: Int = call_closure v0(42)
   let v3: Bool = call_closure v0(true)
   let_join v7(v5: Int) =
@@ -31,5 +32,5 @@ fn main() -> Unit =
     jump v7(0)
   }
 
-fn lambda$26(v1: k11) -> k11 =
+fn lambda$31(v1: o11) -> o11 =
   v1

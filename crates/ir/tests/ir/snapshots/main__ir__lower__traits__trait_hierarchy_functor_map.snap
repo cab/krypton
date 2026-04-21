@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,25 +22,25 @@ fn main() -> Unit =
   let v2: List[Int] = construct List::Cons#0(3, v1)
   let v3: List[Int] = construct List::Cons#0(2, v2)
   let v4: List[Int] = construct List::Cons#0(1, v3)
-  let v7: (Int) -> Int = make_closure(lambda$26, [])
+  let v7: (Int) -> Int = make_closure(lambda$31, [])
   let v8: Dict[core/functor.Functor, List] = get_dict core/functor.Functor[List]
   let v0: List[Int] = trait_call core/functor.Functor.map(v8, v4, v7)
-  let v12: (Int, Int) -> Int = make_closure(lambda$27, [])
+  let v12: (Int, Int) -> Int = make_closure(lambda$32, [])
   let v13: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
   let v14: Int = trait_call core/foldable.Foldable.fold(v13, v0, 0, v12)
   let v15: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v16: Unit = call println(v15, v14)
   let v18: Vec[Int] = make_vec(10, 20)
-  let v21: (Int) -> Int = make_closure(lambda$28, [])
+  let v21: (Int) -> Int = make_closure(lambda$33, [])
   let v22: Dict[core/functor.Functor, Vec] = get_dict core/functor.Functor[Vec]
   let v17: Vec[Int] = trait_call core/functor.Functor.map(v22, v18, v21)
-  let v26: (Int, Int) -> Int = make_closure(lambda$29, [])
+  let v26: (Int, Int) -> Int = make_closure(lambda$34, [])
   let v27: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
   let v28: Int = trait_call core/foldable.Foldable.fold(v27, v17, 0, v26)
   let v29: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v30: Unit = call println(v29, v28)
   let v31: Option[Int] = construct Option::Some#0(5)
-  let v34: (Int) -> Int = make_closure(lambda$30, [])
+  let v34: (Int) -> Int = make_closure(lambda$35, [])
   let v35: Dict[core/functor.Functor, Option] = get_dict core/functor.Functor[Option]
   let v36: Option[Int] = trait_call core/functor.Functor.map(v35, v31, v34)
   switch v36 {
@@ -54,22 +55,22 @@ fn main() -> Unit =
       v42
   }
 
-fn lambda$26(v5: Int) -> Int =
+fn lambda$31(v5: Int) -> Int =
   let v6: Int = mul_int(v5, 2)
   v6
 
-fn lambda$27(v9: Int, v10: Int) -> Int =
+fn lambda$32(v9: Int, v10: Int) -> Int =
   let v11: Int = add_int(v9, v10)
   v11
 
-fn lambda$28(v19: Int) -> Int =
+fn lambda$33(v19: Int) -> Int =
   let v20: Int = mul_int(v19, 2)
   v20
 
-fn lambda$29(v23: Int, v24: Int) -> Int =
+fn lambda$34(v23: Int, v24: Int) -> Int =
   let v25: Int = add_int(v23, v24)
   v25
 
-fn lambda$30(v32: Int) -> Int =
+fn lambda$35(v32: Int) -> Int =
   let v33: Int = add_int(v32, 1)
   v33

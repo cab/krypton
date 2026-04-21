@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -24,7 +25,7 @@ declare println: (g) -> Unit
 declare put: (~MapBuilder[c10, d10], c10, d10) -> ~MapBuilder[c10, d10]
 
 fn build_map() -> Map[String, Int] =
-  let v0: ~MapBuilder[k11, l11] = call builder()
+  let v0: ~MapBuilder[o11, p11] = call builder()
   let v2: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v3: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v1: ~MapBuilder[String, Int] = call put(v2, v3, v0, "a", 1)
@@ -36,32 +37,32 @@ fn build_map() -> Map[String, Int] =
 
 fn main() -> Unit =
   let v8: Map[String, Int] = call build_map()
-  let v12: (Int) -> Int = make_closure(lambda$31, [])
+  let v12: (Int) -> Int = make_closure(lambda$36, [])
   let v13: Dict[core/eq.Eq, String] = get_dict core/eq.Eq[String]
   let v14: Dict[core/hash.Hash, String] = get_dict core/hash.Hash[String]
   let v15: Dict[core/functor.Functor, Map[String]] = make_dict core/functor.Functor[Map[String]](v13, v14)
   let v9: Map[String, Int] = trait_call core/functor.Functor.map(v15, v8, v12)
-  let v19: (Int, Int) -> Int = make_closure(lambda$32, [])
+  let v19: (Int, Int) -> Int = make_closure(lambda$37, [])
   let v20: Dict[core/foldable.Foldable, Map[String]] = get_dict core/foldable.Foldable[Map[String]]
   let v21: Int = trait_call core/foldable.Foldable.fold(v20, v9, 0, v19)
   let v22: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v23: Unit = call println(v22, v21)
-  let v29: (Int, Int) -> Int = make_closure(lambda$33, [])
+  let v29: (Int, Int) -> Int = make_closure(lambda$38, [])
   let v30: Dict[core/foldable.Foldable, Map[String]] = get_dict core/foldable.Foldable[Map[String]]
   let v31: Int = trait_call core/foldable.Foldable.fold(v30, v9, 0, v29)
   let v24: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v32: Unit = call println(v24, v31)
   v32
 
-fn lambda$31(v10: Int) -> Int =
+fn lambda$36(v10: Int) -> Int =
   let v11: Int = add_int(v10, 1)
   v11
 
-fn lambda$32(v16: Int, v17: Int) -> Int =
+fn lambda$37(v16: Int, v17: Int) -> Int =
   let v18: Int = add_int(v16, v17)
   v18
 
-fn lambda$33(v25: Int, v26: Int) -> Int =
+fn lambda$38(v25: Int, v26: Int) -> Int =
   let v27: Int = add_int(v25, v26)
   let v28: Int = add_int(v27, 1)
   v28

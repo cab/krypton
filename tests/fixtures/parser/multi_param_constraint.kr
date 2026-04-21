@@ -1,4 +1,5 @@
 # expect: ok
+import core/monoid.{Monoid}
 
 # (1) Sugar form single extra arg
 fun convert_first[a, b](x: a) -> b where a: Convert[b] =

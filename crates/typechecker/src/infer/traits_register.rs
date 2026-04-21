@@ -968,6 +968,17 @@ pub(super) fn check_trait_name_conflicts(
                 }
                 if !user_trait_methods.contains_key(&f.name) && has_trait_usage {
                     if let Some(trait_id) = trait_method_map.get(&f.name) {
+                        // Silently-imported traits are not in the user's
+                        // bare-name namespace (they arrive transitively via a
+                        // re-exported method like prelude's `pure`, pulling
+                        // `Applicative`'s def in for dict resolution only).
+                        // Their hidden methods (e.g. `Applicative.apply`) must
+                        // not reserve the name against unrelated user free
+                        // functions. An explicit `import core/...{Applicative}`
+                        // is required before the conflict check applies.
+                        if trait_names.resolve(&trait_id.local_name).is_none() {
+                            continue;
+                        }
                         // Try overlap check for imported trait method
                         let should_error = if let Some(fn_params) =
                             resolve_fn_param_types_for_overlap(f, type_registry)

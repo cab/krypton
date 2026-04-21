@@ -1,0 +1,66 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__prelude_hkt_methods
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare sequence: (o[p[r]]) -> p[o[r]]
+
+fn main() -> Unit =
+  let v1: Option[Int] = construct Option::Some#0(1)
+  let v4: (Int) -> Int = make_closure(lambda$31, [])
+  let v5: Dict[core/functor.Functor, Option] = get_dict core/functor.Functor[Option]
+  let v0: Option[Int] = trait_call core/functor.Functor.map(v5, v1, v4)
+  let v7: Option[Int] = construct Option::Some#0(1)
+  let v11: (Int) -> Option[Int] = make_closure(lambda$32, [])
+  let v12: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
+  let v6: Option[Int] = trait_call core/monad.Monad.flat_map(v12, v7, v11)
+  let v14: Vec[Int] = make_vec(1, 2, 3)
+  let v18: (Int, Int) -> Int = make_closure(lambda$33, [])
+  let v19: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v13: Int = trait_call core/foldable.Foldable.fold(v19, v14, 0, v18)
+  let v21: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
+  let v20: Option[Int] = trait_call core/applicative.Applicative.pure(v21, 1)
+  let v23: Option[Int] = construct Option::Some#0(1)
+  let v26: (Int) -> Result[String, Int] = make_closure(lambda$34, [])
+  let v27: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
+  let v28: Dict[core/applicative.Applicative, Result[String]] = make_dict core/applicative.Applicative[Result[String]]()
+  let v22: Result[String, Option[Int]] = trait_call core/traversable.Traversable.traverse(v27, v28, v23, v26)
+  let v30: Dict[core/monoid.Monoid, Int] = get_dict core/monoid.Monoid[Int]
+  let v29: Int = trait_call core/monoid.Monoid.empty(v30)
+  let v32: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+  let v31: String = trait_call core/semigroup.Semigroup.combine(v32, "a", "b")
+  let v34: Result[String, Int] = construct Result::Ok#0(1)
+  let v35: Option[Result[String, Int]] = construct Option::Some#0(v34)
+  let v36: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
+  let v37: Dict[core/applicative.Applicative, Result[String]] = make_dict core/applicative.Applicative[Result[String]]()
+  let v33: Result[String, Option[Int]] = call sequence(v36, v37, v35)
+  ()
+
+fn lambda$31(v2: Int) -> Int =
+  let v3: Int = add_int(v2, 1)
+  v3
+
+fn lambda$32(v8: Int) -> Option[Int] =
+  let v9: Int = add_int(v8, 1)
+  let v10: Option[Int] = construct Option::Some#0(v9)
+  v10
+
+fn lambda$33(v15: Int, v16: Int) -> Int =
+  let v17: Int = add_int(v15, v16)
+  v17
+
+fn lambda$34(v24: Int) -> Result[String, Int] =
+  let v25: Result[String, Int] = construct Result::Ok#0(v24)
+  v25

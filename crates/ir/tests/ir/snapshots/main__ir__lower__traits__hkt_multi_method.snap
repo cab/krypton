@@ -5,13 +5,14 @@ expression: ir_module.to_string()
 module traits__hkt_multi_method
 
 type Box[a] = Box#0(a)
-trait Functor[k11] { fmap(k11[l11], (l11) -> m11): k11[m11] }
+trait Functor[o11] { fmap(o11[p11], (p11) -> q11): o11[q11] }
 instance traits__hkt_multi_method.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,7 +22,7 @@ declare println: (g) -> Unit
 
 fn main() -> Unit =
   let v0: Box[Int] = construct Box::Box#0(42)
-  let v4: (Int) -> Int = make_closure(lambda$27, [])
+  let v4: (Int) -> Int = make_closure(lambda$32, [])
   let v5: Dict[traits__hkt_multi_method.Functor, Box] = get_dict traits__hkt_multi_method.Functor[Box]
   let v1: Box[Int] = trait_call traits__hkt_multi_method.Functor.fmap(v5, v0, v4)
   let_join v10(v8: Int) =
@@ -34,14 +35,14 @@ fn main() -> Unit =
       jump v10(v7)
   }
 
-fn Functor$$Box$$fmap(v11: Box[e12], v12: (e12) -> g12) -> Box[g12] =
+fn Functor$$Box$$fmap(v11: Box[i12], v12: (i12) -> k12) -> Box[k12] =
   switch v11 {
-    0 (v13: e12) ->
-      let v14: g12 = call_closure v12(v13)
-      let v15: Box[g12] = construct Box::Box#0(v14)
+    0 (v13: i12) ->
+      let v14: k12 = call_closure v12(v13)
+      let v15: Box[k12] = construct Box::Box#0(v14)
       v15
   }
 
-fn lambda$27(v2: Int) -> Int =
+fn lambda$32(v2: Int) -> Int =
   let v3: Int = add_int(v2, 1)
   v3

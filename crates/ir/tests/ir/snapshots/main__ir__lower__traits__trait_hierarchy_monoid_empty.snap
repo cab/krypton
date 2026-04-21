@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -27,7 +28,7 @@ fn main() -> Unit =
   let v7: Unit = call println(v6, v4)
   let v9: Dict[core/monoid.Monoid, List[Int]] = get_dict core/monoid.Monoid[List[Int]]
   let v8: List[Int] = trait_call core/monoid.Monoid.empty(v9)
-  let v13: (Int, Int) -> Int = make_closure(lambda$27, [])
+  let v13: (Int, Int) -> Int = make_closure(lambda$31, [])
   let v14: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
   let v15: Int = trait_call core/foldable.Foldable.fold(v14, v8, 0, v13)
   let v16: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
@@ -38,17 +39,17 @@ fn main() -> Unit =
   let v22: List[Int] = construct List::Cons#0(1, v21)
   let v23: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
   let v18: List[Int] = trait_call core/semigroup.Semigroup.combine(v23, v20, v22)
-  let v28: (Int, Int) -> Int = make_closure(lambda$28, [])
+  let v28: (Int, Int) -> Int = make_closure(lambda$32, [])
   let v29: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
   let v30: Int = trait_call core/foldable.Foldable.fold(v29, v18, 0, v28)
   let v24: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v31: Unit = call println(v24, v30)
   v31
 
-fn lambda$27(v10: Int, v11: Int) -> Int =
+fn lambda$31(v10: Int, v11: Int) -> Int =
   let v12: Int = add_int(v10, v11)
   v12
 
-fn lambda$28(v25: Int, v26: Int) -> Int =
+fn lambda$32(v25: Int, v26: Int) -> Int =
   let v27: Int = add_int(v25, v26)
   v27

@@ -10,27 +10,28 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-import core/actor/spawn as spawn((Mailbox[g12]) -> Unit) -> Ref[g12]
-import core/actor/send as send(Ref[j12], j12) -> Unit
-import core/actor/receive as receive(Mailbox[s12]) -> s12
-import core/actor/actor_ref as actor_ref(Mailbox[c13]) -> Ref[c13]
-import core/actor/mailbox as mailbox() -> Mailbox[l13]
+import core/actor/spawn as spawn((Mailbox[k12]) -> Unit) -> Ref[k12]
+import core/actor/send as send(Ref[n12], n12) -> Unit
+import core/actor/receive as receive(Mailbox[w12]) -> w12
+import core/actor/actor_ref as actor_ref(Mailbox[g13]) -> Ref[g13]
+import core/actor/mailbox as mailbox() -> Mailbox[p13]
 import core/map/entries as entries(Map[g13, h13]) -> Vec[(g13, h13)]
 import core/map/from_list as from_list(List[(j14, k14)]) -> Map[j14, k14]
 import core/list/Cons as Cons(j, List[j]) -> List[j]
-declare actor_ref: (Mailbox[c13]) -> Ref[c13]
+declare actor_ref: (Mailbox[g13]) -> Ref[g13]
 declare entries: (Map[g13, h13]) -> Vec[(g13, h13)]
 declare from_list: (List[(j14, k14)]) -> Map[j14, k14]
-declare mailbox: () -> Mailbox[l13]
+declare mailbox: () -> Mailbox[p13]
 declare println: (g) -> Unit
-declare receive: (Mailbox[s12]) -> s12
-declare send: (Ref[j12], j12) -> Unit
-declare spawn: ((Mailbox[g12]) -> Unit) -> Ref[g12]
+declare receive: (Mailbox[w12]) -> w12
+declare send: (Ref[n12], n12) -> Unit
+declare spawn: ((Mailbox[k12]) -> Unit) -> Ref[k12]
 
 fn build_pairs(v0: Int, v1: Int, v2: List[(Int, Int)]) -> List[(Int, Int)] =
   let_join [recur] v3(v4: Int, v5: Int, v6: List[(Int, Int)]) =
@@ -55,7 +56,7 @@ fn worker(v14: Mailbox[Msg]) -> Unit =
   switch v15 {
     0 (v16: Map[Int, Int], v17: Ref[Int]) ->
       let v18: Vec[(Int, Int)] = call entries(v16)
-      let v24: (Int, (Int, Int)) -> Int = make_closure(lambda$35, [])
+      let v24: (Int, (Int, Int)) -> Int = make_closure(lambda$40, [])
       let v25: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
       let v26: Int = trait_call core/foldable.Foldable.fold(v25, v18, 0, v24)
       let v27: Unit = call send(v17, v26)
@@ -79,7 +80,7 @@ fn main() -> Unit =
   let v41: Unit = call println(v39, v40)
   v41
 
-fn lambda$35(v19: Int, v20: (Int, Int)) -> Int =
+fn lambda$40(v19: Int, v20: (Int, Int)) -> Int =
   let v21: Int = tuple_project v20.0
   let v22: Int = tuple_project v20.1
   let v23: Int = add_int(v19, v22)

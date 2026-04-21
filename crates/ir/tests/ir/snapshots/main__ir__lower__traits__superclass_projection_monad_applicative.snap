@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -16,16 +17,16 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn double_mapped(v0: Dict[core/monad.Monad, x11], v1: x11[z11], v2: (z11) -> z11) -> x11[z11] =
-  let v12: (z11) -> x11[z11] = make_closure(lambda$29, [v2, v0])
-  let v13: x11[z11] = trait_call core/monad.Monad.flat_map(v0, v1, v12)
+fn double_mapped(v0: Dict[core/monad.Monad, z11], v1: z11[b12], v2: (b12) -> b12) -> z11[b12] =
+  let v12: (b12) -> z11[b12] = make_closure(lambda$32, [v2, v0])
+  let v13: z11[b12] = trait_call core/monad.Monad.flat_map(v0, v1, v12)
   v13
 
 fn main() -> Unit =
   let_join v42(v29: Unit) =
     let v31: Option[Int] = construct Option::None#1()
     let v30: Option[Int] = v31
-    let v34: (Int) -> Int = make_closure(lambda$31, [])
+    let v34: (Int) -> Int = make_closure(lambda$34, [])
     let v35: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
     let v36: Option[Int] = call double_mapped(v35, v30, v34)
     switch v36 {
@@ -40,7 +41,7 @@ fn main() -> Unit =
     }
   in
   let v14: Option[Int] = construct Option::Some#0(8)
-  let v17: (Int) -> Int = make_closure(lambda$30, [])
+  let v17: (Int) -> Int = make_closure(lambda$33, [])
   let v18: Dict[core/monad.Monad, Option] = get_dict core/monad.Monad[Option]
   let v19: Option[Int] = call double_mapped(v18, v14, v17)
   switch v19 {
@@ -58,19 +59,19 @@ fn main() -> Unit =
       jump v42(v28)
   }
 
-fn lambda$29(v3: (z11) -> z11, v4: Dict[core/monad.Monad, x11], v5: z11) -> x11[z11] =
-  let v8: z11 = call_closure v3(v5)
-  let v9: Dict[core/applicative.Applicative, x11] = project_dict_field v4.dict0 : core/applicative.Applicative[x11]
-  let v10: x11[z11] = trait_call core/applicative.Applicative.pure(v9, v8)
-  let v6: Dict[core/applicative.Applicative, x11] = project_dict_field v4.dict0 : core/applicative.Applicative[x11]
-  let v7: Dict[core/functor.Functor, x11] = project_dict_field v6.dict0 : core/functor.Functor[x11]
-  let v11: x11[z11] = trait_call core/functor.Functor.map(v7, v10, v3)
+fn lambda$32(v3: (b12) -> b12, v4: Dict[core/monad.Monad, z11], v5: b12) -> z11[b12] =
+  let v8: b12 = call_closure v3(v5)
+  let v9: Dict[core/applicative.Applicative, z11] = project_dict_field v4.dict0 : core/applicative.Applicative[z11]
+  let v10: z11[b12] = trait_call core/applicative.Applicative.pure(v9, v8)
+  let v6: Dict[core/applicative.Applicative, z11] = project_dict_field v4.dict0 : core/applicative.Applicative[z11]
+  let v7: Dict[core/functor.Functor, z11] = project_dict_field v6.dict0 : core/functor.Functor[z11]
+  let v11: z11[b12] = trait_call core/functor.Functor.map(v7, v10, v3)
   v11
 
-fn lambda$30(v15: Int) -> Int =
+fn lambda$33(v15: Int) -> Int =
   let v16: Int = add_int(v15, 1)
   v16
 
-fn lambda$31(v32: Int) -> Int =
+fn lambda$34(v32: Int) -> Int =
   let v33: Int = add_int(v32, 1)
   v33

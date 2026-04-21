@@ -4,13 +4,14 @@ expression: ir_module.to_string()
 ---
 module traits__monoid_empty
 
-trait Monoid[j11] { empty(): j11; combine(j11, j11): j11 }
+trait Monoid[n11] { empty(): n11; combine(n11, n11): n11 }
 instance traits__monoid_empty.Monoid[Int] { empty=Monoid$$Int$$empty, combine=Monoid$$Int$$combine }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -34,7 +35,7 @@ fn main() -> Unit =
   let v10: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v11: Unit = call println(v10, v9)
   let v13: Dict[traits__monoid_empty.Monoid, Int] = get_dict traits__monoid_empty.Monoid[Int]
-  let v16: () -> Int = make_closure(trait_ref$29, [v13])
+  let v16: () -> Int = make_closure(trait_ref$34, [v13])
   let v17: Int = call apply_thunk(v16)
   let v12: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
   let v18: Unit = call println(v12, v17)
@@ -47,6 +48,6 @@ fn Monoid$$Int$$combine(v19: Int, v20: Int) -> Int =
   let v21: Int = add_int(v19, v20)
   v21
 
-fn trait_ref$29(v14: Dict[traits__monoid_empty.Monoid, Int]) -> Int =
+fn trait_ref$34(v14: Dict[traits__monoid_empty.Monoid, Int]) -> Int =
   let v15: Int = trait_call traits__monoid_empty.Monoid.empty(v14)
   v15

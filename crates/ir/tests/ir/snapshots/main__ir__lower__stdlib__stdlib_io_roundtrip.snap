@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -20,12 +21,12 @@ declare println: (g) -> Unit
 declare read_file: (String) -> Result[String, String]
 declare write_file: (String, String) -> Result[String, Unit]
 
-fn handle(v0: Dict[core/show.Show, q11], v1: Dict[core/show.Show, r11], v2: Result[q11, r11]) -> Unit =
+fn handle(v0: Dict[core/show.Show, u11], v1: Dict[core/show.Show, v11], v2: Result[u11, v11]) -> Unit =
   switch v2 {
-    0 (v3: r11) ->
+    0 (v3: v11) ->
       let v4: Unit = call println(v1, v3)
       v4
-    1 (v5: q11) ->
+    1 (v5: u11) ->
       let v6: Unit = call println(v0, v5)
       v6
   }

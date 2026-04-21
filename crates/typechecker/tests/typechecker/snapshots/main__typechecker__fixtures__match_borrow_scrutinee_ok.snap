@@ -17,7 +17,12 @@ sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
 filter: forall a. (List[a], (a) -> Bool) -> List[a]
 to_list: forall a. (Vec[a]) -> List[a]
 map: forall a b c. (a[b], (b) -> c) -> a[c]
+pure: forall a b. (b) -> a[b]
+flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
 fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+empty: forall a. () -> a
 println: forall a. (a) -> Unit where a: Show
 Some: forall a. (a) -> Option[a]
 None: forall a. Option[a]

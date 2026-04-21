@@ -9,18 +9,19 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn fold(v0: List[q11], v1: s11, v2: (s11, q11) -> s11) -> s11 =
+fn fold(v0: List[u11], v1: w11, v2: (w11, u11) -> w11) -> w11 =
   switch v0 {
     1 ->
       v1
-    0 (v3: q11, v4: List[q11]) ->
-      let v5: s11 = call_closure v2(v1, v3)
-      let v6: s11 = call fold(v4, v5, v2)
+    0 (v3: u11, v4: List[u11]) ->
+      let v5: w11 = call_closure v2(v1, v3)
+      let v6: w11 = call fold(v4, v5, v2)
       v6
   }
 
@@ -28,11 +29,11 @@ fn test() -> ~Option[Int] =
   let v7: List[Int] = construct List::Nil#1()
   let v8: List[Int] = construct List::Cons#0(1, v7)
   let v9: ~Option[Int] = construct Option::Some#0(0)
-  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$26, [])
+  let v15: (~Option[Int], Int) -> ~Option[Int] = make_closure(lambda$31, [])
   let v16: ~Option[Int] = call fold(v8, v9, v15)
   v16
 
-fn lambda$26(v10: ~Option[Int], v11: Int) -> ~Option[Int] =
+fn lambda$31(v10: ~Option[Int], v11: Int) -> ~Option[Int] =
   switch v10 {
     0 (v12: f) ->
       let v13: ~Option[Int] = construct Option::Some#0(v11)

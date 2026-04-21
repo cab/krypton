@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -20,7 +21,7 @@ fn first(v0: Int) -> Option[Int] =
   let v1: Option[Int] = construct Option::Some#0(v0)
   v1
 
-fn second(v2: o11) -> Option[Int] =
+fn second(v2: s11) -> Option[Int] =
   let v3: Option[Int] = construct Option::None#1()
   v3
 

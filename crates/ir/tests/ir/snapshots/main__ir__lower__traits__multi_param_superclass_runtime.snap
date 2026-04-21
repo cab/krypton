@@ -5,8 +5,8 @@ expression: ir_module.to_string()
 module traits__multi_param_superclass_runtime
 
 type Wrapped = Wrapped#0(Int)
-trait Codec[k11] { encode(l11): k11 }
-trait MyShow[j11] { my_show(j11): String }
+trait Codec[o11] { encode(p11): o11 }
+trait MyShow[n11] { my_show(n11): String }
 instance traits__multi_param_superclass_runtime.MyShow[Wrapped] { my_show=MyShow$$Wrapped$$my_show }
 instance traits__multi_param_superclass_runtime.Codec[String$$Wrapped] { encode=Codec$$String$$Wrapped$$encode }
 import core/peek/peek as peek(d) -> d
@@ -14,6 +14,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,8 +22,8 @@ import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
-fn describe(v0: Dict[traits__multi_param_superclass_runtime.Codec, n11, o11], v1: o11, v2: n11) -> String =
-  let v3: Dict[traits__multi_param_superclass_runtime.MyShow, o11] = project_dict_field v0.dict0 : traits__multi_param_superclass_runtime.MyShow[o11]
+fn describe(v0: Dict[traits__multi_param_superclass_runtime.Codec, r11, s11], v1: s11, v2: r11) -> String =
+  let v3: Dict[traits__multi_param_superclass_runtime.MyShow, s11] = project_dict_field v0.dict0 : traits__multi_param_superclass_runtime.MyShow[s11]
   let v4: String = trait_call traits__multi_param_superclass_runtime.MyShow.my_show(v3, v1)
   v4
 

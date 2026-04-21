@@ -3,6 +3,16 @@ source: crates/parser/tests/parser/fixtures.rs
 expression: module
 ---
 decls:
+  - Import:
+      platform: ~
+      is_pub: false
+      path: core/monoid
+      names:
+        - name: Monoid
+          alias: ~
+      span:
+        - 13
+        - 40
   - DefFn:
       platform: ~
       name: convert_first
@@ -11,69 +21,69 @@ decls:
         - name: a
           arity: 0
           span:
-            - 66
-            - 67
+            - 94
+            - 95
         - name: b
           arity: 0
           span:
-            - 69
-            - 70
+            - 97
+            - 98
       params:
         - name: x
           ty:
             Var:
               name: a
               span:
-                - 75
-                - 76
+                - 103
+                - 104
           mode: Consume
           span:
-            - 72
-            - 76
+            - 100
+            - 104
       constraints:
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 89
-                  - 90
+                  - 117
+                  - 118
             - Var:
                 name: b
                 span:
-                  - 100
-                  - 101
+                  - 128
+                  - 129
           span:
-            - 89
-            - 102
+            - 117
+            - 130
       return_type:
         Var:
           name: b
           span:
-            - 81
-            - 82
+            - 109
+            - 110
       body:
         App:
           func:
             Var:
               name: convert
               span:
-                - 107
-                - 114
+                - 135
+                - 142
           args:
             - Var:
                 name: x
                 span:
-                  - 115
-                  - 116
+                  - 143
+                  - 144
           is_ufcs: false
           span:
-            - 107
-            - 117
+            - 135
+            - 145
       doc: ~
       span:
-        - 48
-        - 117
+        - 76
+        - 145
   - DefFn:
       platform: ~
       name: convert_second
@@ -82,69 +92,69 @@ decls:
         - name: a
           arity: 0
           span:
-            - 182
-            - 183
+            - 210
+            - 211
         - name: b
           arity: 0
           span:
-            - 185
-            - 186
+            - 213
+            - 214
       params:
         - name: x
           ty:
             Var:
               name: a
               span:
-                - 191
-                - 192
+                - 219
+                - 220
           mode: Consume
           span:
-            - 188
-            - 192
+            - 216
+            - 220
       constraints:
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 213
-                  - 214
+                  - 241
+                  - 242
             - Var:
                 name: b
                 span:
-                  - 216
-                  - 217
+                  - 244
+                  - 245
           span:
-            - 205
-            - 218
+            - 233
+            - 246
       return_type:
         Var:
           name: b
           span:
-            - 197
-            - 198
+            - 225
+            - 226
       body:
         App:
           func:
             Var:
               name: convert
               span:
-                - 223
-                - 230
+                - 251
+                - 258
           args:
             - Var:
                 name: x
                 span:
-                  - 231
-                  - 232
+                  - 259
+                  - 260
           is_ufcs: false
           span:
-            - 223
-            - 233
+            - 251
+            - 261
       doc: ~
       span:
-        - 163
-        - 233
+        - 191
+        - 261
   - DefFn:
       platform: ~
       name: convert_concrete
@@ -153,64 +163,64 @@ decls:
         - name: b
           arity: 0
           span:
-            - 306
-            - 307
+            - 334
+            - 335
       params:
         - name: x
           ty:
             Named:
               name: Int
               span:
-                - 312
-                - 315
+                - 340
+                - 343
           mode: Consume
           span:
-            - 309
-            - 315
+            - 337
+            - 343
       constraints:
         - trait_name: Convert
           type_args:
             - Named:
                 name: Int
                 span:
-                  - 336
-                  - 339
+                  - 364
+                  - 367
             - Var:
                 name: b
                 span:
-                  - 341
-                  - 342
+                  - 369
+                  - 370
           span:
-            - 328
-            - 343
+            - 356
+            - 371
       return_type:
         Var:
           name: b
           span:
-            - 320
-            - 321
+            - 348
+            - 349
       body:
         App:
           func:
             Var:
               name: convert
               span:
-                - 348
-                - 355
+                - 376
+                - 383
           args:
             - Var:
                 name: x
                 span:
-                  - 356
-                  - 357
+                  - 384
+                  - 385
           is_ufcs: false
           span:
-            - 348
-            - 358
+            - 376
+            - 386
       doc: ~
       span:
-        - 285
-        - 358
+        - 313
+        - 386
   - DefFn:
       platform: ~
       name: process
@@ -219,111 +229,111 @@ decls:
         - name: a
           arity: 0
           span:
-            - 489
-            - 490
+            - 517
+            - 518
         - name: b
           arity: 0
           span:
-            - 492
-            - 493
+            - 520
+            - 521
       params:
         - name: x
           ty:
             Var:
               name: a
               span:
-                - 498
-                - 499
+                - 526
+                - 527
           mode: Consume
           span:
-            - 495
-            - 499
+            - 523
+            - 527
       constraints:
         - trait_name: Eq
           type_args:
             - Var:
                 name: a
                 span:
-                  - 519
-                  - 520
+                  - 547
+                  - 548
           span:
-            - 519
-            - 537
+            - 547
+            - 565
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 519
-                  - 520
+                  - 547
+                  - 548
             - Var:
                 name: b
                 span:
-                  - 535
-                  - 536
+                  - 563
+                  - 564
           span:
-            - 519
-            - 537
+            - 547
+            - 565
         - trait_name: Show
           type_args:
             - Var:
                 name: b
                 span:
-                  - 539
-                  - 540
+                  - 567
+                  - 568
           span:
-            - 539
-            - 552
+            - 567
+            - 580
         - trait_name: Ord
           type_args:
             - Var:
                 name: b
                 span:
-                  - 539
-                  - 540
+                  - 567
+                  - 568
           span:
-            - 539
-            - 552
+            - 567
+            - 580
       return_type:
         Named:
           name: String
           span:
-            - 504
-            - 510
+            - 532
+            - 538
       body:
         App:
           func:
             Var:
               name: show
               span:
-                - 557
-                - 561
+                - 585
+                - 589
           args:
             - App:
                 func:
                   Var:
                     name: convert
                     span:
-                      - 562
-                      - 569
+                      - 590
+                      - 597
                 args:
                   - Var:
                       name: x
                       span:
-                        - 570
-                        - 571
+                        - 598
+                        - 599
                 is_ufcs: false
                 span:
-                  - 562
-                  - 572
+                  - 590
+                  - 600
           is_ufcs: false
           span:
-            - 557
-            - 573
+            - 585
+            - 601
       doc: ~
       span:
-        - 477
-        - 573
+        - 505
+        - 601
   - DefTrait:
       platform: ~
       visibility: Private
@@ -332,29 +342,29 @@ decls:
         - name: a
           arity: 0
           span:
-            - 648
-            - 649
+            - 676
+            - 677
         - name: b
           arity: 0
           span:
-            - 651
-            - 652
+            - 679
+            - 680
       superclasses:
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 660
-                  - 661
+                  - 688
+                  - 689
             - Var:
                 name: b
                 span:
-                  - 671
-                  - 672
+                  - 699
+                  - 700
           span:
-            - 660
-            - 673
+            - 688
+            - 701
       methods:
         - platform: ~
           name: decode
@@ -366,33 +376,33 @@ decls:
                 Var:
                   name: b
                   span:
-                    - 692
-                    - 693
+                    - 720
+                    - 721
               mode: Consume
               span:
-                - 689
-                - 693
+                - 717
+                - 721
           constraints: []
           return_type:
             Var:
               name: a
               span:
-                - 698
-                - 699
+                - 726
+                - 727
           body:
             Lit:
               value: Unit
               span:
-                - 678
-                - 699
+                - 706
+                - 727
           doc: ~
           span:
-            - 678
-            - 699
+            - 706
+            - 727
       doc: ~
       span:
-        - 636
-        - 701
+        - 664
+        - 729
   - DefTrait:
       platform: ~
       visibility: Private
@@ -401,39 +411,39 @@ decls:
         - name: a
           arity: 0
           span:
-            - 756
-            - 757
+            - 784
+            - 785
         - name: b
           arity: 0
           span:
-            - 759
-            - 760
+            - 787
+            - 788
       superclasses:
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 768
-                  - 769
+                  - 796
+                  - 797
             - Var:
                 name: b
                 span:
-                  - 779
-                  - 780
+                  - 807
+                  - 808
           span:
-            - 768
-            - 781
+            - 796
+            - 809
         - trait_name: Monoid
           type_args:
             - Var:
                 name: b
                 span:
-                  - 783
-                  - 784
+                  - 811
+                  - 812
           span:
-            - 783
-            - 792
+            - 811
+            - 820
       methods:
         - platform: ~
           name: decode
@@ -445,33 +455,33 @@ decls:
                 Var:
                   name: b
                   span:
-                    - 811
-                    - 812
+                    - 839
+                    - 840
               mode: Consume
               span:
-                - 808
-                - 812
+                - 836
+                - 840
           constraints: []
           return_type:
             Var:
               name: a
               span:
-                - 817
-                - 818
+                - 845
+                - 846
           body:
             Lit:
               value: Unit
               span:
-                - 797
-                - 818
+                - 825
+                - 846
           doc: ~
           span:
-            - 797
-            - 818
+            - 825
+            - 846
       doc: ~
       span:
-        - 743
-        - 820
+        - 771
+        - 848
   - DefTrait:
       platform: ~
       visibility: Private
@@ -480,34 +490,34 @@ decls:
         - name: a
           arity: 0
           span:
-            - 886
-            - 887
+            - 914
+            - 915
         - name: b
           arity: 0
           span:
-            - 889
-            - 890
+            - 917
+            - 918
         - name: c
           arity: 0
           span:
-            - 892
-            - 893
+            - 920
+            - 921
       superclasses:
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 909
-                  - 910
+                  - 937
+                  - 938
             - Var:
                 name: b
                 span:
-                  - 912
-                  - 913
+                  - 940
+                  - 941
           span:
-            - 901
-            - 914
+            - 929
+            - 942
       methods:
         - platform: ~
           name: tern
@@ -519,44 +529,44 @@ decls:
                 Var:
                   name: a
                   span:
-                    - 931
-                    - 932
+                    - 959
+                    - 960
               mode: Consume
               span:
-                - 928
-                - 932
+                - 956
+                - 960
             - name: y
               ty:
                 Var:
                   name: b
                   span:
-                    - 937
-                    - 938
+                    - 965
+                    - 966
               mode: Consume
               span:
-                - 934
-                - 938
+                - 962
+                - 966
           constraints: []
           return_type:
             Var:
               name: c
               span:
-                - 943
-                - 944
+                - 971
+                - 972
           body:
             Lit:
               value: Unit
               span:
-                - 919
-                - 944
+                - 947
+                - 972
           doc: ~
           span:
-            - 919
-            - 944
+            - 947
+            - 972
       doc: ~
       span:
-        - 875
-        - 946
+        - 903
+        - 974
   - DefImpl:
       platform: ~
       trait_name: Convert
@@ -567,58 +577,58 @@ decls:
               - Var:
                   name: a
                   span:
-                    - 1023
-                    - 1024
+                    - 1051
+                    - 1052
               - Var:
                   name: b
                   span:
-                    - 1026
-                    - 1027
+                    - 1054
+                    - 1055
             span:
-              - 1018
-              - 1028
+              - 1046
+              - 1056
         - Named:
             name: String
             span:
-              - 1030
-              - 1036
+              - 1058
+              - 1064
       type_params:
         - name: a
           arity: 0
           span:
-            - 1004
-            - 1005
+            - 1032
+            - 1033
         - name: b
           arity: 0
           span:
-            - 1007
-            - 1008
+            - 1035
+            - 1036
       type_constraints:
         - trait_name: Show
           type_args:
             - Var:
                 name: a
                 span:
-                  - 1044
-                  - 1045
+                  - 1072
+                  - 1073
           span:
-            - 1044
-            - 1064
+            - 1072
+            - 1092
         - trait_name: Convert
           type_args:
             - Var:
                 name: a
                 span:
-                  - 1044
-                  - 1045
+                  - 1072
+                  - 1073
             - Var:
                 name: b
                 span:
-                  - 1062
-                  - 1063
+                  - 1090
+                  - 1091
           span:
-            - 1044
-            - 1064
+            - 1072
+            - 1092
       methods:
         - platform: ~
           name: convert
@@ -633,50 +643,50 @@ decls:
                     - Var:
                         name: a
                         span:
-                          - 1089
-                          - 1090
+                          - 1117
+                          - 1118
                     - Var:
                         name: b
                         span:
-                          - 1092
-                          - 1093
+                          - 1120
+                          - 1121
                   span:
-                    - 1084
-                    - 1094
+                    - 1112
+                    - 1122
               mode: Consume
               span:
-                - 1081
-                - 1094
+                - 1109
+                - 1122
           constraints: []
           return_type:
             Named:
               name: String
               span:
-                - 1099
-                - 1105
+                - 1127
+                - 1133
           body:
             App:
               func:
                 Var:
                   name: show
                   span:
-                    - 1108
-                    - 1112
+                    - 1136
+                    - 1140
               args:
                 - Var:
                     name: x
                     span:
-                      - 1113
-                      - 1114
+                      - 1141
+                      - 1142
               is_ufcs: false
               span:
-                - 1108
-                - 1115
+                - 1136
+                - 1143
           doc: ~
           span:
-            - 1069
-            - 1115
+            - 1097
+            - 1143
       doc: ~
       span:
-        - 999
-        - 1117
+        - 1027
+        - 1145

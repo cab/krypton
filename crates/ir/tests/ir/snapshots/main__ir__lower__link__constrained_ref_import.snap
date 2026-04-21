@@ -9,18 +9,19 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
-import constrained_ref_lib/render_it as render_it(k11) -> String
+import constrained_ref_lib/render_it as render_it(o11) -> String
 declare println: (g) -> Unit
-declare render_it: (k11) -> String
+declare render_it: (o11) -> String
 
 fn main() -> Unit =
   let v1: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v0: (Int) -> String = make_closure(fn_ref$27, [v1])
+  let v0: (Int) -> String = make_closure(fn_ref$32, [v1])
   let_join v11(v9: Bool) =
     let v5: Dict[core/show.Show, Bool] = get_dict core/show.Show[Bool]
     let v10: Unit = call println(v5, v9)
@@ -31,7 +32,7 @@ fn main() -> Unit =
   let v8: Bool = trait_call core/eq.Eq.eq(v6, v7, "42")
   jump v11(v8)
 
-fn fn_ref$27(v2: Dict[core/show.Show, Int], v3: Int) -> String =
+fn fn_ref$32(v2: Dict[core/show.Show, Int], v3: Int) -> String =
   let v4: String = call render_it(v2, v3)
   v4
 module core/eq
@@ -1164,6 +1165,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 module constrained_ref_lib
 
@@ -1172,11 +1174,12 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
 import core/list/Cons as Cons(e, List[e]) -> List[e]
-fn render_it(v0: Dict[core/show.Show, k11], v1: k11) -> String =
+fn render_it(v0: Dict[core/show.Show, o11], v1: o11) -> String =
   let v2: String = trait_call core/show.Show.show(v0, v1)
   v2

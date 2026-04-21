@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -29,10 +30,10 @@ fn test_value(v3: Vec[Int]) -> Int =
   v6
 
 fn test_lambda(v7: Vec[Int]) -> Int =
-  let v10: (Vec[Int]) -> Int = make_closure(lambda$30, [])
+  let v10: (Vec[Int]) -> Int = make_closure(lambda$35, [])
   let v11: Int = call apply(v10, v7)
   v11
 
-fn lambda$30(v8: Vec[Int]) -> Int =
+fn lambda$35(v8: Vec[Int]) -> Int =
   let v9: Int = call length(v8)
   v9

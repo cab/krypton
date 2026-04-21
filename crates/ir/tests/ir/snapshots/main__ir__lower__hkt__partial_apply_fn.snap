@@ -4,13 +4,14 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_fn
 
-trait Functor[j11] { fmap(j11[k11], (k11) -> l11): j11[l11] }
+trait Functor[n11] { fmap(n11[o11], (o11) -> p11): n11[p11] }
 instance hkt__partial_apply_fn.Functor[$Fun1$$Var0$$Var1] { fmap=Functor$$$Fun1$$Var0$$Var1$$fmap }
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -19,8 +20,8 @@ import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare println: (g) -> Unit
 
 fn main() -> Unit =
-  let v0: (Int) -> Int = make_closure(lambda$27, [])
-  let v6: (Int) -> Int = make_closure(lambda$28, [])
+  let v0: (Int) -> Int = make_closure(lambda$32, [])
+  let v6: (Int) -> Int = make_closure(lambda$33, [])
   let v7: Dict[hkt__partial_apply_fn.Functor, (Int) -> _] = get_dict hkt__partial_apply_fn.Functor[(Int) -> _]
   let v3: (Int) -> Int = trait_call hkt__partial_apply_fn.Functor.fmap(v7, v0, v6)
   let v9: Int = call_closure v3(10)
@@ -28,19 +29,19 @@ fn main() -> Unit =
   let v10: Unit = call println(v8, v9)
   v10
 
-fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (m11) -> f12, v12: (f12) -> g12) -> (m11) -> g12 =
-  let v18: (m11) -> g12 = make_closure(lambda$29, [v12, v11])
+fn Functor$$$Fun1$$Var0$$Var1$$fmap(v11: (q11) -> j12, v12: (j12) -> k12) -> (q11) -> k12 =
+  let v18: (q11) -> k12 = make_closure(lambda$34, [v12, v11])
   v18
 
-fn lambda$27(v1: Int) -> Int =
+fn lambda$32(v1: Int) -> Int =
   let v2: Int = add_int(v1, 1)
   v2
 
-fn lambda$28(v4: Int) -> Int =
+fn lambda$33(v4: Int) -> Int =
   let v5: Int = mul_int(v4, 2)
   v5
 
-fn lambda$29(v13: (f12) -> g12, v14: (m11) -> f12, v15: m11) -> g12 =
-  let v16: f12 = call_closure v14(v15)
-  let v17: g12 = call_closure v13(v16)
+fn lambda$34(v13: (j12) -> k12, v14: (q11) -> j12, v15: q11) -> k12 =
+  let v16: j12 = call_closure v14(v15)
+  let v17: k12 = call_closure v13(v16)
   v17

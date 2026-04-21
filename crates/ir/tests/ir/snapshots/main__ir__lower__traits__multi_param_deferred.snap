@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_deferred
 
-trait Convert[j11] { convert(j11): k11 }
+trait Convert[n11] { convert(n11): o11 }
 instance traits__multi_param_deferred.Convert[Bool$$Int] { convert=Convert$$Bool$$Int$$convert }
 instance traits__multi_param_deferred.Convert[Int$$String] { convert=Convert$$Int$$String$$convert }
 instance traits__multi_param_deferred.Convert[Float$$String] { convert=Convert$$Float$$String$$convert }
@@ -13,6 +13,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

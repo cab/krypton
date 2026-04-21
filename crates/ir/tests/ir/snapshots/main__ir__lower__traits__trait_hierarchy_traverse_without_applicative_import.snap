@@ -9,6 +9,7 @@ import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -21,7 +22,7 @@ fn main() -> Unit =
   let_join v51(v25: Unit) =
     let v27: Int = neg_int(1)
     let v26: Option[Int] = construct Option::Some#0(v27)
-    let v35: (Int) -> Option[Int] = make_closure(lambda$28, [])
+    let v35: (Int) -> Option[Int] = make_closure(lambda$32, [])
     let v36: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
     let v37: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
     let v38: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v36, v37, v26, v35)
@@ -47,7 +48,7 @@ fn main() -> Unit =
         v50
     }
   in
-  let v9: (Int) -> Option[Int] = make_closure(lambda$27, [])
+  let v9: (Int) -> Option[Int] = make_closure(lambda$31, [])
   let v10: Dict[core/traversable.Traversable, Option] = get_dict core/traversable.Traversable[Option]
   let v11: Dict[core/applicative.Applicative, Option] = get_dict core/applicative.Applicative[Option]
   let v12: Option[Option[Int]] = trait_call core/traversable.Traversable.traverse(v10, v11, v0, v9)
@@ -73,7 +74,7 @@ fn main() -> Unit =
       jump v51(v24)
   }
 
-fn lambda$27(v1: Int) -> Option[Int] =
+fn lambda$31(v1: Int) -> Option[Int] =
   let_join v8(v4: Bool) =
     if v4 {
       let v5: Int = add_int(v1, 1)
@@ -88,7 +89,7 @@ fn lambda$27(v1: Int) -> Option[Int] =
   let v3: Bool = trait_call core/ord.Ord.lt(v2, 0, v1)
   jump v8(v3)
 
-fn lambda$28(v28: Int) -> Option[Int] =
+fn lambda$32(v28: Int) -> Option[Int] =
   let_join v34(v31: Bool) =
     if v31 {
       let v32: Option[Int] = construct Option::Some#0(v28)
