@@ -26,30 +26,32 @@ fn main() -> Unit =
   let v4: String = trait_call core/monoid.Monoid.empty(v5)
   let v6: Dict[core/show.Show, String] = get_dict core/show.Show[String]
   let v7: Unit = call println(v6, v4)
-  let v9: Dict[core/monoid.Monoid, List[Int]] = get_dict core/monoid.Monoid[List[Int]]
-  let v8: List[Int] = trait_call core/monoid.Monoid.empty(v9)
-  let v13: (Int, Int) -> Int = make_closure(lambda$31, [])
-  let v14: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
-  let v15: Int = trait_call core/foldable.Foldable.fold(v14, v8, 0, v13)
-  let v16: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v17: Unit = call println(v16, v15)
-  let v19: Dict[core/monoid.Monoid, List[Int]] = get_dict core/monoid.Monoid[List[Int]]
-  let v20: List[Int] = trait_call core/monoid.Monoid.empty(v19)
-  let v21: List[Int] = construct List::Nil#1()
-  let v22: List[Int] = construct List::Cons#0(1, v21)
-  let v23: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
-  let v18: List[Int] = trait_call core/semigroup.Semigroup.combine(v23, v20, v22)
-  let v28: (Int, Int) -> Int = make_closure(lambda$32, [])
-  let v29: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
-  let v30: Int = trait_call core/foldable.Foldable.fold(v29, v18, 0, v28)
-  let v24: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
-  let v31: Unit = call println(v24, v30)
-  v31
+  let v9: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
+  let v10: Dict[core/monoid.Monoid, List[Int]] = make_dict core/monoid.Monoid[List[Int]](v9)
+  let v8: List[Int] = trait_call core/monoid.Monoid.empty(v10)
+  let v14: (Int, Int) -> Int = make_closure(lambda$31, [])
+  let v15: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
+  let v16: Int = trait_call core/foldable.Foldable.fold(v15, v8, 0, v14)
+  let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v18: Unit = call println(v17, v16)
+  let v20: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
+  let v21: Dict[core/monoid.Monoid, List[Int]] = make_dict core/monoid.Monoid[List[Int]](v20)
+  let v22: List[Int] = trait_call core/monoid.Monoid.empty(v21)
+  let v23: List[Int] = construct List::Nil#1()
+  let v24: List[Int] = construct List::Cons#0(1, v23)
+  let v25: Dict[core/semigroup.Semigroup, List[Int]] = get_dict core/semigroup.Semigroup[List[Int]]
+  let v19: List[Int] = trait_call core/semigroup.Semigroup.combine(v25, v22, v24)
+  let v30: (Int, Int) -> Int = make_closure(lambda$32, [])
+  let v31: Dict[core/foldable.Foldable, List] = get_dict core/foldable.Foldable[List]
+  let v32: Int = trait_call core/foldable.Foldable.fold(v31, v19, 0, v30)
+  let v26: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v33: Unit = call println(v26, v32)
+  v33
 
-fn lambda$31(v10: Int, v11: Int) -> Int =
-  let v12: Int = add_int(v10, v11)
-  v12
+fn lambda$31(v11: Int, v12: Int) -> Int =
+  let v13: Int = add_int(v11, v12)
+  v13
 
-fn lambda$32(v25: Int, v26: Int) -> Int =
-  let v27: Int = add_int(v25, v26)
-  v27
+fn lambda$32(v27: Int, v28: Int) -> Int =
+  let v29: Int = add_int(v27, v28)
+  v29

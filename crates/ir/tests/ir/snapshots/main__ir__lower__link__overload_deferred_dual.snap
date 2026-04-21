@@ -883,58 +883,61 @@ fn Applicative$$Vec$$pure(v205: h14) -> Vec[h14] =
   v208
 
 fn Applicative$$Vec$$apply(v209: Vec[(n14) -> o14], v210: Vec[n14]) -> Vec[o14] =
-  let v212: Dict[core/monoid.Monoid, Vec[o14]] = get_dict core/monoid.Monoid[Vec[o14]]
-  let v213: Vec[o14] = trait_call core/monoid.Monoid.empty(v212)
-  let v221: (Vec[o14], (n14) -> o14) -> Vec[o14] = make_closure(lambda$49, [v210])
+  let v212: Dict[core/semigroup.Semigroup, Vec[o14]] = get_dict core/semigroup.Semigroup[Vec[o14]]
+  let v213: Dict[core/monoid.Monoid, Vec[o14]] = make_dict core/monoid.Monoid[Vec[o14]](v212)
+  let v214: Vec[o14] = trait_call core/monoid.Monoid.empty(v213)
+  let v222: (Vec[o14], (n14) -> o14) -> Vec[o14] = make_closure(lambda$49, [v210])
   let v211: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
-  let v222: Vec[o14] = trait_call core/foldable.Foldable.fold(v211, v209, v213, v221)
-  v222
+  let v223: Vec[o14] = trait_call core/foldable.Foldable.fold(v211, v209, v214, v222)
+  v223
 
-fn Monad$$Vec$$flat_map(v223: Vec[h15], v224: (h15) -> Vec[i15]) -> Vec[i15] =
-  let v226: Dict[core/monoid.Monoid, Vec[i15]] = get_dict core/monoid.Monoid[Vec[i15]]
-  let v227: Vec[i15] = trait_call core/monoid.Monoid.empty(v226)
-  let v234: (Vec[i15], h15) -> Vec[i15] = make_closure(lambda$50, [v224])
-  let v225: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
-  let v235: Vec[i15] = trait_call core/foldable.Foldable.fold(v225, v223, v227, v234)
+fn Monad$$Vec$$flat_map(v224: Vec[h15], v225: (h15) -> Vec[i15]) -> Vec[i15] =
+  let v227: Dict[core/semigroup.Semigroup, Vec[i15]] = get_dict core/semigroup.Semigroup[Vec[i15]]
+  let v228: Dict[core/monoid.Monoid, Vec[i15]] = make_dict core/monoid.Monoid[Vec[i15]](v227)
+  let v229: Vec[i15] = trait_call core/monoid.Monoid.empty(v228)
+  let v236: (Vec[i15], h15) -> Vec[i15] = make_closure(lambda$50, [v225])
+  let v226: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v237: Vec[i15] = trait_call core/foldable.Foldable.fold(v226, v224, v229, v236)
+  v237
+
+fn Traversable$$Vec$$traverse(v238: Dict[core/applicative.Applicative, t16], v239: Vec[y15], v240: (y15) -> t16[r16]) -> t16[Vec[r16]] =
+  let v242: Dict[core/semigroup.Semigroup, Vec[r16]] = get_dict core/semigroup.Semigroup[Vec[r16]]
+  let v243: Dict[core/monoid.Monoid, Vec[r16]] = make_dict core/monoid.Monoid[Vec[r16]](v242)
+  let v244: Vec[r16] = trait_call core/monoid.Monoid.empty(v243)
+  let v245: t16[Vec[r16]] = trait_call core/applicative.Applicative.pure(v238, v244)
+  let v262: (t16[Vec[r16]], y15) -> t16[Vec[r16]] = make_closure(lambda$51, [v240, v238])
+  let v241: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
+  let v263: t16[Vec[r16]] = trait_call core/foldable.Foldable.fold(v241, v239, v245, v262)
+  v263
+
+fn lambda$49(v215: Vec[n14], v216: Vec[o14], v217: (n14) -> o14) -> Vec[o14] =
+  let v219: Dict[core/functor.Functor, Vec] = get_dict core/functor.Functor[Vec]
+  let v220: Vec[o14] = trait_call core/functor.Functor.map(v219, v215, v217)
+  let v218: Dict[core/semigroup.Semigroup, Vec[o14]] = get_dict core/semigroup.Semigroup[Vec[o14]]
+  let v221: Vec[o14] = trait_call core/semigroup.Semigroup.combine(v218, v216, v220)
+  v221
+
+fn lambda$50(v230: (h15) -> Vec[i15], v231: Vec[i15], v232: h15) -> Vec[i15] =
+  let v234: Vec[i15] = call_closure v230(v232)
+  let v233: Dict[core/semigroup.Semigroup, Vec[i15]] = get_dict core/semigroup.Semigroup[Vec[i15]]
+  let v235: Vec[i15] = trait_call core/semigroup.Semigroup.combine(v233, v231, v234)
   v235
 
-fn Traversable$$Vec$$traverse(v236: Dict[core/applicative.Applicative, t16], v237: Vec[y15], v238: (y15) -> t16[r16]) -> t16[Vec[r16]] =
-  let v240: Dict[core/monoid.Monoid, Vec[r16]] = get_dict core/monoid.Monoid[Vec[r16]]
-  let v241: Vec[r16] = trait_call core/monoid.Monoid.empty(v240)
-  let v242: t16[Vec[r16]] = trait_call core/applicative.Applicative.pure(v236, v241)
-  let v259: (t16[Vec[r16]], y15) -> t16[Vec[r16]] = make_closure(lambda$51, [v238, v236])
-  let v239: Dict[core/foldable.Foldable, Vec] = get_dict core/foldable.Foldable[Vec]
-  let v260: t16[Vec[r16]] = trait_call core/foldable.Foldable.fold(v239, v237, v242, v259)
-  v260
+fn lambda$53(v252: Vec[r16], v254: r16) -> Vec[r16] =
+  let v255: Vec[r16] = call push(v252, v254)
+  v255
 
-fn lambda$49(v214: Vec[n14], v215: Vec[o14], v216: (n14) -> o14) -> Vec[o14] =
-  let v218: Dict[core/functor.Functor, Vec] = get_dict core/functor.Functor[Vec]
-  let v219: Vec[o14] = trait_call core/functor.Functor.map(v218, v214, v216)
-  let v217: Dict[core/semigroup.Semigroup, Vec[o14]] = get_dict core/semigroup.Semigroup[Vec[o14]]
-  let v220: Vec[o14] = trait_call core/semigroup.Semigroup.combine(v217, v215, v219)
-  v220
+fn lambda$52(v251: Vec[r16]) -> (r16) -> Vec[r16] =
+  let v256: (r16) -> Vec[r16] = make_closure(lambda$53, [v251])
+  v256
 
-fn lambda$50(v228: (h15) -> Vec[i15], v229: Vec[i15], v230: h15) -> Vec[i15] =
-  let v232: Vec[i15] = call_closure v228(v230)
-  let v231: Dict[core/semigroup.Semigroup, Vec[i15]] = get_dict core/semigroup.Semigroup[Vec[i15]]
-  let v233: Vec[i15] = trait_call core/semigroup.Semigroup.combine(v231, v229, v232)
-  v233
-
-fn lambda$53(v249: Vec[r16], v251: r16) -> Vec[r16] =
-  let v252: Vec[r16] = call push(v249, v251)
-  v252
-
-fn lambda$52(v248: Vec[r16]) -> (r16) -> Vec[r16] =
-  let v253: (r16) -> Vec[r16] = make_closure(lambda$53, [v248])
-  v253
-
-fn lambda$51(v243: (y15) -> t16[r16], v244: Dict[core/applicative.Applicative, t16], v245: t16[Vec[r16]], v246: y15) -> t16[Vec[r16]] =
-  let v254: (Vec[r16]) -> (r16) -> Vec[r16] = make_closure(lambda$52, [])
-  let v255: Dict[core/functor.Functor, t16] = project_dict_field v244.dict0 : core/functor.Functor[t16]
-  let v256: t16[(r16) -> Vec[r16]] = trait_call core/functor.Functor.map(v255, v245, v254)
-  let v257: t16[r16] = call_closure v243(v246)
-  let v258: t16[Vec[r16]] = trait_call core/applicative.Applicative.apply(v244, v256, v257)
-  v258
+fn lambda$51(v246: (y15) -> t16[r16], v247: Dict[core/applicative.Applicative, t16], v248: t16[Vec[r16]], v249: y15) -> t16[Vec[r16]] =
+  let v257: (Vec[r16]) -> (r16) -> Vec[r16] = make_closure(lambda$52, [])
+  let v258: Dict[core/functor.Functor, t16] = project_dict_field v247.dict0 : core/functor.Functor[t16]
+  let v259: t16[(r16) -> Vec[r16]] = trait_call core/functor.Functor.map(v258, v248, v257)
+  let v260: t16[r16] = call_closure v246(v249)
+  let v261: t16[Vec[r16]] = trait_call core/applicative.Applicative.apply(v247, v259, v260)
+  v261
 module core/ordering
 
 type Ordering = LT#0 | EQ#1 | GT#2

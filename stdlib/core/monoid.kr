@@ -6,7 +6,7 @@
 #   (associativity inherited from Semigroup)
 import core/semigroup.{Semigroup}
 
-pub trait Monoid[a] {
+pub trait Monoid[a] where a: Semigroup {
     fun empty() -> a
 }
 
