@@ -474,11 +474,11 @@ impl ModuleInferenceState {
                             .iter()
                             .find(|t| t.name == origin.local_name)
                         {
-                            let td =
-                                module_interface::trait_summary_to_exported_def(trait_summary);
-                            let already = self.imported_trait_defs.iter().any(|x| {
-                                x.name == td.name && x.module_path == td.module_path
-                            });
+                            let td = module_interface::trait_summary_to_exported_def(trait_summary);
+                            let already = self
+                                .imported_trait_defs
+                                .iter()
+                                .any(|x| x.name == td.name && x.module_path == td.module_path);
                             if !already {
                                 self.imported_trait_defs.push(td);
                             }
@@ -923,8 +923,7 @@ impl ModuleInferenceState {
                 }
                 if let Some(canonical) = canonical_trait {
                     if let Some(td) = self.imported_trait_defs.iter().find(|td| {
-                        td.name == canonical.local_name
-                            && td.module_path == canonical.module_path
+                        td.name == canonical.local_name && td.module_path == canonical.module_path
                     }) {
                         self.reexported_trait_defs.push(td.clone());
                     }

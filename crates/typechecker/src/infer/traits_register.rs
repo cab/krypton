@@ -47,7 +47,9 @@ pub(super) fn process_traits_and_deriving(
     // Phase 2b: Register trait aliases from imports
     for (alias, canonical) in &state.trait_aliases {
         trait_registry.register_trait_alias(alias.clone(), canonical.clone());
-        state.trait_names.register_alias(alias.clone(), canonical.clone());
+        state
+            .trait_names
+            .register_alias(alias.clone(), canonical.clone());
     }
 
     // Phase 2c: Register extern traits (Java interfaces exposed as Krypton traits)
@@ -276,8 +278,7 @@ pub(super) fn register_imported_trait_defs(
         // means the user explicitly imported the trait; a miss means it
         // arrived silently via a re-exported method origin.
         let is_silently_imported = trait_names.resolve(&trait_def.name).is_none();
-        let is_prelude =
-            prelude_imported_names.contains(&trait_def.name) || is_silently_imported;
+        let is_prelude = prelude_imported_names.contains(&trait_def.name) || is_silently_imported;
         // Remap each stored superclass arg so it references the local
         // namespace's TypeVarIds (parallel to how method signatures were
         // remapped above).
@@ -794,8 +795,7 @@ pub(super) fn register_local_traits(
                 }
                 superclass_entries.push((sc_trait_name, sc_args));
             }
-            let local_trait_name =
-                TraitName::new(module_path.to_string(), name.clone());
+            let local_trait_name = TraitName::new(module_path.to_string(), name.clone());
             trait_registry
                 .register_trait(TraitInfo {
                     name: name.clone(),
@@ -1005,18 +1005,49 @@ pub(super) fn check_trait_name_conflicts(
         }
     }
 
-    // Reject user-defined functions with reserved __krypton_ prefix
+    // Reject user-defined functions and trait methods with reserved names.
+    // `__krypton_` is a hard-reserved prefix for runtime shims. `dictN`
+    // (where N is one or more ASCII digits) collides with the synthetic
+    // abstract methods the JVM backend emits on trait interfaces for each
+    // direct superclass slot, so user code may not define a function or
+    // trait method with that name either.
+    fn is_reserved_name(name: &str) -> bool {
+        if name.starts_with("__krypton_") {
+            return true;
+        }
+        if let Some(rest) = name.strip_prefix("dict") {
+            if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+        false
+    }
     if !is_core_module {
         for decl in &module.decls {
-            if let Decl::DefFn(f) = decl {
-                if f.name.starts_with("__krypton_") {
-                    return Err(spanned(
-                        TypeError::ReservedName {
-                            name: f.name.clone(),
-                        },
-                        f.span,
-                    ));
+            match decl {
+                Decl::DefFn(f) => {
+                    if is_reserved_name(&f.name) {
+                        return Err(spanned(
+                            TypeError::ReservedName {
+                                name: f.name.clone(),
+                            },
+                            f.span,
+                        ));
+                    }
                 }
+                Decl::DefTrait { methods, .. } => {
+                    for method in methods {
+                        if is_reserved_name(&method.name) {
+                            return Err(spanned(
+                                TypeError::ReservedName {
+                                    name: method.name.clone(),
+                                },
+                                method.span,
+                            ));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

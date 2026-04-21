@@ -961,27 +961,35 @@ impl<'link> Compiler<'link> {
                 let trait_def = ir_module
                     .traits
                     .iter()
-                    .find(|t| t.trait_name == inst.trait_name);
+                    .find(|t| t.trait_name == inst.trait_name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "ICE: no TraitDef in ir_module for instance {}[{}]",
+                            inst.trait_name.local_name, inst.target_type_name,
+                        )
+                    });
                 let mut superclass_slots: Vec<super::trait_class_gen::ConcreteSuperclassSlot<'_>> =
                     Vec::new();
-                let direct_scs = trait_def
-                    .map(|t| t.direct_superclasses.as_slice())
-                    .unwrap_or(&[]);
-                let trait_params = trait_def.map(|t| t.type_var_ids.as_slice()).unwrap_or(&[]);
+                let direct_scs = trait_def.direct_superclasses.as_slice();
+                let trait_params = trait_def.type_var_ids.as_slice();
                 for (slot_idx, (sc_trait, _)) in inst.sub_dict_requirements.iter().enumerate() {
                     // Superclass slots come first in sub_dict_requirements,
                     // in the same order as direct_superclasses.
-                    let sc_target_types: Vec<Type> = if slot_idx < direct_scs.len()
-                        && trait_params.len() == inst.target_types.len()
+                    if slot_idx >= direct_scs.len() || trait_params.len() != inst.target_types.len()
                     {
-                        direct_scs[slot_idx]
-                            .1
-                            .iter()
-                            .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
-                            .collect()
-                    } else {
-                        inst.target_types.clone()
-                    };
+                        return Err(CodegenError::TypeError(
+                            format!(
+                                "ICE: superclass slot {} out of range / arity mismatch for {}[{}]",
+                                slot_idx, inst.trait_name.local_name, inst.target_type_name,
+                            ),
+                            None,
+                        ));
+                    }
+                    let sc_target_types: Vec<Type> = direct_scs[slot_idx]
+                        .1
+                        .iter()
+                        .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
+                        .collect();
                     let key = (sc_trait.clone(), sc_target_types.clone());
                     let src_info = instance_class_map.get(&key).ok_or_else(|| {
                         let target_display = sc_target_types

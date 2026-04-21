@@ -11,7 +11,7 @@ impl LintPass {
     pub fn run_with_known_traits(
         self,
         module: Module,
-        extra_known_traits: FxHashSet<String>,
+        extra_known_traits: FxHashSet<TraitName>,
     ) -> Result<Module, IrPassError> {
         let mut ctx = LintContext::new(&module, &extra_known_traits);
         for func in &module.functions {
@@ -36,17 +36,17 @@ struct LintContext {
     var_stack: Vec<VarId>,
     join_points: FxHashSet<VarId>,
     known_fns: FxHashSet<FnId>,
-    known_traits: FxHashSet<String>,
+    known_traits: FxHashSet<TraitName>,
     /// trait_name → sub_dict count for each instance.
     instance_sub_dict_counts: Vec<(TraitName, String, usize)>,
 }
 
 impl LintContext {
-    fn new(module: &Module, extra_known_traits: &FxHashSet<String>) -> Self {
+    fn new(module: &Module, extra_known_traits: &FxHashSet<TraitName>) -> Self {
         let known_fns: FxHashSet<FnId> = module.fn_names().keys().copied().collect();
 
-        let mut known_traits: FxHashSet<String> =
-            module.traits.iter().map(|t| t.name.clone()).collect();
+        let mut known_traits: FxHashSet<TraitName> =
+            module.traits.iter().map(|t| t.trait_name.clone()).collect();
         known_traits.extend(extra_known_traits.iter().cloned());
 
         let instance_sub_dict_counts: Vec<(TraitName, String, usize)> = module
@@ -247,7 +247,7 @@ impl LintContext {
             SimpleExprKind::TraitCall {
                 trait_name, args, ..
             } => {
-                if !self.known_traits.contains(&trait_name.local_name) {
+                if !self.known_traits.contains(trait_name) {
                     return Err(
                         self.err(format!("TraitCall references unknown trait '{trait_name}'"))
                     );
@@ -316,7 +316,7 @@ impl LintContext {
                 target_types,
                 ..
             } => {
-                if !self.known_traits.contains(&trait_name.local_name) {
+                if !self.known_traits.contains(trait_name) {
                     return Err(
                         self.err(format!("GetDict references unknown trait '{trait_name}'"))
                     );
@@ -333,7 +333,7 @@ impl LintContext {
                 sub_dicts,
                 ..
             } => {
-                if !self.known_traits.contains(&trait_name.local_name) {
+                if !self.known_traits.contains(trait_name) {
                     return Err(
                         self.err(format!("MakeDict references unknown trait '{trait_name}'"))
                     );
@@ -361,7 +361,7 @@ impl LintContext {
             SimpleExprKind::ProjectDictField {
                 dict, result_trait, ..
             } => {
-                if !self.known_traits.contains(&result_trait.local_name) {
+                if !self.known_traits.contains(result_trait) {
                     return Err(self.err(format!(
                         "ProjectDictField references unknown trait '{result_trait}'"
                     )));

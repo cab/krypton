@@ -1,0 +1,4 @@
+# expect: error E0012
+trait Bad[a] {
+  fun dict0(x: a) -> a
+}

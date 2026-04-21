@@ -2750,40 +2750,6 @@ impl<'link> Compiler<'link> {
         }
     }
 
-    /// Substitute type variables in a type using a mapping from TypeVarId to concrete Type.
-    fn substitute_type_vars(ty: &Type, subst: &HashMap<krypton_ir::TypeVarId, Type>) -> Type {
-        match ty {
-            Type::Var(v) => subst.get(v).cloned().unwrap_or_else(|| ty.clone()),
-            Type::Named(name, args) => Type::Named(
-                name.clone(),
-                args.iter()
-                    .map(|a| Self::substitute_type_vars(a, subst))
-                    .collect(),
-            ),
-            Type::Own(inner) => Type::Own(Box::new(Self::substitute_type_vars(inner, subst))),
-            Type::App(ctor, args) => Type::App(
-                Box::new(Self::substitute_type_vars(ctor, subst)),
-                args.iter()
-                    .map(|a| Self::substitute_type_vars(a, subst))
-                    .collect(),
-            ),
-            Type::Fn(params, ret) => Type::Fn(
-                params
-                    .iter()
-                    .map(|p| Self::substitute_type_vars(p, subst))
-                    .collect(),
-                Box::new(Self::substitute_type_vars(ret, subst)),
-            ),
-            Type::Tuple(elems) => Type::Tuple(
-                elems
-                    .iter()
-                    .map(|e| Self::substitute_type_vars(e, subst))
-                    .collect(),
-            ),
-            _ => ty.clone(),
-        }
-    }
-
     /// Resolve concrete field types for a variant binding using the scrutinee's type.
     /// Returns a vec of concrete types for each field, or None if resolution isn't possible.
     fn resolve_variant_field_types(
@@ -2815,18 +2781,12 @@ impl<'link> Compiler<'link> {
             return None;
         }
 
-        // Build substitution: type_param -> concrete type
-        let subst: HashMap<krypton_ir::TypeVarId, Type> = type_params
-            .iter()
-            .zip(type_args.iter())
-            .map(|(p, a)| (*p, a.clone()))
-            .collect();
+        let args = type_args.to_vec();
 
-        // Apply substitution to each field type
         Some(
             field_types
                 .iter()
-                .map(|ft| Self::substitute_type_vars(ft, &subst))
+                .map(|ft| krypton_ir::substitute_type_vars(ft, type_params, &args))
                 .collect(),
         )
     }

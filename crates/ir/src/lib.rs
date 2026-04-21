@@ -523,11 +523,14 @@ fn bind_instance_target(
 ///
 /// Used by superclass-slot resolvers (codegen + IR lowering) to derive an
 /// ancestor's concrete target types from a descendant instance's targets.
-/// A `params`/`args` length mismatch returns `ty` unchanged.
 pub fn substitute_type_vars(ty: &Type, params: &[TypeVarId], args: &[Type]) -> Type {
-    if params.len() != args.len() {
-        return ty.clone();
-    }
+    assert_eq!(
+        params.len(),
+        args.len(),
+        "substitute_type_vars: params/args length mismatch ({} vs {})",
+        params.len(),
+        args.len()
+    );
     match ty {
         Type::Var(id) => {
             for (i, &p) in params.iter().enumerate() {

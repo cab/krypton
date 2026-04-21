@@ -7642,10 +7642,10 @@ pub fn lower_module(
         fn_exit_closes: ctx.fn_exit_closes,
     };
 
-    let reachable_trait_names: FxHashSet<String> = link_view
+    let reachable_trait_names: FxHashSet<TraitName> = link_view
         .all_traits()
         .iter()
-        .map(|(_, t)| t.name.clone())
+        .map(|(path, t)| TraitName::new(path.as_str().to_string(), t.name.clone()))
         .collect();
 
     crate::lint::LintPass

@@ -36,11 +36,7 @@ impl TraitNameResolver {
     /// Register a trait defined in the current module. Fails with
     /// `AmbiguousTraitName` if the same bare name is already bound to a trait
     /// in a different module.
-    pub fn register_local(
-        &mut self,
-        name: String,
-        trait_name: TraitName,
-    ) -> Result<(), TypeError> {
+    pub fn register_local(&mut self, name: String, trait_name: TraitName) -> Result<(), TypeError> {
         self.check_ambiguity(&name, &trait_name)?;
         self.bare_names.insert(name.clone(), trait_name);
         if !self.local_names.contains(&name) {
@@ -67,8 +63,7 @@ impl TraitNameResolver {
     /// MUST NOT become user-visible. Idempotent: repeated registration for
     /// the same `TraitName` is a no-op.
     pub fn register_internal(&mut self, trait_name: &TraitName) {
-        self.internal_imported
-            .insert(trait_name.local_name.clone());
+        self.internal_imported.insert(trait_name.local_name.clone());
     }
 
     /// Register a user-supplied alias for an existing trait. Aliases are
@@ -82,9 +77,7 @@ impl TraitNameResolver {
     /// heads). Returns `None` for internally-imported traits — those are
     /// reachable only via the registry when a `TraitName` is already known.
     pub fn resolve(&self, name: &str) -> Option<&TraitName> {
-        self.bare_names
-            .get(name)
-            .or_else(|| self.aliases.get(name))
+        self.bare_names.get(name).or_else(|| self.aliases.get(name))
     }
 
     /// Bare names of traits declared in the current module, in declaration
@@ -93,11 +86,7 @@ impl TraitNameResolver {
         &self.local_names
     }
 
-    fn check_ambiguity(
-        &self,
-        name: &str,
-        trait_name: &TraitName,
-    ) -> Result<(), TypeError> {
+    fn check_ambiguity(&self, name: &str, trait_name: &TraitName) -> Result<(), TypeError> {
         if let Some(existing) = self.bare_names.get(name) {
             if existing != trait_name {
                 return Err(TypeError::AmbiguousTraitName {
@@ -183,5 +172,4 @@ mod tests {
         assert_eq!(r.local_names(), &["Foo".to_string()]);
         assert_eq!(r.resolve("Foo"), Some(&foo));
     }
-
 }

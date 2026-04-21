@@ -1676,27 +1676,32 @@ impl<'a> JsEmitter<'a> {
                     .module
                     .traits
                     .iter()
-                    .find(|t| t.trait_name == inst.trait_name);
-                let direct_scs = trait_def
-                    .map(|t| t.direct_superclasses.as_slice())
-                    .unwrap_or(&[]);
-                let trait_params = trait_def.map(|t| t.type_var_ids.as_slice()).unwrap_or(&[]);
+                    .find(|t| t.trait_name == inst.trait_name)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "ICE: no TraitDef in ir_module for instance {}[{}]",
+                            inst.trait_name.local_name, inst.target_type_name,
+                        )
+                    });
+                let direct_scs = trait_def.direct_superclasses.as_slice();
+                let trait_params = trait_def.type_var_ids.as_slice();
                 let slot_entries: Vec<(usize, String)> = inst
                     .sub_dict_requirements
                     .iter()
                     .enumerate()
                     .map(|(idx, (sc_trait, _))| {
-                        let sc_target_types: Vec<Type> = if idx < direct_scs.len()
-                            && trait_params.len() == inst.target_types.len()
+                        if idx >= direct_scs.len() || trait_params.len() != inst.target_types.len()
                         {
-                            direct_scs[idx]
-                                .1
-                                .iter()
-                                .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
-                                .collect()
-                        } else {
-                            inst.target_types.clone()
-                        };
+                            panic!(
+                                "ICE: superclass slot {} out of range / arity mismatch for {}[{}]",
+                                idx, inst.trait_name.local_name, inst.target_type_name,
+                            );
+                        }
+                        let sc_target_types: Vec<Type> = direct_scs[idx]
+                            .1
+                            .iter()
+                            .map(|t| substitute_type_vars(t, trait_params, &inst.target_types))
+                            .collect();
                         let sc_dict_name = self.resolve_dict_js_name(sc_trait, &sc_target_types);
                         (idx, sc_dict_name)
                     })

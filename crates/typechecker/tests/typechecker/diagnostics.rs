@@ -812,6 +812,19 @@ fn e0301_multi_param_names_method() {
 }
 
 #[test]
+fn reserved_dict_method() {
+    let output = render_fixture_error("../../tests/fixtures/traits/reserved_dict_method.kr");
+    assert!(
+        output.contains("E0012"),
+        "expected E0012 (ReservedName) in:\n{output}"
+    );
+    assert!(
+        output.contains("dict0"),
+        "expected reserved method name `dict0` in:\n{output}"
+    );
+}
+
+#[test]
 fn e0301_no_jargon_audit() {
     // Defense-in-depth audit: no E0301 diagnostic should contain the old
     // typeclass jargon. Covers every E0301 fixture in the corpus.
