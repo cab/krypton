@@ -8023,25 +8023,12 @@ fn resolve_type_expr_simple(
     }
 }
 
-/// Reported when [`bind_type_vars`] finds a `TypeVarId` already bound to a
-/// type that disagrees with what the current match would assign. IR call sites
-/// treat this as an ICE; instance-candidate probing treats it as "no match".
-///
-/// Twin of `crate::BindConflict` over the typechecker's `Type`; kept in sync
-/// until the two `Type` representations merge.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct BindConflict {
-    var: TypeVarId,
-    existing: Box<Type>,
-    proposed: Box<Type>,
-}
-
-/// Wrap a [`BindConflict`] as a [`LowerError::InternalError`] carrying the
-/// offending variable, its pre-existing binding, and the binding the current
-/// match would have introduced. Used by `resolve_call_dicts`,
+/// Wrap a [`crate::BindConflict`] as a [`LowerError::InternalError`] carrying
+/// the offending variable, its pre-existing binding, and the binding the
+/// current match would have introduced. Used by `resolve_call_dicts`,
 /// `resolve_dispatch_type_with_bindings`, and `lower_constrained_fn_as_value`
 /// to turn typechecker-authorized pin conflicts into loud ICEs.
-fn ice_bind_conflict(where_: &str, bc: BindConflict) -> LowerError {
+fn ice_bind_conflict(where_: &str, bc: crate::BindConflict<Type>) -> LowerError {
     LowerError::InternalError(format!(
         "ICE: bind conflict in {}: var {:?} pinned to {:?} but pattern would bind it to {:?}",
         where_, bc.var, bc.existing, bc.proposed,
@@ -8059,14 +8046,14 @@ fn bind_type_vars(
     pattern: &Type,
     actual: &Type,
     bindings: &mut FxHashMap<TypeVarId, Type>,
-) -> Result<bool, BindConflict> {
+) -> Result<bool, crate::BindConflict<Type>> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
             Some(existing) => {
                 if existing == actual {
                     Ok(true)
                 } else {
-                    Err(BindConflict {
+                    Err(crate::BindConflict {
                         var: *id,
                         existing: Box::new(existing.clone()),
                         proposed: Box::new(actual.clone()),

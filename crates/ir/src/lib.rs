@@ -354,13 +354,13 @@ pub fn type_to_canonical_name(ty: &Type) -> String {
 /// here means a caller seeded `bindings` with a pin that the pattern contradicts
 /// — a typechecker regression, not a runtime condition.
 ///
-/// A twin of this struct and of [`bind_type_vars`] lives in `lower.rs` and must
-/// be kept in sync until the two `Type` representations merge.
+/// Generic over the type payload `T` so the same struct serves both IR's
+/// [`Type`] and the typechecker's `Type` used by `lower.rs`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BindConflict {
+pub struct BindConflict<T> {
     pub var: TypeVarId,
-    pub existing: Box<Type>,
-    pub proposed: Box<Type>,
+    pub existing: Box<T>,
+    pub proposed: Box<T>,
 }
 
 /// Structurally match a type pattern (may contain type vars) against a concrete
@@ -374,7 +374,7 @@ pub fn bind_type_vars(
     pattern: &Type,
     actual: &Type,
     bindings: &mut FxHashMap<TypeVarId, Type>,
-) -> Result<bool, BindConflict> {
+) -> Result<bool, BindConflict<Type>> {
     match (pattern, actual) {
         (Type::Var(id), _) => match bindings.get(id) {
             Some(existing) => {
