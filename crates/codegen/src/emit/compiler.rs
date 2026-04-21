@@ -327,11 +327,25 @@ impl DictRequirement {
     }
 }
 
+/// One slot in an instance class's sub-dict layout.
+///
+/// Distinct from `DictRequirement` because sub-dict slots can carry
+/// *substituted* target types (e.g. superclass `Semigroup[Vec[a]]` records
+/// `[Named("Vec", [Var(a)])]`), not just bare type-variable ids. Used for
+/// `<init>` arg construction at call sites, where each slot's target types
+/// are substituted by the caller's type bindings before resolving the
+/// sub-dict recursively.
+#[derive(Clone)]
+pub(super) struct SubDictRequirement {
+    pub(super) trait_name: TraitName,
+    pub(super) target_types: Vec<Type>,
+}
+
 #[derive(Clone)]
 pub(super) struct ParameterizedInstanceInfo {
     pub(super) class_name: String,
     pub(super) target_types: Vec<Type>,
-    pub(super) requirements: Vec<DictRequirement>,
+    pub(super) requirements: Vec<SubDictRequirement>,
 }
 
 /// Info about the VecBuilder backing class (KryptonArrayBuilder).

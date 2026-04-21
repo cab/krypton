@@ -22,7 +22,7 @@ use ristretto_classfile::{
 
 pub use compiler::{CodegenError, CodegenErrorKind, JvmType};
 
-use compiler::{Compiler, DictRequirement};
+use compiler::{Compiler, SubDictRequirement};
 use krypton_typechecker::link_context::ModuleLinkView;
 use krypton_typechecker::module_interface::ModulePath;
 
@@ -47,7 +47,7 @@ const JAVA_21: Version = Version::Java21 { minor: 0 };
 struct ImportedInstanceInfo {
     class_name: String,
     target_types: Vec<Type>,
-    requirements: Vec<DictRequirement>,
+    requirements: Vec<SubDictRequirement>,
 }
 
 fn type_to_jvm_basic(ty: &Type) -> Result<JvmType, CodegenError> {
@@ -232,7 +232,12 @@ fn compile_module_inner(
     Ok(result_classes)
 }
 
-/// Build instance class map from a module's local + imported instances.
+/// Build instance class map from a module's local + imported + intrinsic
+/// instances. Each entry's `requirements` carries the *full* sub-dict layout
+/// (direct superclass slots first, then impl-head constraints), so call
+/// sites that construct an instance via `new InstanceClass(subdicts...)` can
+/// pass the right argument count — matching the constructor generated in the
+/// instance's home module.
 fn build_instance_class_map(
     ir_module: &krypton_ir::Module,
     link_view: &ModuleLinkView<'_>,
@@ -240,7 +245,8 @@ fn build_instance_class_map(
     let mut map: HashMap<(TraitName, Vec<Type>), ImportedInstanceInfo> = HashMap::new();
     let intrinsic_registry = intrinsics::IntrinsicRegistry::new();
 
-    // Local non-imported instances
+    // Local non-imported instances: use IR-lowered sub_dict_requirements,
+    // which already carries substituted targets for superclass slots.
     for inst in &ir_module.instances {
         if inst.is_imported {
             continue;
@@ -257,12 +263,12 @@ fn build_instance_class_map(
             inst.trait_name.local_name,
             inst.target_type_name
         );
-        let requirements: Vec<DictRequirement> = inst
+        let requirements: Vec<SubDictRequirement> = inst
             .sub_dict_requirements
             .iter()
-            .map(|(trait_name, type_vars)| DictRequirement {
+            .map(|(trait_name, target_types)| SubDictRequirement {
                 trait_name: trait_name.clone(),
-                type_vars: type_vars.clone(),
+                target_types: target_types.clone(),
             })
             .collect();
         map.insert(
@@ -275,7 +281,10 @@ fn build_instance_class_map(
         );
     }
 
-    // Imported instances from link view
+    // Imported instances from link view. Their sub_dict layout is *not*
+    // carried on the InstanceSummary, so reconstruct it here from the
+    // trait's direct_superclasses (a trait-wide, layout-defining fact) plus
+    // the instance's impl-head constraints.
     for (path, inst) in link_view.all_instances() {
         if path.as_str() == ir_module.module_path.as_str() {
             continue;
@@ -297,21 +306,51 @@ fn build_instance_class_map(
         );
         let target_types: Vec<krypton_ir::Type> =
             inst.target_types.iter().cloned().map(Into::into).collect();
-        let requirements: Vec<DictRequirement> = inst
-            .constraints
+
+        let mut requirements: Vec<SubDictRequirement> = Vec::new();
+        if let Some(trait_def) = ir_module
+            .traits
             .iter()
-            .filter_map(|c| {
-                let ids: Option<Vec<TypeVarId>> = c
-                    .type_vars
-                    .iter()
-                    .map(|name| inst.type_var_ids.get(name).copied())
-                    .collect();
-                ids.map(|ids| DictRequirement {
-                    trait_name: c.trait_name.clone(),
-                    type_vars: ids,
+            .find(|t| t.trait_name == inst.trait_name)
+        {
+            if trait_def.type_var_ids.len() == target_types.len() {
+                for (sc_name, sc_args) in &trait_def.direct_superclasses {
+                    let substituted: Vec<krypton_ir::Type> = sc_args
+                        .iter()
+                        .map(|a| {
+                            krypton_ir::substitute_type_vars(
+                                a,
+                                &trait_def.type_var_ids,
+                                &target_types,
+                            )
+                        })
+                        .collect();
+                    requirements.push(SubDictRequirement {
+                        trait_name: sc_name.clone(),
+                        target_types: substituted,
+                    });
+                }
+            }
+        }
+        for c in &inst.constraints {
+            let tys: Option<Vec<krypton_ir::Type>> = c
+                .type_vars
+                .iter()
+                .map(|name| {
+                    inst.type_var_ids
+                        .get(name)
+                        .copied()
+                        .map(krypton_ir::Type::Var)
                 })
-            })
-            .collect();
+                .collect();
+            if let Some(tys) = tys {
+                requirements.push(SubDictRequirement {
+                    trait_name: c.trait_name.clone(),
+                    target_types: tys,
+                });
+            }
+        }
+
         map.insert(
             (inst.trait_name.clone(), target_types.clone()),
             ImportedInstanceInfo {
@@ -322,7 +361,48 @@ fn build_instance_class_map(
         );
     }
 
+    // Intrinsic instances (Gap 1): register a class-name entry for every
+    // intrinsic (trait, type) pair so that `register_instance_defs_ir` can
+    // resolve a non-parameterized instance's superclass slot when the
+    // superclass's source class is an intrinsic one (e.g. `Monoid[Int]`
+    // with `Semigroup[Int]` as its superclass). The class name matches the
+    // format used by `register_builtin_instances_ir`.
+    for entry in intrinsic_registry.iter() {
+        let trait_module_path = match ir_module
+            .traits
+            .iter()
+            .find(|t| t.trait_name.local_name == entry.trait_name)
+        {
+            Some(t) => t.trait_name.module_path.clone(),
+            None => continue,
+        };
+        let class_name = format!(
+            "{}/{}$${}",
+            trait_module_path, entry.trait_name, entry.type_name
+        );
+        let trait_name = TraitName::new(trait_module_path, entry.trait_name.to_string());
+        let target_type = intrinsic_type_by_name(entry.type_name);
+        let key = (trait_name, vec![target_type.clone()]);
+        map.entry(key).or_insert_with(|| ImportedInstanceInfo {
+            class_name,
+            target_types: vec![target_type],
+            requirements: Vec::new(),
+        });
+    }
+
     map
+}
+
+/// Map an intrinsic type name (from `IntrinsicRegistry`) to its IR Type.
+fn intrinsic_type_by_name(name: &str) -> Type {
+    match name {
+        "Int" => Type::Int,
+        "Float" => Type::Float,
+        "Bool" => Type::Bool,
+        "String" => Type::String,
+        "Unit" => Type::Unit,
+        other => panic!("ICE: unexpected intrinsic type name: {other}"),
+    }
 }
 
 /// Generate a minimal valid `.class` file containing a no-op

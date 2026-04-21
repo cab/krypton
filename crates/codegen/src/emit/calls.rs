@@ -6,7 +6,7 @@ use krypton_ir::{bind_instance_targets, TraitName, Type};
 use ristretto_classfile::attributes::{Instruction, VerificationType};
 
 use super::compiler::{
-    CodegenError, Compiler, DictRequirement, JvmType, ParameterizedInstanceInfo,
+    CodegenError, Compiler, JvmType, ParameterizedInstanceInfo, SubDictRequirement,
 };
 
 impl<'link> Compiler<'link> {
@@ -34,21 +34,27 @@ impl<'link> Compiler<'link> {
 
     // --- Dict / trait resolution helpers ---
 
+    /// Given an instance's sub-dict requirement whose `target_types` are
+    /// expressed over the instance's own type variables, substitute the
+    /// caller's concrete types (matched against `instance_info.target_types`)
+    /// to produce the resolved target types for the sub-dict. Returns
+    /// `None` only if the caller's types fail to match the instance pattern.
     pub(super) fn resolve_dict_requirement_types(
-        requirement: &DictRequirement,
+        requirement: &SubDictRequirement,
         instance_info: &ParameterizedInstanceInfo,
         concrete_tys: &[Type],
     ) -> Option<Vec<Type>> {
         let mut bindings = FxHashMap::default();
-        if bind_instance_targets(&instance_info.target_types, concrete_tys, &mut bindings) {
-            requirement
-                .type_vars
-                .iter()
-                .map(|tv| bindings.get(tv).cloned())
-                .collect()
-        } else {
-            None
+        if !bind_instance_targets(&instance_info.target_types, concrete_tys, &mut bindings) {
+            return None;
         }
+        Some(
+            requirement
+                .target_types
+                .iter()
+                .map(|t| krypton_ir::substitute_over_bindings(t, &bindings))
+                .collect(),
+        )
     }
 
     /// Single-parameter convenience wrapper: emit a dict argument for a single
@@ -168,13 +174,13 @@ impl<'link> Compiler<'link> {
                             CodegenError::UndefinedVariable(
                                 format!(
                                     "could not resolve dictionary requirement {} for instance",
-                                    requirement.trait_name()
+                                    requirement.trait_name
                                 ),
                                 None,
                             )
                         })?;
                 self.emit_dict_argument_for_types(
-                    requirement.trait_name(),
+                    &requirement.trait_name,
                     &requirement_tys,
                     self.builder.refs.object_class,
                 )?;

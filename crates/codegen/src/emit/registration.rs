@@ -9,8 +9,8 @@ use ristretto_classfile::Method;
 
 use super::compiler::{
     CodegenError, Compiler, DictRequirement, FunctionInfo, InstanceSingletonInfo, JvmType,
-    ParameterizedInstanceInfo, StructInfo, SumTypeInfo, TraitDispatchInfo, VariantField,
-    VariantInfo, VecBuilderInfo,
+    ParameterizedInstanceInfo, StructInfo, SubDictRequirement, SumTypeInfo, TraitDispatchInfo,
+    VariantField, VariantInfo, VecBuilderInfo,
 };
 use super::data_class_gen::{
     generate_sealed_interface_class, generate_struct_class, generate_variant_class,
@@ -854,12 +854,12 @@ impl<'link> Compiler<'link> {
             );
             // The trait interface class uses the qualified trait name
             let q_trait = inst.trait_name.jvm_qualified();
-            let dict_requirements: Vec<DictRequirement> = inst
+            let dict_requirements: Vec<SubDictRequirement> = inst
                 .sub_dict_requirements
                 .iter()
-                .map(|(trait_name, type_vars)| DictRequirement {
+                .map(|(trait_name, target_types)| SubDictRequirement {
                     trait_name: trait_name.clone(),
-                    type_vars: type_vars.clone(),
+                    target_types: target_types.clone(),
                 })
                 .collect();
 
@@ -876,6 +876,31 @@ impl<'link> Compiler<'link> {
                 .map(|t| t.direct_superclasses.len())
                 .unwrap_or(0);
             let impl_head_count = dict_requirements.len() - superclass_count;
+
+            // `impl_dict_requirements` is the FnId-keyed list of constraints
+            // passed to the instance method as static-method parameters —
+            // impl-head only, *not* superclass slots. Impl-head constraints
+            // are always bare `Type::Var(id)` over the instance's own type
+            // parameters, so extraction to `Vec<TypeVarId>` is exact.
+            let impl_head_dict_requirements: Vec<DictRequirement> = dict_requirements
+                [superclass_count..]
+                .iter()
+                .map(|r| DictRequirement {
+                    trait_name: r.trait_name.clone(),
+                    type_vars: r
+                        .target_types
+                        .iter()
+                        .map(|t| match t {
+                            Type::Var(id) => *id,
+                            _ => panic!(
+                                "ICE: impl-head dict requirement position for {}[{}] \
+                                 must be a bare type var, got {}",
+                                inst.trait_name.local_name, inst.target_type_name, t,
+                            ),
+                        })
+                        .collect(),
+                })
+                .collect();
 
             let mut method_info = Vec::new();
             let mut param_jvm_types_map: HashMap<String, Vec<JvmType>> = HashMap::new();
@@ -910,7 +935,7 @@ impl<'link> Compiler<'link> {
 
                 self.traits
                     .impl_dict_requirements
-                    .insert(*fn_id, dict_requirements.clone());
+                    .insert(*fn_id, impl_head_dict_requirements.clone());
 
                 let mut all_param_jvm = Vec::new();
                 // Static method signature: impl-head dict params + user params.

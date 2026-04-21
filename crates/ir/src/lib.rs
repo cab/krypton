@@ -583,6 +583,42 @@ pub fn substitute_type_vars(ty: &Type, params: &[TypeVarId], args: &[Type]) -> T
     }
 }
 
+/// Substitute every `Type::Var(id)` in `ty` with `bindings[&id]` when
+/// present, leaving unbound vars unchanged. Mirrors [`substitute_type_vars`]
+/// but indexes by an existing bindings map (as produced by
+/// [`bind_instance_targets`]) rather than parallel `params`/`args` slices.
+pub fn substitute_over_bindings(ty: &Type, bindings: &FxHashMap<TypeVarId, Type>) -> Type {
+    match ty {
+        Type::Var(id) => bindings.get(id).cloned().unwrap_or_else(|| ty.clone()),
+        Type::Fn(ps, ret) => Type::Fn(
+            ps.iter().map(|p| substitute_over_bindings(p, bindings)).collect(),
+            Box::new(substitute_over_bindings(ret, bindings)),
+        ),
+        Type::Named(name, args) => Type::Named(
+            name.clone(),
+            args.iter().map(|a| substitute_over_bindings(a, bindings)).collect(),
+        ),
+        Type::App(ctor, args) => Type::App(
+            Box::new(substitute_over_bindings(ctor, bindings)),
+            args.iter().map(|a| substitute_over_bindings(a, bindings)).collect(),
+        ),
+        Type::Own(inner) => Type::Own(Box::new(substitute_over_bindings(inner, bindings))),
+        Type::Tuple(elems) => Type::Tuple(
+            elems.iter().map(|e| substitute_over_bindings(e, bindings)).collect(),
+        ),
+        Type::Dict { trait_name, target_types } => Type::Dict {
+            trait_name: trait_name.clone(),
+            target_types: target_types
+                .iter()
+                .map(|t| substitute_over_bindings(t, bindings))
+                .collect(),
+        },
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {
+            ty.clone()
+        }
+    }
+}
+
 pub fn bind_instance_targets(
     patterns: &[Type],
     dispatch_tys: &[Type],
@@ -922,7 +958,13 @@ pub struct InstanceDef {
     pub method_fn_ids: Vec<(String, FnId)>,
     /// Direct-superclass sub-dicts first (fixed trait-wide layout), then
     /// impl-head constraint sub-dicts. See the type-level doc above.
-    pub sub_dict_requirements: Vec<(TraitName, Vec<TypeVarId>)>,
+    ///
+    /// Each entry's `Vec<Type>` is the target type tuple for the sub-dict,
+    /// with any trait-params substituted by the descendant's `target_types`.
+    /// For impl-head constraints the targets are bare `Type::Var(id)` entries
+    /// of the instance's own type vars; for superclass slots they may be any
+    /// substituted types, including parameterized composites like `Vec[a]`.
+    pub sub_dict_requirements: Vec<(TraitName, Vec<Type>)>,
     pub is_intrinsic: bool,
     pub is_imported: bool,
 }
@@ -954,7 +996,8 @@ pub struct ImportedInstanceRef {
     /// Type arguments of the instance. Length 1 for single-parameter traits,
     /// N for multi-parameter traits like `impl Convert[Int, String]`.
     pub target_types: Vec<Type>,
-    pub sub_dict_requirements: Vec<(TraitName, Vec<TypeVarId>)>,
+    /// See `InstanceDef::sub_dict_requirements` for the layout contract.
+    pub sub_dict_requirements: Vec<(TraitName, Vec<Type>)>,
     pub is_intrinsic: bool,
 }
 

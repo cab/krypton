@@ -957,7 +957,7 @@ mod tests {
             target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
             target_type_name: "Option".to_string(),
             method_fn_ids: vec![("show".to_string(), FnId(2))],
-            sub_dict_requirements: vec![(make_trait_name("Show"), vec![tv_a])],
+            sub_dict_requirements: vec![(make_trait_name("Show"), vec![Type::Var(tv_a)])],
             is_intrinsic: false,
             is_imported: false,
         });
@@ -1145,7 +1145,7 @@ mod tests {
             target_types: vec![Type::Named("Option".to_string(), vec![Type::Var(tv_a)])],
             target_type_name: "Option".to_string(),
             method_fn_ids: vec![("show".to_string(), FnId(2))],
-            sub_dict_requirements: vec![(make_trait_name("Show"), vec![tv_a])],
+            sub_dict_requirements: vec![(make_trait_name("Show"), vec![Type::Var(tv_a)])],
             is_intrinsic: false,
             is_imported: false,
         });

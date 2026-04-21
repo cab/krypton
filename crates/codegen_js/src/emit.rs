@@ -1729,12 +1729,22 @@ impl<'a> JsEmitter<'a> {
                     .sub_dict_requirements
                     .iter()
                     .enumerate()
-                    .map(|(idx, (tn, tvs))| {
-                        let joined = tvs
+                    .map(|(idx, (tn, targets))| {
+                        // Prefer a readable suffix built from the target
+                        // type-var names when every position is a bare var;
+                        // otherwise fall back to the slot index so the
+                        // parameter name stays a valid JS identifier.
+                        let all_vars: Option<Vec<String>> = targets
                             .iter()
-                            .map(|v| v.display_name())
-                            .collect::<Vec<_>>()
-                            .join("$");
+                            .map(|t| match t {
+                                Type::Var(id) => Some(id.display_name().to_string()),
+                                _ => None,
+                            })
+                            .collect();
+                        let joined = all_vars
+                            .as_ref()
+                            .map(|vs| vs.join("$"))
+                            .unwrap_or_default();
                         if joined.is_empty() {
                             format!("dict$${}$${}", tn.local_name, idx)
                         } else {
