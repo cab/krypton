@@ -6,6 +6,7 @@ use crate::module_interface::{
     ModulePath, TraitSummary, TypeSummary,
 };
 use crate::typed_ast::TraitName;
+use crate::types::{substitute_type_params, Type, TypeVarId};
 use krypton_parser::ast::Visibility;
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,23 @@ enum TypeEntry {
     },
 }
 
+/// Materialized per-trait superclass metadata.
+///
+/// All type argument vectors are expressed in the owning trait's own
+/// `type_var_ids` namespace:
+/// - `direct` mirrors `TraitSummary.superclasses` (one entry per declared
+///   superclass constraint, args over this trait's type params).
+/// - `closure` is the BFS transitive closure of `direct`: for each reachable
+///   ancestor, the args are composed through hop substitutions so every entry
+///   is expressed over this (root-descendant) trait's type params.
+/// - `type_var_ids` is the trait's own parameter id vector, parallel to the
+///   var positions appearing in the `direct`/`closure` entries.
+pub struct TraitSuperclassInfo {
+    pub direct: Vec<(TraitName, Vec<Type>)>,
+    pub closure: Vec<(TraitName, Vec<Type>)>,
+    pub type_var_ids: Vec<TypeVarId>,
+}
+
 // ---------------------------------------------------------------------------
 // LinkContext
 // ---------------------------------------------------------------------------
@@ -88,6 +106,7 @@ pub struct LinkContext {
     instance_index: FxHashMap<TraitName, Vec<(ModuleId, usize)>>,
     extern_type_index: FxHashMap<String, (ModuleId, usize)>,
     transitive_deps: FxHashMap<ModuleId, FxHashSet<ModuleId>>,
+    trait_superclass: FxHashMap<TraitName, TraitSuperclassInfo>,
 }
 
 impl LinkContext {
@@ -212,6 +231,64 @@ impl LinkContext {
             transitive_deps.insert(mod_id, reachable);
         }
 
+        // Step 10: Materialize per-trait superclass metadata (direct +
+        // transitive closure) in each trait's canonical TypeVarId namespace.
+        // This is a global property of the trait graph — previously rebuilt
+        // per module inside IR lowering; computing it once here removes
+        // O(T²) duplicated work across multi-module compilations.
+        let mut trait_superclass: FxHashMap<TraitName, TraitSuperclassInfo> = FxHashMap::default();
+        for iface in iface_map.values() {
+            for tsum in &iface.exported_traits {
+                let key = TraitName::new(tsum.module_path.as_str().to_string(), tsum.name.clone());
+                trait_superclass
+                    .entry(key)
+                    .or_insert_with(|| TraitSuperclassInfo {
+                        direct: tsum.superclasses.clone(),
+                        closure: Vec::new(),
+                        type_var_ids: tsum.type_var_ids.clone(),
+                    });
+            }
+        }
+        // BFS each trait's transitive closure by composing direct
+        // superclass substitutions along the hop path, so every closure
+        // entry's args remain in the root descendant's own type_var_ids.
+        let trait_keys: Vec<TraitName> = trait_superclass.keys().cloned().collect();
+        for tname in &trait_keys {
+            let mut queue: VecDeque<(TraitName, Vec<Type>)> = VecDeque::new();
+            let mut visited: FxHashSet<TraitName> = FxHashSet::default();
+            let mut order: Vec<(TraitName, Vec<Type>)> = Vec::new();
+            if let Some(info) = trait_superclass.get(tname) {
+                for (sc_name, sc_args) in &info.direct {
+                    queue.push_back((sc_name.clone(), sc_args.clone()));
+                }
+            }
+            while let Some((cur, cur_args)) = queue.pop_front() {
+                if !visited.insert(cur.clone()) {
+                    continue;
+                }
+                order.push((cur.clone(), cur_args.clone()));
+                let Some(cur_info) = trait_superclass.get(&cur) else {
+                    continue;
+                };
+                if cur_info.type_var_ids.len() != cur_args.len() {
+                    continue;
+                }
+                for (next_name, next_args) in &cur_info.direct {
+                    if visited.contains(next_name) {
+                        continue;
+                    }
+                    let composed: Vec<Type> = next_args
+                        .iter()
+                        .map(|a| substitute_type_params(a, &cur_info.type_var_ids, &cur_args))
+                        .collect();
+                    queue.push_back((next_name.clone(), composed));
+                }
+            }
+            if let Some(info) = trait_superclass.get_mut(tname) {
+                info.closure = order;
+            }
+        }
+
         LinkContext {
             interner,
             interfaces: iface_map,
@@ -221,6 +298,7 @@ impl LinkContext {
             instance_index,
             extern_type_index,
             transitive_deps,
+            trait_superclass,
         }
     }
 
@@ -331,6 +409,39 @@ impl LinkContext {
             let path = self.interner.resolve(*mod_id);
             iface.exported_traits.iter().map(move |t| (path, t))
         })
+    }
+
+    /// Declared superclass constraints for `trait_name`, in source order, with
+    /// type argument vectors expressed over the trait's own `type_var_ids`.
+    /// Returns `None` for traits not present in any loaded interface (e.g.
+    /// extern traits declared only at the IR boundary).
+    pub fn trait_direct_superclasses(
+        &self,
+        trait_name: &TraitName,
+    ) -> Option<&[(TraitName, Vec<Type>)]> {
+        self.trait_superclass
+            .get(trait_name)
+            .map(|info| info.direct.as_slice())
+    }
+
+    /// Transitive superclass closure for `trait_name`, BFS order, with every
+    /// entry's args composed back into this trait's own type parameters.
+    pub fn trait_superclass_closure(
+        &self,
+        trait_name: &TraitName,
+    ) -> Option<&[(TraitName, Vec<Type>)]> {
+        self.trait_superclass
+            .get(trait_name)
+            .map(|info| info.closure.as_slice())
+    }
+
+    /// Trait's own type parameter ids in declaration order. Parallel to the
+    /// var positions used in `trait_direct_superclasses` / `trait_superclass_closure`
+    /// entries, so substitution at hop composition sites can use the right params.
+    pub fn trait_type_var_ids(&self, trait_name: &TraitName) -> Option<&[TypeVarId]> {
+        self.trait_superclass
+            .get(trait_name)
+            .map(|info| info.type_var_ids.as_slice())
     }
 
     pub fn lookup_extern_type(&self, name: &str) -> Option<&ExternTypeSummary> {
@@ -484,6 +595,28 @@ impl<'a> ModuleLinkView<'a> {
             })
             .collect()
     }
+
+    /// See [`LinkContext::trait_direct_superclasses`]. Trait metadata is a
+    /// global property of the trait graph and is not filtered by reachability.
+    pub fn trait_direct_superclasses(
+        &self,
+        trait_name: &TraitName,
+    ) -> Option<&'a [(TraitName, Vec<Type>)]> {
+        self.ctx.trait_direct_superclasses(trait_name)
+    }
+
+    /// See [`LinkContext::trait_superclass_closure`].
+    pub fn trait_superclass_closure(
+        &self,
+        trait_name: &TraitName,
+    ) -> Option<&'a [(TraitName, Vec<Type>)]> {
+        self.ctx.trait_superclass_closure(trait_name)
+    }
+
+    /// See [`LinkContext::trait_type_var_ids`].
+    pub fn trait_type_var_ids(&self, trait_name: &TraitName) -> Option<&'a [TypeVarId]> {
+        self.ctx.trait_type_var_ids(trait_name)
+    }
 }
 
 // ===========================================================================
@@ -546,17 +679,32 @@ mod tests {
     }
 
     fn make_trait_summary(name: &str, module_path: &str) -> TraitSummary {
+        make_trait_summary_with(
+            name,
+            module_path,
+            vec![crate::types::TypeVarId(0)],
+            vec![],
+        )
+    }
+
+    fn make_trait_summary_with(
+        name: &str,
+        module_path: &str,
+        type_var_ids: Vec<crate::types::TypeVarId>,
+        superclasses: Vec<(TraitName, Vec<Type>)>,
+    ) -> TraitSummary {
+        let type_var_id = *type_var_ids.first().expect("at least one type param");
         TraitSummary {
             key: LocalSymbolKey::Trait(name.to_string()),
             visibility: Visibility::Pub,
             name: name.to_string(),
             module_path: ModulePath::new(module_path),
             type_var: "a".to_string(),
-            type_var_id: crate::types::TypeVarId(0),
-            type_var_ids: vec![crate::types::TypeVarId(0)],
+            type_var_id,
+            type_var_ids,
             type_var_names: vec!["a".to_string()],
             type_var_arity: 0,
-            superclasses: vec![],
+            superclasses,
             methods: vec![],
         }
     }
@@ -926,5 +1074,96 @@ mod tests {
         // all_instances should also be filtered
         let all = view.all_instances();
         assert_eq!(all.len(), 2);
+    }
+
+    // 18. Trait superclass metadata — direct + transitive closure composed
+    //     through each trait's own type_var_ids namespace.
+    #[test]
+    fn test_trait_superclass_metadata() {
+        use crate::types::TypeVarId;
+
+        let a_name = TraitName::new("mod_a".to_string(), "A".to_string());
+        let b_name = TraitName::new("mod_b".to_string(), "B".to_string());
+        let c_name = TraitName::new("mod_c".to_string(), "C".to_string());
+
+        // Each trait carries its own canonical TypeVarId namespace. Superclass
+        // args are expressed in that trait's own ids (B's A[x_B], C's B[x_C]).
+        let x_a = TypeVarId(10);
+        let x_b = TypeVarId(20);
+        let x_c = TypeVarId(30);
+
+        let mut iface_a = make_interface("mod_a");
+        iface_a
+            .exported_traits
+            .push(make_trait_summary_with("A", "mod_a", vec![x_a], vec![]));
+
+        let mut iface_b = make_interface("mod_b");
+        iface_b.exported_traits.push(make_trait_summary_with(
+            "B",
+            "mod_b",
+            vec![x_b],
+            vec![(a_name.clone(), vec![Type::Var(x_b)])],
+        ));
+
+        let mut iface_c = make_interface("mod_c");
+        iface_c.exported_traits.push(make_trait_summary_with(
+            "C",
+            "mod_c",
+            vec![x_c],
+            vec![(b_name.clone(), vec![Type::Var(x_c)])],
+        ));
+
+        let ctx = LinkContext::build(vec![iface_a, iface_b, iface_c]);
+
+        assert_eq!(ctx.trait_type_var_ids(&a_name), Some([x_a].as_slice()));
+        assert_eq!(ctx.trait_type_var_ids(&b_name), Some([x_b].as_slice()));
+        assert_eq!(ctx.trait_type_var_ids(&c_name), Some([x_c].as_slice()));
+
+        // Direct superclasses mirror TraitSummary.superclasses verbatim.
+        assert_eq!(
+            ctx.trait_direct_superclasses(&b_name),
+            Some([(a_name.clone(), vec![Type::Var(x_b)])].as_slice())
+        );
+        assert_eq!(
+            ctx.trait_direct_superclasses(&c_name),
+            Some([(b_name.clone(), vec![Type::Var(x_c)])].as_slice())
+        );
+        assert_eq!(ctx.trait_direct_superclasses(&a_name), Some([].as_slice()));
+
+        // Closure for C walks C → B → A and composes substitutions so that
+        // both entries are expressed over C's own x_c.
+        assert_eq!(
+            ctx.trait_superclass_closure(&c_name),
+            Some(
+                [
+                    (b_name.clone(), vec![Type::Var(x_c)]),
+                    (a_name.clone(), vec![Type::Var(x_c)]),
+                ]
+                .as_slice()
+            )
+        );
+        assert_eq!(
+            ctx.trait_superclass_closure(&b_name),
+            Some([(a_name.clone(), vec![Type::Var(x_b)])].as_slice())
+        );
+        assert_eq!(ctx.trait_superclass_closure(&a_name), Some([].as_slice()));
+
+        // Unknown trait names return None (callers treat this as empty).
+        let unknown = TraitName::new("nowhere".to_string(), "Nope".to_string());
+        assert!(ctx.trait_direct_superclasses(&unknown).is_none());
+        assert!(ctx.trait_superclass_closure(&unknown).is_none());
+        assert!(ctx.trait_type_var_ids(&unknown).is_none());
+
+        // ModuleLinkView exposes the same accessors (unfiltered — trait
+        // metadata is a global property of the trait graph).
+        let view = ctx.view_for(&ModulePath::new("mod_c")).unwrap();
+        assert_eq!(
+            view.trait_superclass_closure(&c_name),
+            ctx.trait_superclass_closure(&c_name)
+        );
+        assert_eq!(
+            view.trait_type_var_ids(&c_name),
+            ctx.trait_type_var_ids(&c_name)
+        );
     }
 }

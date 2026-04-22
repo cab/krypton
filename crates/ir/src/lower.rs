@@ -647,7 +647,12 @@ type TraitMethodConstraintInfo = FxHashMap<String, TraitConstraintList>;
 /// type info survives to codegen.
 type InstanceSubDictList = Vec<(TraitName, Vec<IrType>)>;
 
-struct LowerCtx {
+struct LowerCtx<'a> {
+    /// Link-context view for the module being lowered. Source of trait
+    /// metadata (direct + transitive superclasses, trait type param ids).
+    /// Scope-filtered instances are still read through its `all_instances`
+    /// accessor during ctx construction.
+    link_view: &'a krypton_typechecker::link_context::ModuleLinkView<'a>,
     next_var: u32,
     next_fn: u32,
     /// For generating TypeVarIds for private type definitions
@@ -722,25 +727,9 @@ struct LowerCtx {
     /// Fast path for exact-match instance resolution; parameterized instances
     /// fall through to the linear structural scan.
     instance_exact_index: FxHashMap<(String, String), usize>,
-    /// trait_name → direct superclass list, in declaration order. Each entry
-    /// stores the ancestor's trait name and the types it is applied to,
-    /// expressed over the descendant trait's own type parameters. A trait
-    /// with no superclasses has an absent (or empty) entry.
-    trait_direct_superclasses: FxHashMap<TraitName, Vec<(TraitName, Vec<IrType>)>>,
-    /// trait_name → transitive superclass closure, BFS order starting from
-    /// the trait itself's direct superclasses. Each entry stores the ancestor
-    /// trait name and the types it's applied to, expressed over the root
-    /// descendant's own type parameters (substitutions composed along the
-    /// hop chain). Used by Strategy 1.5 (descendant dict projection) to decide
-    /// whether an in-scope descendant dict can satisfy an ancestor trait request.
-    trait_superclass_closure: FxHashMap<TraitName, Vec<(TraitName, Vec<IrType>)>>,
-    /// trait_name → its own type parameter ids in declaration order. Parallel
-    /// to the var positions used in `trait_direct_superclasses` entries, so
-    /// substitution at superclass hop composition can use the right params.
-    trait_type_var_ids: FxHashMap<TraitName, Vec<TypeVarId>>,
 }
 
-impl LowerCtx {
+impl<'a> LowerCtx<'a> {
     fn fresh_var(&mut self) -> VarId {
         let id = VarId(self.next_var);
         self.next_var += 1;
@@ -5214,10 +5203,10 @@ impl LowerCtx {
             if d_trait == trait_name && d_tvs == &target_ids {
                 continue; // Exact match handled by Strategy 1.
             }
-            let Some(closure) = self.trait_superclass_closure.get(d_trait) else {
+            let Some(closure) = self.link_view.trait_superclass_closure(d_trait) else {
                 continue;
             };
-            let Some(d_params) = self.trait_type_var_ids.get(d_trait) else {
+            let Some(d_params) = self.link_view.trait_type_var_ids(d_trait) else {
                 continue;
             };
             if d_params.len() != d_tvs.len() {
@@ -5228,9 +5217,12 @@ impl LowerCtx {
                 if a != trait_name {
                     return false;
                 }
+                // Closure entries live in the trait's canonical TcType namespace
+                // and are bounded per-trait (small, typically 1-3 entries); convert
+                // to IrType at comparison time rather than mirroring the whole map.
                 let substituted: Vec<IrType> = a_args
                     .iter()
-                    .map(|t| substitute_ir_type(t, d_params, &d_tvs_ir))
+                    .map(|t| substitute_ir_type(&IrType::from(t.clone()), d_params, &d_tvs_ir))
                     .collect();
                 substituted == target_ir_expected
             });
@@ -5267,23 +5259,37 @@ impl LowerCtx {
         let mut cur_atom = Atom::Var(dict_var);
         let mut cur_args: Vec<IrType> = descendant_tvs.iter().copied().map(IrType::Var).collect();
         for next_trait in &path {
-            let direct = self
-                .trait_direct_superclasses
-                .get(&cur_trait)
-                .cloned()
-                .unwrap_or_default();
-            let Some(field_index) = direct.iter().position(|(t, _)| t == next_trait) else {
-                return Err(LowerError::InternalError(format!(
-                    "ICE: superclass path hop {} → {} not in direct superclasses",
-                    cur_trait.local_name, next_trait.local_name
-                )));
+            // Scope the link_view borrow to just the lookup — fresh_var below
+            // mutates self and cannot coexist with a live shared borrow.
+            let (field_index, stored_next_args) = {
+                let direct = self
+                    .link_view
+                    .trait_direct_superclasses(&cur_trait)
+                    .unwrap_or(&[]);
+                let Some(idx) = direct.iter().position(|(t, _)| t == next_trait) else {
+                    return Err(LowerError::InternalError(format!(
+                        "ICE: superclass path hop {} → {} not in direct superclasses",
+                        cur_trait.local_name, next_trait.local_name
+                    )));
+                };
+                let stored: Vec<IrType> = direct[idx]
+                    .1
+                    .iter()
+                    .cloned()
+                    .map(IrType::from)
+                    .collect();
+                (idx, stored)
             };
-            let Some(cur_params) = self.trait_type_var_ids.get(&cur_trait).cloned() else {
-                return Err(LowerError::InternalError(format!(
-                    "ICE: no type_var_ids for trait {}",
-                    cur_trait.local_name
-                )));
-            };
+            let cur_params: Vec<TypeVarId> =
+                match self.link_view.trait_type_var_ids(&cur_trait) {
+                    Some(p) => p.to_vec(),
+                    None => {
+                        return Err(LowerError::InternalError(format!(
+                            "ICE: no type_var_ids for trait {}",
+                            cur_trait.local_name
+                        )));
+                    }
+                };
             if cur_params.len() != cur_args.len() {
                 return Err(LowerError::InternalError(format!(
                     "ICE: trait {} has {} type params but {} args supplied at projection hop",
@@ -5292,7 +5298,6 @@ impl LowerCtx {
                     cur_args.len()
                 )));
             }
-            let stored_next_args = direct[field_index].1.clone();
             let next_args: Vec<IrType> = stored_next_args
                 .iter()
                 .map(|t| substitute_ir_type(t, &cur_params, &cur_args))
@@ -5335,7 +5340,7 @@ impl LowerCtx {
         visited.insert(from.clone());
         queue.push_back(from.clone());
         while let Some(cur) = queue.pop_front() {
-            let Some(direct) = self.trait_direct_superclasses.get(&cur) else {
+            let Some(direct) = self.link_view.trait_direct_superclasses(&cur) else {
                 continue;
             };
             for (sc, _) in direct {
@@ -6471,102 +6476,6 @@ pub fn lower_module(
         }
     }
 
-    // Build trait superclass maps up front so param_instances can include
-    // instances whose trait carries superclass slots in addition to impl-
-    // head constraints. Prefer `typed.trait_defs` since its `type_var_ids`
-    // and stored superclass args are already in the local TypeVarId
-    // namespace (imported traits are remapped at import time). Fall back to
-    // `link_view.all_traits()` for traits reachable but not present in the
-    // local trait_registry — those carry each module's own TypeVarIds, which
-    // are consistent within a single `(superclasses, type_var_ids)` pair.
-    let mut trait_direct_superclasses: FxHashMap<TraitName, Vec<(TraitName, Vec<IrType>)>> =
-        FxHashMap::default();
-    let mut trait_type_var_ids: FxHashMap<TraitName, Vec<TypeVarId>> = FxHashMap::default();
-    for tdef in &typed.trait_defs {
-        let key = tdef.trait_id.clone();
-        trait_direct_superclasses
-            .entry(key.clone())
-            .or_insert_with(|| {
-                tdef.superclasses
-                    .iter()
-                    .map(|(name, args)| {
-                        (
-                            name.clone(),
-                            args.iter().cloned().map(IrType::from).collect(),
-                        )
-                    })
-                    .collect()
-            });
-        trait_type_var_ids
-            .entry(key)
-            .or_insert_with(|| tdef.type_var_ids.clone());
-    }
-    for (_, tsum) in link_view.all_traits() {
-        let key = TraitName::new(tsum.module_path.as_str().to_string(), tsum.name.clone());
-        trait_direct_superclasses
-            .entry(key.clone())
-            .or_insert_with(|| {
-                tsum.superclasses
-                    .iter()
-                    .map(|(name, args)| {
-                        (
-                            name.clone(),
-                            args.iter().cloned().map(IrType::from).collect(),
-                        )
-                    })
-                    .collect()
-            });
-        trait_type_var_ids
-            .entry(key)
-            .or_insert_with(|| tsum.type_var_ids.clone());
-    }
-    for ext in &typed.extern_traits {
-        trait_direct_superclasses
-            .entry(ext.trait_name.clone())
-            .or_default();
-    }
-    // BFS each trait's transitive closure, composing substitutions along the
-    // hop path so every closure entry's args are expressed in terms of the
-    // root descendant's own `type_var_ids`.
-    let mut trait_superclass_closure: FxHashMap<TraitName, Vec<(TraitName, Vec<IrType>)>> =
-        FxHashMap::default();
-    for tname in trait_direct_superclasses.keys() {
-        let mut queue: std::collections::VecDeque<(TraitName, Vec<IrType>)> =
-            std::collections::VecDeque::new();
-        let mut visited: FxHashSet<TraitName> = FxHashSet::default();
-        let mut order: Vec<(TraitName, Vec<IrType>)> = Vec::new();
-        if let Some(direct) = trait_direct_superclasses.get(tname) {
-            for (sc_name, sc_args) in direct {
-                queue.push_back((sc_name.clone(), sc_args.clone()));
-            }
-        }
-        while let Some((cur, cur_args)) = queue.pop_front() {
-            if !visited.insert(cur.clone()) {
-                continue;
-            }
-            order.push((cur.clone(), cur_args.clone()));
-            let Some(cur_params) = trait_type_var_ids.get(&cur) else {
-                continue;
-            };
-            if cur_params.len() != cur_args.len() {
-                continue;
-            }
-            if let Some(next_list) = trait_direct_superclasses.get(&cur) {
-                for (next_name, next_args) in next_list {
-                    if visited.contains(next_name) {
-                        continue;
-                    }
-                    let composed: Vec<IrType> = next_args
-                        .iter()
-                        .map(|a| substitute_ir_type(a, cur_params, &cur_args))
-                        .collect();
-                    queue.push_back((next_name.clone(), composed));
-                }
-            }
-        }
-        trait_superclass_closure.insert(tname.clone(), order);
-    }
-
     // Helper: build ParamInstanceInfo for a parameterized instance from the
     // pre-computed sub-dict layout carried on every instance (local or
     // imported) — see `module_interface::compute_instance_sub_dict_requirements`
@@ -6616,13 +6525,14 @@ pub fn lower_module(
             return false;
         }
         !constraints.is_empty()
-            || trait_direct_superclasses
-                .get(trait_name)
+            || link_view
+                .trait_direct_superclasses(trait_name)
                 .map(|v| !v.is_empty())
                 .unwrap_or(false)
     };
 
     let mut ctx = LowerCtx {
+        link_view,
         next_var: 0,
         next_fn: 0,
         type_var_gen: TypeVarGen::new(),
@@ -6725,9 +6635,6 @@ pub fn lower_module(
             infos
         },
         instance_exact_index: FxHashMap::default(), // populated below
-        trait_direct_superclasses,
-        trait_superclass_closure,
-        trait_type_var_ids,
     };
     // Build exact-match index for instance resolution
     for (i, info) in ctx.all_instances.iter().enumerate() {
@@ -7396,11 +7303,18 @@ pub fn lower_module(
             type_var_ids: trait_def.type_var_ids.clone(),
             methods,
             is_imported: trait_def.is_imported,
-            direct_superclasses: ctx
-                .trait_direct_superclasses
-                .get(&trait_def.trait_id)
-                .cloned()
-                .unwrap_or_default(),
+            // `trait_def.superclasses` is already in the local TypeVarId
+            // namespace paired with `trait_def.type_var_ids`; imported
+            // traits are remapped to this namespace at import time, so
+            // emitting the IR pair locally keeps codegen's substitution
+            // input consistent regardless of how we build the lookup map.
+            direct_superclasses: trait_def
+                .superclasses
+                .iter()
+                .map(|(n, args)| {
+                    (n.clone(), args.iter().cloned().map(IrType::from).collect())
+                })
+                .collect(),
         });
     }
     traits.sort_by(|a, b| a.name.cmp(&b.name));
@@ -8282,11 +8196,16 @@ pub fn lower_all(
 mod tests {
     use super::*;
     use krypton_parser::ast::{Lit, ParamMode};
+    use krypton_typechecker::link_context::ModuleLinkView;
+    use krypton_typechecker::module_interface::{
+        ModuleInterface, ModulePath as LinkModulePath,
+    };
 
     /// Build a minimal [`LowerCtx`] sufficient to drive `resolve_call_dicts`
     /// into its `bind_type_vars` path. Unused subsystems are left empty.
-    fn empty_ctx() -> LowerCtx {
+    fn empty_ctx<'a>(link_view: &'a ModuleLinkView<'a>) -> LowerCtx<'a> {
         LowerCtx {
+            link_view,
             next_var: 0,
             next_fn: 0,
             type_var_gen: TypeVarGen::new(),
@@ -8315,10 +8234,27 @@ mod tests {
             module_path: "test".to_string(),
             all_instances: Vec::new(),
             instance_exact_index: FxHashMap::default(),
-            trait_direct_superclasses: FxHashMap::default(),
-            trait_superclass_closure: FxHashMap::default(),
-            trait_type_var_ids: FxHashMap::default(),
         }
+    }
+
+    /// Single-module LinkContext for tests that only need a view to satisfy
+    /// the `LowerCtx.link_view` field — no traits/instances required.
+    fn test_link_ctx() -> krypton_typechecker::link_context::LinkContext {
+        let iface = ModuleInterface {
+            module_path: LinkModulePath::new("test"),
+            direct_deps: vec![],
+            exported_fns: vec![],
+            reexported_fns: vec![],
+            exported_types: vec![],
+            reexported_types: vec![],
+            exported_traits: vec![],
+            exported_instances: vec![],
+            extern_types: vec![],
+            exported_fn_qualifiers: FxHashMap::default(),
+            type_visibility: FxHashMap::default(),
+            private_names: FxHashSet::default(),
+        };
+        krypton_typechecker::link_context::LinkContext::build(vec![iface])
     }
 
     fn typed_expr(ty: Type) -> TypedExpr {
@@ -8333,7 +8269,9 @@ mod tests {
 
     #[test]
     fn resolve_call_dicts_conflict_is_internal_error() {
-        let mut ctx = empty_ctx();
+        let link_ctx = test_link_ctx();
+        let view = link_ctx.view_for(&LinkModulePath::new("test")).unwrap();
+        let mut ctx = empty_ctx(&view);
         let tv = ctx.type_var_gen.fresh();
         let qn = QualifiedName::new("test".into(), "f".into());
         let trait_name = TraitName::new("test".into(), "T".into());

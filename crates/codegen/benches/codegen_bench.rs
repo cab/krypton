@@ -74,6 +74,19 @@ fn codegen_benchmarks(c: &mut Criterion) {
         });
     });
 
+    // IR lowering alone — isolates trait-metadata and dict-resolution work
+    // from parse/typecheck/codegen so per-module improvements are visible.
+    c.bench_function("ir_lower_stress", |b| {
+        b.iter(|| {
+            lower_all(
+                std::hint::black_box(&stress_typed),
+                "Bench",
+                &stress_link_ctx,
+            )
+            .expect("lower")
+        });
+    });
+
     // End-to-end pipeline: parse + typecheck + lower + codegen
     let source = stress_source();
     c.bench_function("pipeline_stress", |b| {
