@@ -4,10 +4,10 @@ use std::fmt;
 use krypton_parser::ast::{ExternTarget, Span, Visibility};
 
 use crate::typed_ast::{
-    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier, TraitName,
-    TypedModule,
+    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier, TraitDefInfo,
+    TraitName, TypedModule,
 };
-use crate::types::{Type, TypeScheme, TypeVarId};
+use crate::types::{substitute_type_params, Type, TypeScheme, TypeVarId};
 
 // ---------------------------------------------------------------------------
 // Canonical module identity
@@ -230,6 +230,13 @@ pub struct InstanceSummary {
     pub type_var_ids: FxHashMap<String, TypeVarId>,
     pub constraints: Vec<crate::typed_ast::ResolvedConstraint>,
     pub method_summaries: Vec<InstanceMethodSummary>,
+    /// Instance sub-dict layout: superclass slots first (with the instance's
+    /// target types substituted into each stored superclass arg list), then
+    /// impl-head constraint sub-dicts (bare `Type::Var` over the instance's
+    /// own type vars). See `krypton_ir::InstanceDef::sub_dict_requirements`
+    /// for the authoritative contract. Populated at typechecker time so
+    /// every downstream consumer (IR lowering, codegen) sees the same layout.
+    pub sub_dict_requirements: Vec<(TraitName, Vec<Type>)>,
     pub is_intrinsic: bool,
 }
 
@@ -265,6 +272,98 @@ pub fn collect_direct_deps(module: &krypton_parser::ast::Module) -> Vec<ModulePa
         }
     }
     deps
+}
+
+// ---------------------------------------------------------------------------
+// Instance sub-dict layout computation
+// ---------------------------------------------------------------------------
+
+/// Compute the sub-dict layout for a single instance, in the order used
+/// across the compiler:
+///
+/// 1. **Superclass slots** — one per direct superclass of the instance's
+///    trait, in declaration order. Each entry substitutes the instance's
+///    `target_types` for the trait's `type_var_ids` into the stored
+///    superclass arg list.
+/// 2. **Impl-head slots** — one per `where`-clause constraint on the
+///    instance, in declaration order. Each entry's target is always a
+///    bare `Type::Var(id)` over the instance's own type vars.
+///
+/// Invariants (any violation is an ICE — the typechecker guarantees them
+/// but they are enforced here so the breach surfaces immediately rather
+/// than producing wrong layouts downstream):
+/// - The trait for `inst.trait_name` is in `trait_defs`.
+/// - `trait_def.type_var_ids.len() == inst.target_types.len()`.
+/// - Every `c.type_vars` name resolves through `inst.type_var_ids`.
+pub fn compute_instance_sub_dict_requirements(
+    inst: &InstanceDefInfo,
+    trait_defs: &[TraitDefInfo],
+) -> Vec<(TraitName, Vec<Type>)> {
+    let trait_def = trait_defs
+        .iter()
+        .find(|t| t.trait_id == inst.trait_name)
+        .unwrap_or_else(|| {
+            panic!(
+                "ICE: instance {}[{}] references trait {} not in trait_defs",
+                inst.trait_name.local_name,
+                inst.target_type_name,
+                inst.trait_name.display_name()
+            )
+        });
+
+    let mut out: Vec<(TraitName, Vec<Type>)> = Vec::new();
+
+    for (sc_name, sc_args) in &trait_def.superclasses {
+        assert_eq!(
+            trait_def.type_var_ids.len(),
+            inst.target_types.len(),
+            "ICE: trait arity mismatch for superclass slot in {}[{}] \
+             — trait {} has {} type_var_ids but instance has {} target_types",
+            inst.trait_name.local_name,
+            inst.target_type_name,
+            inst.trait_name.display_name(),
+            trait_def.type_var_ids.len(),
+            inst.target_types.len()
+        );
+        let substituted: Vec<Type> = sc_args
+            .iter()
+            .map(|a| substitute_type_params(a, &trait_def.type_var_ids, &inst.target_types))
+            .collect();
+        out.push((sc_name.clone(), substituted));
+    }
+
+    for c in &inst.constraints {
+        let tys: Vec<Type> = c
+            .type_vars
+            .iter()
+            .map(|name| {
+                let id = inst.type_var_ids.get(name).copied().unwrap_or_else(|| {
+                    panic!(
+                        "ICE: impl-head constraint type_var '{}' missing from \
+                         instance.type_var_ids for {}[{}]",
+                        name, inst.trait_name.local_name, inst.target_type_name
+                    )
+                });
+                Type::Var(id)
+            })
+            .collect();
+        out.push((c.trait_name.clone(), tys));
+    }
+
+    out
+}
+
+/// Populate `sub_dict_requirements` on every `InstanceDefInfo` in place.
+/// Call once per module, after `trait_defs` has been assembled and before
+/// any downstream consumer (IR lowering, interface extraction) reads the
+/// field.
+pub fn populate_sub_dict_requirements(
+    instance_defs: &mut [InstanceDefInfo],
+    trait_defs: &[TraitDefInfo],
+) {
+    for inst in instance_defs.iter_mut() {
+        inst.sub_dict_requirements = compute_instance_sub_dict_requirements(inst, trait_defs);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +707,7 @@ fn extract_instances(instances: &[InstanceDefInfo]) -> Vec<InstanceSummary> {
                     constraint_pairs: m.constraint_pairs.clone(),
                 })
                 .collect(),
+            sub_dict_requirements: inst.sub_dict_requirements.clone(),
             is_intrinsic: inst.is_intrinsic,
         })
         .collect()
@@ -912,6 +1012,7 @@ pub fn instance_summary_to_def_info(is: &InstanceSummary) -> InstanceDefInfo {
                 constraint_pairs: m.constraint_pairs.clone(),
             })
             .collect(),
+        sub_dict_requirements: is.sub_dict_requirements.clone(),
         is_intrinsic: is.is_intrinsic,
     }
 }

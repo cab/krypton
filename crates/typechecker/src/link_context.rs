@@ -577,6 +577,7 @@ mod tests {
             type_var_ids: FxHashMap::default(),
             constraints: vec![],
             method_summaries: vec![],
+            sub_dict_requirements: vec![],
             is_intrinsic: false,
         }
     }

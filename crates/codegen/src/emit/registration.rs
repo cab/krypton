@@ -874,31 +874,39 @@ impl<'link> Compiler<'link> {
                 .iter()
                 .find(|t| t.trait_name == inst.trait_name)
                 .map(|t| t.direct_superclasses.len())
-                .unwrap_or(0);
+                .unwrap_or_else(|| {
+                    panic!(
+                        "ICE: instance {}[{}] references trait {} not in ir_module.traits",
+                        inst.trait_name.local_name,
+                        inst.target_type_name,
+                        inst.trait_name.display_name()
+                    )
+                });
+            assert!(
+                superclass_count <= dict_requirements.len(),
+                "ICE: superclass_count {} exceeds dict_requirements.len() {} for {}[{}]",
+                superclass_count,
+                dict_requirements.len(),
+                inst.trait_name.local_name,
+                inst.target_type_name
+            );
             let impl_head_count = dict_requirements.len() - superclass_count;
 
             // `impl_dict_requirements` is the FnId-keyed list of constraints
             // passed to the instance method as static-method parameters —
             // impl-head only, *not* superclass slots. Impl-head constraints
             // are always bare `Type::Var(id)` over the instance's own type
-            // parameters, so extraction to `Vec<TypeVarId>` is exact.
+            // parameters, so extraction to `Vec<TypeVarId>` is exact; the
+            // typed constructor enforces that invariant in one place.
             let impl_head_dict_requirements: Vec<DictRequirement> = dict_requirements
                 [superclass_count..]
                 .iter()
-                .map(|r| DictRequirement {
-                    trait_name: r.trait_name.clone(),
-                    type_vars: r
-                        .target_types
-                        .iter()
-                        .map(|t| match t {
-                            Type::Var(id) => *id,
-                            _ => panic!(
-                                "ICE: impl-head dict requirement position for {}[{}] \
-                                 must be a bare type var, got {}",
-                                inst.trait_name.local_name, inst.target_type_name, t,
-                            ),
-                        })
-                        .collect(),
+                .map(|r| {
+                    DictRequirement::from_impl_head_subdict(
+                        r,
+                        &inst.trait_name.local_name,
+                        &inst.target_type_name,
+                    )
                 })
                 .collect();
 

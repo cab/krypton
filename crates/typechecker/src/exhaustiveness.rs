@@ -4,7 +4,7 @@ use krypton_parser::ast::{Lit, Span};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
 use crate::typed_ast::{TypedMatchArm, TypedPattern};
-use crate::types::Type;
+use crate::types::{substitute_type_params, Type};
 use crate::unify::{SpannedTypeError, TypeError};
 
 /// Maximum constructor expansion depth. Beyond this, types are treated as
@@ -237,56 +237,6 @@ fn sub_types(con: &Con, ty: &Type, registry: &TypeRegistry) -> Vec<Type> {
             }
             vec![]
         }
-    }
-}
-
-/// Simple type parameter substitution: replace Var(id) with concrete type args.
-fn substitute_type_params(
-    ty: &Type,
-    param_vars: &[crate::types::TypeVarId],
-    type_args: &[Type],
-) -> Type {
-    match ty {
-        Type::Var(id) => {
-            for (i, pv) in param_vars.iter().enumerate() {
-                if pv == id {
-                    if let Some(arg) = type_args.get(i) {
-                        return arg.clone();
-                    }
-                }
-            }
-            ty.clone()
-        }
-        Type::Named(n, args) => Type::Named(
-            n.clone(),
-            args.iter()
-                .map(|a| substitute_type_params(a, param_vars, type_args))
-                .collect(),
-        ),
-        Type::Tuple(elems) => Type::Tuple(
-            elems
-                .iter()
-                .map(|e| substitute_type_params(e, param_vars, type_args))
-                .collect(),
-        ),
-        Type::Fn(params, ret) => Type::Fn(
-            params
-                .iter()
-                .map(|(m, p)| (*m, substitute_type_params(p, param_vars, type_args)))
-                .collect(),
-            Box::new(substitute_type_params(ret, param_vars, type_args)),
-        ),
-        Type::Own(inner) => Type::Own(Box::new(substitute_type_params(
-            inner, param_vars, type_args,
-        ))),
-        Type::Shape(inner) => Type::Shape(Box::new(substitute_type_params(
-            inner, param_vars, type_args,
-        ))),
-        Type::MaybeOwn(q, inner) => Type::MaybeOwn(
-            *q,
-            Box::new(substitute_type_params(inner, param_vars, type_args)),
-        ),
-        _ => ty.clone(),
     }
 }
 

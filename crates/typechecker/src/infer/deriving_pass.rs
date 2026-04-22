@@ -217,6 +217,7 @@ pub(super) fn process_deriving(
                         scheme,
                         constraint_pairs: vec![],
                     }],
+                    sub_dict_requirements: Vec::new(),
                     is_intrinsic: false,
                 });
             }
@@ -317,6 +318,7 @@ pub(super) fn process_deriving(
                         scheme,
                         constraint_pairs: vec![],
                     }],
+                    sub_dict_requirements: Vec::new(),
                     is_intrinsic: false,
                 });
             }

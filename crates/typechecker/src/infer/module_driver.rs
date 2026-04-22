@@ -726,6 +726,13 @@ impl ModuleInferenceState {
             });
         }
 
+        // Finalize instance sub-dict layouts now that `trait_defs` is
+        // available. Every downstream consumer (IR lowering, module interface
+        // extraction, codegen) reads this field directly — do not reconstruct
+        // it elsewhere. Imported instances carry the field already (populated
+        // in their home module).
+        crate::module_interface::populate_sub_dict_requirements(&mut instance_defs, &trait_defs);
+
         // Convert FnTypeEntry to tuple format for ownership/auto_close APIs
         let results_tuples: Vec<(String, TypeScheme, Option<TraitName>)> = results
             .iter()

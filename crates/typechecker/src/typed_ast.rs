@@ -497,6 +497,14 @@ pub struct InstanceDefInfo {
     pub type_var_ids: FxHashMap<String, TypeVarId>,
     pub constraints: Vec<ResolvedConstraint>,
     pub methods: Vec<InstanceMethod>,
+    /// Instance sub-dict layout: superclass slots first (with the instance's
+    /// target types substituted into each stored superclass arg list), then
+    /// impl-head constraint sub-dicts (bare `Type::Var` over the instance's
+    /// own type vars). Populated as a finalization step in `assemble_typed_module`
+    /// once `trait_defs` are available, so every downstream consumer (IR
+    /// lowering, codegen, module interface) reads one authoritative layout.
+    /// See `krypton_ir::InstanceDef::sub_dict_requirements` for the contract.
+    pub sub_dict_requirements: Vec<(TraitName, Vec<Type>)>,
     pub is_intrinsic: bool, // true when all method bodies are intrinsic()
 }
 

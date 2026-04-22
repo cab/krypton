@@ -624,57 +624,6 @@ fn substitute_ir_type(ty: &IrType, params: &[TypeVarId], args: &[IrType]) -> IrT
     crate::substitute_type_vars(ty, params, args)
 }
 
-/// Convert an IR `Type` to a TC `Type`, substituting `bindings` at every
-/// `Var(id)` position along the walk. Used to lower stored sub-dict targets
-/// (IR-level) into the TC-level shape that `resolve_dict` consumes. Only
-/// handles the subset of IR `Type` that can appear in stored superclass /
-/// impl-head targets — `Dict` and `FnHole` are explicitly out of scope.
-fn ir_type_to_tc_with_bindings(
-    ty: &IrType,
-    bindings: &FxHashMap<TypeVarId, Type>,
-) -> Type {
-    match ty {
-        IrType::Int => Type::Int,
-        IrType::Float => Type::Float,
-        IrType::Bool => Type::Bool,
-        IrType::String => Type::String,
-        IrType::Unit => Type::Unit,
-        IrType::Var(id) => bindings
-            .get(id)
-            .cloned()
-            .unwrap_or(Type::Var(*id)),
-        IrType::Named(name, args) => Type::Named(
-            name.clone(),
-            args.iter()
-                .map(|a| ir_type_to_tc_with_bindings(a, bindings))
-                .collect(),
-        ),
-        IrType::App(ctor, args) => Type::App(
-            Box::new(ir_type_to_tc_with_bindings(ctor, bindings)),
-            args.iter()
-                .map(|a| ir_type_to_tc_with_bindings(a, bindings))
-                .collect(),
-        ),
-        IrType::Own(inner) => Type::Own(Box::new(ir_type_to_tc_with_bindings(inner, bindings))),
-        IrType::Tuple(elems) => Type::Tuple(
-            elems
-                .iter()
-                .map(|e| ir_type_to_tc_with_bindings(e, bindings))
-                .collect(),
-        ),
-        IrType::Fn(params, ret) => Type::Fn(
-            params
-                .iter()
-                .map(|p| (types::ParamMode::Consume, ir_type_to_tc_with_bindings(p, bindings)))
-                .collect(),
-            Box::new(ir_type_to_tc_with_bindings(ret, bindings)),
-        ),
-        IrType::Dict { .. } | IrType::FnHole => {
-            panic!("ICE: Dict/FnHole cannot appear in stored sub-dict target types")
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Lowering context
 // ---------------------------------------------------------------------------
@@ -5472,14 +5421,20 @@ impl LowerCtx {
         };
 
         // Resolve sub-dicts for each constraint. The stored targets are
-        // IR-level types — substitute the descendant's type_bindings and
-        // convert to TC-level Types for resolve_dict.
+        // IR-level types — substitute the descendant's type_bindings (lifted
+        // to IR) and convert the result to TC-level Types for resolve_dict.
+        // Substituting at the IR layer keeps a single substitution helper
+        // instead of a parallel IR-walking converter.
+        let ir_type_bindings: FxHashMap<TypeVarId, IrType> = type_bindings
+            .iter()
+            .map(|(k, v)| (*k, IrType::from(v.clone())))
+            .collect();
         let mut all_bindings = vec![];
         let mut sub_dict_atoms = vec![];
         for (constraint_trait, constraint_targets) in &inst.constraints {
             let sub_tys: Vec<Type> = constraint_targets
                 .iter()
-                .map(|t| ir_type_to_tc_with_bindings(t, &type_bindings))
+                .map(|t| crate::substitute_over_bindings(t, &ir_type_bindings).into())
                 .collect();
             let (bs, atom) = self.resolve_dict(constraint_trait, &sub_tys)?;
             all_bindings.extend(bs);
@@ -6612,49 +6567,22 @@ pub fn lower_module(
         trait_superclass_closure.insert(tname.clone(), order);
     }
 
-    // Helper: build ParamInstanceInfo for a parameterized instance, folding
-    // direct-superclass entries after the impl-head constraints. The ParamInstance
-    // path is taken only for targets containing type vars; for concrete targets
-    // GetDict is used instead. The superclass sub_dict's target positions are
-    // derived by substituting the descendant's target_types for the trait's
-    // own type_var_ids into each stored superclass argument list.
+    // Helper: build ParamInstanceInfo for a parameterized instance from the
+    // pre-computed sub-dict layout carried on every instance (local or
+    // imported) — see `module_interface::compute_instance_sub_dict_requirements`
+    // for the contract. This keeps the ParamInstance.constraints order in
+    // sync with InstanceDef.sub_dict_requirements (superclass slots first,
+    // then impl-head constraints) by construction, not by convention.
     let build_param_info = |trait_name: &TraitName,
                             target_types: &Vec<Type>,
-                            type_var_ids: &FxHashMap<String, TypeVarId>,
-                            src_constraints: &[typed_ast::ResolvedConstraint],
+                            sub_dict_requirements: &[(TraitName, Vec<Type>)],
                             source_module: String,
                             target_type_name: String|
      -> ParamInstanceInfo {
-        // Keep the ParamInstanceInfo.constraints order in sync with
-        // InstanceDef.sub_dict_requirements: superclass slots first, then
-        // impl-head constraints.
-        let mut constraints: Vec<(TraitName, Vec<IrType>)> = Vec::new();
-        if let Some(scs) = trait_direct_superclasses.get(trait_name) {
-            if let Some(trait_params) = trait_type_var_ids.get(trait_name) {
-                if !scs.is_empty() && trait_params.len() == target_types.len() {
-                    // Build IR-level arg list from the descendant's target types.
-                    let target_ir: Vec<IrType> =
-                        target_types.iter().cloned().map(IrType::from).collect();
-                    for (sc_name, sc_args) in scs {
-                        let substituted: Vec<IrType> = sc_args
-                            .iter()
-                            .map(|a| substitute_ir_type(a, trait_params, &target_ir))
-                            .collect();
-                        constraints.push((sc_name.clone(), substituted));
-                    }
-                }
-            }
-        }
-        for c in src_constraints {
-            let tys: Option<Vec<IrType>> = c
-                .type_vars
-                .iter()
-                .map(|name| type_var_ids.get(name).copied().map(IrType::Var))
-                .collect();
-            if let Some(tys) = tys {
-                constraints.push((c.trait_name.clone(), tys));
-            }
-        }
+        let constraints: Vec<(TraitName, Vec<IrType>)> = sub_dict_requirements
+            .iter()
+            .map(|(tn, tys)| (tn.clone(), tys.iter().cloned().map(IrType::from).collect()))
+            .collect();
         ParamInstanceInfo {
             trait_name: trait_name.clone(),
             target_types: target_types.clone(),
@@ -6720,8 +6648,7 @@ pub fn lower_module(
                     build_param_info(
                         &inst.trait_name,
                         &inst.target_types,
-                        &inst.type_var_ids,
-                        &inst.constraints,
+                        &inst.sub_dict_requirements,
                         typed.module_path.clone(),
                         inst.target_type_name.clone(),
                     )
@@ -6737,8 +6664,7 @@ pub fn lower_module(
                     build_param_info(
                         &inst.trait_name,
                         &inst.target_types,
-                        &inst.type_var_ids,
-                        &inst.constraints,
+                        &inst.sub_dict_requirements,
                         path.as_str().to_string(),
                         inst.target_type_name.clone(),
                     )
@@ -7527,56 +7453,16 @@ pub fn lower_module(
         // so projections through a type-var dict param can compute field
         // indices without knowing the concrete impl's impl-head count),
         // then impl-head constraint sub_dicts. Direct superclasses appear
-        // in the trait's declaration order.
-        //
-        // For single-parameter traits (this ticket's scope), a superclass
-        // applies to the same target position as the descendant, so we
-        // build each sub_dict slot by substituting the instance's target types
-        // for the trait's own type_var_ids into the stored superclass args, then
-        // reading off the resulting `TypeVarId` per position. If any substituted
-        // position is concrete, emit an empty Vec — following the existing
-        // convention where concrete sub-dicts are populated at class-load time
-        // directly from `inst.target_types`.
-        let direct_scs = ctx
-            .trait_direct_superclasses
-            .get(&inst.trait_name)
-            .cloned()
-            .unwrap_or_default();
-        let mut sub_dict_requirements: InstanceSubDictList = Vec::new();
-        if !direct_scs.is_empty() {
-            let trait_params = ctx
-                .trait_type_var_ids
-                .get(&inst.trait_name)
-                .cloned()
-                .unwrap_or_default();
-            let target_ir: Vec<IrType> = inst
-                .target_types
-                .iter()
-                .cloned()
-                .map(IrType::from)
-                .collect();
-            for (sc_name, sc_args) in &direct_scs {
-                let substituted: Vec<IrType> = if trait_params.len() == target_ir.len() {
-                    sc_args
-                        .iter()
-                        .map(|t| substitute_ir_type(t, &trait_params, &target_ir))
-                        .collect()
-                } else {
-                    sc_args.clone()
-                };
-                sub_dict_requirements.push((sc_name.clone(), substituted));
-            }
-        }
-        for c in &inst.constraints {
-            let tys: Option<Vec<IrType>> = c
-                .type_vars
-                .iter()
-                .map(|name| inst.type_var_ids.get(name).copied().map(IrType::Var))
-                .collect();
-            if let Some(tys) = tys {
-                sub_dict_requirements.push((c.trait_name.clone(), tys));
-            }
-        }
+        // Layout is pre-computed at the typechecker layer — see
+        // `module_interface::compute_instance_sub_dict_requirements`. Consuming
+        // it directly keeps a single source of truth for the ordering
+        // (superclass slots then impl-head slots) and the substitution of
+        // trait type_var_ids with the instance's target_types.
+        let sub_dict_requirements: InstanceSubDictList = inst
+            .sub_dict_requirements
+            .iter()
+            .map(|(tn, tys)| (tn.clone(), tys.iter().cloned().map(IrType::from).collect()))
+            .collect();
         InstanceDef {
             trait_name: inst.trait_name.clone(),
             target_types: inst.target_types.iter().cloned().map(Into::into).collect(),

@@ -747,6 +747,7 @@ pub(super) fn typecheck_impl_methods(
                 type_var_ids: instance.type_var_ids.clone(),
                 constraints: instance.constraints.clone(),
                 methods: instance_methods,
+                sub_dict_requirements: Vec::new(),
                 is_intrinsic: all_intrinsic,
             });
         }

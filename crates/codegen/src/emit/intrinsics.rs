@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use krypton_ir::Type;
 use ristretto_classfile::attributes::{Instruction, StackFrame, VerificationType};
 use ristretto_classfile::ConstantPool;
 
@@ -58,6 +59,10 @@ pub struct IntrinsicEntry {
     pub type_name: &'static str,
     pub method_name: &'static str,
     pub jvm_type: PrimitiveJvm,
+    /// IR-level type for the target (matches `type_name`). Carried alongside
+    /// the name so codegen doesn't re-derive it from a hardcoded name→type
+    /// map — the registry is the single source of truth for intrinsic types.
+    pub ir_type: Type,
     pub op: IntrinsicOp,
 }
 
@@ -92,6 +97,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "combine",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::BinaryArith(Instruction::Ladd),
             },
             // Sub Int
@@ -100,6 +106,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "sub",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::BinaryArith(Instruction::Lsub),
             },
             // Mul Int
@@ -108,6 +115,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "mul",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::BinaryArith(Instruction::Lmul),
             },
             // Div Int
@@ -116,6 +124,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "div",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::BinaryArith(Instruction::Ldiv),
             },
             // Neg Int
@@ -124,6 +133,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "neg",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::UnaryArith(Instruction::Lneg),
             },
             // Eq Int
@@ -132,6 +142,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "eq",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::NumericEq,
             },
             // Ord Int
@@ -140,6 +151,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "lt",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::NumericOrd,
             },
             // Semigroup Float
@@ -148,6 +160,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "combine",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::BinaryArith(Instruction::Dadd),
             },
             // Sub Float
@@ -156,6 +169,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "sub",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::BinaryArith(Instruction::Dsub),
             },
             // Mul Float
@@ -164,6 +178,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "mul",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::BinaryArith(Instruction::Dmul),
             },
             // Div Float
@@ -172,6 +187,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "div",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::BinaryArith(Instruction::Ddiv),
             },
             // Neg Float
@@ -180,6 +196,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "neg",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::UnaryArith(Instruction::Dneg),
             },
             // Eq Float
@@ -188,6 +205,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "eq",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::NumericEq,
             },
             // Ord Float
@@ -196,6 +214,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "lt",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::NumericOrd,
             },
             // Semigroup String
@@ -204,6 +223,7 @@ impl IntrinsicRegistry {
                 type_name: "String",
                 method_name: "combine",
                 jvm_type: PrimitiveJvm::Ref,
+                ir_type: Type::String,
                 op: IntrinsicOp::StringConcat,
             },
             // Eq String
@@ -212,6 +232,7 @@ impl IntrinsicRegistry {
                 type_name: "String",
                 method_name: "eq",
                 jvm_type: PrimitiveJvm::Ref,
+                ir_type: Type::String,
                 op: IntrinsicOp::StringEq,
             },
             // Eq Bool
@@ -220,6 +241,7 @@ impl IntrinsicRegistry {
                 type_name: "Bool",
                 method_name: "eq",
                 jvm_type: PrimitiveJvm::Int,
+                ir_type: Type::Bool,
                 op: IntrinsicOp::BoolEq,
             },
             // Show Int
@@ -228,6 +250,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "show",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Long",
                     unbox_method: "longValue",
@@ -241,6 +264,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "show",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Double",
                     unbox_method: "doubleValue",
@@ -254,6 +278,7 @@ impl IntrinsicRegistry {
                 type_name: "Bool",
                 method_name: "show",
                 jvm_type: PrimitiveJvm::Int,
+                ir_type: Type::Bool,
                 op: IntrinsicOp::ShowVia {
                     box_class: "java/lang/Boolean",
                     unbox_method: "booleanValue",
@@ -267,6 +292,7 @@ impl IntrinsicRegistry {
                 type_name: "String",
                 method_name: "show",
                 jvm_type: PrimitiveJvm::Ref,
+                ir_type: Type::String,
                 op: IntrinsicOp::ShowIdentity,
             },
             // Hash Int
@@ -275,6 +301,7 @@ impl IntrinsicRegistry {
                 type_name: "Int",
                 method_name: "hash",
                 jvm_type: PrimitiveJvm::Long,
+                ir_type: Type::Int,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Long",
                     unbox_method: "longValue",
@@ -288,6 +315,7 @@ impl IntrinsicRegistry {
                 type_name: "Float",
                 method_name: "hash",
                 jvm_type: PrimitiveJvm::Double,
+                ir_type: Type::Float,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Double",
                     unbox_method: "doubleValue",
@@ -301,6 +329,7 @@ impl IntrinsicRegistry {
                 type_name: "Bool",
                 method_name: "hash",
                 jvm_type: PrimitiveJvm::Int,
+                ir_type: Type::Bool,
                 op: IntrinsicOp::HashVia {
                     box_class: "java/lang/Boolean",
                     unbox_method: "booleanValue",
@@ -314,6 +343,7 @@ impl IntrinsicRegistry {
                 type_name: "String",
                 method_name: "hash",
                 jvm_type: PrimitiveJvm::Ref,
+                ir_type: Type::String,
                 op: IntrinsicOp::HashString,
             },
         ];

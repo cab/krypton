@@ -281,10 +281,10 @@ fn build_instance_class_map(
         );
     }
 
-    // Imported instances from link view. Their sub_dict layout is *not*
-    // carried on the InstanceSummary, so reconstruct it here from the
-    // trait's direct_superclasses (a trait-wide, layout-defining fact) plus
-    // the instance's impl-head constraints.
+    // Imported instances from link view. The sub-dict layout is carried on
+    // the InstanceSummary (populated at typechecker time in the home module)
+    // so codegen consumes it directly — one source of truth across the
+    // compiler.
     for (path, inst) in link_view.all_instances() {
         if path.as_str() == ir_module.module_path.as_str() {
             continue;
@@ -307,49 +307,14 @@ fn build_instance_class_map(
         let target_types: Vec<krypton_ir::Type> =
             inst.target_types.iter().cloned().map(Into::into).collect();
 
-        let mut requirements: Vec<SubDictRequirement> = Vec::new();
-        if let Some(trait_def) = ir_module
-            .traits
+        let requirements: Vec<SubDictRequirement> = inst
+            .sub_dict_requirements
             .iter()
-            .find(|t| t.trait_name == inst.trait_name)
-        {
-            if trait_def.type_var_ids.len() == target_types.len() {
-                for (sc_name, sc_args) in &trait_def.direct_superclasses {
-                    let substituted: Vec<krypton_ir::Type> = sc_args
-                        .iter()
-                        .map(|a| {
-                            krypton_ir::substitute_type_vars(
-                                a,
-                                &trait_def.type_var_ids,
-                                &target_types,
-                            )
-                        })
-                        .collect();
-                    requirements.push(SubDictRequirement {
-                        trait_name: sc_name.clone(),
-                        target_types: substituted,
-                    });
-                }
-            }
-        }
-        for c in &inst.constraints {
-            let tys: Option<Vec<krypton_ir::Type>> = c
-                .type_vars
-                .iter()
-                .map(|name| {
-                    inst.type_var_ids
-                        .get(name)
-                        .copied()
-                        .map(krypton_ir::Type::Var)
-                })
-                .collect();
-            if let Some(tys) = tys {
-                requirements.push(SubDictRequirement {
-                    trait_name: c.trait_name.clone(),
-                    target_types: tys,
-                });
-            }
-        }
+            .map(|(tn, tys)| SubDictRequirement {
+                trait_name: tn.clone(),
+                target_types: tys.iter().cloned().map(Into::into).collect(),
+            })
+            .collect();
 
         map.insert(
             (inst.trait_name.clone(), target_types.clone()),
@@ -381,7 +346,7 @@ fn build_instance_class_map(
             trait_module_path, entry.trait_name, entry.type_name
         );
         let trait_name = TraitName::new(trait_module_path, entry.trait_name.to_string());
-        let target_type = intrinsic_type_by_name(entry.type_name);
+        let target_type = entry.ir_type.clone();
         let key = (trait_name, vec![target_type.clone()]);
         map.entry(key).or_insert_with(|| ImportedInstanceInfo {
             class_name,
@@ -391,18 +356,6 @@ fn build_instance_class_map(
     }
 
     map
-}
-
-/// Map an intrinsic type name (from `IntrinsicRegistry`) to its IR Type.
-fn intrinsic_type_by_name(name: &str) -> Type {
-    match name {
-        "Int" => Type::Int,
-        "Float" => Type::Float,
-        "Bool" => Type::Bool,
-        "String" => Type::String,
-        "Unit" => Type::Unit,
-        other => panic!("ICE: unexpected intrinsic type name: {other}"),
-    }
 }
 
 /// Generate a minimal valid `.class` file containing a no-op

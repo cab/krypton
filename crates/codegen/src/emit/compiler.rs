@@ -325,6 +325,34 @@ impl DictRequirement {
     pub(super) fn trait_name(&self) -> &TraitName {
         &self.trait_name
     }
+
+    /// Construct a `DictRequirement` from a sub-dict slot that comes from an
+    /// instance's impl-head (`where`-clause) constraint. The invariant — that
+    /// impl-head target positions are always bare `Type::Var(id)` over the
+    /// instance's own type vars — is enforced as an ICE here so the breach
+    /// surfaces at a single, typed entry point instead of inline at each
+    /// call site.
+    pub(super) fn from_impl_head_subdict(
+        r: &SubDictRequirement,
+        trait_local: &str,
+        target_name: &str,
+    ) -> Self {
+        DictRequirement {
+            trait_name: r.trait_name.clone(),
+            type_vars: r
+                .target_types
+                .iter()
+                .map(|t| match t {
+                    Type::Var(id) => *id,
+                    _ => panic!(
+                        "ICE: impl-head dict requirement position for {}[{}] \
+                         must be a bare type var, got {}",
+                        trait_local, target_name, t
+                    ),
+                })
+                .collect(),
+        }
+    }
 }
 
 /// One slot in an instance class's sub-dict layout.

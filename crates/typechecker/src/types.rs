@@ -129,6 +129,66 @@ impl Type {
     }
 }
 
+/// Simple type parameter substitution: replace `Type::Var(id)` positions with
+/// the corresponding concrete arg from `type_args`, aligned by position against
+/// `param_vars`. Only walks the subset of `Type` that can appear in instance /
+/// trait layout data — `Shape` / `MaybeOwn` / `FnHole` pass through unchanged
+/// because those never appear in superclass or impl-head target lists.
+pub fn substitute_type_params(
+    ty: &Type,
+    param_vars: &[TypeVarId],
+    type_args: &[Type],
+) -> Type {
+    match ty {
+        Type::Var(id) => {
+            for (i, pv) in param_vars.iter().enumerate() {
+                if pv == id {
+                    if let Some(arg) = type_args.get(i) {
+                        return arg.clone();
+                    }
+                }
+            }
+            ty.clone()
+        }
+        Type::Named(n, args) => Type::Named(
+            n.clone(),
+            args.iter()
+                .map(|a| substitute_type_params(a, param_vars, type_args))
+                .collect(),
+        ),
+        Type::App(ctor, args) => Type::App(
+            Box::new(substitute_type_params(ctor, param_vars, type_args)),
+            args.iter()
+                .map(|a| substitute_type_params(a, param_vars, type_args))
+                .collect(),
+        ),
+        Type::Tuple(elems) => Type::Tuple(
+            elems
+                .iter()
+                .map(|e| substitute_type_params(e, param_vars, type_args))
+                .collect(),
+        ),
+        Type::Fn(params, ret) => Type::Fn(
+            params
+                .iter()
+                .map(|(m, p)| (*m, substitute_type_params(p, param_vars, type_args)))
+                .collect(),
+            Box::new(substitute_type_params(ret, param_vars, type_args)),
+        ),
+        Type::Own(inner) => Type::Own(Box::new(substitute_type_params(
+            inner, param_vars, type_args,
+        ))),
+        Type::Shape(inner) => Type::Shape(Box::new(substitute_type_params(
+            inner, param_vars, type_args,
+        ))),
+        Type::MaybeOwn(q, inner) => Type::MaybeOwn(
+            *q,
+            Box::new(substitute_type_params(inner, param_vars, type_args)),
+        ),
+        _ => ty.clone(),
+    }
+}
+
 /// Normalize a type application: if the constructor is a zero-arg Named type,
 /// fold the args into it; otherwise reconstruct App.
 pub fn normalize_app(ctor: Type, args: Vec<Type>) -> Type {

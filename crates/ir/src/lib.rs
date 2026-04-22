@@ -74,6 +74,40 @@ impl From<krypton_typechecker::types::Type> for Type {
     }
 }
 
+impl From<Type> for krypton_typechecker::types::Type {
+    fn from(ir: Type) -> Self {
+        use krypton_typechecker::types::{ParamMode, Type as TcType};
+        match ir {
+            Type::Int => TcType::Int,
+            Type::Float => TcType::Float,
+            Type::Bool => TcType::Bool,
+            Type::String => TcType::String,
+            Type::Unit => TcType::Unit,
+            Type::Var(id) => TcType::Var(id),
+            Type::Named(n, args) => TcType::Named(n, args.into_iter().map(Into::into).collect()),
+            Type::App(ctor, args) => TcType::App(
+                Box::new((*ctor).into()),
+                args.into_iter().map(Into::into).collect(),
+            ),
+            Type::Own(inner) => TcType::Own(Box::new((*inner).into())),
+            Type::Tuple(elems) => TcType::Tuple(elems.into_iter().map(Into::into).collect()),
+            Type::Fn(params, ret) => TcType::Fn(
+                params
+                    .into_iter()
+                    .map(|p| (ParamMode::Consume, p.into()))
+                    .collect(),
+                Box::new((*ret).into()),
+            ),
+            Type::Dict { .. } => {
+                panic!("ICE: Dict cannot cross IR→TC boundary")
+            }
+            Type::FnHole => {
+                panic!("ICE: FnHole cannot cross IR→TC boundary")
+            }
+        }
+    }
+}
+
 impl Module {
     /// How many "free" (non-captured) parameters a closure's underlying function has.
     pub fn closure_free_params(&self, func: FnId, capture_count: usize) -> usize {
@@ -1275,5 +1309,83 @@ mod tests {
             bindings, snapshot,
             "bindings must be restored to their pre-call state"
         );
+    }
+
+    #[test]
+    fn ir_to_tc_roundtrip_preserves_structure() {
+        use krypton_typechecker::types::{ParamMode, Type as TcType};
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+
+        // Fn: param modes are synthesized as Consume on IR→TC; params carry a type.
+        let ir_fn = Type::Fn(
+            vec![Type::Int, Type::Var(a)],
+            Box::new(Type::Bool),
+        );
+        let tc_fn: TcType = ir_fn.into();
+        match tc_fn {
+            TcType::Fn(params, ret) => {
+                assert_eq!(params.len(), 2);
+                assert_eq!(params[0].0, ParamMode::Consume);
+                assert!(matches!(params[0].1, TcType::Int));
+                assert_eq!(params[1].0, ParamMode::Consume);
+                assert!(matches!(params[1].1, TcType::Var(id) if id == a));
+                assert!(matches!(*ret, TcType::Bool));
+            }
+            other => panic!("expected Fn, got {other:?}"),
+        }
+
+        // App, Named, Tuple, Own, Var all survive.
+        let ir = Type::App(
+            Box::new(Type::Var(a)),
+            vec![Type::Named(
+                "List".to_string(),
+                vec![Type::Tuple(vec![Type::Int, Type::Own(Box::new(Type::Var(a)))])],
+            )],
+        );
+        let tc: TcType = ir.into();
+        match tc {
+            TcType::App(ctor, args) => {
+                assert!(matches!(*ctor, TcType::Var(id) if id == a));
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    TcType::Named(name, nargs) => {
+                        assert_eq!(name, "List");
+                        match &nargs[0] {
+                            TcType::Tuple(elems) => {
+                                assert!(matches!(elems[0], TcType::Int));
+                                match &elems[1] {
+                                    TcType::Own(inner) => {
+                                        assert!(matches!(**inner, TcType::Var(id) if id == a));
+                                    }
+                                    other => panic!("expected Own, got {other:?}"),
+                                }
+                            }
+                            other => panic!("expected Tuple, got {other:?}"),
+                        }
+                    }
+                    other => panic!("expected Named, got {other:?}"),
+                }
+            }
+            other => panic!("expected App, got {other:?}"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Dict cannot cross IR→TC boundary")]
+    fn ir_to_tc_rejects_dict() {
+        use krypton_typechecker::types::Type as TcType;
+        let ir = Type::Dict {
+            trait_name: TraitName::new("core/show".to_string(), "Show".to_string()),
+            target_types: vec![Type::Int],
+        };
+        let _: TcType = ir.into();
+    }
+
+    #[test]
+    #[should_panic(expected = "FnHole cannot cross IR→TC boundary")]
+    fn ir_to_tc_rejects_fn_hole() {
+        use krypton_typechecker::types::Type as TcType;
+        let _: TcType = Type::FnHole.into();
     }
 }
