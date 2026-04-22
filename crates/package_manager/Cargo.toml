@@ -1,0 +1,11 @@
+[package]
+name = "krypton-package-manager"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_derive = "1"
+toml = "0.8"
+toml_edit = "0.22"
+semver = "1"
