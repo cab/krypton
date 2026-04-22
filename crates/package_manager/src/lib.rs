@@ -5,3 +5,7 @@ pub mod manifest;
 pub mod maven;
 pub mod resolve;
 pub mod version;
+
+pub use manifest::{
+    DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo,
+};

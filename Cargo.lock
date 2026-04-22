@@ -926,9 +926,11 @@ dependencies = [
 name = "krypton-package-manager"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "semver",
  "serde",
  "serde_derive",
+ "tempfile",
  "toml",
  "toml_edit 0.22.27",
 ]
