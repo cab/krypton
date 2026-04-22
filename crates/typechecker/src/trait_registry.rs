@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::Span;
@@ -80,6 +82,20 @@ pub struct TraitRegistry {
     /// Index: trait_name → indices into `instances`, for fast overlap/lookup.
     instances_by_trait: FxHashMap<TraitName, Vec<usize>>,
     trait_aliases: FxHashMap<String, TraitName>,
+    /// Proper-ancestor reachability map: `descendant → (ancestor → composed
+    /// args)` expressing `ancestor`'s type parameters in terms of
+    /// `descendant`'s. Populated lazily on first query from the static
+    /// trait superclass graph built during phases 2/2c/3 of
+    /// `process_traits_and_deriving`; `register_trait` panics once this
+    /// cell has been materialized, enforcing the registration-before-query
+    /// invariant that makes the cache sound.
+    ///
+    /// Nested (rather than `(TraitName, TraitName)` keyed) so hot-path
+    /// lookups borrow `&TraitName` through both levels without cloning. A
+    /// missing outer or inner key means "not a superclass". The identity
+    /// case (`ancestor == descendant`) is handled by callers and is not
+    /// stored.
+    superclass_cache: OnceLock<FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>>>,
 }
 
 impl Default for TraitRegistry {
@@ -95,6 +111,7 @@ impl TraitRegistry {
             instances: Vec::new(),
             instances_by_trait: FxHashMap::default(),
             trait_aliases: FxHashMap::default(),
+            superclass_cache: OnceLock::new(),
         }
     }
 
@@ -107,6 +124,17 @@ impl TraitRegistry {
     /// def reaches this module via multiple import paths; callers at that
     /// registration site treat it as a benign dedup.
     pub fn register_trait(&mut self, info: TraitInfo) -> Result<(), TypeError> {
+        // Invariant: all trait registration completes before any superclass
+        // query materializes the reachability cache. Violating this means a
+        // trait's superclasses would be absent from an already-frozen table,
+        // silently corrupting later queries. See `superclass_cache`.
+        assert!(
+            self.superclass_cache.get().is_none(),
+            "ICE: TraitRegistry::register_trait called after superclass_cache was materialized \
+             (registering `{}::{}` would not be reflected in superclass queries)",
+            info.module_path,
+            info.name,
+        );
         let key = info.trait_name();
         if self.traits.contains_key(&key) {
             return Err(TypeError::DuplicateTrait {
@@ -499,40 +527,28 @@ impl TraitRegistry {
     }
 
     /// Returns true iff `ancestor` is in the transitive superclass closure of
-    /// `descendant`. Walks `TraitInfo::superclasses` by trait name only (no
-    /// substitution); this is a cheap pre-filter and a fast path for
-    /// reachability queries that don't care about argument mapping.
+    /// `descendant`. Consults the precomputed reachability map — populated
+    /// once on first call — rather than walking the graph every query.
     pub fn is_superclass_of(&self, ancestor: &TraitName, descendant: &TraitName) -> bool {
-        let mut stack: Vec<&TraitName> = vec![descendant];
-        let mut visited: FxHashSet<&TraitName> = FxHashSet::default();
-        while let Some(cur) = stack.pop() {
-            if !visited.insert(cur) {
-                continue;
-            }
-            let Some(info) = self.lookup_trait(cur) else {
-                continue;
-            };
-            for (sc, _) in &info.superclasses {
-                if sc == ancestor {
-                    return true;
-                }
-                stack.push(sc);
-            }
-        }
-        false
+        self.superclass_cache
+            .get_or_init(|| self.build_superclass_cache())
+            .get(descendant)
+            .is_some_and(|ancestors| ancestors.contains_key(ancestor))
     }
 
-    /// BFS through direct-superclass maps from `descendant` → `ancestor`,
-    /// composing substitutions hop-by-hop. Returns the `Vec<Type>` arguments
-    /// that reach `ancestor` in terms of `descendant`'s own `type_var_ids`.
+    /// Returns the arguments by which `descendant`'s type parameters reach
+    /// `ancestor` in the transitive superclass chain, composed hop-by-hop.
+    /// Returns `None` if `ancestor` is unreachable or `descendant` is not
+    /// registered.
     ///
-    /// Returns `None` if `ancestor` is unreachable, if `descendant` is not
-    /// registered, or if the hop chain is malformed (defensive).
+    /// For a direct hop the result is simply the stored superclass args. For
+    /// a transitive hop `D → M → A`, ancestor args `A[...]` (in terms of
+    /// `M`'s type vars) are substituted with `M`'s args (in terms of `D`'s
+    /// type vars), yielding the composed map `D.type_vars → A[...]`.
     ///
-    /// For a direct hop, the result is simply the stored superclass args.
-    /// For a transitive hop `D → M → A`, the ancestor args `A[...]` (in terms
-    /// of `M`'s type vars) are substituted with `M`'s args (in terms of `D`'s
-    /// type vars), giving the composed map `D.type_vars → A[...]`.
+    /// The identity case (`ancestor == descendant`) returns `descendant`'s
+    /// own `type_var_ids` lifted to `Type::Var`s; callers rely on that shape
+    /// to thread the trait's own parameters through substitution chains.
     pub fn superclass_substitution(
         &self,
         ancestor: &TraitName,
@@ -542,46 +558,63 @@ impl TraitRegistry {
             let info = self.lookup_trait(descendant)?;
             return Some(info.type_var_ids.iter().copied().map(Type::Var).collect());
         }
-        let descendant_info = self.lookup_trait(descendant)?;
-        // Early return: if descendant has no superclasses, nothing to walk.
-        if descendant_info.superclasses.is_empty() {
-            return None;
-        }
-        // BFS: each queue entry carries (trait_name, args-in-terms-of-descendant).
+        self.superclass_cache
+            .get_or_init(|| self.build_superclass_cache())
+            .get(descendant)
+            .and_then(|ancestors| ancestors.get(ancestor).cloned())
+    }
+
+    /// Precompute proper-ancestor reachability for every registered trait.
+    /// For each trait `D`, run a BFS over its superclass graph, composing
+    /// per-hop substitutions so each recorded entry expresses the ancestor's
+    /// type parameters in terms of `D`'s own type variables.
+    ///
+    /// Invoked at most once per `TraitRegistry` via the `OnceLock`. The
+    /// registered trait graph is static from phase 4 onward (see
+    /// `process_traits_and_deriving`), so one amortized walk per descendant
+    /// replaces the previous per-query BFS/DFS on the hot path.
+    fn build_superclass_cache(&self) -> FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>> {
         use std::collections::VecDeque;
-        let mut visited: FxHashSet<TraitName> = FxHashSet::default();
-        visited.insert(descendant.clone());
-        let mut queue: VecDeque<(TraitName, Vec<Type>)> = VecDeque::new();
-        for (sc_name, sc_args) in &descendant_info.superclasses {
-            if visited.insert(sc_name.clone()) {
-                queue.push_back((sc_name.clone(), sc_args.clone()));
-            }
-        }
-        while let Some((cur, cur_args)) = queue.pop_front() {
-            if &cur == ancestor {
-                return Some(cur_args);
-            }
-            let Some(cur_info) = self.lookup_trait(&cur) else {
-                continue;
-            };
-            if cur_info.type_var_ids.len() != cur_args.len() {
+        let mut cache: FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>> =
+            FxHashMap::default();
+        for (descendant_name, descendant_info) in &self.traits {
+            if descendant_info.superclasses.is_empty() {
                 continue;
             }
-            // Build substitution from `cur`'s own type vars to the args that
-            // express them in descendant's vars.
-            let mut subst = Substitution::new();
-            for (&param_id, arg) in cur_info.type_var_ids.iter().zip(cur_args.iter()) {
-                subst.insert(param_id, arg.clone());
+            let mut visited: FxHashSet<TraitName> = FxHashSet::default();
+            visited.insert(descendant_name.clone());
+            let mut queue: VecDeque<(TraitName, Vec<Type>)> = VecDeque::new();
+            for (sc_name, sc_args) in &descendant_info.superclasses {
+                if visited.insert(sc_name.clone()) {
+                    queue.push_back((sc_name.clone(), sc_args.clone()));
+                }
             }
-            for (next_name, next_args) in &cur_info.superclasses {
-                if !visited.insert(next_name.clone()) {
+            let ancestors = cache.entry(descendant_name.clone()).or_default();
+            while let Some((cur, cur_args)) = queue.pop_front() {
+                // First visit wins: BFS guarantees the shortest path, and
+                // the previous per-query implementation returned on first
+                // match too, so downstream behavior is preserved.
+                ancestors.entry(cur.clone()).or_insert_with(|| cur_args.clone());
+                let Some(cur_info) = self.lookup_trait(&cur) else {
+                    continue;
+                };
+                if cur_info.type_var_ids.len() != cur_args.len() {
                     continue;
                 }
-                let composed: Vec<Type> = next_args.iter().map(|a| subst.apply(a)).collect();
-                queue.push_back((next_name.clone(), composed));
+                let mut subst = Substitution::new();
+                for (&param_id, arg) in cur_info.type_var_ids.iter().zip(cur_args.iter()) {
+                    subst.insert(param_id, arg.clone());
+                }
+                for (next_name, next_args) in &cur_info.superclasses {
+                    if !visited.insert(next_name.clone()) {
+                        continue;
+                    }
+                    let composed: Vec<Type> = next_args.iter().map(|a| subst.apply(a)).collect();
+                    queue.push_back((next_name.clone(), composed));
+                }
             }
         }
-        None
+        cache
     }
 
     pub fn check_superclasses(&self, instance: &InstanceInfo) -> Result<(), TypeError> {
@@ -2047,5 +2080,273 @@ mod tests {
         assert_eq!(diag.unsatisfied.len(), 1);
         assert_eq!(diag.unsatisfied[0].trait_name, "Show");
         assert_eq!(diag.unsatisfied[0].ty, "Int");
+    }
+
+    /// Build a single-parameter `TraitInfo` whose type-var id is drawn from
+    /// the shared generator, so each trait in a multi-trait graph has a
+    /// distinct id — essential when verifying that superclass composition
+    /// threads the *descendant's* type variable through the chain.
+    fn trait_info_single_with_gen(
+        name: &str,
+        gen: &mut TypeVarGen,
+        superclasses: Vec<(TraitName, Vec<Type>)>,
+    ) -> (TraitInfo, crate::types::TypeVarId) {
+        let tv = gen.fresh();
+        let info = TraitInfo {
+            name: name.to_string(),
+            module_path: "test".to_string(),
+            type_var: "a".to_string(),
+            type_var_id: tv,
+            type_var_ids: vec![tv],
+            type_var_names: vec!["a".to_string()],
+            type_var_arity: 1,
+            superclasses,
+            methods: Vec::<TraitMethod>::new(),
+            span: (0, 0),
+            is_prelude: false,
+        };
+        (info, tv)
+    }
+
+    /// Reference BFS mirroring the pre-cache `superclass_substitution`
+    /// implementation. Used by `superclass_cache_matches_uncached_walk` to
+    /// pin cache output to the original algorithm.
+    fn reference_superclass_substitution(
+        registry: &TraitRegistry,
+        ancestor: &TraitName,
+        descendant: &TraitName,
+    ) -> Option<Vec<Type>> {
+        use crate::types::Substitution;
+        use std::collections::VecDeque;
+        let descendant_info = registry.lookup_trait(descendant)?;
+        if descendant_info.superclasses.is_empty() {
+            return None;
+        }
+        let mut visited: rustc_hash::FxHashSet<TraitName> = rustc_hash::FxHashSet::default();
+        visited.insert(descendant.clone());
+        let mut queue: VecDeque<(TraitName, Vec<Type>)> = VecDeque::new();
+        for (sc_name, sc_args) in &descendant_info.superclasses {
+            if visited.insert(sc_name.clone()) {
+                queue.push_back((sc_name.clone(), sc_args.clone()));
+            }
+        }
+        while let Some((cur, cur_args)) = queue.pop_front() {
+            if &cur == ancestor {
+                return Some(cur_args);
+            }
+            let Some(cur_info) = registry.lookup_trait(&cur) else {
+                continue;
+            };
+            if cur_info.type_var_ids.len() != cur_args.len() {
+                continue;
+            }
+            let mut subst = Substitution::new();
+            for (&param_id, arg) in cur_info.type_var_ids.iter().zip(cur_args.iter()) {
+                subst.insert(param_id, arg.clone());
+            }
+            for (next_name, next_args) in &cur_info.superclasses {
+                if !visited.insert(next_name.clone()) {
+                    continue;
+                }
+                let composed: Vec<Type> = next_args.iter().map(|a| subst.apply(a)).collect();
+                queue.push_back((next_name.clone(), composed));
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn superclass_cache_direct_hop() {
+        let mut gen = TypeVarGen::new();
+        let (functor, _functor_tv) = trait_info_single_with_gen("Functor", &mut gen, vec![]);
+        let (applicative, applicative_tv) = trait_info_single_with_gen(
+            "Applicative",
+            &mut gen,
+            vec![(tn("Functor"), vec![])],
+        );
+        // Fix up the superclass args to reference Applicative's own type var.
+        let mut applicative = applicative;
+        applicative.superclasses = vec![(tn("Functor"), vec![Type::Var(applicative_tv)])];
+
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(functor).unwrap();
+        registry.register_trait(applicative).unwrap();
+
+        assert!(registry.is_superclass_of(&tn("Functor"), &tn("Applicative")));
+        assert_eq!(
+            registry.superclass_substitution(&tn("Functor"), &tn("Applicative")),
+            Some(vec![Type::Var(applicative_tv)])
+        );
+    }
+
+    #[test]
+    fn superclass_cache_transitive_hop() {
+        let mut gen = TypeVarGen::new();
+        let (functor, _functor_tv) = trait_info_single_with_gen("Functor", &mut gen, vec![]);
+        let (mut applicative, applicative_tv) =
+            trait_info_single_with_gen("Applicative", &mut gen, vec![]);
+        applicative.superclasses = vec![(tn("Functor"), vec![Type::Var(applicative_tv)])];
+        let (mut monad, monad_tv) = trait_info_single_with_gen("Monad", &mut gen, vec![]);
+        monad.superclasses = vec![(tn("Applicative"), vec![Type::Var(monad_tv)])];
+
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(functor).unwrap();
+        registry.register_trait(applicative).unwrap();
+        registry.register_trait(monad).unwrap();
+
+        assert!(registry.is_superclass_of(&tn("Functor"), &tn("Monad")));
+        assert!(registry.is_superclass_of(&tn("Applicative"), &tn("Monad")));
+
+        // Monad → Applicative: [Var(monad_tv)] (direct).
+        // Applicative → Functor: [Var(applicative_tv)], substituted with
+        // {applicative_tv := Var(monad_tv)} → [Var(monad_tv)].
+        assert_eq!(
+            registry.superclass_substitution(&tn("Applicative"), &tn("Monad")),
+            Some(vec![Type::Var(monad_tv)])
+        );
+        assert_eq!(
+            registry.superclass_substitution(&tn("Functor"), &tn("Monad")),
+            Some(vec![Type::Var(monad_tv)])
+        );
+    }
+
+    #[test]
+    fn superclass_cache_unrelated_returns_none() {
+        let mut gen = TypeVarGen::new();
+        let (a, _a_tv) = trait_info_single_with_gen("A", &mut gen, vec![]);
+        let (b, _b_tv) = trait_info_single_with_gen("B", &mut gen, vec![]);
+
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(a).unwrap();
+        registry.register_trait(b).unwrap();
+
+        assert!(!registry.is_superclass_of(&tn("A"), &tn("B")));
+        assert!(!registry.is_superclass_of(&tn("B"), &tn("A")));
+        assert!(registry
+            .superclass_substitution(&tn("A"), &tn("B"))
+            .is_none());
+        assert!(registry
+            .superclass_substitution(&tn("B"), &tn("A"))
+            .is_none());
+    }
+
+    #[test]
+    fn superclass_cache_identity() {
+        let mut gen = TypeVarGen::new();
+        let (t, t_tv) = trait_info_single_with_gen("T", &mut gen, vec![]);
+
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(t).unwrap();
+
+        // Identity: ancestor == descendant returns the trait's own type
+        // vars lifted to Type::Var.
+        assert_eq!(
+            registry.superclass_substitution(&tn("T"), &tn("T")),
+            Some(vec![Type::Var(t_tv)])
+        );
+        // Non-reflexive: nothing is its own proper superclass.
+        assert!(!registry.is_superclass_of(&tn("T"), &tn("T")));
+    }
+
+    #[test]
+    fn superclass_cache_matches_uncached_walk() {
+        // Build a graph with branching + a transitive chain so the
+        // reference walk and cache share non-trivial entries.
+        //
+        //   Show
+        //     ↑
+        //   Eq ← Ord ← CmpChain
+        //               ↑
+        //           Applicative ← Monad
+        //               ↑
+        //           Functor
+        let mut gen = TypeVarGen::new();
+        let (show, _) = trait_info_single_with_gen("Show", &mut gen, vec![]);
+        let (eq, eq_tv) = trait_info_single_with_gen("Eq", &mut gen, vec![]);
+        let (mut ord, ord_tv) = trait_info_single_with_gen("Ord", &mut gen, vec![]);
+        ord.superclasses = vec![(tn("Eq"), vec![Type::Var(ord_tv)])];
+        let (mut cmp_chain, cmp_tv) = trait_info_single_with_gen("CmpChain", &mut gen, vec![]);
+        cmp_chain.superclasses = vec![
+            (tn("Ord"), vec![Type::Var(cmp_tv)]),
+            (tn("Show"), vec![Type::Var(cmp_tv)]),
+        ];
+        let (functor, _) = trait_info_single_with_gen("Functor", &mut gen, vec![]);
+        let (mut applicative, applicative_tv) =
+            trait_info_single_with_gen("Applicative", &mut gen, vec![]);
+        applicative.superclasses = vec![(tn("Functor"), vec![Type::Var(applicative_tv)])];
+        let (mut monad, monad_tv) = trait_info_single_with_gen("Monad", &mut gen, vec![]);
+        monad.superclasses = vec![(tn("Applicative"), vec![Type::Var(monad_tv)])];
+
+        let mut registry = TraitRegistry::new();
+        for t in [show, eq, ord, cmp_chain, functor, applicative, monad] {
+            registry.register_trait(t).unwrap();
+        }
+
+        let all_names: Vec<TraitName> = [
+            "Show",
+            "Eq",
+            "Ord",
+            "CmpChain",
+            "Functor",
+            "Applicative",
+            "Monad",
+        ]
+        .into_iter()
+        .map(tn)
+        .collect();
+
+        let cache = registry.build_superclass_cache();
+
+        // Every cache entry must agree with the reference walk.
+        for (descendant, ancestors) in &cache {
+            for (ancestor, cached_args) in ancestors {
+                let reference = reference_superclass_substitution(&registry, ancestor, descendant)
+                    .expect("cache contains pair that reference walk could not reach");
+                assert_eq!(
+                    cached_args, &reference,
+                    "cache mismatch for ({descendant:?} → {ancestor:?})"
+                );
+            }
+        }
+
+        // Every reachable (descendant, ancestor) in the reference must be
+        // present in the cache with identical args. Iterate all pairs.
+        for descendant in &all_names {
+            for ancestor in &all_names {
+                if descendant == ancestor {
+                    continue;
+                }
+                let reference =
+                    reference_superclass_substitution(&registry, ancestor, descendant);
+                let cached = cache
+                    .get(descendant)
+                    .and_then(|m| m.get(ancestor).cloned());
+                assert_eq!(
+                    cached, reference,
+                    "cache/reference divergence for ({descendant:?} → {ancestor:?})"
+                );
+            }
+        }
+
+        // Unused bindings asserted alive for clarity.
+        let _ = (eq_tv, monad_tv);
+    }
+
+    #[test]
+    #[should_panic(expected = "superclass_cache was materialized")]
+    fn register_trait_after_query_panics() {
+        let mut gen = TypeVarGen::new();
+        let (functor, _) = trait_info_single_with_gen("Functor", &mut gen, vec![]);
+
+        let mut registry = TraitRegistry::new();
+        registry.register_trait(functor).unwrap();
+
+        // Force the cache to materialize.
+        let _ = registry.is_superclass_of(&tn("Functor"), &tn("Applicative"));
+
+        // Registering another trait now should ICE: the freshly-registered
+        // trait would never appear in query answers.
+        let (applicative, _) = trait_info_single_with_gen("Applicative", &mut gen, vec![]);
+        let _ = registry.register_trait(applicative);
     }
 }
