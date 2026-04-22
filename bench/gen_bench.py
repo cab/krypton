@@ -449,6 +449,194 @@ def gen_shadowing_fn(mod_idx: int) -> str:
     )
 
 
+def gen_deep_update_type_and_fn(mod_idx: int) -> str:
+    """Nested record types + a fn that exercises `with { a.b.c = ... }` deep update."""
+    i = mod_idx
+    return (
+        f"pub type City{i} = {{ zip: Int, street: Int }} deriving (Eq)\n"
+        f"pub type Addr{i} = {{ city: City{i}, code: Int }} deriving (Eq)\n"
+        f"pub type User{i} = {{ addr: Addr{i}, age: Int }} deriving (Eq)\n"
+        f"\n"
+        f"pub fun deep_update{i}(x: Int) -> Int = {{\n"
+        f"    let u = User{i} {{ addr = Addr{i} {{ city = City{i} {{ zip = 0, street = 0 }}, code = x }}, age = 0 }};\n"
+        f"    let u2 = u with {{ addr.city.zip = 94103, addr.city.street = 7, age = x }};\n"
+        f"    u2.addr.city.zip + u2.addr.city.street + u2.age\n"
+        f"}}"
+    )
+
+
+def gen_hkt_list_fn(mod_idx: int) -> str:
+    """Prelude map/flat_map/fold on List — exercises Functor/Monad/Foldable dispatch."""
+    i = mod_idx
+    return (
+        f"pub fun hkt_list{i}(x: Int) -> Int = {{\n"
+        f"    let xs = Cons(x, Cons(x + 1, Cons(x + 2, Nil)));\n"
+        f"    let ys = map(xs, n -> n * 2);\n"
+        f"    let zs = flat_map(ys, n -> Cons(n, Cons(n + 1, Nil)));\n"
+        f"    fold(zs, 0, (acc, n) -> acc + n)\n"
+        f"}}"
+    )
+
+
+def gen_hkt_typeapp_fn(mod_idx: int) -> str:
+    """Explicit TypeApp on prelude HKT method — exercises 4ade8743/77b74dc1 elaboration."""
+    i = mod_idx
+    return (
+        f"pub fun hkt_typeapp{i}(x: Int) -> Int = {{\n"
+        f"    let xs = Cons(x, Cons(x + 1, Nil));\n"
+        f'    let ys: List[String] = map[List, Int, String](xs, n -> "v");\n'
+        f"    fold(ys, 0, (acc, s) -> acc + 1)\n"
+        f"}}"
+    )
+
+
+def gen_list_concat_fn(mod_idx: int) -> str:
+    """`+` desugar through Semigroup on List."""
+    i = mod_idx
+    return (
+        f"pub fun list_concat{i}(x: Int) -> Int = {{\n"
+        f"    let a = Cons(x, Cons(x + 1, Nil));\n"
+        f"    let b = Cons(x + 2, Cons(x + 3, Nil));\n"
+        f"    let c = a + b;\n"
+        f"    fold(c, 0, (acc, n) -> acc + n)\n"
+        f"}}"
+    )
+
+
+def gen_vec_ops_fn(mod_idx: int) -> str:
+    """Vec builder/freeze + take/drop/reverse/zip — exercises canonical-type overloads."""
+    i = mod_idx
+    return (
+        f"pub fun vec_ops{i}(x: Int) -> Int = {{\n"
+        f"    let b0 = builder();\n"
+        f"    let b1 = push(b0, x);\n"
+        f"    let b2 = push(b1, x + 1);\n"
+        f"    let b3 = push(b2, x + 2);\n"
+        f"    let b4 = push(b3, x + 3);\n"
+        f"    let v: Vec[Int] = freeze(b4);\n"
+        f"    let t = take(v, 3);\n"
+        f"    let d = drop(v, 1);\n"
+        f"    let r = reverse(v);\n"
+        f"    let z = zip(t, d);\n"
+        f"    len(t) + len(d) + len(r) + len(z)\n"
+        f"}}"
+    )
+
+
+def gen_map_ops_fn(mod_idx: int) -> str:
+    """Persistent Map via MapBuilder — exercises linear builder flow + overload mangler."""
+    i = mod_idx
+    return (
+        f"pub fun map_ops{i}(x: Int) -> Int = {{\n"
+        f"    let b0 = map_builder();\n"
+        f"    let b1 = map_put(b0, x, x + 1);\n"
+        f"    let b2 = map_put(b1, x + 1, x + 2);\n"
+        f"    let b3 = map_put(b2, x + 2, x + 3);\n"
+        f"    let m: Map[Int, Int] = map_freeze(b3);\n"
+        f"    let got = match get(m, x + 1) {{\n"
+        f"        Some(v) => v,\n"
+        f"        None => 0,\n"
+        f"    }};\n"
+        f"    got + size(m)\n"
+        f"}}"
+    )
+
+
+def gen_overloads_block(mod_idx: int) -> str:
+    """Three process{i} overloads (first-param) + two tag{i} overloads (second-param) + consumer."""
+    i = mod_idx
+    rn = record_name(mod_idx, 0)
+    en = enum_name(mod_idx, 0)
+    v0 = variant_name(mod_idx, 0, 0)
+    v1 = variant_name(mod_idx, 0, 1)
+    bn = box_name(mod_idx)
+    f0 = fn_name(mod_idx, 0)
+    return (
+        f"pub fun process{i}(r: {rn}) -> Int = r.f0 + r.f1 + r.f2\n"
+        f"\n"
+        f"pub fun process{i}(e: {en}) -> Int = match e {{\n"
+        f"    {v0}(n) => n,\n"
+        f"    {v1}(a, b) => a + b,\n"
+        f"    _ => 0,\n"
+        f"}}\n"
+        f"\n"
+        f"pub fun process{i}(b: {bn}[Int]) -> Int = match b {{ {bn}(n) => n * 2 }}\n"
+        f"\n"
+        f"pub fun tag{i}(x: Int, marker: {rn}) -> Int = x + marker.f0\n"
+        f"\n"
+        f"pub fun tag{i}(x: Int, marker: {en}) -> Int = x + match marker {{\n"
+        f"    {v0}(n) => n,\n"
+        f"    _ => 0,\n"
+        f"}}\n"
+        f"\n"
+        f"pub fun use_overloads{i}(x: Int) -> Int = {{\n"
+        f"    let r = {f0}(x);\n"
+        f"    let e: {en} = {v0}(x);\n"
+        f"    let bx = {bn}(x + 1);\n"
+        f"    let a = process{i}(r) + process{i}(e) + process{i}(bx);\n"
+        f"    let b = tag{i}(x, r) + tag{i}(x, e);\n"
+        f"    a + b\n"
+        f"}}"
+    )
+
+
+def gen_xprocess_bridge(mod_idx: int, deps: list) -> str:
+    """Cross-module imported-overload under a shared alias — requires len(deps) >= 2.
+
+    Forces the typechecker to disambiguate `xprocess` by first-param canonical
+    type across two imports of the same name from two different modules.
+    Not called from main — kept alive by being `pub` so typecheck/lower still
+    process it.
+    """
+    dep0, dep1 = deps[0], deps[1]
+    dep0_rn = record_name(dep0, 0)
+    dep1_rn = record_name(dep1, 0)
+    return (
+        f"pub fun xprocess_bridge{mod_idx}(a: {dep0_rn}, b: {dep1_rn}) -> Int = "
+        f"xprocess(a) + xprocess(b)"
+    )
+
+
+def gen_via_monad_fn(mod_idx: int) -> str:
+    """Generic fn constrained by Monad using map/pure via superclass projection."""
+    i = mod_idx
+    return (
+        f"pub fun via_monad{i}[f[_], a](fa: f[a], g: (a) -> a) -> f[a] where f: Monad =\n"
+        f"    flat_map(fa, x -> map(pure(g(x)), g))\n"
+        f"\n"
+        f"pub fun use_via_monad{i}(x: Int) -> Int = {{\n"
+        f"    let xs: List[Int] = Cons(x, Cons(x + 1, Nil));\n"
+        f"    fold(via_monad{i}(xs, n -> n + 1), 0, (acc, n) -> acc + n)\n"
+        f"}}"
+    )
+
+
+def gen_multi_param_codec(mod_idx: int) -> str:
+    """Two-parameter trait with superclass entailment through Metric{i}."""
+    i = mod_idx
+    tn = trait_name(mod_idx)
+    tn_lower = tn.lower()
+    rn = record_name(mod_idx, 0)
+    f0 = fn_name(mod_idx, 0)
+    return (
+        f"pub trait Codec{i}[fmt, ty] where ty: {tn} {{\n"
+        f"    fun encode{i}(x: ty, fmt_hint: fmt) -> Int\n"
+        f"}}\n"
+        f"\n"
+        f"impl Codec{i}[Int, {rn}] {{\n"
+        f"    fun encode{i}(x: {rn}, fmt_hint: Int) -> Int = {tn_lower}(x) + fmt_hint\n"
+        f"}}\n"
+        f"\n"
+        f"pub fun describe{i}[fmt, ty](x: ty, fmt_hint: fmt) -> Int where Codec{i}[fmt, ty] =\n"
+        f"    {tn_lower}(x) + encode{i}(x, fmt_hint)\n"
+        f"\n"
+        f"pub fun use_describe{i}(x: Int) -> Int = {{\n"
+        f"    let r = {f0}(x);\n"
+        f"    describe{i}(r, x)\n"
+        f"}}"
+    )
+
+
 def gen_use_hkt_fn(mod_idx: int) -> str:
     bn = box_name(mod_idx)
     fn = f"map{mod_idx}"
@@ -574,8 +762,28 @@ def gen_module(mod_idx: int, num_types: int, num_fns: int, deps: list[int]) -> s
         imports = [dep_rn, dep_fn, dep_en, dep_v0, dep_tn, dep_tn.lower()]
         lines.append(f"import {mod_name(dep)}.{{{', '.join(imports)}}}")
 
-    if deps:
-        lines.append("")
+    # Stdlib imports for vec/map ops (every module). Map builder/put/freeze are
+    # aliased to avoid shadowing Vec's same-named overloads; Vec's are left
+    # unaliased so the canonical-type overload resolver picks between
+    # `~VecBuilder[a]` and `~MapBuilder[k, v]` arms at each call site.
+    lines.append("import core/vec.{Vec, builder, push, freeze, take, drop, reverse, zip, len}")
+    lines.append(
+        "import core/map.{builder as map_builder, put as map_put, "
+        "freeze as map_freeze, get, size}"
+    )
+
+    # Monad trait is not in the prelude; import it when we emit via_monad.
+    if mod_idx % 3 == 0:
+        lines.append("import core/monad.{Monad}")
+
+    # Cross-module overload-under-single-alias: same bare name from two
+    # different modules, resolved by first-param canonical type.
+    if len(deps) >= 2:
+        dep0, dep1 = deps[0], deps[1]
+        lines.append(f"import {mod_name(dep0)}.{{process{dep0} as xprocess}}")
+        lines.append(f"import {mod_name(dep1)}.{{process{dep1} as xprocess}}")
+
+    lines.append("")
 
     # Types: records
     num_records = max(1, num_types // 2)
@@ -598,6 +806,10 @@ def gen_module(mod_idx: int, num_types: int, num_fns: int, deps: list[int]) -> s
     lines.append(gen_option_type(mod_idx))
     lines.append("")
     lines.append(gen_pair_type(mod_idx))
+    lines.append("")
+
+    # Nested record types + deep-update fn (shared-prefix `with` lowering).
+    lines.append(gen_deep_update_type_and_fn(mod_idx))
     lines.append("")
 
     # Trait + impls
@@ -660,6 +872,44 @@ def gen_module(mod_idx: int, num_types: int, num_fns: int, deps: list[int]) -> s
     lines.append(gen_shadowing_fn(mod_idx))
     lines.append("")
 
+    # Stdlib HKT method dispatch on List (prelude-imported map/flat_map/fold)
+    lines.append(gen_hkt_list_fn(mod_idx))
+    lines.append("")
+
+    # Explicit TypeApp on prelude HKT method
+    lines.append(gen_hkt_typeapp_fn(mod_idx))
+    lines.append("")
+
+    # `+` desugar through Semigroup on List
+    lines.append(gen_list_concat_fn(mod_idx))
+    lines.append("")
+
+    # Vec take/drop/reverse/zip + builder/freeze flow
+    lines.append(gen_vec_ops_fn(mod_idx))
+    lines.append("")
+
+    # Persistent Map via MapBuilder
+    lines.append(gen_map_ops_fn(mod_idx))
+    lines.append("")
+
+    # Same-name overload set keyed by first- and second-parameter type
+    lines.append(gen_overloads_block(mod_idx))
+    lines.append("")
+
+    if len(deps) >= 2:
+        lines.append(gen_xprocess_bridge(mod_idx, deps))
+        lines.append("")
+
+    # Generic fn constrained by Monad using map/pure via superclass projection
+    if mod_idx % 3 == 0:
+        lines.append(gen_via_monad_fn(mod_idx))
+        lines.append("")
+
+    # Multi-parameter trait with Metric{i} superclass entailment
+    if mod_idx % 7 == 0:
+        lines.append(gen_multi_param_codec(mod_idx))
+        lines.append("")
+
     # Conditional feature functions
     if has_hkt:
         lines.append(gen_use_hkt_fn(mod_idx))
@@ -717,17 +967,27 @@ def gen_main(num_modules: int, num_fns: int) -> str:
             f"use_fallible{i}",
             f"shadow{i}",
             f"use_id{i}",
+            f"deep_update{i}",
+            f"hkt_list{i}",
+            f"hkt_typeapp{i}",
+            f"list_concat{i}",
+            f"vec_ops{i}",
+            f"map_ops{i}",
+            f"use_overloads{i}",
         ]
         if i % 5 == 0:
             names.append(f"use_mappable{i}")
         if i % 3 == 0:
             names.append(f"use_constrained{i}")
+            names.append(f"use_via_monad{i}")
         if i % 4 == 0:
             names.append(f"use_extended{i}")
+        if i % 7 == 0:
+            names.append(f"use_describe{i}")
         lines.append(f"import {mod_name(i)}.{{{', '.join(names)}}}")
 
     lines.append("")
-    lines.append("pub fun main() -> Int = {")
+    lines.append("pub fun main() -> Unit = {")
 
     result_vars = []
     for idx, i in enumerate(imported):
@@ -749,30 +1009,45 @@ def gen_main(num_modules: int, num_fns: int) -> str:
         lines.append(f"    let fal{idx} = use_fallible{i}({idx});")
         lines.append(f"    let shd{idx} = shadow{i}({idx});")
         lines.append(f"    let tid{idx} = use_id{i}({idx});")
+        lines.append(f"    let dup{idx} = deep_update{i}({idx});")
+        lines.append(f"    let hkl{idx} = hkt_list{i}({idx});")
+        lines.append(f"    let hkt{idx} = hkt_typeapp{i}({idx});")
+        lines.append(f"    let lcc{idx} = list_concat{i}({idx});")
+        lines.append(f"    let vop{idx} = vec_ops{i}({idx});")
+        lines.append(f"    let mop{idx} = map_ops{i}({idx});")
+        lines.append(f"    let ovl{idx} = use_overloads{i}({idx});")
 
         sum_parts = [f"base{idx}", f"tup{idx}", f"upd{idx}", f"grd{idx}",
-                     f"nst{idx}", f"fal{idx}", f"shd{idx}", f"tid{idx}"]
+                     f"nst{idx}", f"fal{idx}", f"shd{idx}", f"tid{idx}",
+                     f"dup{idx}", f"hkl{idx}", f"hkt{idx}", f"lcc{idx}",
+                     f"vop{idx}", f"mop{idx}", f"ovl{idx}"]
 
         # Conditional features
         if i % 5 == 0:
-            lines.append(f"    let hkt{idx} = use_mappable{i}({idx});")
-            sum_parts.append(f"hkt{idx}")
+            lines.append(f"    let mpl{idx} = use_mappable{i}({idx});")
+            sum_parts.append(f"mpl{idx}")
         if i % 3 == 0:
             lines.append(f"    let cst{idx} = use_constrained{i}({idx});")
+            lines.append(f"    let vmd{idx} = use_via_monad{i}({idx});")
             sum_parts.append(f"cst{idx}")
+            sum_parts.append(f"vmd{idx}")
         if i % 4 == 0:
             lines.append(f"    let ext{idx} = use_extended{i}({idx});")
             sum_parts.append(f"ext{idx}")
+        if i % 7 == 0:
+            lines.append(f"    let des{idx} = use_describe{i}({idx});")
+            sum_parts.append(f"des{idx}")
 
         lines.append(f"    let {var} = {' + '.join(sum_parts)};")
         result_vars.append(var)
 
-    # Sum all results
+    # Sum all results and print — keeps every result live through DCE while
+    # satisfying `main: Unit`.
     if result_vars:
         sums = " + ".join(result_vars)
-        lines.append(f"    {sums}")
+        lines.append(f"    println({sums})")
     else:
-        lines.append("    0")
+        lines.append("    println(0)")
 
     lines.append("}")
     return "\n".join(lines)
