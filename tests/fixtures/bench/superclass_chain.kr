@@ -1,0 +1,157 @@
+# expect: ok
+#
+# Stress fixture for the superclass-dict projection cache.
+#
+# Inside each function body we force many GetDict requests that must
+# project `m: Monad` down to `Applicative` (for `pure`/`apply`) and
+# through to `Functor` (for `map`). Before caching, every site re-runs
+# the descendant scan + BFS + per-hop substitution; after caching, a
+# single `(trait, target_ids)` key lookup settles repeat sites.
+#
+# Scale: `big_chain` holds ~60 projection sites in one body, replicated
+# across three functions for a total in the hundreds. The `m: Monad,
+# n: Monad, p: Monad` bounds bloat `dict_params` so each pre-cache scan
+# also pays O(dict_count) per call.
+
+import core/monad.{Monad, flat_map}
+import core/applicative.{Applicative, pure, apply}
+import core/functor.{Functor, map}
+
+fun big_chain[m[_], n[_], p[_], a](ma: m[a], nb: n[a], pc: p[a], f: (a) -> a) -> m[a]
+    where m: Monad, n: Monad, p: Monad = {
+    let a00 = map(ma, f);
+    let a01 = apply(pure(f), ma);
+    let a02 = map(apply(pure(f), ma), f);
+    let a03 = apply(pure(f), map(ma, f));
+    let a04 = map(apply(pure(f), map(ma, f)), f);
+    let a05 = apply(pure(f), map(apply(pure(f), ma), f));
+    let a06 = map(apply(pure(f), apply(pure(f), ma)), f);
+    let a07 = apply(pure(f), apply(pure(f), map(ma, f)));
+    let a08 = map(map(apply(pure(f), ma), f), f);
+    let a09 = apply(pure(f), map(map(ma, f), f));
+    let a10 = map(apply(pure(f), map(apply(pure(f), ma), f)), f);
+    let a11 = apply(pure(f), map(apply(pure(f), map(ma, f)), f));
+    let a12 = map(apply(pure(f), apply(pure(f), map(ma, f))), f);
+    let a13 = apply(pure(f), apply(pure(f), map(apply(pure(f), ma), f)));
+    let a14 = map(map(apply(pure(f), map(ma, f)), f), f);
+    let a15 = map(ma, f);
+    let a16 = apply(pure(f), ma);
+    let a17 = map(apply(pure(f), ma), f);
+    let a18 = apply(pure(f), map(ma, f));
+    let a19 = map(apply(pure(f), map(ma, f)), f);
+    let a20 = apply(pure(f), map(apply(pure(f), ma), f));
+    let a21 = map(apply(pure(f), apply(pure(f), ma)), f);
+    let a22 = apply(pure(f), apply(pure(f), map(ma, f)));
+    let a23 = map(map(apply(pure(f), ma), f), f);
+    let a24 = apply(pure(f), map(map(ma, f), f));
+    let a25 = map(apply(pure(f), map(apply(pure(f), ma), f)), f);
+    let a26 = apply(pure(f), map(apply(pure(f), map(ma, f)), f));
+    let a27 = map(apply(pure(f), apply(pure(f), map(ma, f))), f);
+    let a28 = apply(pure(f), apply(pure(f), map(apply(pure(f), ma), f)));
+    let a29 = map(map(apply(pure(f), map(ma, f)), f), f);
+    flat_map(a00, x00 ->
+    flat_map(a01, x01 ->
+    flat_map(a02, x02 ->
+    flat_map(a03, x03 ->
+    flat_map(a04, x04 ->
+    flat_map(a05, x05 ->
+    flat_map(a06, x06 ->
+    flat_map(a07, x07 ->
+    flat_map(a08, x08 ->
+    flat_map(a09, x09 ->
+    flat_map(a10, x10 ->
+    flat_map(a11, x11 ->
+    flat_map(a12, x12 ->
+    flat_map(a13, x13 ->
+    flat_map(a14, x14 ->
+    flat_map(a15, x15 ->
+    flat_map(a16, x16 ->
+    flat_map(a17, x17 ->
+    flat_map(a18, x18 ->
+    flat_map(a19, x19 ->
+    flat_map(a20, x20 ->
+    flat_map(a21, x21 ->
+    flat_map(a22, x22 ->
+    flat_map(a23, x23 ->
+    flat_map(a24, x24 ->
+    flat_map(a25, x25 ->
+    flat_map(a26, x26 ->
+    flat_map(a27, x27 ->
+    flat_map(a28, x28 ->
+    flat_map(a29, x29 -> pure(f(x29))))))))))))))))))))))))))))))))
+}
+
+fun second_chain[m[_], n[_], p[_], a](ma: m[a], nb: n[a], pc: p[a], f: (a) -> a) -> m[a]
+    where m: Monad, n: Monad, p: Monad = {
+    let b00 = map(ma, f);
+    let b01 = apply(pure(f), ma);
+    let b02 = map(apply(pure(f), ma), f);
+    let b03 = apply(pure(f), map(ma, f));
+    let b04 = map(apply(pure(f), map(ma, f)), f);
+    let b05 = apply(pure(f), map(apply(pure(f), ma), f));
+    let b06 = map(apply(pure(f), apply(pure(f), ma)), f);
+    let b07 = apply(pure(f), apply(pure(f), map(ma, f)));
+    let b08 = map(map(apply(pure(f), ma), f), f);
+    let b09 = apply(pure(f), map(map(ma, f), f));
+    let b10 = map(apply(pure(f), map(apply(pure(f), ma), f)), f);
+    let b11 = apply(pure(f), map(apply(pure(f), map(ma, f)), f));
+    let b12 = map(apply(pure(f), apply(pure(f), map(ma, f))), f);
+    let b13 = apply(pure(f), apply(pure(f), map(apply(pure(f), ma), f)));
+    let b14 = map(map(apply(pure(f), map(ma, f)), f), f);
+    flat_map(b00, x00 ->
+    flat_map(b01, x01 ->
+    flat_map(b02, x02 ->
+    flat_map(b03, x03 ->
+    flat_map(b04, x04 ->
+    flat_map(b05, x05 ->
+    flat_map(b06, x06 ->
+    flat_map(b07, x07 ->
+    flat_map(b08, x08 ->
+    flat_map(b09, x09 ->
+    flat_map(b10, x10 ->
+    flat_map(b11, x11 ->
+    flat_map(b12, x12 ->
+    flat_map(b13, x13 ->
+    flat_map(b14, x14 -> pure(f(x14)))))))))))))))))
+}
+
+fun third_chain[m[_], n[_], p[_], a](ma: m[a], nb: n[a], pc: p[a], f: (a) -> a) -> m[a]
+    where m: Monad, n: Monad, p: Monad = {
+    let c00 = map(ma, f);
+    let c01 = apply(pure(f), ma);
+    let c02 = map(apply(pure(f), ma), f);
+    let c03 = apply(pure(f), map(ma, f));
+    let c04 = map(apply(pure(f), map(ma, f)), f);
+    let c05 = apply(pure(f), map(apply(pure(f), ma), f));
+    let c06 = map(apply(pure(f), apply(pure(f), ma)), f);
+    let c07 = apply(pure(f), apply(pure(f), map(ma, f)));
+    let c08 = map(map(apply(pure(f), ma), f), f);
+    let c09 = apply(pure(f), map(map(ma, f), f));
+    let c10 = map(apply(pure(f), map(apply(pure(f), ma), f)), f);
+    let c11 = apply(pure(f), map(apply(pure(f), map(ma, f)), f));
+    let c12 = map(apply(pure(f), apply(pure(f), map(ma, f))), f);
+    let c13 = apply(pure(f), apply(pure(f), map(apply(pure(f), ma), f)));
+    let c14 = map(map(apply(pure(f), map(ma, f)), f), f);
+    flat_map(c00, x00 ->
+    flat_map(c01, x01 ->
+    flat_map(c02, x02 ->
+    flat_map(c03, x03 ->
+    flat_map(c04, x04 ->
+    flat_map(c05, x05 ->
+    flat_map(c06, x06 ->
+    flat_map(c07, x07 ->
+    flat_map(c08, x08 ->
+    flat_map(c09, x09 ->
+    flat_map(c10, x10 ->
+    flat_map(c11, x11 ->
+    flat_map(c12, x12 ->
+    flat_map(c13, x13 ->
+    flat_map(c14, x14 -> pure(f(x14)))))))))))))))))
+}
+
+fun main() = {
+    let _ = big_chain(Some(1), Some(2), Some(3), x -> x + 1);
+    let _ = second_chain(Some(1), Some(2), Some(3), x -> x + 1);
+    let _ = third_chain(Some(1), Some(2), Some(3), x -> x + 1);
+    ()
+}

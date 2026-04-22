@@ -18,6 +18,17 @@ fn stress_source() -> &'static str {
     })
 }
 
+fn superclass_chain_source() -> &'static str {
+    static SOURCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SOURCE.get_or_init(|| {
+        std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/bench/superclass_chain.kr"),
+        )
+        .expect("failed to read superclass_chain fixture")
+    })
+}
+
 fn codegen_benchmarks(c: &mut Criterion) {
     let resolver = CompositeResolver::stdlib_only();
 
@@ -82,6 +93,29 @@ fn codegen_benchmarks(c: &mut Criterion) {
                 std::hint::black_box(&stress_typed),
                 "Bench",
                 &stress_link_ctx,
+            )
+            .expect("lower")
+        });
+    });
+
+    // Superclass-chain IR lowering — isolates the repeated superclass dict
+    // projection hot path inside a single function body.
+    let (chain_module, errors) = parse(superclass_chain_source());
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+    let (chain_typed, chain_interfaces) = infer_module(
+        &chain_module,
+        &resolver,
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("typecheck should succeed");
+    let chain_link_ctx = krypton_typechecker::link_context::LinkContext::build(chain_interfaces);
+    c.bench_function("ir_lower_superclass_chain", |b| {
+        b.iter(|| {
+            lower_all(
+                std::hint::black_box(&chain_typed),
+                "Bench",
+                &chain_link_ctx,
             )
             .expect("lower")
         });

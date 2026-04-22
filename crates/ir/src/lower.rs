@@ -65,6 +65,25 @@ struct LetBinding {
     value: SimpleExpr,
 }
 
+/// Cached analysis of a `try_project_superclass_dict` request. Stores the
+/// dict param to start from and the sequence of hops (direct-superclass
+/// field indices + substituted target types) needed to reach the
+/// requested trait. `VarId` allocation still happens per-call in
+/// `emit_superclass_projection` so IR output is byte-identical whether
+/// the cache hits or misses.
+#[derive(Debug, Clone)]
+struct SuperclassProjectionPlan {
+    start_var: VarId,
+    hops: Vec<SuperclassProjectionHop>,
+}
+
+#[derive(Debug, Clone)]
+struct SuperclassProjectionHop {
+    field_index: usize,
+    next_trait: TraitName,
+    next_args: Vec<IrType>,
+}
+
 /// Extracted info about a parameterized trait instance (for dict construction).
 #[derive(Clone)]
 struct ParamInstanceInfo {
@@ -685,6 +704,17 @@ struct LowerCtx<'a> {
     fn_constraints: FxHashMap<QualifiedName, TraitConstraintList>,
     /// (trait_name, type_vars) → VarId — dict param variables for the current function
     dict_params: FxHashMap<(TraitName, Vec<TypeVarId>), VarId>,
+    /// Cache for `try_project_superclass_dict`: `requested_trait → requested
+    /// target TypeVarIds → analysis result`. `None` caches a negative result
+    /// (no in-scope dict produces the requested superclass). Emission still
+    /// allocates fresh VarIds per call so IR output is byte-identical.
+    /// Nested rather than tuple-keyed so lookups can borrow
+    /// `&[TypeVarId]` and avoid cloning the key on the hot path (the original
+    /// scan over `dict_params` did not allocate per call).
+    /// Cleared at `lower_fn` entry and swap/restored across `lower_lambda`
+    /// alongside `dict_params` (they share the same invalidation points).
+    superclass_projection_cache:
+        FxHashMap<TraitName, FxHashMap<Vec<TypeVarId>, Option<SuperclassProjectionPlan>>>,
     /// qualified name → TypeScheme for resolving type var bindings at call sites
     fn_schemes: FxHashMap<QualifiedName, TypeScheme>,
     /// Instance defs for parameterized dict resolution:
@@ -5193,14 +5223,54 @@ impl<'a> LowerCtx<'a> {
             return Ok(None);
         };
 
-        let target_ir_expected: Vec<IrType> = target_ids.iter().copied().map(IrType::Var).collect();
+        // Cache hit (positive or negative). Lookup without allocating a key:
+        // the inner map is keyed on `Vec<TypeVarId>` which borrows as
+        // `[TypeVarId]`. Split-borrow the cache and `next_var` so emission
+        // can read the plan in place and allocate VarIds without a clone.
+        let cached = self
+            .superclass_projection_cache
+            .get(trait_name)
+            .and_then(|inner| inner.get(target_ids.as_slice()));
+        if let Some(slot) = cached {
+            let Some(plan) = slot else { return Ok(None) };
+            return Ok(Some(Self::emit_from_plan(&mut self.next_var, plan)));
+        }
+
+        // Cache miss — run the analysis once and memoize. `dict_params` and
+        // the `link_view` data we read here are both function-local invariants
+        // (see invalidation in `lower_fn` and the save/restore around
+        // `lower_lambda`), so a single plan serves every repeat call.
+        let plan = self.plan_superclass_projection(trait_name, &target_ids)?;
+        let result = plan
+            .as_ref()
+            .map(|p| Self::emit_from_plan(&mut self.next_var, p));
+        self.superclass_projection_cache
+            .entry(trait_name.clone())
+            .or_default()
+            .insert(target_ids, plan);
+        Ok(result)
+    }
+
+    /// Analysis half of the superclass projection: picks the best in-scope
+    /// dict param and the hop chain that reaches `trait_name` at the
+    /// requested targets. Returns `None` if no in-scope dict has `trait_name`
+    /// in its transitive superclass closure at the requested targets. Does
+    /// not allocate `VarId`s — emission happens in
+    /// `emit_superclass_projection`.
+    fn plan_superclass_projection(
+        &self,
+        trait_name: &TraitName,
+        target_ids: &[TypeVarId],
+    ) -> Result<Option<SuperclassProjectionPlan>, LowerError> {
+        let target_ir_expected: Vec<IrType> =
+            target_ids.iter().copied().map(IrType::Var).collect();
 
         // Find the best in-scope descendant: shortest closure distance to
         // `trait_name` at the correctly-substituted targets, tie-break by
         // trait name for determinism.
         let mut best: Option<(TraitName, Vec<TypeVarId>, VarId, usize)> = None;
         for ((d_trait, d_tvs), &var_id) in &self.dict_params {
-            if d_trait == trait_name && d_tvs == &target_ids {
+            if d_trait == trait_name && d_tvs.as_slice() == target_ids {
                 continue; // Exact match handled by Strategy 1.
             }
             let Some(closure) = self.link_view.trait_superclass_closure(d_trait) else {
@@ -5254,13 +5324,11 @@ impl<'a> LowerCtx<'a> {
         // direct-superclass entry for `next_trait`, substitute the current
         // trait's type params with `cur_args`, and use the result as the
         // next hop's target types.
-        let mut bindings: Vec<LetBinding> = Vec::new();
-        let mut cur_trait = descendant_trait.clone();
-        let mut cur_atom = Atom::Var(dict_var);
-        let mut cur_args: Vec<IrType> = descendant_tvs.iter().copied().map(IrType::Var).collect();
+        let mut hops: Vec<SuperclassProjectionHop> = Vec::with_capacity(path.len());
+        let mut cur_trait = descendant_trait;
+        let mut cur_args: Vec<IrType> =
+            descendant_tvs.iter().copied().map(IrType::Var).collect();
         for next_trait in &path {
-            // Scope the link_view borrow to just the lookup — fresh_var below
-            // mutates self and cannot coexist with a live shared borrow.
             let (field_index, stored_next_args) = {
                 let direct = self
                     .link_view
@@ -5302,28 +5370,55 @@ impl<'a> LowerCtx<'a> {
                 .iter()
                 .map(|t| substitute_ir_type(t, &cur_params, &cur_args))
                 .collect();
-            let projected_var = self.fresh_var();
+            hops.push(SuperclassProjectionHop {
+                field_index,
+                next_trait: next_trait.clone(),
+                next_args: next_args.clone(),
+            });
+            cur_trait = next_trait.clone();
+            cur_args = next_args;
+        }
+
+        Ok(Some(SuperclassProjectionPlan {
+            start_var: dict_var,
+            hops,
+        }))
+    }
+
+    /// Emission half of the superclass projection: materializes one
+    /// `ProjectDictField` let-binding per hop, allocating a fresh `VarId` at
+    /// each step. Takes `&mut u32` rather than `&mut self` so the cache-hit
+    /// path can split-borrow `next_var` from the cache without cloning the
+    /// plan. The sequence of `VarId` allocations matches the pre-cache
+    /// behavior one-for-one, keeping IR output byte-identical.
+    fn emit_from_plan(
+        next_var: &mut u32,
+        plan: &SuperclassProjectionPlan,
+    ) -> (Vec<LetBinding>, Atom) {
+        let mut bindings: Vec<LetBinding> = Vec::with_capacity(plan.hops.len());
+        let mut cur_atom = Atom::Var(plan.start_var);
+        for hop in &plan.hops {
+            let projected_var = VarId(*next_var);
+            *next_var += 1;
             bindings.push(LetBinding {
                 bind: projected_var,
                 ty: IrType::Dict {
-                    trait_name: next_trait.clone(),
-                    target_types: next_args.clone(),
+                    trait_name: hop.next_trait.clone(),
+                    target_types: hop.next_args.clone(),
                 },
                 value: simple_at(
                     (0, 0),
                     SimpleExprKind::ProjectDictField {
                         dict: cur_atom,
-                        field_index,
-                        result_trait: next_trait.clone(),
-                        result_target_types: next_args.clone(),
+                        field_index: hop.field_index,
+                        result_trait: hop.next_trait.clone(),
+                        result_target_types: hop.next_args.clone(),
                     },
                 ),
             });
             cur_atom = Atom::Var(projected_var);
-            cur_trait = next_trait.clone();
-            cur_args = next_args;
         }
-        Ok(Some((bindings, cur_atom)))
+        (bindings, cur_atom)
     }
 
     /// BFS through `trait_direct_superclasses` from `from` to `to`, returning
@@ -5983,6 +6078,10 @@ impl<'a> LowerCtx<'a> {
 
         // Set dict_params to the captured dicts (mapped to new VarIds)
         let old_dict_params = std::mem::replace(&mut self.dict_params, new_dict_params);
+        // Lambda dict scope is independent; drop the parent's projection
+        // cache for the duration of the body and restore it on exit.
+        let old_superclass_projection_cache =
+            std::mem::take(&mut self.superclass_projection_cache);
 
         // Save and clear recur/early-return join points — these belong to the
         // enclosing function and must not leak into the lifted lambda.
@@ -6025,6 +6124,7 @@ impl<'a> LowerCtx<'a> {
             self.pop_var(name);
         }
         self.dict_params = old_dict_params;
+        self.superclass_projection_cache = old_superclass_projection_cache;
         self.recur_join = old_recur_join;
         self.early_return_join = old_early_return_join;
 
@@ -6154,6 +6254,7 @@ impl<'a> LowerCtx<'a> {
     ) -> Result<FnDef, LowerError> {
         // Clear dict_params from any previous function
         self.dict_params.clear();
+        self.superclass_projection_cache.clear();
 
         // Prepend dict params for constrained functions
         let mut params = vec![];
@@ -6545,6 +6646,7 @@ pub fn lower_module(
         private_type_params: FxHashMap::default(),
         fn_constraints,
         dict_params: FxHashMap::default(),
+        superclass_projection_cache: FxHashMap::default(),
         fn_schemes,
         module_path: typed.module_path.clone(),
         param_instances: {
@@ -8218,6 +8320,7 @@ mod tests {
             private_type_params: FxHashMap::default(),
             fn_constraints: FxHashMap::default(),
             dict_params: FxHashMap::default(),
+            superclass_projection_cache: FxHashMap::default(),
             fn_schemes: FxHashMap::default(),
             param_instances: Vec::new(),
             trait_method_types: FxHashMap::default(),
