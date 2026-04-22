@@ -553,6 +553,31 @@ fn bind_instance_target(
 /// Array-level counterpart to [`bind_instance_target`]: zips instance-target
 /// tuples with dispatch tuples. Restores `bindings` to its pre-call state on
 /// failure so callers can probe multiple candidates against a shared map.
+/// Returns `true` iff some `Type::Var(id)` inside `ty` has `id ∈ params`.
+///
+/// Used as an identity probe for [`substitute_type_vars`]: when this returns
+/// `false`, substitution is a structural no-op and the caller can skip the
+/// recursive rebuild. Exhaustive match (no wildcard) — adding a new `Type`
+/// variant will force an update here.
+fn any_type_var_in(ty: &Type, params: &[TypeVarId]) -> bool {
+    match ty {
+        Type::Var(id) => params.contains(id),
+        Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => false,
+        Type::Fn(ps, ret) => {
+            ps.iter().any(|p| any_type_var_in(p, params)) || any_type_var_in(ret, params)
+        }
+        Type::Named(_, args) => args.iter().any(|a| any_type_var_in(a, params)),
+        Type::App(ctor, args) => {
+            any_type_var_in(ctor, params) || args.iter().any(|a| any_type_var_in(a, params))
+        }
+        Type::Own(inner) => any_type_var_in(inner, params),
+        Type::Tuple(elems) => elems.iter().any(|e| any_type_var_in(e, params)),
+        Type::Dict { target_types, .. } => {
+            target_types.iter().any(|t| any_type_var_in(t, params))
+        }
+    }
+}
+
 /// Substitute `Type::Var(params[i])` with `args[i]` throughout `ty`.
 ///
 /// Used by superclass-slot resolvers (codegen + IR lowering) to derive an
@@ -565,6 +590,9 @@ pub fn substitute_type_vars(ty: &Type, params: &[TypeVarId], args: &[Type]) -> T
         params.len(),
         args.len()
     );
+    if !any_type_var_in(ty, params) {
+        return ty.clone();
+    }
     match ty {
         Type::Var(id) => {
             for (i, &p) in params.iter().enumerate() {
@@ -1309,6 +1337,116 @@ mod tests {
             bindings, snapshot,
             "bindings must be restored to their pre-call state"
         );
+    }
+
+    #[test]
+    fn substitute_returns_identity_for_primitive() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let b = gen.fresh();
+        let params = vec![a, b];
+        let args = vec![Type::String, Type::Bool];
+        for ty in [
+            Type::Int,
+            Type::Float,
+            Type::Bool,
+            Type::String,
+            Type::Unit,
+            Type::FnHole,
+        ] {
+            let out = substitute_type_vars(&ty, &params, &args);
+            assert_eq!(out, ty, "primitive {ty:?} should be untouched");
+        }
+    }
+
+    #[test]
+    fn substitute_returns_identity_for_type_with_no_matching_var() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let b = gen.fresh();
+        // params contains only `a`, but the type references only `b`.
+        let params = vec![a];
+        let args = vec![Type::Bool];
+        let ty = Type::Named(
+            "Foo".to_string(),
+            vec![Type::Var(b), Type::Int],
+        );
+        let out = substitute_type_vars(&ty, &params, &args);
+        assert_eq!(out, ty, "type with no matching var must be untouched");
+    }
+
+    #[test]
+    fn substitute_returns_identity_for_dict_with_no_matching_var() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let b = gen.fresh();
+        let params = vec![a];
+        let args = vec![Type::Bool];
+        let ty = Type::Dict {
+            trait_name: TraitName::new("core/show".to_string(), "Show".to_string()),
+            target_types: vec![Type::Var(b)],
+        };
+        let out = substitute_type_vars(&ty, &params, &args);
+        assert_eq!(
+            out, ty,
+            "Dict target_types with no matching var must be untouched"
+        );
+    }
+
+    #[test]
+    fn substitute_applies_when_var_matches() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let params = vec![a];
+        let args = vec![Type::Int];
+        let ty = Type::Fn(vec![Type::Var(a)], Box::new(Type::Var(a)));
+        let expected = Type::Fn(vec![Type::Int], Box::new(Type::Int));
+        let out = substitute_type_vars(&ty, &params, &args);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn substitute_applies_in_dict_target_types() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let params = vec![a];
+        let args = vec![Type::String];
+        let trait_name = TraitName::new("core/show".to_string(), "Show".to_string());
+        let ty = Type::Dict {
+            trait_name: trait_name.clone(),
+            target_types: vec![Type::Var(a)],
+        };
+        let expected = Type::Dict {
+            trait_name,
+            target_types: vec![Type::String],
+        };
+        let out = substitute_type_vars(&ty, &params, &args);
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn substitute_handles_nested_app_and_tuple() {
+        let mut gen = krypton_typechecker::types::TypeVarGen::new();
+        let a = gen.fresh();
+        let b = gen.fresh();
+        let params = vec![a, b];
+        let args = vec![Type::Int, Type::Bool];
+        let ty = Type::App(
+            Box::new(Type::Named("Container".to_string(), vec![])),
+            vec![Type::Tuple(vec![
+                Type::Var(a),
+                Type::Own(Box::new(Type::Var(b))),
+            ])],
+        );
+        let expected = Type::App(
+            Box::new(Type::Named("Container".to_string(), vec![])),
+            vec![Type::Tuple(vec![
+                Type::Int,
+                Type::Own(Box::new(Type::Bool)),
+            ])],
+        );
+        let out = substitute_type_vars(&ty, &params, &args);
+        assert_eq!(out, expected);
     }
 
     #[test]
