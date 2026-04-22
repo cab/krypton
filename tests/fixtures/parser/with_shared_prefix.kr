@@ -1,0 +1,7 @@
+# expect: ok
+type City = { zip: String, street: String }
+type Addr = { city: City }
+type User = { addr: Addr }
+
+fun update(u: User) -> User =
+    u with { addr.city.zip = "94103", addr.city.street = "Main" }

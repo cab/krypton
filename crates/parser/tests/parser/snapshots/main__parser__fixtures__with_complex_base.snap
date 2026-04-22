@@ -1,0 +1,155 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Addr
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - city
+              - Named:
+                  name: String
+                  span:
+                    - 33
+                    - 39
+      deriving: []
+      doc: ~
+      span:
+        - 13
+        - 41
+  - DefType:
+      platform: ~
+      name: User
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - addr
+              - Named:
+                  name: Addr
+                  span:
+                    - 62
+                    - 66
+      deriving: []
+      doc: ~
+      span:
+        - 42
+        - 68
+  - DefFn:
+      platform: ~
+      name: make_user
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: User
+          span:
+            - 89
+            - 93
+      body:
+        StructLit:
+          name: User
+          fields:
+            - - addr
+              - StructLit:
+                  name: Addr
+                  fields:
+                    - - city
+                      - Lit:
+                          value:
+                            String: SF
+                          span:
+                            - 124
+                            - 128
+                  span:
+                    - 110
+                    - 130
+          span:
+            - 96
+            - 132
+      doc: ~
+      span:
+        - 70
+        - 132
+  - DefFn:
+      platform: ~
+      name: relocate
+      visibility: Private
+      type_params: []
+      params: []
+      constraints: []
+      return_type:
+        Named:
+          name: User
+          span:
+            - 152
+            - 156
+      body:
+        Let:
+          name: $with_tmp
+          ty: ~
+          value:
+            App:
+              func:
+                Var:
+                  name: make_user
+                  span:
+                    - 159
+                    - 168
+              args: []
+              is_ufcs: false
+              span:
+                - 159
+                - 170
+          body:
+            StructUpdate:
+              base:
+                Var:
+                  name: $with_tmp
+                  span:
+                    - 159
+                    - 197
+              fields:
+                - - addr
+                  - StructUpdate:
+                      base:
+                        FieldAccess:
+                          expr:
+                            Var:
+                              name: $with_tmp
+                              span:
+                                - 159
+                                - 197
+                          field: addr
+                          span:
+                            - 159
+                            - 197
+                      fields:
+                        - - city
+                          - Lit:
+                              value:
+                                String: NYC
+                              span:
+                                - 190
+                                - 195
+                      span:
+                        - 159
+                        - 197
+              span:
+                - 159
+                - 197
+          span:
+            - 159
+            - 197
+      doc: ~
+      span:
+        - 134
+        - 197

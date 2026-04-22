@@ -1,0 +1,12 @@
+# expect: output 94103
+
+type Zip = { zip: Int }
+type City = { zip: Zip }
+type Addr = { city: City }
+type User = { addr: Addr }
+
+fun main() {
+    let u = User { addr = Addr { city = City { zip = Zip { zip = 1 } } } };
+    let u2 = u with { addr.city.zip.zip = 94103 };
+    println(u2.addr.city.zip.zip)
+}

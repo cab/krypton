@@ -1,0 +1,11 @@
+# expect: output "5\n99"
+
+type Addr = { city: Int }
+type User = { age: Int, addr: Addr }
+
+fun main() {
+    let u = User { age = 0, addr = Addr { city = 0 } };
+    let u2 = u with { age = 5, addr.city = 99 };
+    println(u2.age);
+    println(u2.addr.city)
+}

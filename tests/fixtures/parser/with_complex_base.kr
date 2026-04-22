@@ -1,0 +1,7 @@
+# expect: ok
+type Addr = { city: String }
+type User = { addr: Addr }
+
+fun make_user() -> User = User { addr = Addr { city = "SF" } }
+
+fun relocate() -> User = make_user() with { addr.city = "NYC" }

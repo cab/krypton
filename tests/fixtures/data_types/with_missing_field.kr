@@ -1,0 +1,5 @@
+# expect: error E0008
+
+type Point = { x: Int, y: Int }
+
+fun bad(p: Point) -> Point = p with { z = 1 }

@@ -203,6 +203,9 @@ fun make_rect(x: Int, y: Int, w: Int, h: Int) -> Rect =
 
 fun rect_area(r: Rect) -> Int = r.width * r.height
 
+fun shift_origin(r: Rect, dx: Int, dy: Int) -> Rect =
+    r with { origin.x = r.origin.x + dx, origin.y = r.origin.y + dy }
+
 fun rect_contains(r: Rect, p: Point) -> Bool = {
     let in_x = p.x >= r.origin.x && p.x <= r.origin.x + r.width;
     let in_y = p.y >= r.origin.y && p.y <= r.origin.y + r.height;
@@ -281,6 +284,8 @@ fun main() -> Unit = {
 
     let r = make_rect(0, 0, 10, 10);
     let ra = rect_area(r);
+    let rs = shift_origin(r, 1, 2);
+    let rax = rs.origin.x + rs.origin.y;
 
     let sum = merge_all(1, 2, 3);
 
@@ -299,5 +304,5 @@ fun main() -> Unit = {
     let ts = tree_size(t);
     let td = tree_depth(t);
 
-    println(d + a1 + a2 + a3 + c + ra + sum + res + nm + p + ll + ls + ts + td)
+    println(d + a1 + a2 + a3 + c + ra + rax + sum + res + nm + p + ll + ls + ts + td)
 }

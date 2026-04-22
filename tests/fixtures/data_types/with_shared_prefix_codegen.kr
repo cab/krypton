@@ -1,0 +1,12 @@
+# expect: output "94103\n7"
+
+type City = { zip: Int, street: Int }
+type Addr = { city: City }
+type User = { addr: Addr }
+
+fun main() {
+    let u = User { addr = Addr { city = City { zip = 0, street = 0 } } };
+    let u2 = u with { addr.city.zip = 94103, addr.city.street = 7 };
+    println(u2.addr.city.zip);
+    println(u2.addr.city.street)
+}

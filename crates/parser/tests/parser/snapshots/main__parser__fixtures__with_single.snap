@@ -1,0 +1,170 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Zip
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - zip
+              - Named:
+                  name: String
+                  span:
+                    - 31
+                    - 37
+      deriving: []
+      doc: ~
+      span:
+        - 13
+        - 39
+  - DefType:
+      platform: ~
+      name: City
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - zip
+              - Named:
+                  name: Zip
+                  span:
+                    - 59
+                    - 62
+      deriving: []
+      doc: ~
+      span:
+        - 40
+        - 64
+  - DefType:
+      platform: ~
+      name: Addr
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - city
+              - Named:
+                  name: City
+                  span:
+                    - 85
+                    - 89
+      deriving: []
+      doc: ~
+      span:
+        - 65
+        - 91
+  - DefType:
+      platform: ~
+      name: User
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - addr
+              - Named:
+                  name: Addr
+                  span:
+                    - 112
+                    - 116
+      deriving: []
+      doc: ~
+      span:
+        - 92
+        - 118
+  - DefFn:
+      platform: ~
+      name: update
+      visibility: Private
+      type_params: []
+      params:
+        - name: u
+          ty:
+            Named:
+              name: User
+              span:
+                - 134
+                - 138
+          mode: Consume
+          span:
+            - 131
+            - 138
+      constraints: []
+      return_type:
+        Named:
+          name: User
+          span:
+            - 143
+            - 147
+      body:
+        StructUpdate:
+          base:
+            Var:
+              name: u
+              span:
+                - 150
+                - 151
+          fields:
+            - - addr
+              - StructUpdate:
+                  base:
+                    FieldAccess:
+                      expr:
+                        Var:
+                          name: u
+                          span:
+                            - 150
+                            - 151
+                      field: addr
+                      span:
+                        - 150
+                        - 184
+                  fields:
+                    - - city
+                      - StructUpdate:
+                          base:
+                            FieldAccess:
+                              expr:
+                                FieldAccess:
+                                  expr:
+                                    Var:
+                                      name: u
+                                      span:
+                                        - 150
+                                        - 151
+                                  field: addr
+                                  span:
+                                    - 150
+                                    - 184
+                              field: city
+                              span:
+                                - 150
+                                - 184
+                          fields:
+                            - - zip
+                              - Lit:
+                                  value:
+                                    String: "94103"
+                                  span:
+                                    - 175
+                                    - 182
+                          span:
+                            - 150
+                            - 184
+                  span:
+                    - 150
+                    - 184
+          span:
+            - 150
+            - 184
+      doc: ~
+      span:
+        - 120
+        - 184

@@ -1,11 +1,11 @@
 ---
-source: crates/parser/tests/diagnostics_test.rs
+source: crates/parser/tests/parser/diagnostics.rs
 expression: plain
 ---
-[P0002] Error: found end of input expected '\n', '->', '.', '[', '(', '?', '||', '&&', something else, ',', or ')'
+[P0002] Error: found end of input expected '\n', '->', '.', '[', '(', '?', 'with', '||', '&&', something else, ',', or ')'
    ╭─[ test.kr:1:23 ]
    │
  1 │ fun add(a, b) = (a + b
    │                       │ 
-   │                       ╰─ P0002: found end of input expected '\n', '->', '.', '[', '(', '?', '||', '&&', something else, ',', or ')'
+   │                       ╰─ P0002: found end of input expected '\n', '->', '.', '[', '(', '?', 'with', '||', '&&', something else, ',', or ')'
 ───╯

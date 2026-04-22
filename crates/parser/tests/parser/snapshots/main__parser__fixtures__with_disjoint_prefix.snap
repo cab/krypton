@@ -1,0 +1,121 @@
+---
+source: crates/parser/tests/parser/fixtures.rs
+expression: module
+---
+decls:
+  - DefType:
+      platform: ~
+      name: Addr
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - city
+              - Named:
+                  name: String
+                  span:
+                    - 33
+                    - 39
+      deriving: []
+      doc: ~
+      span:
+        - 13
+        - 41
+  - DefType:
+      platform: ~
+      name: User
+      visibility: Private
+      type_params: []
+      kind:
+        Record:
+          fields:
+            - - name
+              - Named:
+                  name: String
+                  span:
+                    - 62
+                    - 68
+            - - addr
+              - Named:
+                  name: Addr
+                  span:
+                    - 76
+                    - 80
+      deriving: []
+      doc: ~
+      span:
+        - 42
+        - 82
+  - DefFn:
+      platform: ~
+      name: update
+      visibility: Private
+      type_params: []
+      params:
+        - name: u
+          ty:
+            Named:
+              name: User
+              span:
+                - 98
+                - 102
+          mode: Consume
+          span:
+            - 95
+            - 102
+      constraints: []
+      return_type:
+        Named:
+          name: User
+          span:
+            - 107
+            - 111
+      body:
+        StructUpdate:
+          base:
+            Var:
+              name: u
+              span:
+                - 118
+                - 119
+          fields:
+            - - name
+              - Lit:
+                  value:
+                    String: Alice
+                  span:
+                    - 134
+                    - 141
+            - - addr
+              - StructUpdate:
+                  base:
+                    FieldAccess:
+                      expr:
+                        Var:
+                          name: u
+                          span:
+                            - 118
+                            - 119
+                      field: addr
+                      span:
+                        - 118
+                        - 161
+                  fields:
+                    - - city
+                      - Lit:
+                          value:
+                            String: SF
+                          span:
+                            - 155
+                            - 159
+                  span:
+                    - 118
+                    - 161
+          span:
+            - 118
+            - 161
+      doc: ~
+      span:
+        - 84
+        - 161

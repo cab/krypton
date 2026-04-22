@@ -93,6 +93,83 @@ fn is_uppercase(s: &str) -> bool {
     s.starts_with(|c: char| c.is_uppercase())
 }
 
+type WithAssignment = (Vec<String>, Expr);
+
+/// Desugar postfix `expr with { path.to.leaf = value, ... }` into nested
+/// `Expr::StructUpdate`. If `base` is not a pure `Expr::Var`, wrap the
+/// whole tree in a `Let` binding so `base` is evaluated exactly once —
+/// the paths would otherwise reference it from both the outer update's
+/// base slot and from every `FieldAccess` chain rooted at it.
+/// `$with_tmp` cannot collide with user identifiers: Krypton idents
+/// cannot start with `$`.
+fn desugar_with_expr(base: Expr, assignments: Vec<WithAssignment>, span: Span) -> Expr {
+    if matches!(base, Expr::Var { .. }) {
+        build_nested_struct_update(base, assignments, span)
+    } else {
+        let tmp_name = "$with_tmp".to_string();
+        let tmp_var = Expr::Var {
+            name: tmp_name.clone(),
+            span,
+        };
+        let body = build_nested_struct_update(tmp_var, assignments, span);
+        Expr::Let {
+            name: tmp_name,
+            ty: None,
+            value: Box::new(base),
+            body: Some(Box::new(body)),
+            span,
+        }
+    }
+}
+
+/// Trie-walk: group assignments by first path segment (first-occurrence
+/// order), emit one `StructUpdate` per layer. Multi-leaf assignments
+/// sharing a prefix reconstruct the shared intermediate record exactly
+/// once. Conflicts (duplicate leaves, or a leaf mixed with nested paths
+/// under the same head) fall through to last-wins, matching the
+/// existing `{ p | x = 1, x = 2 }` behavior.
+fn build_nested_struct_update(
+    base: Expr,
+    assignments: Vec<WithAssignment>,
+    span: Span,
+) -> Expr {
+    let mut groups: Vec<(String, Vec<WithAssignment>)> = Vec::new();
+    for (path, value) in assignments {
+        let mut iter = path.into_iter();
+        let head = iter.next().expect("parser guarantees at_least(1)");
+        let rest: Vec<String> = iter.collect();
+        match groups.iter_mut().find(|(k, _)| k == &head) {
+            Some((_, bucket)) => bucket.push((rest, value)),
+            None => groups.push((head, vec![(rest, value)])),
+        }
+    }
+
+    let fields: Vec<(String, Expr)> = groups
+        .into_iter()
+        .map(|(segment, entries)| {
+            let (leaves, nested): (Vec<_>, Vec<_>) =
+                entries.into_iter().partition(|(r, _)| r.is_empty());
+            if let Some((_, leaf_val)) = leaves.into_iter().last() {
+                (segment, leaf_val)
+            } else {
+                let sub_base = Expr::FieldAccess {
+                    expr: Box::new(base.clone()),
+                    field: segment.clone(),
+                    span,
+                };
+                let sub = build_nested_struct_update(sub_base, nested, span);
+                (segment, sub)
+            }
+        })
+        .collect();
+
+    Expr::StructUpdate {
+        base: Box::new(base),
+        fields,
+        span,
+    }
+}
+
 fn type_expr_parser<'tokens, 'src: 'tokens, I>(
 ) -> impl Parser<'tokens, I, TypeExpr, extra::Err<Rich<'tokens, Token<'src>, LexSpan>>> + Clone
 where
@@ -762,6 +839,7 @@ where
             FieldAccess(String, LexSpan),
             Ufcs(String, Vec<TypeExpr>, Vec<Expr>, LexSpan),
             Question(LexSpan),
+            With(Vec<WithAssignment>, LexSpan),
         }
 
         // Function call: expr(args)
@@ -816,11 +894,36 @@ where
         let question_postfix =
             closing_symbol(Token::Question).map_with(|_, e| Postfix::Question(e.span()));
 
+        // Postfix `with { path.to.leaf = value, ... }`: deep record update
+        // sugar. Paths are `.`-separated lowercase field names. Desugared
+        // into nested `StructUpdate` at parse time — purely syntactic, no
+        // new AST node.
+        let with_path = select! { Token::Ident(s) if !is_uppercase(s) => s.to_string() }
+            .separated_by(symbol(Token::Dot))
+            .at_least(1)
+            .collect::<Vec<_>>();
+
+        let with_assignment = with_path
+            .then_ignore(symbol(Token::Assign))
+            .then(expr.clone());
+
+        let with_postfix = symbol(Token::With)
+            .ignore_then(
+                with_assignment
+                    .separated_by(symbol(Token::Comma))
+                    .allow_trailing()
+                    .at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(symbol(Token::LBrace), closing_symbol(Token::RBrace)),
+            )
+            .map_with(|assignments, e| Postfix::With(assignments, e.span()));
+
         let postfix = choice((
             dot_postfix,
             type_args_postfix,
             call_postfix,
             question_postfix,
+            with_postfix,
         ));
 
         let atom = raw_atom.foldl(postfix.repeated(), |lhs, op| match op {
@@ -881,6 +984,10 @@ where
                     expr: Box::new(lhs),
                     span: full_span,
                 }
+            }
+            Postfix::With(assignments, span) => {
+                let full_span = (get_span(&lhs).0, span.end);
+                desugar_with_expr(lhs, assignments, full_span)
             }
         });
 

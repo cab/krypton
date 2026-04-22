@@ -1,0 +1,52 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module data_types__with_shared_prefix_codegen
+
+struct City { zip: Int, street: Int }
+struct Addr { city: City }
+struct User { addr: Addr }
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn main() -> Unit =
+  let v1: City = construct City(0, 0)
+  let v2: Addr = construct Addr(v1)
+  let v0: User = construct User(v2)
+  let_join v24(v3: User) =
+    let v14: Addr = project v3.0
+    let v15: City = project v14.0
+    let v16: Int = project v15.0
+    let v17: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v18: Unit = call println(v17, v16)
+    let v20: Addr = project v3.0
+    let v21: City = project v20.0
+    let v22: Int = project v21.1
+    let v19: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+    let v23: Unit = call println(v19, v22)
+    v23
+  in
+  let_join v13(v11: Addr) =
+    let v12: User = construct User(v11)
+    jump v24(v12)
+  in
+  let v4: Addr = project v0.0
+  let_join v10(v8: City) =
+    let v9: Addr = construct Addr(v8)
+    jump v13(v9)
+  in
+  let v5: Addr = project v0.0
+  let v6: City = project v5.0
+  let v7: City = construct City(94103, 7)
+  jump v10(v7)

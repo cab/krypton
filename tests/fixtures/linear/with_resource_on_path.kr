@@ -1,0 +1,13 @@
+# expect: error E0109
+# A `with` update targeting a leaf inside an intermediate record that
+# carries an owned resource must fail: reconstructing the inner layer
+# would fabricate the owned field we didn't replace.
+extern java "net.Sock" as pub Sock lifts always {}
+extern js   "net.mjs"  as pub Sock lifts always {}
+
+type Inner = { sock: ~Sock, name: String }
+type Outer = { inner: Inner }
+
+fun rename(o: ~Outer) -> ~Outer = o with { inner.name = "new" }
+
+fun main() -> Unit = ()
