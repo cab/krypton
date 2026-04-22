@@ -461,9 +461,10 @@ impl ModuleInferenceState {
                             f,
                             &self.registry,
                         ) {
-                            Some(params) => params,
-                            None => {
-                                // Unannotated — keep current error behavior
+                            super::traits_register::OverlapResolve::Ok(params) => params,
+                            super::traits_register::OverlapResolve::MissingAnnotation
+                            | super::traits_register::OverlapResolve::Unresolvable(_) => {
+                                // Can't resolve — keep current error behavior
                                 let imp = &non_prelude_imports[0];
                                 return Err(spanned(
                                     TypeError::DefinitionConflictsWithImport {

@@ -1,0 +1,3 @@
+# expect: error E0011
+pub fun process(x: Nope) -> Int = 0
+pub fun process(x: Int) -> Int = 1

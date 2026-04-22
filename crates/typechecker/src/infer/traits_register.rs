@@ -832,15 +832,22 @@ pub(super) fn register_local_traits(
     }
     Ok(exported_trait_defs)
 }
+pub(super) enum OverlapResolve {
+    Ok(Vec<Type>),
+    MissingAnnotation,
+    Unresolvable(TypeError),
+}
+
 pub(super) fn resolve_fn_param_types_for_overlap(
     f: &FnDecl,
     registry: &TypeRegistry,
-) -> Option<Vec<Type>> {
-    let type_exprs: Vec<&krypton_parser::ast::TypeExpr> = f
-        .params
-        .iter()
-        .map(|p| p.ty.as_ref())
-        .collect::<Option<Vec<_>>>()?;
+) -> OverlapResolve {
+    let type_exprs: Option<Vec<&krypton_parser::ast::TypeExpr>> =
+        f.params.iter().map(|p| p.ty.as_ref()).collect();
+    let type_exprs = match type_exprs {
+        Some(exprs) => exprs,
+        None => return OverlapResolve::MissingAnnotation,
+    };
 
     let mut gen = TypeVarGen::new();
     let mut type_param_map = FxHashMap::default();
@@ -862,10 +869,10 @@ pub(super) fn resolve_fn_param_types_for_overlap(
             None,
         ) {
             Ok(ty) => types.push(ty),
-            Err(_) => return None,
+            Err(e) => return OverlapResolve::Unresolvable(e),
         }
     }
-    Some(types)
+    OverlapResolve::Ok(types)
 }
 
 pub(super) fn trait_method_param_types(
@@ -919,7 +926,7 @@ pub(super) fn check_trait_name_conflicts(
             if let Decl::DefFn(f) = decl {
                 if let Some((trait_name, method_span)) = user_trait_methods.get(&f.name) {
                     // Try overlap check: resolve free fn params and trait method params
-                    let should_error = if let Some(fn_params) =
+                    let should_error = if let OverlapResolve::Ok(fn_params) =
                         resolve_fn_param_types_for_overlap(f, type_registry)
                     {
                         if let Some(trait_info) = trait_names
@@ -946,7 +953,7 @@ pub(super) fn check_trait_name_conflicts(
                             true
                         }
                     } else {
-                        true // unannotated → can't prove non-overlap
+                        true // unannotated or unresolvable → can't prove non-overlap
                     };
                     if should_error {
                         return Err(SpannedTypeError {
@@ -980,7 +987,7 @@ pub(super) fn check_trait_name_conflicts(
                             continue;
                         }
                         // Try overlap check for imported trait method
-                        let should_error = if let Some(fn_params) =
+                        let should_error = if let OverlapResolve::Ok(fn_params) =
                             resolve_fn_param_types_for_overlap(f, type_registry)
                         {
                             if let Some(method_params) =
@@ -995,7 +1002,7 @@ pub(super) fn check_trait_name_conflicts(
                                 true
                             }
                         } else {
-                            true // unannotated → can't prove non-overlap
+                            true // unannotated or unresolvable → can't prove non-overlap
                         };
                         if should_error {
                             return Err(SpannedTypeError {

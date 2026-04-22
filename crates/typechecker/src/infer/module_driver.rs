@@ -294,10 +294,10 @@ pub(crate) fn infer_module_inner(
     state
         .check_explicit_import_shadows(module)
         .map_err(|e| vec![e])?;
+    state.preregister_type_names(module);
     state
         .check_duplicate_function_names(module)
         .map_err(|e| vec![e])?;
-    state.preregister_type_names(module);
     let constructor_schemes = state
         .process_local_type_decls(module, &module_path)
         .map_err(|e| vec![e])?;

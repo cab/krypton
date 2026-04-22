@@ -1,0 +1,15 @@
+# expect: ok
+pub type Foo = Foo(Int)
+pub type Bar = Bar(Int)
+pub type Gen[a] = Gen(a)
+
+pub fun process(x: Foo) -> Int = match x { Foo(n) => n }
+pub fun process(x: Bar) -> Int = match x { Bar(n) => n * 2 }
+pub fun process(x: Gen[Int]) -> Int = match x { Gen(n) => n + 1 }
+
+fun main() -> Unit = {
+    let f = Foo(1)
+    let b = Bar(2)
+    let g = Gen(3)
+    println(process(f) + process(b) + process(g))
+}

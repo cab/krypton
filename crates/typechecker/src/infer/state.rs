@@ -162,14 +162,17 @@ impl ModuleInferenceState {
                         f,
                         &self.registry,
                     ) {
-                        Some(tys) => pts.push(tys),
-                        None => {
+                        super::traits_register::OverlapResolve::Ok(tys) => pts.push(tys),
+                        super::traits_register::OverlapResolve::MissingAnnotation => {
                             return Err(spanned(
                                 TypeError::LocalOverloadMissingAnnotation {
                                     name: name.to_string(),
                                 },
                                 last_span,
                             ));
+                        }
+                        super::traits_register::OverlapResolve::Unresolvable(e) => {
+                            return Err(spanned(e, last_span));
                         }
                     }
                 }
