@@ -1,0 +1,9 @@
+# expect: output "[3]\n[1, 2, 3]\n[]\n[1, 2, 3]"
+import core/vec.{drop}
+fun main() = {
+    let xs = [1, 2, 3];
+    println(show(drop(xs, 2)));
+    println(show(drop(xs, -1)));
+    println(show(drop(xs, 99)));
+    println(show(drop(xs, 0)));
+}

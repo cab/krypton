@@ -1,0 +1,49 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__vec_take
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/vec/take as take(Vec[l12], Int) -> Vec[l12]
+declare println: (g) -> Unit
+declare take: (Vec[l12], Int) -> Vec[l12]
+
+fn main() -> Unit =
+  let v0: Vec[Int] = make_vec(1, 2, 3)
+  let v1: Vec[Int] = call take(v0, 2)
+  let v2: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v3: Dict[core/show.Show, Vec[Int]] = make_dict core/show.Show[Vec[Int]](v2)
+  let v4: String = trait_call core/show.Show.show(v3, v1)
+  let v5: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v6: Unit = call println(v5, v4)
+  let v7: Vec[Int] = call take(v0, 10)
+  let v8: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v9: Dict[core/show.Show, Vec[Int]] = make_dict core/show.Show[Vec[Int]](v8)
+  let v10: String = trait_call core/show.Show.show(v9, v7)
+  let v11: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v12: Unit = call println(v11, v10)
+  let v13: Vec[Int] = call take(v0, 0)
+  let v14: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v15: Dict[core/show.Show, Vec[Int]] = make_dict core/show.Show[Vec[Int]](v14)
+  let v16: String = trait_call core/show.Show.show(v15, v13)
+  let v17: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v18: Unit = call println(v17, v16)
+  let v20: Int = neg_int(5)
+  let v21: Vec[Int] = call take(v0, v20)
+  let v22: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v23: Dict[core/show.Show, Vec[Int]] = make_dict core/show.Show[Vec[Int]](v22)
+  let v24: String = trait_call core/show.Show.show(v23, v21)
+  let v19: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+  let v25: Unit = call println(v19, v24)
+  v25

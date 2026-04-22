@@ -133,6 +133,40 @@ pub fun last[a](xs: Vec[a]) -> Option[a] = {
 pub fun filter[a](xs: Vec[a], f: (a) -> Bool) -> Vec[a] =
     filter_go(xs, 0, staticLength(xs), builder(), f)
 
+fun copy_range_go[a](xs: Vec[a], i: Int, n: Int, b: ~VecBuilder[a]) -> Vec[a] =
+    if i < n { recur(xs, i + 1, n, push(b, staticGet(xs, i))) } else { freeze(b) }
+
+pub fun take[a](xs: Vec[a], n: Int) -> Vec[a] = {
+    let len = staticLength(xs);
+    let upper = if n < 0 { 0 } else { if n < len { n } else { len } };
+    copy_range_go(xs, 0, upper, builder())
+}
+
+pub fun drop[a](xs: Vec[a], n: Int) -> Vec[a] = {
+    let len = staticLength(xs);
+    let start = if n < 0 { 0 } else { if n < len { n } else { len } };
+    copy_range_go(xs, start, len, builder())
+}
+
+fun reverse_go[a](xs: Vec[a], i: Int, b: ~VecBuilder[a]) -> Vec[a] =
+    if i < 0 { freeze(b) } else { recur(xs, i - 1, push(b, staticGet(xs, i))) }
+
+pub fun reverse[a](xs: Vec[a]) -> Vec[a] = reverse_go(xs, staticLength(xs) - 1, builder())
+
+fun zip_go[a, b](xs: Vec[a], ys: Vec[b], i: Int, n: Int, out: ~VecBuilder[(a, b)]) -> Vec[(a, b)] =
+    if i < n {
+        recur(xs, ys, i + 1, n, push(out, (staticGet(xs, i), staticGet(ys, i))))
+    } else {
+        freeze(out)
+    }
+
+pub fun zip[a, b](xs: Vec[a], ys: Vec[b]) -> Vec[(a, b)] = {
+    let lx = staticLength(xs);
+    let ly = staticLength(ys);
+    let n = if lx < ly { lx } else { ly };
+    zip_go(xs, ys, 0, n, builder())
+}
+
 impl Functor[Vec] {
     fun map[a, b](xs: Vec[a], g: (a) -> b) -> Vec[b] =
         map_go(xs, 0, staticLength(xs), builder(), g)

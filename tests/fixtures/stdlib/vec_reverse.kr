@@ -1,0 +1,8 @@
+# expect: output "[3, 2, 1]\n[]\n[42]"
+import core/vec.{reverse}
+fun main() = {
+    let empty: Vec[Int] = [];
+    println(show(reverse([1, 2, 3])));
+    println(show(reverse(empty)));
+    println(show(reverse([42])));
+}

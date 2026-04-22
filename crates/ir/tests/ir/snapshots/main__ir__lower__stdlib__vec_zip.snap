@@ -1,0 +1,72 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module stdlib__vec_zip
+
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/vec/len as len(Vec[j7]) -> Int
+import core/vec/nth as nth(Vec[y7], Int) -> Option[y7]
+import core/vec/zip as zip(Vec[r14], Vec[s14]) -> Vec[(r14, s14)]
+declare len: (Vec[j7]) -> Int
+declare nth: (Vec[y7], Int) -> Option[y7]
+declare println: (g) -> Unit
+declare zip: (Vec[r14], Vec[s14]) -> Vec[(r14, s14)]
+
+fn main() -> Unit =
+  let v1: Vec[Int] = make_vec(1, 2, 3)
+  let v2: Vec[String] = make_vec("a", "b")
+  let v0: Vec[(Int, String)] = call zip(v1, v2)
+  let v3: Int = call len(v0)
+  let v4: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v5: Unit = call println(v4, v3)
+  let_join v35(v20: Unit) =
+    let v21: Option[(Int, String)] = call nth(v0, 1)
+    switch v21 {
+      0 (v22: (Int, String)) ->
+        let v23: Int = tuple_project v22.0
+        let v24: String = tuple_project v22.1
+        let v26: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+        let v27: String = trait_call core/show.Show.show(v26, v23)
+        let v28: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+        let v29: String = trait_call core/semigroup.Semigroup.combine(v28, v27, "-")
+        let v30: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+        let v31: String = trait_call core/semigroup.Semigroup.combine(v30, v29, v24)
+        let v25: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v32: Unit = call println(v25, v31)
+        v32
+      1 ->
+        let v33: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+        let v34: Unit = call println(v33, "none")
+        v34
+    }
+  in
+  let v6: Option[(Int, String)] = call nth(v0, 0)
+  switch v6 {
+    0 (v7: (Int, String)) ->
+      let v8: Int = tuple_project v7.0
+      let v9: String = tuple_project v7.1
+      let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+      let v12: String = trait_call core/show.Show.show(v11, v8)
+      let v13: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+      let v14: String = trait_call core/semigroup.Semigroup.combine(v13, v12, "-")
+      let v15: Dict[core/semigroup.Semigroup, String] = get_dict core/semigroup.Semigroup[String]
+      let v16: String = trait_call core/semigroup.Semigroup.combine(v15, v14, v9)
+      let v10: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v17: Unit = call println(v10, v16)
+      jump v35(v17)
+    1 ->
+      let v18: Dict[core/show.Show, String] = get_dict core/show.Show[String]
+      let v19: Unit = call println(v18, "none")
+      jump v35(v19)
+  }

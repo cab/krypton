@@ -1,7 +1,7 @@
 # expect: ok
 # Stress test fixture exercising many language features.
 
-import core/vec.{nth, len}
+import core/vec.{nth, len, take, drop, reverse, zip}
 
 # --- Records ---
 
@@ -303,6 +303,15 @@ fun main() -> Unit = {
     let t = Branch(Leaf(1), 2, Branch(Leaf(3), 4, Leaf(5)));
     let ts = tree_size(t);
     let td = tree_depth(t);
+
+    let _vec_ops = {
+        let vs = [10, 20, 30, 40];
+        let _a = take(vs, 2);
+        let _b = drop(vs, 1);
+        let _c = reverse(vs);
+        let _d = zip(vs, [100, 200]);
+        len(_a) + len(_b) + len(_c) + len(_d)
+    };
 
     println(d + a1 + a2 + a3 + c + ra + rax + sum + res + nm + p + ll + ls + ts + td)
 }

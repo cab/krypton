@@ -1,0 +1,9 @@
+# expect: output "[1, 2]\n[1, 2, 3]\n[]\n[]"
+import core/vec.{take}
+fun main() = {
+    let xs = [1, 2, 3];
+    println(show(take(xs, 2)));
+    println(show(take(xs, 10)));
+    println(show(take(xs, 0)));
+    println(show(take(xs, -5)));
+}

@@ -1,0 +1,20 @@
+# expect: output "2\n1-a\n2-b"
+import core/vec.{zip, nth, len}
+fun main() = {
+    let z = zip([1, 2, 3], ["a", "b"]);
+    println(len(z));
+    match nth(z, 0) {
+        Some(p) => {
+            let (n, s) = p;
+            println(combine(combine(show(n), "-"), s))
+        },
+        None => println("none"),
+    }
+    match nth(z, 1) {
+        Some(p) => {
+            let (n, s) = p;
+            println(combine(combine(show(n), "-"), s))
+        },
+        None => println("none"),
+    }
+}
