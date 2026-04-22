@@ -1643,6 +1643,15 @@ impl<'a> JsEmitter<'a> {
             self.write("\n");
         }
 
+        // Build TraitName → TraitDef lookup so per-instance trait resolution
+        // below is O(1) instead of a linear scan of `self.module.traits`.
+        let traits_by_name: HashMap<&TraitName, &krypton_ir::TraitDef> = self
+            .module
+            .traits
+            .iter()
+            .map(|t| (&t.trait_name, t))
+            .collect();
+
         // Emit local (non-imported, non-intrinsic) instances
         for inst in &self.module.instances {
             if inst.is_imported || inst.is_intrinsic {
@@ -1672,11 +1681,9 @@ impl<'a> JsEmitter<'a> {
                 // concrete superclass singleton. The ancestor's target types
                 // are derived by substituting `inst.target_types` for the
                 // trait's own `type_var_ids` into the stored superclass args.
-                let trait_def = self
-                    .module
-                    .traits
-                    .iter()
-                    .find(|t| t.trait_name == inst.trait_name)
+                let trait_def = traits_by_name
+                    .get(&inst.trait_name)
+                    .copied()
                     .unwrap_or_else(|| {
                         panic!(
                             "ICE: no TraitDef in ir_module for instance {}[{}]",

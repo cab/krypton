@@ -842,6 +842,14 @@ impl<'link> Compiler<'link> {
         let fn_defs_by_id: HashMap<krypton_ir::FnId, &krypton_ir::FnDef> =
             ir_module.functions.iter().map(|f| (f.id, f)).collect();
 
+        // Build TraitName → TraitDef lookup so per-instance trait resolution
+        // is O(1) instead of a linear scan of `ir_module.traits`.
+        let traits_by_name: HashMap<&TraitName, &krypton_ir::TraitDef> = ir_module
+            .traits
+            .iter()
+            .map(|t| (&t.trait_name, t))
+            .collect();
+
         for inst in &ir_module.instances {
             if inst.is_intrinsic || inst.is_imported {
                 continue;
@@ -869,10 +877,8 @@ impl<'link> Compiler<'link> {
             // assembly). Split the dict count along the layout boundary:
             // sub_dict_requirements[..superclass_count] are slot-only;
             // sub_dict_requirements[superclass_count..] are fn-def params.
-            let superclass_count = ir_module
-                .traits
-                .iter()
-                .find(|t| t.trait_name == inst.trait_name)
+            let superclass_count = traits_by_name
+                .get(&inst.trait_name)
                 .map(|t| t.direct_superclasses.len())
                 .unwrap_or_else(|| {
                     panic!(
@@ -991,10 +997,9 @@ impl<'link> Compiler<'link> {
                 // tuple as the descendant's; for multi-parameter traits it
                 // may be a permutation or subset (e.g. `Codec[fmt, ty]` with
                 // superclass `MyShow[ty]` substitutes to `[Int]`).
-                let trait_def = ir_module
-                    .traits
-                    .iter()
-                    .find(|t| t.trait_name == inst.trait_name)
+                let trait_def = traits_by_name
+                    .get(&inst.trait_name)
+                    .copied()
                     .unwrap_or_else(|| {
                         panic!(
                             "ICE: no TraitDef in ir_module for instance {}[{}]",
@@ -1075,10 +1080,8 @@ impl<'link> Compiler<'link> {
                 // Look up the superclass count for this instance's trait.
                 // Direct superclasses always lay out at the front of the
                 // sub_dict slots (see InstanceDef layout rule).
-                let superclass_count = ir_module
-                    .traits
-                    .iter()
-                    .find(|t| t.trait_name == inst.trait_name)
+                let superclass_count = traits_by_name
+                    .get(&inst.trait_name)
                     .map(|t| t.direct_superclasses.len())
                     .unwrap_or(0);
                 let instance_bytes = generate_parameterized_instance_class(
