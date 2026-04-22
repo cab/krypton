@@ -472,6 +472,21 @@ pub(super) fn infer_function_bodies<'a>(
             }
         }
     }
+    // Minimize declared constraints before the unconditional fold below writes
+    // them into result_schemes. A user-written redundant where clause (e.g.
+    // `where Functor[a], Monad[a]` where Functor is a superclass of Monad)
+    // must be collapsed here or the redundancy will survive into scheme
+    // constraints and cause spurious dict parameters at codegen.
+    //
+    // Why this can't be deferred to assemble_typed_module's companion drop:
+    // its fold into results/exported_fn_types is guarded by `is_empty()` on
+    // the existing scheme.constraints (to protect imported fn schemes from
+    // being clobbered via local-name shadowing), so it cannot overwrite the
+    // set folded here. The companion drop still runs — it minimizes the
+    // in-flight fn_constraint_requirements dict after implicit-constraint
+    // detection merges into it — but it only reaches scheme.constraints for
+    // schemes whose slot is still empty (i.e. locals without declared
+    // constraints).
     for reqs in fn_constraint_requirements.values_mut() {
         trait_registry.drop_entailed_constraints(reqs);
     }
