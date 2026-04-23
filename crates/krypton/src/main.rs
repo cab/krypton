@@ -122,6 +122,11 @@ enum Commands {
     Inspect { file: String },
     /// Launch the interactive REPL
     Repl,
+    /// Create a new Krypton project
+    Init {
+        /// Package identifier, e.g. `owner/my-app`
+        name: String,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -821,6 +826,19 @@ fn main() {
                 eprintln!("error: {}", e);
                 process::exit(1);
             });
+        }
+        Commands::Init { name } => {
+            let cwd = std::env::current_dir().unwrap_or_else(|e| {
+                eprintln!("Error: could not resolve current directory: {e}");
+                process::exit(1);
+            });
+            match krypton_package_manager::init_project(&cwd, &name) {
+                Ok(dir) => println!("created {}", dir.display()),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                }
+            }
         }
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {

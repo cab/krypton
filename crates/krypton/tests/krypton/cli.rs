@@ -124,3 +124,104 @@ fn test_compile_target_js_produces_mjs() {
         "generated .mjs should contain main function export: {content}"
     );
 }
+
+#[test]
+fn test_init_creates_project() {
+    let dir = tempdir().expect("failed to create temp dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["init", "conner/my-app"])
+        .output()
+        .expect("failed to run krypton");
+    assert!(
+        output.status.success(),
+        "init should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let project = dir.path().join("my-app");
+    assert!(project.join("krypton.toml").is_file());
+    assert!(project.join("src/main.kr").is_file());
+    assert!(project.join(".gitignore").is_file());
+}
+
+#[test]
+fn test_init_generated_project_compiles_and_runs() {
+    let dir = tempdir().expect("failed to create temp dir");
+
+    let init = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["init", "conner/my-app"])
+        .output()
+        .expect("failed to run krypton init");
+    assert!(
+        init.status.success(),
+        "init should succeed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+
+    let project = dir.path().join("my-app");
+    let compile = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .args(["compile", "src/main.kr"])
+        .output()
+        .expect("failed to run krypton compile");
+    assert!(
+        compile.status.success(),
+        "compile should succeed: {}",
+        String::from_utf8_lossy(&compile.stderr)
+    );
+
+    let run = Command::new("java")
+        .current_dir(&project)
+        .args(["-jar", "main.jar"])
+        .output()
+        .expect("failed to run java");
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        run.status.success(),
+        "java -jar should succeed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        stdout.contains("hello world"),
+        "generated program should print 'hello world', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_init_errors_on_existing_directory() {
+    let dir = tempdir().expect("failed to create temp dir");
+    std::fs::create_dir(dir.path().join("my-app")).expect("pre-create collision dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["init", "conner/my-app"])
+        .output()
+        .expect("failed to run krypton");
+    assert!(
+        !output.status.success(),
+        "init should fail when target directory exists"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("my-app") && stderr.to_lowercase().contains("exist"),
+        "stderr should mention the collision, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_init_errors_on_invalid_name() {
+    let dir = tempdir().expect("failed to create temp dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .args(["init", "myapp"])
+        .output()
+        .expect("failed to run krypton");
+    assert!(
+        !output.status.success(),
+        "init should fail on invalid name"
+    );
+}
