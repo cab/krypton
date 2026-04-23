@@ -9,6 +9,7 @@ serde_derive = "1"
 toml = "0.8"
 toml_edit = "0.22"
 semver = "1"
+pubgrub = "0.4"
 
 [dev-dependencies]
 criterion.workspace = true
@@ -20,4 +21,8 @@ harness = false
 
 [[bench]]
 name = "version_bench"
+harness = false
+
+[[bench]]
+name = "resolve_bench"
 harness = false

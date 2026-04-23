@@ -90,6 +90,13 @@ impl VersionReq {
     pub fn matches(&self, v: &Version) -> bool {
         self.inner.matches(v)
     }
+
+    /// Borrow the underlying semver comparators. Used by the resolver to lower
+    /// a [`VersionReq`] into a PubGrub-compatible set of version ranges without
+    /// re-parsing the input.
+    pub fn comparators(&self) -> &[semver::Comparator] {
+        &self.inner.comparators
+    }
 }
 
 impl fmt::Display for VersionReq {
