@@ -8,7 +8,7 @@ use std::process::Command;
 fn test_jar_loadable_by_java() {
     let class_bytes = generate_empty_main("Test").expect("generate_empty_main should succeed");
     let classes = vec![("Test".to_string(), class_bytes)];
-    let jar_bytes = write_jar(&classes, "Test", None).expect("write_jar should succeed");
+    let jar_bytes = write_jar(&classes, Some("Test"), None).expect("write_jar should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     let jar_path = dir.path().join("test.jar");
@@ -32,7 +32,7 @@ fn test_jar_loadable_by_java() {
 fn test_manifest_contents() {
     let class_bytes = generate_empty_main("Test").expect("generate_empty_main should succeed");
     let classes = vec![("Test".to_string(), class_bytes)];
-    let jar_bytes = write_jar(&classes, "Test", None).expect("write_jar should succeed");
+    let jar_bytes = write_jar(&classes, Some("Test"), None).expect("write_jar should succeed");
 
     let cursor = Cursor::new(jar_bytes);
     let mut archive = zip::ZipArchive::new(cursor).expect("should be valid zip");
@@ -62,7 +62,7 @@ fn test_nested_package_paths() {
         ("Test".to_string(), main_bytes),
         ("core/option".to_string(), nested_bytes),
     ];
-    let jar_bytes = write_jar(&classes, "Test", None).expect("write_jar should succeed");
+    let jar_bytes = write_jar(&classes, Some("Test"), None).expect("write_jar should succeed");
 
     let cursor = Cursor::new(jar_bytes);
     let archive = zip::ZipArchive::new(cursor).expect("should be valid zip");
@@ -86,7 +86,7 @@ fn test_bundle_runtime_classes() {
     let class_bytes = generate_empty_main("Test").expect("generate_empty_main should succeed");
     let classes = vec![("Test".to_string(), class_bytes)];
     let jar_bytes =
-        write_jar(&classes, "Test", Some(&runtime_jar)).expect("write_jar should succeed");
+        write_jar(&classes, Some("Test"), Some(&runtime_jar)).expect("write_jar should succeed");
 
     let cursor = Cursor::new(jar_bytes);
     let archive = zip::ZipArchive::new(cursor).expect("should be valid zip");
@@ -147,13 +147,14 @@ fn test_fat_jar_runs_with_java_jar() {
     let classes = krypton_codegen::emit::compile_modules(
         &ir_modules,
         "FatJarTest",
+        true,
         &link_ctx,
         &module_sources,
     )
     .expect("codegen should succeed");
 
-    let jar_bytes =
-        write_jar(&classes, "FatJarTest", Some(&runtime_jar)).expect("write_jar should succeed");
+    let jar_bytes = write_jar(&classes, Some("FatJarTest"), Some(&runtime_jar))
+        .expect("write_jar should succeed");
 
     let dir = tempfile::tempdir().unwrap();
     let jar_path = dir.path().join("fatjar.jar");

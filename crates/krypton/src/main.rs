@@ -5,7 +5,7 @@ mod repl_compile;
 use clap::{Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;
@@ -129,6 +129,12 @@ enum Commands {
     },
     /// Re-resolve dependencies and write krypton.lock
     Lock,
+    /// Build the project in the current directory
+    Build {
+        /// Compilation target
+        #[arg(long, default_value = "jvm")]
+        target: Target,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -137,7 +143,7 @@ enum OutputFormat {
     Surface,
 }
 
-#[derive(Clone, ValueEnum, Default)]
+#[derive(Clone, Copy, ValueEnum, Default)]
 enum Target {
     #[default]
     Jvm,
@@ -145,7 +151,7 @@ enum Target {
 }
 
 impl Target {
-    fn to_compile_target(&self) -> krypton_parser::ast::CompileTarget {
+    fn to_compile_target(self) -> krypton_parser::ast::CompileTarget {
         match self {
             Target::Jvm => krypton_parser::ast::CompileTarget::Jvm,
             Target::Js => krypton_parser::ast::CompileTarget::Js,
@@ -177,6 +183,374 @@ fn print_timings(phases: &[(&str, Duration)]) {
         eprintln!("{:<12}{}", format!("{}:", name), format_duration(*dur));
     }
     eprintln!("{:<12}{}", "total:", format_duration(total));
+}
+
+/// Where a compiled program's artifacts should land.
+enum CompileSink {
+    /// Write a single JAR file. Parent directories are created as needed.
+    Jar { path: PathBuf },
+    /// Write every `.mjs` file produced by JS codegen into `dir`, creating
+    /// it if needed. If `main_rename` is `Some`, the entry module's file is
+    /// additionally emitted under that filename (copy, not move, so peer
+    /// imports that still reference the old name keep resolving).
+    JsDir {
+        dir: PathBuf,
+        main_rename: Option<String>,
+    },
+    /// Write class files to a freshly-created temp directory, then invoke
+    /// `java -cp <dir> <class>` and `process::exit` with its status.
+    JvmRunTemp,
+    /// Write `.mjs` files to a freshly-created temp directory, then invoke
+    /// `node <entry>` and `process::exit` with its status.
+    JsRunTemp,
+}
+
+struct CompileInputs<'a> {
+    /// Display path used for diagnostics (typically the source file path as
+    /// the user provided it).
+    diag_path: &'a str,
+    source: &'a str,
+    entry_module_path: String,
+    entry_class_name: String,
+    resolver: CompositeResolver,
+    target: Target,
+    require_main: bool,
+    sink: CompileSink,
+    /// Print phase timings before any `process::exit` inside the helper.
+    /// For non-run sinks the helper returns normally and the caller prints.
+    timings: bool,
+}
+
+/// Shared parse → typecheck → lower → codegen → emit pipeline used by both
+/// `Compile` (single-file) and `Build` (project-aware). On any error this
+/// renders diagnostics and calls `process::exit(1)` — preserving the current
+/// user-facing behavior. On success, appends phase durations to `phases`.
+fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static str, Duration)>) {
+    let CompileInputs {
+        diag_path,
+        source,
+        entry_module_path,
+        entry_class_name,
+        resolver,
+        target,
+        require_main,
+        sink,
+        timings,
+    } = inputs;
+    // JS codegen uses the entry module's path as its `.mjs` filename stem
+    // (e.g. "hello" for a single-file `hello.kr`, or "main"/"lib" for a
+    // project build).
+    let js_stem = entry_module_path.clone();
+
+    let t = Instant::now();
+    let (module, errors) = do_parse(source);
+    phases.push(("parse", t.elapsed()));
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(diag_path, source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+    debug!("parsing complete");
+
+    let t = Instant::now();
+    let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        entry_module_path,
+        target.to_compile_target(),
+    ) {
+        Ok(result) => result,
+        Err(errors) => {
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors(diag_path, source, &errors);
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    };
+    phases.push(("typecheck", t.elapsed()));
+    debug!("type checking complete");
+
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+
+    match target {
+        Target::Jvm => {
+            let t = Instant::now();
+            let (ir_modules, module_sources) =
+                krypton_ir::lower::lower_all(&typed_modules, &entry_class_name, &link_ctx)
+                    .unwrap_or_else(|e| {
+                        eprintln!("IR lowering error: {}", e);
+                        process::exit(1);
+                    });
+            phases.push(("lower", t.elapsed()));
+
+            let t = Instant::now();
+            let classes = match krypton_codegen::emit::compile_modules(
+                &ir_modules,
+                &entry_class_name,
+                require_main,
+                &link_ctx,
+                &module_sources,
+            ) {
+                Ok(classes) => classes,
+                Err(e) => {
+                    let (diags, srcs) =
+                        krypton_codegen::diagnostics::lower_codegen_error(diag_path, source, &e);
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
+                    process::exit(1);
+                }
+            };
+            phases.push(("codegen", t.elapsed()));
+            info!(classes = classes.len(), "codegen complete");
+
+            let t = Instant::now();
+            match sink {
+                CompileSink::Jar { path } => {
+                    if let Some(parent) = path.parent() {
+                        if !parent.as_os_str().is_empty() {
+                            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                eprintln!(
+                                    "Error creating directory {}: {}",
+                                    parent.display(),
+                                    e
+                                );
+                                process::exit(1);
+                            });
+                        }
+                    }
+                    let main_class = if require_main {
+                        Some(entry_class_name.as_str())
+                    } else {
+                        None
+                    };
+                    let jar_bytes = krypton_codegen::jar::write_jar(
+                        &classes,
+                        main_class,
+                        find_runtime_jar().as_deref(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error creating jar: {}", e);
+                        process::exit(1);
+                    });
+                    std::fs::write(&path, jar_bytes).unwrap_or_else(|e| {
+                        eprintln!("Error writing {}: {}", path.display(), e);
+                        process::exit(1);
+                    });
+                    phases.push(("emit", t.elapsed()));
+                }
+                CompileSink::JvmRunTemp => {
+                    let dir = tempdir().unwrap_or_else(|e| {
+                        eprintln!("Error creating temp dir: {}", e);
+                        process::exit(1);
+                    });
+                    for (name, bytes) in &classes {
+                        let class_path = dir.path().join(format!("{name}.class"));
+                        if let Some(parent) = class_path.parent() {
+                            std::fs::create_dir_all(parent).unwrap();
+                        }
+                        std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
+                            eprintln!("Error writing class file: {}", e);
+                            process::exit(1);
+                        });
+                    }
+                    phases.push(("emit", t.elapsed()));
+
+                    let classpath = build_classpath(dir.path());
+                    info!(class = %entry_class_name, "invoking JVM");
+                    let t = Instant::now();
+                    let status = process::Command::new("java")
+                        .arg("-cp")
+                        .arg(&classpath)
+                        .arg(&entry_class_name)
+                        .status()
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error running java: {}", e);
+                            process::exit(1);
+                        });
+                    phases.push(("jvm", t.elapsed()));
+                    if timings {
+                        print_timings(phases);
+                    }
+                    process::exit(status.code().unwrap_or(1));
+                }
+                _ => unreachable!("JVM target requires Jar or JvmRunTemp sink"),
+            }
+        }
+        Target::Js => {
+            let stem = js_stem.as_str();
+            let t = Instant::now();
+            let (ir_modules, module_sources) =
+                krypton_ir::lower::lower_all(&typed_modules, stem, &link_ctx).unwrap_or_else(
+                    |e| {
+                        eprintln!("IR lowering error: {}", e);
+                        process::exit(1);
+                    },
+                );
+            let js_module_sources: std::collections::HashMap<String, Option<String>> =
+                module_sources
+                    .into_iter()
+                    .map(|(k, v)| (k, Some(v)))
+                    .collect();
+            phases.push(("lower", t.elapsed()));
+
+            let t = Instant::now();
+            let files = match krypton_codegen_js::compile_modules_js(
+                &ir_modules,
+                stem,
+                require_main,
+                &link_ctx,
+                &js_module_sources,
+            ) {
+                Ok(files) => files,
+                Err(e) => {
+                    let (diags, srcs) =
+                        krypton_codegen_js::diagnostics::lower_js_codegen_error(
+                            diag_path, source, &e,
+                        );
+                    for d in &diags {
+                        eprint!("{}", AriadneRenderer.render(d, &srcs));
+                    }
+                    process::exit(1);
+                }
+            };
+            phases.push(("codegen", t.elapsed()));
+            info!(files = files.len(), "JS codegen complete");
+
+            let t = Instant::now();
+            match sink {
+                CompileSink::JsDir { dir, main_rename } => {
+                    std::fs::create_dir_all(&dir).unwrap_or_else(|e| {
+                        eprintln!("Error creating directory {}: {}", dir.display(), e);
+                        process::exit(1);
+                    });
+                    let entry_filename = format!("{}.mjs", stem);
+                    for (filename, js_source) in &files {
+                        let file_path = dir.join(filename);
+                        if let Some(parent) = file_path.parent() {
+                            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                                eprintln!(
+                                    "Error creating directory {}: {}",
+                                    parent.display(),
+                                    e
+                                );
+                                process::exit(1);
+                            });
+                        }
+                        std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
+                            eprintln!("Error writing {}: {}", file_path.display(), e);
+                            process::exit(1);
+                        });
+                        if let Some(ref rename) = main_rename {
+                            if filename == &entry_filename {
+                                let renamed_path = dir.join(rename);
+                                std::fs::write(&renamed_path, js_source).unwrap_or_else(|e| {
+                                    eprintln!(
+                                        "Error writing {}: {}",
+                                        renamed_path.display(),
+                                        e
+                                    );
+                                    process::exit(1);
+                                });
+                            }
+                        }
+                    }
+                    copy_js_runtime(&dir);
+                    println!("compiled to {}", dir.display());
+                    phases.push(("emit", t.elapsed()));
+                }
+                CompileSink::JsRunTemp => {
+                    let debug_js = std::env::var_os("KRYPTON_DEBUG_JS").is_some();
+                    let dir = tempdir().unwrap_or_else(|e| {
+                        eprintln!("Error creating temp dir: {}", e);
+                        process::exit(1);
+                    });
+                    let entry_file = files
+                        .first()
+                        .map(|(name, _)| dir.path().join(name))
+                        .unwrap_or_else(|| {
+                            eprintln!("No JS files generated");
+                            process::exit(1);
+                        });
+                    for (filename, js_source) in &files {
+                        let file_path = dir.path().join(filename);
+                        if let Some(parent) = file_path.parent() {
+                            std::fs::create_dir_all(parent).unwrap();
+                        }
+                        std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
+                            eprintln!("Error writing {}: {}", file_path.display(), e);
+                            process::exit(1);
+                        });
+                    }
+                    copy_js_runtime(dir.path());
+                    if debug_js {
+                        eprintln!(
+                            "KRYPTON_DEBUG_JS: generated JS dir: {}",
+                            dir.path().display()
+                        );
+                        eprintln!(
+                            "KRYPTON_DEBUG_JS: entry module: {}",
+                            entry_file.display()
+                        );
+                    }
+                    phases.push(("emit", t.elapsed()));
+
+                    info!("invoking node");
+                    let t = Instant::now();
+                    let status = process::Command::new("node")
+                        .arg(&entry_file)
+                        .status()
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error running node: {}", e);
+                            process::exit(1);
+                        });
+                    phases.push(("node", t.elapsed()));
+
+                    if !status.success() && debug_js {
+                        let kept_dir = dir.keep();
+                        eprintln!(
+                            "KRYPTON_DEBUG_JS: preserved generated JS in {}",
+                            kept_dir.display()
+                        );
+                    }
+                    if timings {
+                        print_timings(phases);
+                    }
+                    process::exit(status.code().unwrap_or(1));
+                }
+                _ => unreachable!("JS target requires JsDir or JsRunTemp sink"),
+            }
+        }
+    }
+}
+
+fn class_name_from_stem(stem: &str) -> String {
+    let mut c = stem.chars();
+    let base = match c.next() {
+        None => "Main".to_string(),
+        Some(first) => first.to_uppercase().to_string() + c.as_str(),
+    };
+    format!("Kr${base}")
+}
+
+/// Walk up from `start` looking for a `krypton.toml`; the first ancestor
+/// (including `start` itself) that contains one is the project root. Returns
+/// `None` if we reach the filesystem root without finding one.
+fn find_project_root(start: &Path) -> Option<PathBuf> {
+    let mut cur = start.to_path_buf();
+    loop {
+        if cur.join("krypton.toml").is_file() {
+            return Some(cur);
+        }
+        if !cur.pop() {
+            return None;
+        }
+    }
 }
 
 fn main() {
@@ -258,197 +632,44 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-
-            let t = Instant::now();
-            let (module, errors) = do_parse(&source);
-            phases.push(("parse", t.elapsed()));
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-            debug!("parsing complete");
+            let stem = std::path::Path::new(&file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Main")
+                .to_string();
+            let entry_class_name = class_name_from_stem(&stem);
 
             let file_path = std::path::Path::new(&file);
             let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
-            let t = Instant::now();
-            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
-                &module,
-                &resolver,
-                root_module_path(&file),
-                target.to_compile_target(),
-            ) {
-                Ok(result) => result,
-                Err(errors) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                        &file, &source, &errors,
-                    );
-                    for d in &diags {
-                        eprint!("{}", AriadneRenderer.render(d, &srcs));
-                    }
-                    process::exit(1);
-                }
-            };
-            phases.push(("typecheck", t.elapsed()));
-            debug!("type checking complete");
-
-            // Derive class name from filename, prefixed to avoid collisions
-            // with type names (e.g., hello.kr → Kr$Hello)
-            let stem = std::path::Path::new(&file)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Main");
-            let class_name = {
-                let mut c = stem.chars();
-                let base = match c.next() {
-                    None => "Main".to_string(),
-                    Some(first) => first.to_uppercase().to_string() + c.as_str(),
-                };
-                format!("Kr${base}")
+            let sink = match target {
+                Target::Jvm => CompileSink::Jar {
+                    path: output
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from(format!("{}.jar", stem))),
+                },
+                Target::Js => CompileSink::JsDir {
+                    dir: output.map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./out")),
+                    main_rename: None,
+                },
             };
 
-            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-            match target {
-                Target::Jvm => {
-                    let t = Instant::now();
-                    let (ir_modules, module_sources) =
-                        krypton_ir::lower::lower_all(&typed_modules, &class_name, &link_ctx)
-                            .unwrap_or_else(|e| {
-                                eprintln!("IR lowering error: {}", e);
-                                process::exit(1);
-                            });
-                    phases.push(("lower", t.elapsed()));
-
-                    let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(
-                        &ir_modules,
-                        &class_name,
-                        &link_ctx,
-                        &module_sources,
-                    ) {
-                        Ok(classes) => {
-                            phases.push(("codegen", t.elapsed()));
-                            info!(classes = classes.len(), "codegen complete");
-
-                            let t = Instant::now();
-                            let out_path = match &output {
-                                Some(o) => PathBuf::from(o),
-                                None => PathBuf::from(format!("{}.jar", stem)),
-                            };
-                            if let Some(parent) = out_path.parent() {
-                                if !parent.as_os_str().is_empty() {
-                                    std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                        eprintln!(
-                                            "Error creating directory {}: {}",
-                                            parent.display(),
-                                            e
-                                        );
-                                        process::exit(1);
-                                    });
-                                }
-                            }
-                            let jar_bytes = krypton_codegen::jar::write_jar(
-                                &classes,
-                                &class_name,
-                                find_runtime_jar().as_deref(),
-                            )
-                            .unwrap_or_else(|e| {
-                                eprintln!("Error creating jar: {}", e);
-                                process::exit(1);
-                            });
-                            std::fs::write(&out_path, jar_bytes).unwrap_or_else(|e| {
-                                eprintln!("Error writing {}: {}", out_path.display(), e);
-                                process::exit(1);
-                            });
-                            phases.push(("emit", t.elapsed()));
-                        }
-                        Err(e) => {
-                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
-                                &file, &source, &e,
-                            );
-                            for d in &diags {
-                                eprint!("{}", AriadneRenderer.render(d, &srcs));
-                            }
-                            process::exit(1);
-                        }
-                    }
-                }
-                Target::Js => {
-                    let t = Instant::now();
-                    let (ir_modules, module_sources) =
-                        krypton_ir::lower::lower_all(&typed_modules, stem, &link_ctx)
-                            .unwrap_or_else(|e| {
-                                eprintln!("IR lowering error: {}", e);
-                                process::exit(1);
-                            });
-                    let js_module_sources: std::collections::HashMap<String, Option<String>> =
-                        module_sources
-                            .into_iter()
-                            .map(|(k, v)| (k, Some(v)))
-                            .collect();
-                    phases.push(("lower", t.elapsed()));
-
-                    let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(
-                        &ir_modules,
-                        stem,
-                        true,
-                        &link_ctx,
-                        &js_module_sources,
-                    ) {
-                        Ok(files) => {
-                            phases.push(("codegen", t.elapsed()));
-                            info!(files = files.len(), "JS codegen complete");
-
-                            let t = Instant::now();
-                            let out_dir = match &output {
-                                Some(o) => PathBuf::from(o),
-                                None => PathBuf::from("./out"),
-                            };
-                            std::fs::create_dir_all(&out_dir).unwrap_or_else(|e| {
-                                eprintln!("Error creating directory {}: {}", out_dir.display(), e);
-                                process::exit(1);
-                            });
-                            for (filename, js_source) in &files {
-                                let file_path = out_dir.join(filename);
-                                if let Some(parent) = file_path.parent() {
-                                    std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                        eprintln!(
-                                            "Error creating directory {}: {}",
-                                            parent.display(),
-                                            e
-                                        );
-                                        process::exit(1);
-                                    });
-                                }
-                                std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
-                                    eprintln!("Error writing {}: {}", file_path.display(), e);
-                                    process::exit(1);
-                                });
-                            }
-                            copy_js_runtime(&out_dir);
-                            println!("compiled to {}", &out_dir.display());
-                            phases.push(("emit", t.elapsed()));
-                        }
-                        Err(e) => {
-                            let (diags, srcs) =
-                                krypton_codegen_js::diagnostics::lower_js_codegen_error(
-                                    &file, &source, &e,
-                                );
-                            for d in &diags {
-                                eprint!("{}", AriadneRenderer.render(d, &srcs));
-                            }
-                            process::exit(1);
-                        }
-                    }
-                }
-            }
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+            compile_with_resolver(
+                CompileInputs {
+                    diag_path: &file,
+                    source: &source,
+                    entry_module_path: root_module_path(&file),
+                    entry_class_name,
+                    resolver,
+                    target,
+                    require_main: true,
+                    sink,
+                    timings,
+                },
+                &mut phases,
+            );
 
             if timings {
                 print_timings(&phases);
@@ -460,229 +681,39 @@ fn main() {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
             });
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-
-            let t = Instant::now();
-            let (module, errors) = do_parse(&source);
-            phases.push(("parse", t.elapsed()));
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-            debug!("parsing complete");
+            let stem = std::path::Path::new(&file)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Main")
+                .to_string();
+            let entry_class_name = class_name_from_stem(&stem);
 
             let file_path = std::path::Path::new(&file);
             let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
             let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
 
-            let t = Instant::now();
-            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
-                &module,
-                &resolver,
-                root_module_path(&file),
-                target.to_compile_target(),
-            ) {
-                Ok(result) => result,
-                Err(errors) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                        &file, &source, &errors,
-                    );
-                    for d in &diags {
-                        eprint!("{}", AriadneRenderer.render(d, &srcs));
-                    }
-                    process::exit(1);
-                }
-            };
-            phases.push(("typecheck", t.elapsed()));
-            debug!("type checking complete");
-
-            let stem = std::path::Path::new(&file)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Main");
-            let class_name = {
-                let mut c = stem.chars();
-                let base = match c.next() {
-                    None => "Main".to_string(),
-                    Some(first) => first.to_uppercase().to_string() + c.as_str(),
-                };
-                format!("Kr${base}")
+            let sink = match target {
+                Target::Jvm => CompileSink::JvmRunTemp,
+                Target::Js => CompileSink::JsRunTemp,
             };
 
-            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-            match target {
-                Target::Jvm => {
-                    let t = Instant::now();
-                    let (ir_modules, module_sources) =
-                        krypton_ir::lower::lower_all(&typed_modules, &class_name, &link_ctx)
-                            .unwrap_or_else(|e| {
-                                eprintln!("IR lowering error: {}", e);
-                                process::exit(1);
-                            });
-                    phases.push(("lower", t.elapsed()));
-
-                    let t = Instant::now();
-                    match krypton_codegen::emit::compile_modules(
-                        &ir_modules,
-                        &class_name,
-                        &link_ctx,
-                        &module_sources,
-                    ) {
-                        Ok(classes) => {
-                            phases.push(("codegen", t.elapsed()));
-                            info!(classes = classes.len(), "codegen complete");
-
-                            let t = Instant::now();
-                            let dir = tempdir().unwrap_or_else(|e| {
-                                eprintln!("Error creating temp dir: {}", e);
-                                process::exit(1);
-                            });
-                            for (name, bytes) in &classes {
-                                let class_path = dir.path().join(format!("{name}.class"));
-                                if let Some(parent) = class_path.parent() {
-                                    std::fs::create_dir_all(parent).unwrap();
-                                }
-                                std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
-                                    eprintln!("Error writing class file: {}", e);
-                                    process::exit(1);
-                                });
-                            }
-                            phases.push(("emit", t.elapsed()));
-
-                            let classpath = build_classpath(dir.path());
-                            info!(class = %class_name, "invoking JVM");
-                            let t = Instant::now();
-                            let status = process::Command::new("java")
-                                .arg("-cp")
-                                .arg(&classpath)
-                                .arg(&class_name)
-                                .status()
-                                .unwrap_or_else(|e| {
-                                    eprintln!("Error running java: {}", e);
-                                    process::exit(1);
-                                });
-                            phases.push(("jvm", t.elapsed()));
-
-                            if timings {
-                                print_timings(&phases);
-                            }
-                            process::exit(status.code().unwrap_or(1));
-                        }
-                        Err(e) => {
-                            let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
-                                &file, &source, &e,
-                            );
-                            for d in &diags {
-                                eprint!("{}", AriadneRenderer.render(d, &srcs));
-                            }
-                            process::exit(1);
-                        }
-                    }
-                }
-                Target::Js => {
-                    let t = Instant::now();
-                    let (ir_modules, module_sources) =
-                        krypton_ir::lower::lower_all(&typed_modules, stem, &link_ctx)
-                            .unwrap_or_else(|e| {
-                                eprintln!("IR lowering error: {}", e);
-                                process::exit(1);
-                            });
-                    let js_module_sources: std::collections::HashMap<String, Option<String>> =
-                        module_sources
-                            .into_iter()
-                            .map(|(k, v)| (k, Some(v)))
-                            .collect();
-                    phases.push(("lower", t.elapsed()));
-
-                    let t = Instant::now();
-                    match krypton_codegen_js::compile_modules_js(
-                        &ir_modules,
-                        stem,
-                        true,
-                        &link_ctx,
-                        &js_module_sources,
-                    ) {
-                        Ok(files) => {
-                            let debug_js = std::env::var_os("KRYPTON_DEBUG_JS").is_some();
-                            phases.push(("codegen", t.elapsed()));
-                            info!(files = files.len(), "JS codegen complete");
-
-                            let t = Instant::now();
-                            let dir = tempdir().unwrap_or_else(|e| {
-                                eprintln!("Error creating temp dir: {}", e);
-                                process::exit(1);
-                            });
-                            let entry_file = files
-                                .first()
-                                .map(|(name, _)| dir.path().join(name))
-                                .unwrap_or_else(|| {
-                                    eprintln!("No JS files generated");
-                                    process::exit(1);
-                                });
-                            for (filename, js_source) in &files {
-                                let file_path = dir.path().join(filename);
-                                if let Some(parent) = file_path.parent() {
-                                    std::fs::create_dir_all(parent).unwrap();
-                                }
-                                std::fs::write(&file_path, js_source).unwrap_or_else(|e| {
-                                    eprintln!("Error writing {}: {}", file_path.display(), e);
-                                    process::exit(1);
-                                });
-                            }
-                            copy_js_runtime(dir.path());
-                            if debug_js {
-                                eprintln!(
-                                    "KRYPTON_DEBUG_JS: generated JS dir: {}",
-                                    dir.path().display()
-                                );
-                                eprintln!(
-                                    "KRYPTON_DEBUG_JS: entry module: {}",
-                                    entry_file.display()
-                                );
-                            }
-                            phases.push(("emit", t.elapsed()));
-
-                            info!("invoking node");
-                            let t = Instant::now();
-                            let status = process::Command::new("node")
-                                .arg(&entry_file)
-                                .status()
-                                .unwrap_or_else(|e| {
-                                    eprintln!("Error running node: {}", e);
-                                    process::exit(1);
-                                });
-                            phases.push(("node", t.elapsed()));
-
-                            if !status.success() && debug_js {
-                                let kept_dir = dir.keep();
-                                eprintln!(
-                                    "KRYPTON_DEBUG_JS: preserved generated JS in {}",
-                                    kept_dir.display()
-                                );
-                            }
-
-                            if timings {
-                                print_timings(&phases);
-                            }
-                            process::exit(status.code().unwrap_or(1));
-                        }
-                        Err(e) => {
-                            let (diags, srcs) =
-                                krypton_codegen_js::diagnostics::lower_js_codegen_error(
-                                    &file, &source, &e,
-                                );
-                            for d in &diags {
-                                eprint!("{}", AriadneRenderer.render(d, &srcs));
-                            }
-                            process::exit(1);
-                        }
-                    }
-                }
-            }
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+            compile_with_resolver(
+                CompileInputs {
+                    diag_path: &file,
+                    source: &source,
+                    entry_module_path: root_module_path(&file),
+                    entry_class_name,
+                    resolver,
+                    target,
+                    require_main: true,
+                    sink,
+                    timings,
+                },
+                &mut phases,
+            );
+            // Unreachable: run sinks exit from inside the helper.
+            unreachable!("run sinks must exit inside compile_with_resolver");
         }
         Commands::Check { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
@@ -875,6 +906,166 @@ fn main() {
                 process::exit(1);
             });
             println!("wrote {}", lock_path.display());
+        }
+        Commands::Build { target } => {
+            let cwd = std::env::current_dir().unwrap_or_else(|e| {
+                eprintln!("Error: could not resolve current directory: {e}");
+                process::exit(1);
+            });
+            let project_root = find_project_root(&cwd).unwrap_or_else(|| {
+                eprintln!(
+                    "Error: project has no krypton.toml (searched from {})",
+                    cwd.display()
+                );
+                process::exit(1);
+            });
+            let manifest_path = project_root.join("krypton.toml");
+            let manifest = krypton_package_manager::Manifest::from_path(&manifest_path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+                    process::exit(1);
+                });
+
+            let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+            let t = Instant::now();
+            let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            let lock_path = project_root.join("krypton.lock");
+            let graph = if lock_path.is_file() {
+                let lockfile = krypton_package_manager::Lockfile::read(&lock_path)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    });
+                if lockfile.is_current(&manifest, &project_root) {
+                    lockfile
+                        .to_resolved_graph(&cache, &project_root)
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error: {e}");
+                            process::exit(1);
+                        })
+                } else {
+                    let graph = krypton_package_manager::resolve(
+                        &project_root,
+                        manifest.clone(),
+                        &cache,
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    });
+                    let regenerated =
+                        krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
+                            .unwrap_or_else(|e| {
+                                eprintln!("Error: {e}");
+                                process::exit(1);
+                            });
+                    regenerated.write(&lock_path).unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    });
+                    graph
+                }
+            } else {
+                let graph =
+                    krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error: {e}");
+                            process::exit(1);
+                        });
+                let lockfile =
+                    krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
+                        .unwrap_or_else(|e| {
+                            eprintln!("Error: {e}");
+                            process::exit(1);
+                        });
+                lockfile.write(&lock_path).unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
+                graph
+            };
+            phases.push(("resolve", t.elapsed()));
+
+            let main_path = project_root.join("src/main.kr");
+            let lib_path = project_root.join("src/lib.kr");
+            let (entry_path, require_main, entry_class_name, entry_module_path) =
+                if main_path.is_file() {
+                    (
+                        main_path,
+                        true,
+                        "Kr$Main".to_string(),
+                        "main".to_string(),
+                    )
+                } else if lib_path.is_file() {
+                    (
+                        lib_path,
+                        false,
+                        "Kr$Lib".to_string(),
+                        "lib".to_string(),
+                    )
+                } else {
+                    eprintln!(
+                        "Error: project has no src/main.kr or src/lib.kr (searched {})",
+                        project_root.join("src").display()
+                    );
+                    process::exit(1);
+                };
+
+            let source = std::fs::read_to_string(&entry_path).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", entry_path.display(), e);
+                process::exit(1);
+            });
+
+            let source_root = project_root.join("src");
+            let deps = graph.source_roots(&manifest);
+            let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+
+            let leaf = manifest
+                .package
+                .name
+                .rsplit('/')
+                .next()
+                .expect("canonical package name has owner/leaf form");
+
+            let sink = match target {
+                Target::Jvm => CompileSink::Jar {
+                    path: project_root
+                        .join("target")
+                        .join("jvm")
+                        .join(format!("{leaf}.jar")),
+                },
+                Target::Js => CompileSink::JsDir {
+                    dir: project_root.join("target").join("js"),
+                    main_rename: Some(format!("{leaf}.mjs")),
+                },
+            };
+
+            let diag_path = entry_path.to_string_lossy().to_string();
+            compile_with_resolver(
+                CompileInputs {
+                    diag_path: &diag_path,
+                    source: &source,
+                    entry_module_path,
+                    entry_class_name,
+                    resolver,
+                    target,
+                    require_main,
+                    sink,
+                    timings,
+                },
+                &mut phases,
+            );
+
+            if timings {
+                print_timings(&phases);
+            }
         }
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {

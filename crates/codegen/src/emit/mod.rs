@@ -126,9 +126,14 @@ fn type_has_vars(ty: &Type) -> bool {
 ///
 /// Callers must lower `TypedModule`s to IR before calling this function (e.g. via
 /// `krypton_ir::lower::lower_all`). This ensures codegen never touches `TypedModule`.
+///
+/// When `require_main` is false (library build), the entry module's
+/// `main` function is not required — and no `main`-wrapping bytecode is
+/// emitted for it.
 pub fn compile_modules(
     ir_modules: &[krypton_ir::Module],
     main_class_name: &str,
+    require_main: bool,
     link_ctx: &krypton_typechecker::link_context::LinkContext,
     module_sources: &FxHashMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
@@ -156,8 +161,9 @@ pub fn compile_modules(
                     ir_module.module_path
                 )
             });
+        let emit_main = is_entry && require_main;
         let classes =
-            compile_module_inner(ir_module, class_name, is_entry, &view).map_err(|e| {
+            compile_module_inner(ir_module, class_name, emit_main, &view).map_err(|e| {
                 if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
                     return e.with_source(ir_module.module_path.as_str().to_string(), s.clone());
                 }
@@ -172,10 +178,10 @@ pub fn compile_modules(
 fn compile_module_inner(
     ir_module: &krypton_ir::Module,
     class_name: &str,
-    is_main: bool,
+    emit_main: bool,
     link_view: &ModuleLinkView<'_>,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    if is_main && !ir_module.functions.iter().any(|f| f.name == "main") {
+    if emit_main && !ir_module.functions.iter().any(|f| f.name == "main") {
         return Err(CodegenError::NoMainFunction());
     }
 
@@ -222,11 +228,11 @@ fn compile_module_inner(
 
     // Phase 4: Compile function bodies from IR
     let extra_methods = compiler.compile_function_bodies_ir(ir_module)?;
-    if is_main {
+    if emit_main {
         compiler.emit_main_wrapper()?;
     }
 
-    let class_bytes = compiler.build_class(extra_methods, is_main)?;
+    let class_bytes = compiler.build_class(extra_methods, emit_main)?;
     result_classes.push((class_name.to_string(), class_bytes));
 
     Ok(result_classes)

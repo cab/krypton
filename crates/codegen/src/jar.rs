@@ -28,9 +28,12 @@ pub fn find_runtime_jar() -> Option<PathBuf> {
 ///
 /// If `runtime_jar` is provided, all `.class` entries from that JAR are
 /// copied into the output, producing a fat JAR that runs standalone.
+///
+/// When `main_class` is `None`, the manifest omits the `Main-Class` line —
+/// producing a library JAR that cannot be invoked via `java -jar`.
 pub fn write_jar(
     classes: &[(String, Vec<u8>)],
-    main_class: &str,
+    main_class: Option<&str>,
     runtime_jar: Option<&Path>,
 ) -> Result<Vec<u8>, std::io::Error> {
     let buf = Cursor::new(Vec::new());
@@ -40,10 +43,13 @@ pub fn write_jar(
 
     // Write manifest
     writer.start_file("META-INF/MANIFEST.MF", options)?;
-    write!(
-        writer,
-        "Manifest-Version: 1.0\r\nMain-Class: {main_class}\r\n\r\n"
-    )?;
+    match main_class {
+        Some(name) => write!(
+            writer,
+            "Manifest-Version: 1.0\r\nMain-Class: {name}\r\n\r\n"
+        )?,
+        None => write!(writer, "Manifest-Version: 1.0\r\n\r\n")?,
+    }
 
     // Write class files, tracking names to avoid duplicates
     let mut written: HashSet<String> = HashSet::new();

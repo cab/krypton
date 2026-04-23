@@ -274,3 +274,285 @@ fn test_init_errors_on_invalid_name() {
         "init should fail on invalid name"
     );
 }
+
+/// Run `krypton init` inside `parent_dir`, returning the created project path
+/// and a cache root (to be threaded via `KRYPTON_HOME` so tests never touch
+/// the developer's real `~/.krypton`).
+fn init_project_for_test(parent_dir: &std::path::Path) -> PathBuf {
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(parent_dir)
+        .args(["init", "clementine/my-app"])
+        .output()
+        .expect("failed to run krypton init");
+    assert!(
+        output.status.success(),
+        "init should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    parent_dir.join("my-app")
+}
+
+#[test]
+fn test_build_no_manifest_errors() {
+    let dir = tempdir().expect("failed to create temp dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        !output.status.success(),
+        "build should fail without krypton.toml"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("krypton.toml"),
+        "stderr should mention krypton.toml, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_build_executable_produces_jar() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "build should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let jar_path = project.join("target/jvm/my-app.jar");
+    assert!(
+        jar_path.is_file(),
+        "expected target/jvm/my-app.jar to exist at {}",
+        jar_path.display()
+    );
+
+    let run = Command::new("java")
+        .current_dir(&project)
+        .args(["-jar", jar_path.to_str().unwrap()])
+        .output()
+        .expect("failed to run java");
+    assert!(
+        run.status.success(),
+        "java -jar should succeed: {}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.contains("hello world"),
+        "expected 'hello world' in stdout, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_build_library_omits_main_class() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Replace src/main.kr with src/lib.kr — a trivial library module.
+    std::fs::remove_file(project.join("src/main.kr")).expect("remove main.kr");
+    std::fs::write(
+        project.join("src/lib.kr"),
+        "fun greet() = \"hello from lib\"\n",
+    )
+    .expect("write lib.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "library build should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let jar_path = project.join("target/jvm/my-app.jar");
+    assert!(jar_path.is_file(), "jar should exist at {}", jar_path.display());
+
+    // Read the JAR manifest and assert Main-Class is absent.
+    let jar_bytes = std::fs::read(&jar_path).expect("read jar");
+    let reader = std::io::Cursor::new(jar_bytes);
+    let mut archive = zip::ZipArchive::new(reader).expect("valid zip");
+    let mut manifest = archive
+        .by_name("META-INF/MANIFEST.MF")
+        .expect("manifest entry");
+    let mut contents = String::new();
+    use std::io::Read;
+    manifest.read_to_string(&mut contents).expect("read manifest");
+    assert!(
+        !contents.contains("Main-Class:"),
+        "library JAR manifest must not declare Main-Class, got:\n{contents}"
+    );
+}
+
+#[test]
+fn test_build_missing_both_entries_errors() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::remove_file(project.join("src/main.kr")).expect("remove main.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        !output.status.success(),
+        "build should fail with no entry module"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("src/main.kr") && stderr.contains("src/lib.kr"),
+        "stderr should mention both entry paths, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_build_target_js_produces_mjs() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["build", "--target", "js"])
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "js build should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let mjs_path = project.join("target/js/my-app.mjs");
+    assert!(
+        mjs_path.is_file(),
+        "expected target/js/my-app.mjs at {}",
+        mjs_path.display()
+    );
+    let content = std::fs::read_to_string(&mjs_path).expect("read mjs");
+    assert!(
+        content.contains("export function main"),
+        "generated .mjs should contain main function export: {content}"
+    );
+}
+
+#[test]
+fn test_build_project_detection_walks_up() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Run `krypton build` from inside `src/`, a sub-directory of the project.
+    let src_dir = project.join("src");
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&src_dir)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "build from subdirectory should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let jar_path = project.join("target/jvm/my-app.jar");
+    assert!(
+        jar_path.is_file(),
+        "JAR should be written to the project's target/, not the cwd; expected {}",
+        jar_path.display()
+    );
+}
+
+#[test]
+fn test_build_dep_compile_error_attributes_to_dep() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let lib = dir.path().join("mylib");
+    let app = dir.path().join("app");
+    std::fs::create_dir_all(lib.join("src")).unwrap();
+    std::fs::create_dir_all(app.join("src")).unwrap();
+
+    // Library manifest + a broken module that should fail typechecking.
+    // `x : Int = "not an int"` triggers a type error inside the dep.
+    std::fs::write(
+        lib.join("krypton.toml"),
+        "[package]\nname = \"clementine/mylib\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        lib.join("src/lib.kr"),
+        "fun broken() : Int = \"not an int\"\n",
+    )
+    .unwrap();
+
+    // App manifest with a path dependency on the broken lib, and a main
+    // module that imports from it.
+    std::fs::write(
+        app.join("krypton.toml"),
+        format!(
+            "[package]\nname = \"clementine/app\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nmylib = {{ package = \"clementine/mylib\", path = \"{}\" }}\n",
+            lib.display()
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        app.join("src/main.kr"),
+        "import mylib.{broken}\n\nfun main() = println(broken().toString())\n",
+    )
+    .unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&app)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        !output.status.success(),
+        "build should fail when dep has a type error"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mylib"),
+        "diagnostics should attribute the error to the dep via its import root 'mylib', got: {stderr}"
+    );
+}
+
+#[test]
+fn test_build_timings_prints_resolution_phase() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["--timings", "build"])
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "build should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("resolve:"),
+        "--timings should include resolve phase, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("typecheck:"),
+        "--timings should include typecheck phase, got: {stderr}"
+    );
+}

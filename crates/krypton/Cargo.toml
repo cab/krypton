@@ -20,3 +20,4 @@ rustyline.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+zip = "2"

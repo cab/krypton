@@ -52,7 +52,7 @@ fn run_program_raw(
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) = lower_all(&typed_modules, "Kr$Test", &link_ctx)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: lowering failed: {e}"));
-    let classes = compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources)
+    let classes = compile_modules(&ir_modules, "Kr$Test", true, &link_ctx, &module_sources)
         .unwrap_or_else(|e| panic!("fixture {fixture_name}: compile failed: {e}"));
 
     let dir = tempfile::tempdir().unwrap();
@@ -183,7 +183,7 @@ fn codegen_fixture(
                     let (ir_modules, module_sources) =
                         lower_all(&typed_modules, "Kr$Test", &link_ctx)
                             .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
-                    match compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources) {
+                    match compile_modules(&ir_modules, "Kr$Test", true, &link_ctx, &module_sources) {
                         Ok(_)
                         | Err(krypton_codegen::emit::CodegenError {
                             kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,
@@ -241,7 +241,7 @@ fn codegen_module(
                 let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
                 let (ir_modules, module_sources) = lower_all(&typed_modules, "Kr$Test", &link_ctx)
                     .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
-                match compile_modules(&ir_modules, "Kr$Test", &link_ctx, &module_sources) {
+                match compile_modules(&ir_modules, "Kr$Test", true, &link_ctx, &module_sources) {
                     Ok(_)
                     | Err(krypton_codegen::emit::CodegenError {
                         kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,

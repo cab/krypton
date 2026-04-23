@@ -52,6 +52,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
             compile_modules(
                 std::hint::black_box(&trivial_ir),
                 "Bench",
+                true,
                 &trivial_link_ctx,
                 &trivial_sources,
             )
@@ -78,6 +79,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
             compile_modules(
                 std::hint::black_box(&stress_ir),
                 "Bench",
+                true,
                 &stress_link_ctx,
                 &stress_sources,
             )
@@ -135,7 +137,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
             .expect("typecheck");
             let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
             let (ir, sources) = lower_all(&typed, "Bench", &link_ctx).expect("lower");
-            compile_modules(&ir, "Bench", &link_ctx, &sources).expect("codegen")
+            compile_modules(&ir, "Bench", true, &link_ctx, &sources).expect("codegen")
         });
     });
 }

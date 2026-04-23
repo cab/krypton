@@ -45,7 +45,7 @@ fn run_program(source: &str) -> String {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+    let classes = compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources)
         .expect("compile_module_standalone should succeed");
 
     let dir = tempfile::tempdir().unwrap();
@@ -92,7 +92,7 @@ fn compile_typed_modules(
 ) -> tempfile::TempDir {
     let (ir_modules, module_sources) =
         lower_all(typed_modules, "Test", link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", link_ctx, &module_sources)
+    let classes = compile_modules(&ir_modules, "Test", true, link_ctx, &module_sources)
         .expect("compile_modules should succeed");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -504,7 +504,7 @@ fn test_java_21_classfile_version() {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+    let classes = compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources)
         .expect("compile_module_standalone should succeed");
     let bytes = &classes.iter().find(|(n, _)| n == "Test").unwrap().1;
     // Class file bytes 4-5 = minor version, 6-7 = major version (big-endian)
@@ -576,7 +576,7 @@ fun main() = match None { Some(_) => (), None => () }
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
     let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+        compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -780,7 +780,7 @@ fun main() = println(are_equal(Point(1, 2), Point(1, 2)))
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
     let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+        compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -822,7 +822,7 @@ fn test_typed_module_direct() {
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
     let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("codegen");
+        compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources).expect("codegen");
 
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
@@ -873,7 +873,7 @@ fun main() = println(Some(42))
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
     let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+        compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -1006,7 +1006,7 @@ fun main() = println(render(Wrap(42)))
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
     let classes =
-        compile_modules(&ir_modules, "Test", &link_ctx, &module_sources).expect("compile");
+        compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources).expect("compile");
     let dir = tempfile::tempdir().unwrap();
     for (name, bytes) in &classes {
         let path = dir.path().join(format!("{name}.class"));
@@ -1393,7 +1393,7 @@ fun main() = {
     let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
     let (ir_modules, module_sources) =
         lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
-    let classes = compile_modules(&ir_modules, "Test", &link_ctx, &module_sources)
+    let classes = compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources)
         .expect("compile should succeed");
 
     let functor_classes: Vec<&str> = classes
