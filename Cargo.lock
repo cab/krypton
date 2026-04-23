@@ -927,10 +927,12 @@ name = "krypton-package-manager"
 version = "0.1.0"
 dependencies = [
  "criterion",
+ "insta",
  "pubgrub",
  "semver",
  "serde",
  "serde_derive",
+ "sha2",
  "tempfile",
  "toml",
  "toml_edit 0.22.27",
@@ -1542,6 +1544,17 @@ name = "sha1"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
  "cpufeatures",

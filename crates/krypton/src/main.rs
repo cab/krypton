@@ -127,6 +127,8 @@ enum Commands {
         /// Package identifier, e.g. `owner/my-app`
         name: String,
     },
+    /// Re-resolve dependencies and write krypton.lock
+    Lock,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -839,6 +841,40 @@ fn main() {
                     process::exit(1);
                 }
             }
+        }
+        Commands::Lock => {
+            let cwd = std::env::current_dir().unwrap_or_else(|e| {
+                eprintln!("Error: could not resolve current directory: {e}");
+                process::exit(1);
+            });
+            let manifest_path = cwd.join("krypton.toml");
+            let manifest = krypton_package_manager::Manifest::from_path(&manifest_path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+                    process::exit(1);
+                });
+            let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            let graph =
+                krypton_package_manager::resolve(&cwd, manifest, &cache).unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
+            let lockfile =
+                krypton_package_manager::Lockfile::generate(&graph, &[], &cwd).unwrap_or_else(
+                    |e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    },
+                );
+            let lock_path = cwd.join("krypton.lock");
+            lockfile.write(&lock_path).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            println!("wrote {}", lock_path.display());
         }
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {

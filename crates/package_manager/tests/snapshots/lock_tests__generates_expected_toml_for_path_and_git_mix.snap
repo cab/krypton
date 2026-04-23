@@ -1,0 +1,19 @@
+---
+source: crates/package_manager/tests/lock_tests.rs
+assertion_line: 121
+expression: redacted
+---
+# This file is generated. Do not edit manually.
+
+[[package]]
+name = "clementine/http"
+version = "0.3.0"
+source = "git+<REMOTE-HTTP>"
+rev = "<SHA>"
+hash = "sha256:<HASH>"
+
+[[package]]
+name = "clementine/mylib"
+version = "0.2.0"
+source = "path+../mylib"
+hash = "sha256:<HASH>"

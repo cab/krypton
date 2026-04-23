@@ -87,6 +87,12 @@ pub struct ResolvedGraph {
 }
 
 impl ResolvedGraph {
+    /// Construct a graph directly from a prebuilt package map. Used by the
+    /// lockfile rehydration path — ordinary graphs come back from [`resolve`].
+    pub fn from_packages(packages: BTreeMap<CanonicalName, ResolvedPackage>) -> Self {
+        Self { packages }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&CanonicalName, &ResolvedPackage)> {
         self.packages.iter()
     }

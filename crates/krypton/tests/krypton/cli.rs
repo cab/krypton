@@ -212,6 +212,55 @@ fn test_init_errors_on_existing_directory() {
 }
 
 #[test]
+fn test_lock_writes_lockfile() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = dir.path().join("proj");
+    let dep = dir.path().join("mylib");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::create_dir_all(&dep).unwrap();
+    std::fs::write(
+        dep.join("krypton.toml"),
+        "[package]\nname = \"clementine/mylib\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.join("krypton.toml"),
+        format!(
+            "[package]\nname = \"clementine/demo\"\nversion = \"0.1.0\"\n\n\
+             [dependencies]\nmylib = {{ package = \"clementine/mylib\", path = \"{}\" }}\n",
+            dep.display()
+        ),
+    )
+    .unwrap();
+
+    // Isolate the cache dir so the test never touches the developer's real
+    // ~/.krypton. `CacheDir::new()` prefers `KRYPTON_HOME` when set.
+    let cache_root = dir.path().join("krypton-home");
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", &cache_root)
+        .arg("lock")
+        .output()
+        .expect("failed to run krypton lock");
+    assert!(
+        output.status.success(),
+        "lock should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lock_path = project.join("krypton.lock");
+    assert!(lock_path.is_file(), "krypton.lock should be created");
+    let body = std::fs::read_to_string(&lock_path).unwrap();
+    assert!(
+        body.starts_with("# This file is generated. Do not edit manually."),
+        "lockfile must begin with the header comment, got:\n{body}"
+    );
+    assert!(
+        body.contains("clementine/mylib"),
+        "lockfile must reference the dep: {body}"
+    );
+}
+
+#[test]
 fn test_init_errors_on_invalid_name() {
     let dir = tempdir().expect("failed to create temp dir");
 
