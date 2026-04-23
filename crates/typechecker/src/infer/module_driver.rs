@@ -223,6 +223,9 @@ pub(super) fn map_graph_error(
         ModuleGraphError::UnknownModule { path, span } => {
             spanned(TypeError::UnknownModule { path }, span)
         }
+        ModuleGraphError::TransitiveDependencyImport { path, span, .. } => {
+            spanned(TypeError::UnknownModule { path }, span)
+        }
         ModuleGraphError::BareImport { path, span } => {
             spanned(TypeError::BareImport { path }, span)
         }

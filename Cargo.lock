@@ -920,6 +920,7 @@ dependencies = [
  "include_dir",
  "krypton-parser",
  "rustc-hash",
+ "tempfile",
 ]
 
 [[package]]

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use krypton_modules::module_graph::{build_module_graph, ModuleGraphError};
+use krypton_modules::module_graph::{
+    ModuleGraphError, build_module_graph, build_module_graph_with_hints,
+};
 use krypton_modules::module_resolver::ModuleResolver;
 
 /// Test resolver that returns source from a map.
@@ -178,6 +180,49 @@ fn graph_prelude_included() {
         option_pos < prelude_pos,
         "core/option should come before prelude"
     );
+}
+
+#[test]
+fn transitive_dep_import_emits_specific_error() {
+    let resolver = MapResolver::new(vec![]);
+    let root = parse("import utils/foo.{x}\nfun main() -> Int = x()");
+    let hints = vec![("utils".to_string(), "conner/utils".to_string())];
+    let result = build_module_graph_with_hints(
+        &root,
+        &resolver,
+        krypton_parser::ast::CompileTarget::Jvm,
+        &hints,
+    );
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ModuleGraphError::TransitiveDependencyImport {
+            path, canonical, ..
+        } => {
+            assert_eq!(path, "utils/foo");
+            assert_eq!(canonical, "conner/utils");
+        }
+        other => panic!("expected TransitiveDependencyImport, got {other:?}"),
+    }
+}
+
+#[test]
+fn unknown_module_still_fires_when_no_hint_matches() {
+    let resolver = MapResolver::new(vec![]);
+    let root = parse("import other/foo.{x}\nfun main() -> Int = x()");
+    let hints = vec![("utils".to_string(), "conner/utils".to_string())];
+    let result = build_module_graph_with_hints(
+        &root,
+        &resolver,
+        krypton_parser::ast::CompileTarget::Jvm,
+        &hints,
+    );
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        ModuleGraphError::UnknownModule { path, .. } => {
+            assert_eq!(path, "other/foo");
+        }
+        other => panic!("expected UnknownModule, got {other:?}"),
+    }
 }
 
 #[test]

@@ -33,6 +33,16 @@ pub enum ModuleGraphError {
         path: String,
         span: Span,
     },
+    /// The import's head segment matches a known transitive dep — the user
+    /// has imported from a package that is reachable through the graph but
+    /// isn't listed in their own `[dependencies]`. The resolver couldn't
+    /// produce a source, but we can surface a more targeted error than
+    /// [`ModuleGraphError::UnknownModule`].
+    TransitiveDependencyImport {
+        path: String,
+        canonical: String,
+        span: Span,
+    },
     BareImport {
         path: String,
         span: Span,
@@ -56,9 +66,24 @@ pub fn build_module_graph(
     resolver: &dyn ModuleResolver,
     target: CompileTarget,
 ) -> Result<ModuleGraph, ModuleGraphError> {
+    build_module_graph_with_hints(root, resolver, target, &[])
+}
+
+/// Like [`build_module_graph`], but enriched with `transitive_hints` so that
+/// when an import can't be resolved we can distinguish "truly unknown" from
+/// "known transitive dependency not declared in `[dependencies]`". Each hint
+/// is `(local_root_name, canonical)` — matching the shape produced by
+/// `ResolvedGraph::transitive_hints`.
+pub fn build_module_graph_with_hints(
+    root: &Module,
+    resolver: &dyn ModuleResolver,
+    target: CompileTarget,
+    transitive_hints: &[(String, String)],
+) -> Result<ModuleGraph, ModuleGraphError> {
     let mut builder = ModuleGraphBuilder {
         resolver,
         target,
+        transitive_hints,
         visited: FxHashSet::default(),
         stack: Vec::new(),
         stack_set: FxHashSet::default(),
@@ -88,6 +113,7 @@ pub fn build_module_graph(
 struct ModuleGraphBuilder<'a> {
     resolver: &'a dyn ModuleResolver,
     target: CompileTarget,
+    transitive_hints: &'a [(String, String)],
     visited: FxHashSet<String>,
     stack: Vec<String>,
     stack_set: FxHashSet<String>,
@@ -172,13 +198,10 @@ impl<'a> ModuleGraphBuilder<'a> {
             });
         }
 
-        let source =
-            self.resolver
-                .resolve(path)
-                .ok_or_else(|| ModuleGraphError::UnknownModule {
-                    path: path.to_string(),
-                    span: import_span,
-                })?;
+        let source = match self.resolver.resolve(path) {
+            Some(s) => s,
+            None => return Err(self.unresolved_error(path, import_span)),
+        };
 
         let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
         if !parse_errors.is_empty() {
@@ -215,5 +238,28 @@ impl<'a> ModuleGraphBuilder<'a> {
         });
 
         Ok(())
+    }
+
+    /// Classify an unresolved import. If the head segment matches a known
+    /// transitive-dep hint, emit the more specific error; otherwise fall back
+    /// to `UnknownModule`.
+    fn unresolved_error(&self, path: &str, span: Span) -> ModuleGraphError {
+        let head = match path.split_once('/') {
+            Some((h, _)) => h,
+            None => path,
+        };
+        for (local, canonical) in self.transitive_hints {
+            if local == head {
+                return ModuleGraphError::TransitiveDependencyImport {
+                    path: path.to_string(),
+                    canonical: canonical.clone(),
+                    span,
+                };
+            }
+        }
+        ModuleGraphError::UnknownModule {
+            path: path.to_string(),
+            span,
+        }
     }
 }

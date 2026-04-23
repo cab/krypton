@@ -10,7 +10,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use pubgrub::{
-    Dependencies, DefaultStringReporter, DependencyProvider, PackageResolutionStatistics,
+    DefaultStringReporter, Dependencies, DependencyProvider, PackageResolutionStatistics,
     PubGrubError, Ranges, Reporter,
 };
 use semver::{BuildMetadata, Comparator, Op, Prerelease, Version};
@@ -108,6 +108,61 @@ impl ResolvedGraph {
     pub fn is_empty(&self) -> bool {
         self.packages.is_empty()
     }
+
+    /// For each `[dependencies]` entry in `manifest`, map the local import
+    /// root (the TOML key) to the resolved package's `src/` directory. Dev
+    /// dependencies are intentionally omitted. Entries whose canonical name
+    /// is not in the resolved graph are skipped — a post-`resolve()` graph
+    /// contains every non-root dep, but skipping keeps the API total for
+    /// graphs built by other means (e.g. lockfile rehydration).
+    pub fn source_roots(&self, manifest: &Manifest) -> Vec<(String, PathBuf)> {
+        let mut out = Vec::with_capacity(manifest.dependencies.len());
+        for (dep_key, spec) in &manifest.dependencies {
+            let canonical_str = dep_spec_canonical(spec);
+            let canonical = CanonicalName::from_validated(canonical_str);
+            if let Some(pkg) = self.packages.get(&canonical) {
+                out.push((dep_key.clone(), pkg.source_path.join("src")));
+            }
+        }
+        out
+    }
+
+    /// Hints used to distinguish "unknown module" from "module belongs to a
+    /// transitive dep that isn't in your [dependencies]". Returns
+    /// `(default_local_root_name, canonical)` for every package in the
+    /// resolved graph that is not a direct dependency of `manifest`. The
+    /// default local root is the package-name leaf with `-` normalized to
+    /// `_` — the same derivation that `krypton add` uses when picking a
+    /// default `[dependencies]` key.
+    pub fn transitive_hints(&self, manifest: &Manifest) -> Vec<(String, String)> {
+        let direct: std::collections::HashSet<&str> = manifest
+            .dependencies
+            .values()
+            .map(dep_spec_canonical)
+            .collect();
+
+        let mut out = Vec::new();
+        for (canonical, _) in self.packages.iter() {
+            if direct.contains(canonical.as_str()) {
+                continue;
+            }
+            let local_root = default_local_root_name(canonical.name());
+            out.push((local_root, canonical.as_str().to_string()));
+        }
+        out
+    }
+}
+
+fn dep_spec_canonical(spec: &DepSpec) -> &str {
+    match spec {
+        DepSpec::Git { package, .. }
+        | DepSpec::Path { package, .. }
+        | DepSpec::Version { package, .. } => package.as_str(),
+    }
+}
+
+fn default_local_root_name(name_leaf: &str) -> String {
+    name_leaf.replace('-', "_")
 }
 
 /// Lightweight description of a dependency's source, used both for cache keys
@@ -331,9 +386,7 @@ impl<'a> KryptonProvider<'a> {
                 }
             }
         };
-        self.sources
-            .borrow_mut()
-            .insert(canonical.clone(), fetched);
+        self.sources.borrow_mut().insert(canonical.clone(), fetched);
         Ok(())
     }
 }
@@ -373,7 +426,11 @@ impl<'a> DependencyProvider for KryptonProvider<'a> {
             return Ok(None);
         };
         let v = src.manifest.package.version.clone();
-        if range.contains(&v) { Ok(Some(v)) } else { Ok(None) }
+        if range.contains(&v) {
+            Ok(Some(v))
+        } else {
+            Ok(None)
+        }
     }
 
     fn get_dependencies(
@@ -401,8 +458,7 @@ impl<'a> DependencyProvider for KryptonProvider<'a> {
 
         let mut constraints: Vec<(CanonicalName, Ranges<Version>)> = Vec::new();
         for (dep_key, dep_spec) in &manifest.dependencies {
-            let (canonical, descriptor, range) =
-                self.lower_dep(package, dep_spec, &source_dir)?;
+            let (canonical, descriptor, range) = self.lower_dep(package, dep_spec, &source_dir)?;
 
             {
                 let mut first = self.first_source.borrow_mut();
@@ -582,7 +638,12 @@ fn make_version(major: u64, minor: u64, patch: u64, pre: Prerelease) -> Version 
     }
 }
 
-fn exact_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn exact_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::singleton(make_version(major, b, c, pre)),
         (Some(b), None) => Ranges::between(
@@ -596,7 +657,12 @@ fn exact_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerele
     }
 }
 
-fn greater_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn greater_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::strictly_higher_than(make_version(major, b, c, pre)),
         (Some(b), None) => Ranges::higher_than(make_version(major, b + 1, 0, Prerelease::EMPTY)),
@@ -604,7 +670,12 @@ fn greater_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prere
     }
 }
 
-fn greater_eq_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn greater_eq_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::higher_than(make_version(major, b, c, pre)),
         (Some(b), None) => Ranges::higher_than(make_version(major, b, 0, Prerelease::EMPTY)),
@@ -612,23 +683,42 @@ fn greater_eq_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Pr
     }
 }
 
-fn less_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn less_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::strictly_lower_than(make_version(major, b, c, pre)),
-        (Some(b), None) => Ranges::strictly_lower_than(make_version(major, b, 0, Prerelease::EMPTY)),
+        (Some(b), None) => {
+            Ranges::strictly_lower_than(make_version(major, b, 0, Prerelease::EMPTY))
+        }
         (None, _) => Ranges::strictly_lower_than(make_version(major, 0, 0, Prerelease::EMPTY)),
     }
 }
 
-fn less_eq_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn less_eq_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::lower_than(make_version(major, b, c, pre)),
-        (Some(b), None) => Ranges::strictly_lower_than(make_version(major, b + 1, 0, Prerelease::EMPTY)),
+        (Some(b), None) => {
+            Ranges::strictly_lower_than(make_version(major, b + 1, 0, Prerelease::EMPTY))
+        }
         (None, _) => Ranges::strictly_lower_than(make_version(major + 1, 0, 0, Prerelease::EMPTY)),
     }
 }
 
-fn tilde_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn tilde_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     match (minor, patch) {
         (Some(b), Some(c)) => Ranges::between(
             make_version(major, b, c, pre),
@@ -645,7 +735,12 @@ fn tilde_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerele
     }
 }
 
-fn caret_ranges(major: u64, minor: Option<u64>, patch: Option<u64>, pre: Prerelease) -> Ranges<Version> {
+fn caret_ranges(
+    major: u64,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    pre: Prerelease,
+) -> Ranges<Version> {
     // Caret allows changes to parts right of the first non-zero component.
     match (minor, patch) {
         (Some(b), Some(c)) => {

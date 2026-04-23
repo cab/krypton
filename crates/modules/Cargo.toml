@@ -7,3 +7,6 @@ edition.workspace = true
 krypton-parser = { path = "../parser" }
 include_dir = "0.7"
 rustc-hash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
