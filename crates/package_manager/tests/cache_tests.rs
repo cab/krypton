@@ -19,10 +19,13 @@ fn package_source_dir_layout() {
         .path()
         .join("cache")
         .join("packages")
-        .join("conner")
+        .join("clementine")
         .join("http")
         .join("0.3.0");
-    assert_eq!(cache.package_source_dir("conner", "http", "0.3.0"), expected);
+    assert_eq!(
+        cache.package_source_dir("clementine", "http", "0.3.0"),
+        expected
+    );
 }
 
 #[test]
@@ -34,16 +37,30 @@ fn package_compiled_dir_layout() {
         .path()
         .join("cache")
         .join("packages")
-        .join("conner")
+        .join("clementine")
         .join("http")
         .join("0.3.0")
         .join("target")
         .join("jvm")
         .join("abc123");
     assert_eq!(
-        cache.package_compiled_dir("conner", "http", "0.3.0", "abc123"),
+        cache.package_compiled_dir("clementine", "http", "0.3.0", "abc123"),
         expected
     );
+}
+
+#[test]
+fn git_clone_dir_layout() {
+    let tmp = tempdir().expect("tempdir");
+    let cache = CacheDir::with_root(tmp.path().to_path_buf());
+
+    let expected: PathBuf = tmp
+        .path()
+        .join("cache")
+        .join("git")
+        .join("clementine")
+        .join("http");
+    assert_eq!(cache.git_clone_dir("clementine", "http"), expected);
 }
 
 #[test]
@@ -61,7 +78,12 @@ fn maven_jar_path_layout() {
         .join("42.7.1")
         .join("postgresql-42.7.1.jar");
     assert_eq!(
-        cache.maven_jar_path("org.postgresql", "postgresql", "42.7.1", "postgresql-42.7.1.jar"),
+        cache.maven_jar_path(
+            "org.postgresql",
+            "postgresql",
+            "42.7.1",
+            "postgresql-42.7.1.jar"
+        ),
         expected
     );
 }
@@ -112,9 +134,14 @@ fn path_methods_do_not_create_directories() {
     let cache = CacheDir::with_root(tmp.path().to_path_buf());
 
     let _ = cache.root();
-    let _ = cache.package_source_dir("conner", "http", "0.3.0");
-    let _ = cache.package_compiled_dir("conner", "http", "0.3.0", "abc123");
-    let _ = cache.maven_jar_path("org.postgresql", "postgresql", "42.7.1", "postgresql-42.7.1.jar");
+    let _ = cache.package_source_dir("clementine", "http", "0.3.0");
+    let _ = cache.package_compiled_dir("clementine", "http", "0.3.0", "abc123");
+    let _ = cache.maven_jar_path(
+        "org.postgresql",
+        "postgresql",
+        "42.7.1",
+        "postgresql-42.7.1.jar",
+    );
     let _ = cache.tools_dir();
 
     assert!(

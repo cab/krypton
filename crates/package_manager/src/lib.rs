@@ -8,6 +8,7 @@ pub mod resolve;
 pub mod version;
 
 pub use cache::{CacheDir, CacheError};
+pub use fetch::{FetchError, FetchedGitDep, fetch_git};
 pub use init::{InitError, init_project};
 pub use manifest::{
     DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo,
