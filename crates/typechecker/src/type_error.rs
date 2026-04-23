@@ -153,7 +153,7 @@ pub enum LeakReason {
     /// Linear `~T` value was captured by a closure that contains a `recur`.
     /// The lambda body cannot consume the capture exactly once across an
     /// arbitrary number of loop iterations; thread it through the recur
-    /// argument list instead. See `disposable.md` §D.3.
+    /// argument list instead.
     RecurCapture,
 }
 
@@ -571,9 +571,9 @@ pub enum TypeError {
     /// of a `shape` parameter but not the other. The failing form is
     /// captured in `failing_form` (e.g. "a = ~T (owned)") and the nested
     /// error is the root cause from that fork.
-    /// `impl Disposable[T]` was elaborated for a function type. Per
-    /// `disposable.md` §D.2, every `~fn` is structurally linear and consumed
-    /// by calling it; there is no separate `dispose` step to define.
+    /// `impl Disposable[T]` was elaborated for a function type. Every `~fn` is
+    /// structurally linear and consumed by calling it; there is no separate
+    /// `dispose` step to define.
     InvalidDisposableInstance {
         ty: String,
     },
@@ -1062,7 +1062,7 @@ impl TypeError {
                 };
                 let suffix = match reason {
                     LeakReason::RecurCapture => format!(
-                        "; pass `{name}` as a `recur` argument so the value is consumed exactly once per iteration (see `disposable.md` §D.3)"
+                        "; pass `{name}` as a `recur` argument so the value is consumed exactly once per iteration"
                     ),
                     _ => format!(
                         "; consume `{name}` explicitly (e.g. by passing it to a function that takes `~{type_name}`), or `impl Disposable[{type_name}]` so the compiler can auto-close it"

@@ -228,9 +228,8 @@ impl<'a> InferenceContext<'a> {
         }
     }
 
-    /// Bidirectional constructor synthesis predicate (disposable.md §"Literal
-    /// and constructor synthesis"). Constructors synthesize bare `T` unless
-    /// either:
+    /// Bidirectional constructor synthesis predicate. Constructors synthesize
+    /// bare `T` unless either:
     ///   1. the expected context walks to `Own(T)`, or
     ///   2. there is no expected context (or it is an unbound type variable)
     ///      and the result type is structurally resource-carrying.
@@ -1372,7 +1371,7 @@ impl<'a> InferenceContext<'a> {
             // D.3: a lambda whose body recurs may not capture free linear
             // (`~T`) values. The body cannot consume the capture exactly once
             // across an arbitrary number of loop iterations; thread the value
-            // through the recur argument list instead. See `disposable.md` §D.3.
+            // through the recur argument list instead.
             if let Some(recur_span) = super::find_first_recur_span(&body_typed) {
                 let cap_ty = self
                     .env
@@ -1490,9 +1489,8 @@ impl<'a> InferenceContext<'a> {
 
         let result: Result<(TypedExpr, Type), SpannedTypeError> = (|| {
             // Resolve the annotation *before* inferring the RHS so that the
-            // annotation type can steer bidirectional constructor synthesis
-            // (disposable.md §"Literal and constructor synthesis"). Without
-            // this, a `let x: List[Int] = Cons(1, Nil)` would synthesize
+            // annotation type can steer bidirectional constructor synthesis.
+            // Without this, a `let x: List[Int] = Cons(1, Nil)` would synthesize
             // `~List[Int]` from the constructor and then need to drop — but
             // the `~T → T` drop coercion no longer exists.
             let resolved_ann: Option<Type> = if let Some(ty_expr) = ty_ann {
@@ -2258,12 +2256,8 @@ impl<'a> InferenceContext<'a> {
         })
     }
 
-    /// Core expression checker with an optional `expected_type` hint.
-    ///
-    /// See `clementine/typechecker_DESIGN.md` §1 for the invariants that govern
-    /// the hint: it biases free-variable binding but never replaces the
-    /// `coerce_unify` gate, and §2 lists the subset of expression forms that
-    /// actually consume it.
+    /// Core expression checker with an optional `expected_type` hint. The hint
+    /// biases free-variable binding but never replaces the `coerce_unify` gate.
     pub(crate) fn infer_expr_inner(
         &mut self,
         expr: &Expr,

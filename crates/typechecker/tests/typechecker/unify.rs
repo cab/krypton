@@ -208,7 +208,7 @@ fn coerce_bare_to_own_fails() {
 fn coerce_own_to_bare_rejected() {
     let mut subst = Substitution::new();
     // coerce_unify(Own(Int), Int) → rejected (no silent drop; linear-by-default
-    // requires an explicit consume, per disposable.md §"No ~T → T coercion").
+    // requires an explicit consume).
     let err = coerce_unify(
         &Type::Own(Box::new(Type::Int)),
         &Type::Int,

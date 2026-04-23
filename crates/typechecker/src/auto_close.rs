@@ -87,9 +87,9 @@ fn classify_owned(
         // Aggregates and other shapes: never Disposable in v0 (M39-T3 scope).
         // Replaces the prior ICE at this site.
         // D.2: `~fn` is structurally Linear — never Disposable, regardless of
-        // capture set (`disposable.md` §D.2). The `Fn` arm here is the
-        // classifier-side enforcement; instance registration also rejects
-        // `impl Disposable[<fn type>]` up front.
+        // capture set. The `Fn` arm here is the classifier-side enforcement;
+        // instance registration also rejects `impl Disposable[<fn type>]` up
+        // front.
         Type::App(_, _) | Type::Tuple(_) | Type::Fn(_, _) => OwnedKind::Linear(inner.to_string()),
 
         // Primitives wrapped in Own — degenerate but legal under M39-T3.
@@ -1065,9 +1065,8 @@ mod tests {
     /// D.2: `~fn` is structurally Linear — never Disposable. Even when the
     /// Disposable trait is in scope (`has_disposable_trait = true`), the
     /// classifier short-circuits on `Type::Fn` to `Linear`, irrespective of
-    /// any instances the registry might claim. Pins `disposable.md` §D.2 at
-    /// the classifier seam in case future refactors add a fall-through to
-    /// `find_instance`.
+    /// any instances the registry might claim. Pins D.2 at the classifier
+    /// seam in case future refactors add a fall-through to `find_instance`.
     #[test]
     fn fn_is_never_disposable() {
         let fn_ty = Type::Fn(vec![(ParamMode::Consume, Type::Int)], Box::new(Type::Unit));

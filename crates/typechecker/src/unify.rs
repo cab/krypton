@@ -300,7 +300,7 @@ fn resolve_maybe_own(ty: Type, subst: &Substitution) -> Type {
 /// structural recursion and the function-arrow `fn → ~fn` effect-polarity rule.
 ///
 /// When expected is an unbound Var and actual is Own(T), bind β := Own(T)
-/// eagerly regardless of constructor context (see `typechecker_DESIGN.md` §4.2).
+/// eagerly regardless of constructor context.
 /// The prior split that deferred via `MaybeOwn(fresh_q, T)` outside constructor
 /// position is no longer needed for the four `let_*_{owned,shared}` shapes —
 /// they are subsumed by eager binding plus the downstream coerce rules. The
@@ -401,10 +401,10 @@ fn coerce_unify_inner(
             match &actual {
                 Type::Own(inner) if !matches!(inner.as_ref(), Type::Fn(_, _)) => {
                     // Eager Own-preserving binding: bind `β := Own(T)`.
-                    // See `typechecker_DESIGN.md` §4.2. The `(x, x)` case is
-                    // the only shape that still needs `MaybeOwn` deferral
-                    // (§5); that path is retained at the consumer arms below
-                    // but no longer populated from this site.
+                    // The `(x, x)` case is the only shape that still needs
+                    // `MaybeOwn` deferral (§5); that path is retained at the
+                    // consumer arms below but no longer populated from this
+                    // site.
                     //
                     // SOUNDNESS: the `actual = ~β, expected = β` self-reference
                     // arm below can only arise from instantiating a scheme of
