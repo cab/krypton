@@ -138,6 +138,12 @@ enum Commands {
         #[arg(long, default_value = "jvm")]
         target: Target,
     },
+    /// Discover and run project tests.
+    Test {
+        /// Optional file-level filter(s): module path relative to `src/`
+        /// without the `.kr` extension (e.g. `math_test`, `parser/lexer_test`).
+        filters: Vec<String>,
+    },
     /// Add a dependency to krypton.toml and re-resolve.
     #[command(group(
         ArgGroup::new("source")
@@ -1011,6 +1017,20 @@ fn check_project(timings: bool) -> ! {
     process::exit(0);
 }
 
+/// Project-mode `test`: skeleton handler. Loads the manifest and resolves
+/// dependencies so manifest/lockfile errors surface here, then prints
+/// "no tests yet" and exits 0. `filters` is accepted and ignored for forward
+/// compatibility with the full discovery + execution pipeline.
+fn test_project(_filters: Vec<String>, timings: bool) -> ! {
+    let (_ctx, resolve_dur) = load_project_context();
+
+    if timings {
+        print_timings(&[("resolve", resolve_dur)]);
+    }
+    println!("no tests yet");
+    process::exit(0);
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -1435,6 +1455,7 @@ fn main() {
                 print_timings(&phases);
             }
         }
+        Commands::Test { filters } => test_project(filters, timings),
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);

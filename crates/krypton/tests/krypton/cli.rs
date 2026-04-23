@@ -1194,3 +1194,113 @@ fn test_update_noop_when_nothing_changed() {
         "re-running update on a fresh project should be a no-op"
     );
 }
+
+#[test]
+fn test_test_no_manifest_errors() {
+    let dir = tempdir().expect("failed to create temp dir");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(dir.path())
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        !output.status.success(),
+        "test should fail without krypton.toml"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("krypton.toml"),
+        "stderr should mention krypton.toml, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_test_stub_succeeds_in_project() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        output.status.success(),
+        "test should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("no tests yet"),
+        "expected 'no tests yet' in stdout, got: {stdout}"
+    );
+    assert!(
+        project.join("krypton.lock").is_file(),
+        "krypton.lock should exist after `krypton test`"
+    );
+}
+
+#[test]
+fn test_test_accepts_filter_args() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "math_test", "parser/lexer_test"])
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        output.status.success(),
+        "test should succeed with filter args: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_test_help_documents_filter_arg() {
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .args(["test", "--help"])
+        .output()
+        .expect("failed to run krypton test --help");
+    assert!(
+        output.status.success(),
+        "`krypton test --help` should exit 0: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("FILTERS"),
+        "help should document the FILTERS positional, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--filter"),
+        "help should not advertise a --filter long flag, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_unknown_flag_errors() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "--bogus-flag"])
+        .output()
+        .expect("failed to run krypton test --bogus-flag");
+    assert!(
+        !output.status.success(),
+        "test should fail with an unknown flag"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unexpected argument"),
+        "stderr should mention 'unexpected argument', got: {stderr}"
+    );
+}
