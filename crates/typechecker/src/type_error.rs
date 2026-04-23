@@ -133,6 +133,7 @@ pub enum TypeErrorCode {
     E0518, // Ambiguous overload
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
+    E0521, // Test module imported from non-test code
     E0017, // Cannot construct uninhabited type
     E0018, // Irrefutable if-let pattern
     E0112, // `Disposable` cannot be implemented for a function type (`~fn` is consumed by calling it)
@@ -300,6 +301,9 @@ pub enum TypeError {
         return_kind: String,
     },
     UnknownModule {
+        path: String,
+    },
+    TestModuleImport {
         path: String,
     },
     CircularImport {
@@ -644,6 +648,7 @@ impl TypeError {
             TypeError::QuestionMarkBadOperand { .. } => TypeErrorCode::E0402,
             TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
             TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
+            TypeError::TestModuleImport { .. } => TypeErrorCode::E0521,
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
@@ -900,6 +905,9 @@ impl TypeError {
             TypeError::UnknownModule { path } => {
                 Some(format!("module `{}` does not exist in the stdlib", path))
             }
+            TypeError::TestModuleImport { .. } => Some(
+                "modules whose file name ends in `_test.kr` are only visible to `krypton test`. Move the code to a non-test module, or move the importer into a `_test.kr` file.".to_string(),
+            ),
             TypeError::CircularImport { cycle } => {
                 Some(format!("import cycle: {}", cycle.join(" → ")))
             }
@@ -1646,6 +1654,13 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownModule { path } => {
                 write!(f, "unknown module: {}", path)
+            }
+            TypeError::TestModuleImport { path } => {
+                write!(
+                    f,
+                    "cannot import test module `{}` from non-test code",
+                    path
+                )
             }
             TypeError::CircularImport { cycle } => {
                 write!(f, "circular import detected: {}", cycle.join(" → "))

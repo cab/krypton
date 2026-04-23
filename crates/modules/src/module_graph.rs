@@ -43,6 +43,15 @@ pub enum ModuleGraphError {
         canonical: String,
         span: Span,
     },
+    /// The import names a path whose final segment ends with `_test`. These
+    /// modules are reserved for files discovered by the test runner and
+    /// cannot be imported from ordinary source modules. Surfaced instead
+    /// of [`ModuleGraphError::UnknownModule`] so the diagnostic can name
+    /// the rule.
+    TestModuleImport {
+        path: String,
+        span: Span,
+    },
     BareImport {
         path: String,
         span: Span,
@@ -240,10 +249,19 @@ impl<'a> ModuleGraphBuilder<'a> {
         Ok(())
     }
 
-    /// Classify an unresolved import. If the head segment matches a known
-    /// transitive-dep hint, emit the more specific error; otherwise fall back
-    /// to `UnknownModule`.
+    /// Classify an unresolved import. A leaf segment ending in `_test` is
+    /// always a [`ModuleGraphError::TestModuleImport`] — test modules are
+    /// invisible to the `FileSystemResolver` by design. Otherwise, if the
+    /// head segment matches a known transitive-dep hint, emit the more
+    /// specific error; failing both, fall back to `UnknownModule`.
     fn unresolved_error(&self, path: &str, span: Span) -> ModuleGraphError {
+        use crate::module_resolver::is_test_module_path;
+        if is_test_module_path(path) {
+            return ModuleGraphError::TestModuleImport {
+                path: path.to_string(),
+                span,
+            };
+        }
         let head = match path.split_once('/') {
             Some((h, _)) => h,
             None => path,
@@ -263,3 +281,79 @@ impl<'a> ModuleGraphBuilder<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::module_resolver::{is_test_module_path, ModuleResolver};
+
+    /// A resolver that mirrors `FileSystemResolver`'s test-module exclusion
+    /// without touching the filesystem: names in `known` resolve, test-module
+    /// paths always refuse, everything else is `None`.
+    struct StubResolver {
+        known: Vec<(String, String)>,
+    }
+
+    impl ModuleResolver for StubResolver {
+        fn resolve(&self, module_path: &str) -> Option<String> {
+            if is_test_module_path(module_path) {
+                return None;
+            }
+            for (path, source) in &self.known {
+                if path == module_path {
+                    return Some(source.clone());
+                }
+            }
+            None
+        }
+    }
+
+    fn parse_root(source: &str) -> Module {
+        let (module, errors) = krypton_parser::parser::parse(source);
+        assert!(errors.is_empty(), "parse errors: {:?}", errors);
+        module
+    }
+
+    #[test]
+    fn graph_builder_emits_test_module_import() {
+        let root = parse_root("import foo_test.{x}\n");
+        let resolver = StubResolver { known: Vec::new() };
+        let err =
+            build_module_graph(&root, &resolver, CompileTarget::Jvm).expect_err("expected error");
+        match err {
+            ModuleGraphError::TestModuleImport { path, .. } => {
+                assert_eq!(path, "foo_test");
+            }
+            other => panic!("expected TestModuleImport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn graph_builder_emits_test_module_import_for_nested() {
+        let root = parse_root("import parser/lexer_test.{x}\n");
+        let resolver = StubResolver { known: Vec::new() };
+        let err =
+            build_module_graph(&root, &resolver, CompileTarget::Jvm).expect_err("expected error");
+        match err {
+            ModuleGraphError::TestModuleImport { path, .. } => {
+                assert_eq!(path, "parser/lexer_test");
+            }
+            other => panic!("expected TestModuleImport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn graph_builder_unknown_path_without_test_suffix() {
+        let root = parse_root("import nonexistent.{x}\n");
+        let resolver = StubResolver { known: Vec::new() };
+        let err =
+            build_module_graph(&root, &resolver, CompileTarget::Jvm).expect_err("expected error");
+        match err {
+            ModuleGraphError::UnknownModule { path, .. } => {
+                assert_eq!(path, "nonexistent");
+            }
+            other => panic!("expected UnknownModule, got {other:?}"),
+        }
+    }
+}
+

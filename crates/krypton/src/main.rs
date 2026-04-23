@@ -1,6 +1,7 @@
 mod inspect;
 mod repl;
 mod repl_compile;
+mod source_walker;
 
 use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
@@ -143,6 +144,9 @@ enum Commands {
         /// Optional file-level filter(s): module path relative to `src/`
         /// without the `.kr` extension (e.g. `math_test`, `parser/lexer_test`).
         filters: Vec<String>,
+        /// Print the discovered test-file count and per-phase diagnostics.
+        #[arg(long, short = 'v')]
+        verbose: bool,
     },
     /// Add a dependency to krypton.toml and re-resolve.
     #[command(group(
@@ -1018,11 +1022,22 @@ fn check_project(timings: bool) -> ! {
 }
 
 /// Project-mode `test`: skeleton handler. Loads the manifest and resolves
-/// dependencies so manifest/lockfile errors surface here, then prints
-/// "no tests yet" and exits 0. `filters` is accepted and ignored for forward
-/// compatibility with the full discovery + execution pipeline.
-fn test_project(_filters: Vec<String>, timings: bool) -> ! {
-    let (_ctx, resolve_dur) = load_project_context();
+/// dependencies so manifest/lockfile errors surface here, walks `src/` to
+/// classify `*.kr` and `*_test.kr` files, and (for now) prints "no tests yet"
+/// and exits 0. `filters` is accepted and ignored for forward compatibility
+/// with the full discovery + execution pipeline.
+fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
+    let (ctx, resolve_dur) = load_project_context();
+
+    let src_dir = ctx.project_root.join("src");
+    let files = source_walker::walk_project_sources(&src_dir).unwrap_or_else(|e| {
+        eprintln!("Error walking {}: {e}", src_dir.display());
+        process::exit(1);
+    });
+
+    if verbose {
+        println!("discovered {} test file(s)", files.tests.len());
+    }
 
     if timings {
         print_timings(&[("resolve", resolve_dur)]);
@@ -1455,7 +1470,7 @@ fn main() {
                 print_timings(&phases);
             }
         }
-        Commands::Test { filters } => test_project(filters, timings),
+        Commands::Test { filters, verbose } => test_project(filters, verbose, timings),
         Commands::Inspect { file } => {
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);

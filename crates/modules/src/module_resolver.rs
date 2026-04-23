@@ -9,6 +9,14 @@ pub trait ModuleResolver {
     fn resolve(&self, module_path: &str) -> Option<String>;
 }
 
+/// Returns true if `module_path`'s final `/`-separated segment ends with
+/// `_test`. The canonical "is this a test module?" predicate used by both
+/// the file-system resolver and the module-graph builder.
+pub fn is_test_module_path(module_path: &str) -> bool {
+    let leaf = module_path.rsplit('/').next().unwrap_or(module_path);
+    leaf.ends_with("_test")
+}
+
 /// Resolves modules from the filesystem relative to a source root.
 pub struct FileSystemResolver {
     pub source_root: PathBuf,
@@ -16,6 +24,14 @@ pub struct FileSystemResolver {
 
 impl ModuleResolver for FileSystemResolver {
     fn resolve(&self, module_path: &str) -> Option<String> {
+        if is_test_module_path(module_path) {
+            // Test modules are invisible to the file-system resolver so
+            // production code cannot import test files. `krypton test`
+            // reads `_test.kr` files directly by path via the source
+            // walker and does not rely on this resolver for the top-level
+            // test entries.
+            return None;
+        }
         let file_path = self.source_root.join(format!("{}.kr", module_path));
         std::fs::read_to_string(&file_path).ok()
     }
@@ -164,5 +180,63 @@ impl ModuleResolver for CompositeResolver {
             }
         }
         self.dependencies.resolve(module_path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn write_file(path: &std::path::Path, content: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn filesystem_resolver_excludes_test_modules() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src");
+        write_file(&src.join("foo_test.kr"), "// valid content\n");
+
+        let resolver = FileSystemResolver {
+            source_root: src.clone(),
+        };
+        assert_eq!(resolver.resolve("foo_test"), None);
+    }
+
+    #[test]
+    fn filesystem_resolver_excludes_nested_test_modules() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src");
+        write_file(&src.join("parser/lexer_test.kr"), "// valid content\n");
+
+        let resolver = FileSystemResolver {
+            source_root: src.clone(),
+        };
+        assert_eq!(resolver.resolve("parser/lexer_test"), None);
+    }
+
+    #[test]
+    fn filesystem_resolver_allows_non_test_modules() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src");
+        write_file(&src.join("math.kr"), "// math content\n");
+        write_file(&src.join("foo_test_utils.kr"), "// utils content\n");
+
+        let resolver = FileSystemResolver {
+            source_root: src.clone(),
+        };
+        assert_eq!(
+            resolver.resolve("math"),
+            Some("// math content\n".to_string())
+        );
+        assert_eq!(
+            resolver.resolve("foo_test_utils"),
+            Some("// utils content\n".to_string())
+        );
     }
 }

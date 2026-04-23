@@ -1304,3 +1304,215 @@ fn test_test_unknown_flag_errors() {
         "stderr should mention 'unexpected argument', got: {stderr}"
     );
 }
+
+#[test]
+fn test_test_verbose_prints_zero_when_no_tests() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "--verbose"])
+        .output()
+        .expect("failed to run krypton test --verbose");
+    assert!(
+        output.status.success(),
+        "test should succeed on bare init: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 test file"),
+        "verbose output should mention '0 test file', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_verbose_prints_count_with_tests() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+        .expect("write math_test.kr");
+    std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
+    std::fs::write(
+        project.join("src/parser/lexer_test.kr"),
+        "// empty\n",
+    )
+    .expect("write parser/lexer_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "--verbose"])
+        .output()
+        .expect("failed to run krypton test --verbose");
+    assert!(
+        output.status.success(),
+        "test should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("2 test file"),
+        "verbose output should mention '2 test file', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_nonverbose_omits_count() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+        .expect("write math_test.kr");
+    std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
+    std::fs::write(
+        project.join("src/parser/lexer_test.kr"),
+        "// empty\n",
+    )
+    .expect("write parser/lexer_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        output.status.success(),
+        "test should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("test file"),
+        "non-verbose output must not include count, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_build_ignores_broken_test_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // A test file that would fail to parse, but is not imported anywhere.
+    // `krypton build` must not touch it.
+    std::fs::write(
+        project.join("src/foo_test.kr"),
+        "fun $$$ @@@\n",
+    )
+    .expect("write foo_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        output.status.success(),
+        "build should ignore orphan test file: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        project.join("target/jvm/my-app.jar").is_file(),
+        "target/jvm/my-app.jar should exist"
+    );
+}
+
+#[test]
+fn test_run_ignores_broken_test_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/foo_test.kr"),
+        "fun $$$ @@@\n",
+    )
+    .expect("write foo_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("run")
+        .output()
+        .expect("failed to run krypton run");
+    assert!(
+        output.status.success(),
+        "run should ignore orphan test file: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("hello world"),
+        "run should still print 'hello world', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_build_rejects_import_of_test_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Well-formed test module that exports a public binding.
+    std::fs::write(
+        project.join("src/foo_test.kr"),
+        "pub fun helper() = 42\n",
+    )
+    .expect("write foo_test.kr");
+
+    // Main imports the test module — must be rejected.
+    std::fs::write(
+        project.join("src/main.kr"),
+        "import foo_test.{helper}\n\nfun main() { println(\"hi\") }\n",
+    )
+    .expect("overwrite main.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    assert!(
+        !output.status.success(),
+        "build should reject test-module import"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("E0521"),
+        "stderr should mention E0521, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("test module") || stderr.contains("krypton test"),
+        "stderr should identify the rule (mention 'test module' or 'krypton test'), got: {stderr}"
+    );
+}
+
+#[test]
+fn test_test_verbose_short_flag() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+        .expect("write math_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "-v"])
+        .output()
+        .expect("failed to run krypton test -v");
+    assert!(
+        output.status.success(),
+        "test should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("1 test file"),
+        "short-flag verbose output should mention '1 test file', got: {stdout}"
+    );
+}
