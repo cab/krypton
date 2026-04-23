@@ -1,0 +1,54 @@
+---
+source: crates/ir/tests/ir/lower.rs
+expression: ir_module.to_string()
+---
+module overload__local_type_overload
+
+type Foo = Foo#0(Int)
+type Bar = Bar#0(Int)
+type Gen[x10] = Gen#0(x10)
+import core/peek/peek as peek(d) -> d
+import core/list/last as last(List[e3]) -> Option[e3]
+import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
+import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
+import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
+import core/io/println as println(g) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
+declare println: (g) -> Unit
+
+fn process(v0: Foo) -> Int =
+  switch v0 {
+    0 (v1: Int) ->
+      v1
+  }
+
+fn process(v2: Bar) -> Int =
+  switch v2 {
+    0 (v3: Int) ->
+      let v4: Int = mul_int(v3, 2)
+      v4
+  }
+
+fn process(v5: Gen[Int]) -> Int =
+  switch v5 {
+    0 (v6: Int) ->
+      let v7: Int = add_int(v6, 1)
+      v7
+  }
+
+fn main() -> Unit =
+  let v8: Foo = construct Foo::Foo#0(1)
+  let v9: Bar = construct Bar::Bar#0(2)
+  let v10: Gen[Int] = construct Gen::Gen#0(3)
+  let v12: Int = call process(v8)
+  let v13: Int = call process(v9)
+  let v14: Int = add_int(v12, v13)
+  let v15: Int = call process(v10)
+  let v16: Int = add_int(v14, v15)
+  let v11: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
+  let v17: Unit = call println(v11, v16)
+  v17
