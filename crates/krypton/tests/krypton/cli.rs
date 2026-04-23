@@ -131,7 +131,7 @@ fn test_init_creates_project() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(dir.path())
-        .args(["init", "conner/my-app"])
+        .args(["init", "clementine/my-app"])
         .output()
         .expect("failed to run krypton");
     assert!(
@@ -152,7 +152,7 @@ fn test_init_generated_project_compiles_and_runs() {
 
     let init = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(dir.path())
-        .args(["init", "conner/my-app"])
+        .args(["init", "clementine/my-app"])
         .output()
         .expect("failed to run krypton init");
     assert!(
@@ -197,7 +197,7 @@ fn test_init_errors_on_existing_directory() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(dir.path())
-        .args(["init", "conner/my-app"])
+        .args(["init", "clementine/my-app"])
         .output()
         .expect("failed to run krypton");
     assert!(

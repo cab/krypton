@@ -7,7 +7,7 @@ use tempfile::tempdir;
 #[test]
 fn creates_expected_files_and_directories() {
     let tmp = tempdir().expect("tempdir");
-    let dir = init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    let dir = init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     assert_eq!(dir, tmp.path().join("my-app"));
     assert!(dir.is_dir(), "project dir should exist");
@@ -20,12 +20,12 @@ fn creates_expected_files_and_directories() {
 #[test]
 fn generated_manifest_roundtrips() {
     let tmp = tempdir().expect("tempdir");
-    let dir = init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    let dir = init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     let manifest_src = fs::read_to_string(dir.join("krypton.toml")).expect("read manifest");
     let manifest = Manifest::from_str(&manifest_src).expect("manifest should round-trip");
 
-    assert_eq!(manifest.package.name, "conner/my-app");
+    assert_eq!(manifest.package.name, "clementine/my-app");
     assert_eq!(manifest.package.version, Version::parse("0.1.0").unwrap());
     assert!(manifest.dependencies.is_empty(), "dependencies should be empty");
     assert!(
@@ -38,7 +38,7 @@ fn generated_manifest_roundtrips() {
 #[test]
 fn generated_manifest_contains_empty_dependencies_section() {
     let tmp = tempdir().expect("tempdir");
-    let dir = init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    let dir = init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     let manifest_src = fs::read_to_string(dir.join("krypton.toml")).expect("read manifest");
     assert!(
@@ -50,7 +50,7 @@ fn generated_manifest_contains_empty_dependencies_section() {
 #[test]
 fn gitignore_contains_target() {
     let tmp = tempdir().expect("tempdir");
-    let dir = init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    let dir = init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     let gitignore = fs::read_to_string(dir.join(".gitignore")).expect("read .gitignore");
     assert!(
@@ -62,11 +62,11 @@ fn gitignore_contains_target() {
 #[test]
 fn directory_name_is_name_part() {
     let tmp = tempdir().expect("tempdir");
-    init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     assert!(tmp.path().join("my-app").is_dir(), "tempdir should contain my-app/");
     assert!(
-        !tmp.path().join("conner").exists(),
+        !tmp.path().join("clementine").exists(),
         "tempdir should not contain an owner-named directory"
     );
 }
@@ -76,7 +76,7 @@ fn errors_when_target_dir_exists() {
     let tmp = tempdir().expect("tempdir");
     fs::create_dir(tmp.path().join("my-app")).expect("pre-create collision dir");
 
-    let err = init_project(tmp.path(), "conner/my-app").expect_err("should fail");
+    let err = init_project(tmp.path(), "clementine/my-app").expect_err("should fail");
     match err {
         InitError::DirectoryExists(p) => assert_eq!(p, tmp.path().join("my-app")),
         other => panic!("expected DirectoryExists, got {other:?}"),
@@ -106,7 +106,7 @@ fn errors_on_invalid_name_empty_owner() {
 #[test]
 fn errors_on_invalid_name_uppercase() {
     let tmp = tempdir().expect("tempdir");
-    let err = init_project(tmp.path(), "Conner/my-app").expect_err("should fail");
+    let err = init_project(tmp.path(), "Clementine/my-app").expect_err("should fail");
     assert!(
         matches!(err, InitError::InvalidName(_)),
         "expected InvalidName, got {err:?}"
@@ -116,7 +116,7 @@ fn errors_on_invalid_name_uppercase() {
 #[test]
 fn main_kr_contains_runnable_program() {
     let tmp = tempdir().expect("tempdir");
-    let dir = init_project(tmp.path(), "conner/my-app").expect("init succeeds");
+    let dir = init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
     let main_src = fs::read_to_string(dir.join("src/main.kr")).expect("read main.kr");
     assert!(

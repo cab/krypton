@@ -12,12 +12,12 @@ krypton = ">=0.1.0"          # minimum compiler version
 # targets = ["jvm"]          # optional narrowing/documentation
 
 [dependencies]
-http = { package = "conner/http", version = "0.3.0" }
-json = { package = "conner/json", git = "https://github.com/conner/krypton-json", tag = "v0.2.0" }
+http = { package = "clementine/http", version = "0.3.0" }
+json = { package = "clementine/json", git = "https://github.com/clementine/krypton-json", tag = "v0.2.0" }
 shared = { package = "my-org/shared", path = "../shared" }
 
 [dev-dependencies]
-test_utils = { package = "conner/test-utils", version = "0.1.0" }
+test_utils = { package = "clementine/test-utils", version = "0.1.0" }
 
 [jvm]
 maven = [
@@ -30,7 +30,7 @@ classpath = [
 "#;
 
 const SPEC_EXAMPLE_JAVA_VERSION: &str = r#"[package]
-name = "conner/http"
+name = "clementine/http"
 version = "0.3.0"
 
 [jvm]
@@ -45,14 +45,17 @@ fn parses_spec_example_verbatim() {
 
     assert_eq!(m.package.name, "my-org/my-app");
     assert_eq!(m.package.version, Version::parse("0.1.0").unwrap());
-    assert_eq!(m.package.description.as_deref(), Some("A short description"));
+    assert_eq!(
+        m.package.description.as_deref(),
+        Some("A short description")
+    );
     assert_eq!(m.package.license.as_deref(), Some("MIT"));
     assert_eq!(m.package.krypton.as_deref(), Some(">=0.1.0"));
 
     assert_eq!(m.dependencies.len(), 3);
     match m.dependencies.get("http").expect("http dep") {
         DepSpec::Version { package, version } => {
-            assert_eq!(package, "conner/http");
+            assert_eq!(package, "clementine/http");
             assert_eq!(version, "0.3.0");
         }
         other => panic!("expected Version dep, got {other:?}"),
@@ -63,8 +66,8 @@ fn parses_spec_example_verbatim() {
             url,
             reference,
         } => {
-            assert_eq!(package, "conner/json");
-            assert_eq!(url, "https://github.com/conner/krypton-json");
+            assert_eq!(package, "clementine/json");
+            assert_eq!(url, "https://github.com/clementine/krypton-json");
             assert_eq!(*reference, GitRef::Tag("v0.2.0".to_string()));
         }
         other => panic!("expected Git dep, got {other:?}"),
@@ -83,9 +86,13 @@ fn parses_spec_example_verbatim() {
     }
 
     assert_eq!(m.dev_dependencies.len(), 1);
-    match m.dev_dependencies.get("test_utils").expect("test_utils dep") {
+    match m
+        .dev_dependencies
+        .get("test_utils")
+        .expect("test_utils dep")
+    {
         DepSpec::Version { package, version } => {
-            assert_eq!(package, "conner/test-utils");
+            assert_eq!(package, "clementine/test-utils");
             assert_eq!(version, "0.1.0");
         }
         other => panic!("expected Version dev dep, got {other:?}"),
@@ -99,7 +106,10 @@ fn parses_spec_example_verbatim() {
             "com.google.guava:guava:33.0.0-jre".to_string(),
         ]
     );
-    assert_eq!(jvm.classpath, vec![PathBuf::from("lib/proprietary-driver.jar")]);
+    assert_eq!(
+        jvm.classpath,
+        vec![PathBuf::from("lib/proprietary-driver.jar")]
+    );
     assert!(jvm.java_version.is_none());
 }
 
@@ -107,7 +117,10 @@ fn parses_spec_example_verbatim() {
 fn parses_java_version_rename() {
     let m = Manifest::from_str(SPEC_EXAMPLE_JAVA_VERSION).expect("should parse");
     let jvm = m.jvm.expect("jvm section");
-    assert_eq!(jvm.maven, vec!["org.postgresql:postgresql:42.7.1".to_string()]);
+    assert_eq!(
+        jvm.maven,
+        vec!["org.postgresql:postgresql:42.7.1".to_string()]
+    );
     assert_eq!(jvm.classpath, vec![PathBuf::from("lib/some.jar")]);
     assert_eq!(jvm.java_version.as_deref(), Some("21"));
 }
@@ -116,7 +129,7 @@ fn parses_java_version_rename() {
 fn missing_package_section() {
     let src = r#"
 [dependencies]
-http = { package = "conner/http", version = "0.3.0" }
+http = { package = "clementine/http", version = "0.3.0" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0002);
@@ -190,7 +203,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http" }
+http = { package = "clementine/http" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0006);
@@ -213,7 +226,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http", git = "https://x", path = "../x", tag = "v1" }
+http = { package = "clementine/http", git = "https://x", path = "../x", tag = "v1" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0007);
@@ -228,7 +241,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http", git = "https://x", version = "0.1.0" }
+http = { package = "clementine/http", git = "https://x", version = "0.1.0" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0007);
@@ -243,7 +256,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http", git = "https://x" }
+http = { package = "clementine/http", git = "https://x" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0008);
@@ -258,7 +271,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http", git = "https://x", tag = "v1", branch = "main" }
+http = { package = "clementine/http", git = "https://x", tag = "v1", branch = "main" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0008);
@@ -288,7 +301,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dev-dependencies]
-tool = { package = "conner/tool" }
+tool = { package = "clementine/tool" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0006);
@@ -304,7 +317,7 @@ name = "my-org/app"
 version = "0.1.0"
 
 [dependencies]
-http = { package = "conner/http", version = "0.1.0", tag = "v1" }
+http = { package = "clementine/http", version = "0.1.0", tag = "v1" }
 "#;
     let err = Manifest::from_str(src).expect_err("should fail");
     assert_eq!(err.code, ErrorCode::M0007);

@@ -14,12 +14,12 @@ license = "MIT"
 krypton = ">=0.1.0"
 
 [dependencies]
-http = { package = "conner/http", version = "0.3.0" }
-json = { package = "conner/json", git = "https://github.com/conner/krypton-json", tag = "v0.2.0" }
+http = { package = "clementine/http", version = "0.3.0" }
+json = { package = "clementine/json", git = "https://github.com/clementine/krypton-json", tag = "v0.2.0" }
 shared = { package = "my-org/shared", path = "../shared" }
 
 [dev-dependencies]
-test_utils = { package = "conner/test-utils", version = "0.1.0" }
+test_utils = { package = "clementine/test-utils", version = "0.1.0" }
 
 [jvm]
 maven = [

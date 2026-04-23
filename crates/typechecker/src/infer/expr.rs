@@ -2260,7 +2260,7 @@ impl<'a> InferenceContext<'a> {
 
     /// Core expression checker with an optional `expected_type` hint.
     ///
-    /// See `conner/typechecker_DESIGN.md` §1 for the invariants that govern
+    /// See `clementine/typechecker_DESIGN.md` §1 for the invariants that govern
     /// the hint: it biases free-variable binding but never replaces the
     /// `coerce_unify` gate, and §2 lists the subset of expression forms that
     /// actually consume it.
