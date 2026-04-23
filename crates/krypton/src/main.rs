@@ -92,8 +92,8 @@ enum Commands {
     },
     /// Parse and pretty-print a file
     Fmt { file: String },
-    /// Type-check a file and print inferred types
-    Check { file: String },
+    /// Type-check a file, or the project in the current directory when no file is given.
+    Check { file: Option<String> },
     /// Compile a file to a JVM .jar file or JS .mjs files
     Compile {
         file: String,
@@ -104,9 +104,9 @@ enum Commands {
         #[arg(long, default_value = "jvm")]
         target: Target,
     },
-    /// Compile and run a file
+    /// Compile and run a file, or the project in the current directory when no file is given.
     Run {
-        file: String,
+        file: Option<String>,
         /// Compilation target
         #[arg(long, default_value = "jvm")]
         target: Target,
@@ -553,6 +553,380 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Shared preamble for project-aware commands (`build`, `run`, `check`):
+/// locate the project root, load `krypton.toml`, and either reuse a current
+/// lockfile or resolve-and-regenerate it. `resolve_duration` is appended to
+/// caller's phase list when `Some`.
+struct ProjectContext {
+    project_root: PathBuf,
+    manifest: krypton_package_manager::Manifest,
+    graph: krypton_package_manager::ResolvedGraph,
+}
+
+fn load_project_context() -> (ProjectContext, Duration) {
+    let cwd = std::env::current_dir().unwrap_or_else(|e| {
+        eprintln!("Error: could not resolve current directory: {e}");
+        process::exit(1);
+    });
+    let project_root = find_project_root(&cwd).unwrap_or_else(|| {
+        eprintln!(
+            "Error: project has no krypton.toml (searched from {})",
+            cwd.display()
+        );
+        process::exit(1);
+    });
+    let manifest_path = project_root.join("krypton.toml");
+    let manifest = krypton_package_manager::Manifest::from_path(&manifest_path).unwrap_or_else(
+        |e| {
+            eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+            process::exit(1);
+        },
+    );
+
+    let t = Instant::now();
+    let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let lock_path = project_root.join("krypton.lock");
+    let graph = if lock_path.is_file() {
+        let lockfile = krypton_package_manager::Lockfile::read(&lock_path).unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+        if lockfile.is_current(&manifest, &project_root) {
+            lockfile
+                .to_resolved_graph(&cache, &project_root)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                })
+        } else {
+            let graph =
+                krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    });
+            let regenerated =
+                krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
+                    .unwrap_or_else(|e| {
+                        eprintln!("Error: {e}");
+                        process::exit(1);
+                    });
+            regenerated.write(&lock_path).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            graph
+        }
+    } else {
+        let graph = krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+        let lockfile = krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
+            .unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+        lockfile.write(&lock_path).unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+        graph
+    };
+    let resolve_duration = t.elapsed();
+
+    (
+        ProjectContext {
+            project_root,
+            manifest,
+            graph,
+        },
+        resolve_duration,
+    )
+}
+
+/// Entry module descriptor used by project-mode commands.
+struct EntrySpec {
+    path: PathBuf,
+    module_path: String,
+    class_name: String,
+}
+
+/// Project entry selection. Prefers `src/main.kr` (executable, `is_main=true`)
+/// then falls back to `src/lib.kr` (library, `is_main=false`). Errors when
+/// neither exists.
+fn select_project_entry(project_root: &Path) -> Result<(EntrySpec, bool), String> {
+    let main_path = project_root.join("src/main.kr");
+    if main_path.is_file() {
+        return Ok((
+            EntrySpec {
+                path: main_path,
+                module_path: "main".to_string(),
+                class_name: "Kr$Main".to_string(),
+            },
+            true,
+        ));
+    }
+    let lib_path = project_root.join("src/lib.kr");
+    if lib_path.is_file() {
+        return Ok((
+            EntrySpec {
+                path: lib_path,
+                module_path: "lib".to_string(),
+                class_name: "Kr$Lib".to_string(),
+            },
+            false,
+        ));
+    }
+    Err(format!(
+        "project has no src/main.kr or src/lib.kr (searched {})",
+        project_root.join("src").display()
+    ))
+}
+
+/// Like `select_project_entry` but requires an executable (`src/main.kr`).
+/// Used by `run`, which cannot start a library.
+fn select_executable_entry(project_root: &Path) -> Result<EntrySpec, String> {
+    let main_path = project_root.join("src/main.kr");
+    if main_path.is_file() {
+        return Ok(EntrySpec {
+            path: main_path,
+            module_path: "main".to_string(),
+            class_name: "Kr$Main".to_string(),
+        });
+    }
+    Err("no entry point: src/main.kr not found".to_string())
+}
+
+/// Assemble the `-cp` string for `java`. Composed (in order) of:
+///   1. the emitted program JAR,
+///   2. every entry in `[jvm].classpath` (absolutized against the project root,
+///      validated to exist),
+///   3. the Krypton runtime JAR (when discoverable).
+///
+/// Resolved Maven JARs land here in M35-T13 once the lockfile `[[maven]]`
+/// section is populated; today the resolved graph carries no Maven entries,
+/// so that branch is intentionally absent rather than a silent no-op.
+fn assemble_jvm_runtime_classpath(
+    ctx: &ProjectContext,
+    program_jar: &Path,
+) -> Result<String, String> {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let mut parts: Vec<String> = vec![program_jar.display().to_string()];
+    if let Some(jvm) = &ctx.manifest.jvm {
+        for entry in &jvm.classpath {
+            let abs = if entry.is_absolute() {
+                entry.clone()
+            } else {
+                ctx.project_root.join(entry)
+            };
+            if !abs.exists() {
+                return Err(format!(
+                    "classpath entry not found: {}",
+                    entry.display()
+                ));
+            }
+            parts.push(abs.display().to_string());
+        }
+    }
+    if let Some(rt) = find_runtime_jar() {
+        parts.push(rt.display().to_string());
+    }
+    Ok(parts.join(sep))
+}
+
+/// Project-mode `run`: build the program, then invoke `java`/`node` and exit
+/// with the subprocess status code. Fails if the project has no executable
+/// entry (AC 5).
+fn run_project(target: Target, timings: bool) -> ! {
+    let (ctx, resolve_dur) = load_project_context();
+
+    let entry = select_executable_entry(&ctx.project_root).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", entry.path.display(), e);
+        process::exit(1);
+    });
+
+    let source_root = ctx.project_root.join("src");
+    let deps = ctx.graph.source_roots(&ctx.manifest);
+    let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let leaf = ctx
+        .manifest
+        .package
+        .name
+        .rsplit('/')
+        .next()
+        .expect("canonical package name has owner/leaf form")
+        .to_string();
+
+    let sink = match target {
+        Target::Jvm => CompileSink::Jar {
+            path: ctx
+                .project_root
+                .join("target")
+                .join("jvm")
+                .join(format!("{leaf}.jar")),
+        },
+        Target::Js => CompileSink::JsDir {
+            dir: ctx.project_root.join("target").join("js"),
+            main_rename: Some(format!("{leaf}.mjs")),
+        },
+    };
+
+    let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
+    let diag_path = entry.path.to_string_lossy().to_string();
+    compile_with_resolver(
+        CompileInputs {
+            diag_path: &diag_path,
+            source: &source,
+            entry_module_path: entry.module_path.clone(),
+            entry_class_name: entry.class_name.clone(),
+            resolver,
+            target,
+            require_main: true,
+            sink,
+            timings,
+        },
+        &mut phases,
+    );
+
+    // Invoke the built artifact.
+    let t = Instant::now();
+    let status = match target {
+        Target::Jvm => {
+            let jar_path = ctx
+                .project_root
+                .join("target")
+                .join("jvm")
+                .join(format!("{leaf}.jar"));
+            let classpath =
+                assemble_jvm_runtime_classpath(&ctx, &jar_path).unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
+            info!(class = %entry.class_name, "invoking JVM");
+            process::Command::new("java")
+                .arg("-cp")
+                .arg(&classpath)
+                .arg(&entry.class_name)
+                .status()
+                .unwrap_or_else(|e| {
+                    eprintln!("Error running java: {}", e);
+                    process::exit(1);
+                })
+        }
+        Target::Js => {
+            let entry_mjs = ctx
+                .project_root
+                .join("target")
+                .join("js")
+                .join(format!("{}.mjs", entry.module_path));
+            info!("invoking node");
+            process::Command::new("node")
+                .arg(&entry_mjs)
+                .status()
+                .unwrap_or_else(|e| {
+                    eprintln!("Error running node: {}", e);
+                    process::exit(1);
+                })
+        }
+    };
+    phases.push((
+        match target {
+            Target::Jvm => "jvm",
+            Target::Js => "node",
+        },
+        t.elapsed(),
+    ));
+    if timings {
+        print_timings(&phases);
+    }
+    process::exit(status.code().unwrap_or(1));
+}
+
+/// Project-mode `check`: manifest load + dep resolution + parse + typecheck.
+/// No codegen, no JDK required. Exits 0 on success, 1 on any error.
+fn check_project(timings: bool) -> ! {
+    let (ctx, resolve_dur) = load_project_context();
+
+    let (entry, _is_main) = select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", entry.path.display(), e);
+        process::exit(1);
+    });
+
+    let source_root = ctx.project_root.join("src");
+    let deps = ctx.graph.source_roots(&ctx.manifest);
+    let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    // Use a project-relative path for diagnostics (e.g. "src/main.kr") so
+    // error output is readable rather than an absolute temp-dir path.
+    let diag_path = entry
+        .path
+        .strip_prefix(&ctx.project_root)
+        .unwrap_or(&entry.path)
+        .to_string_lossy()
+        .to_string();
+
+    let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
+
+    let t = Instant::now();
+    let (module, errors) = do_parse(&source);
+    phases.push(("parse", t.elapsed()));
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&diag_path, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+
+    let t = Instant::now();
+    match krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        entry.module_path.clone(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok(_) => {
+            phases.push(("typecheck", t.elapsed()));
+        }
+        Err(errors) => {
+            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                &diag_path, &source, &errors,
+            );
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    }
+
+    if timings {
+        print_timings(&phases);
+    }
+    process::exit(0);
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
@@ -676,6 +1050,9 @@ fn main() {
             }
         }
         Commands::Run { file, target } => {
+            let Some(file) = file else {
+                run_project(target, timings);
+            };
             info!(file = %file, "starting compilation");
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
@@ -716,6 +1093,9 @@ fn main() {
             unreachable!("run sinks must exit inside compile_with_resolver");
         }
         Commands::Check { file } => {
+            let Some(file) = file else {
+                check_project(timings);
+            };
             let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", file, e);
                 process::exit(1);
@@ -908,126 +1288,29 @@ fn main() {
             println!("wrote {}", lock_path.display());
         }
         Commands::Build { target } => {
-            let cwd = std::env::current_dir().unwrap_or_else(|e| {
-                eprintln!("Error: could not resolve current directory: {e}");
-                process::exit(1);
-            });
-            let project_root = find_project_root(&cwd).unwrap_or_else(|| {
-                eprintln!(
-                    "Error: project has no krypton.toml (searched from {})",
-                    cwd.display()
-                );
-                process::exit(1);
-            });
-            let manifest_path = project_root.join("krypton.toml");
-            let manifest = krypton_package_manager::Manifest::from_path(&manifest_path)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
-                    process::exit(1);
-                });
+            let (ctx, resolve_dur) = load_project_context();
+            let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
 
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-
-            let t = Instant::now();
-            let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-            let lock_path = project_root.join("krypton.lock");
-            let graph = if lock_path.is_file() {
-                let lockfile = krypton_package_manager::Lockfile::read(&lock_path)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    });
-                if lockfile.is_current(&manifest, &project_root) {
-                    lockfile
-                        .to_resolved_graph(&cache, &project_root)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error: {e}");
-                            process::exit(1);
-                        })
-                } else {
-                    let graph = krypton_package_manager::resolve(
-                        &project_root,
-                        manifest.clone(),
-                        &cache,
-                    )
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    });
-                    let regenerated =
-                        krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
-                            .unwrap_or_else(|e| {
-                                eprintln!("Error: {e}");
-                                process::exit(1);
-                            });
-                    regenerated.write(&lock_path).unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    });
-                    graph
-                }
-            } else {
-                let graph =
-                    krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error: {e}");
-                            process::exit(1);
-                        });
-                let lockfile =
-                    krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Error: {e}");
-                            process::exit(1);
-                        });
-                lockfile.write(&lock_path).unwrap_or_else(|e| {
+            let (entry, is_main) =
+                select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
                     eprintln!("Error: {e}");
                     process::exit(1);
                 });
-                graph
-            };
-            phases.push(("resolve", t.elapsed()));
 
-            let main_path = project_root.join("src/main.kr");
-            let lib_path = project_root.join("src/lib.kr");
-            let (entry_path, require_main, entry_class_name, entry_module_path) =
-                if main_path.is_file() {
-                    (
-                        main_path,
-                        true,
-                        "Kr$Main".to_string(),
-                        "main".to_string(),
-                    )
-                } else if lib_path.is_file() {
-                    (
-                        lib_path,
-                        false,
-                        "Kr$Lib".to_string(),
-                        "lib".to_string(),
-                    )
-                } else {
-                    eprintln!(
-                        "Error: project has no src/main.kr or src/lib.kr (searched {})",
-                        project_root.join("src").display()
-                    );
-                    process::exit(1);
-                };
-
-            let source = std::fs::read_to_string(&entry_path).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", entry_path.display(), e);
+            let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
+                eprintln!("Error reading {}: {}", entry.path.display(), e);
                 process::exit(1);
             });
 
-            let source_root = project_root.join("src");
-            let deps = graph.source_roots(&manifest);
+            let source_root = ctx.project_root.join("src");
+            let deps = ctx.graph.source_roots(&ctx.manifest);
             let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
                 process::exit(1);
             });
 
-            let leaf = manifest
+            let leaf = ctx
+                .manifest
                 .package
                 .name
                 .rsplit('/')
@@ -1036,27 +1319,28 @@ fn main() {
 
             let sink = match target {
                 Target::Jvm => CompileSink::Jar {
-                    path: project_root
+                    path: ctx
+                        .project_root
                         .join("target")
                         .join("jvm")
                         .join(format!("{leaf}.jar")),
                 },
                 Target::Js => CompileSink::JsDir {
-                    dir: project_root.join("target").join("js"),
+                    dir: ctx.project_root.join("target").join("js"),
                     main_rename: Some(format!("{leaf}.mjs")),
                 },
             };
 
-            let diag_path = entry_path.to_string_lossy().to_string();
+            let diag_path = entry.path.to_string_lossy().to_string();
             compile_with_resolver(
                 CompileInputs {
                     diag_path: &diag_path,
                     source: &source,
-                    entry_module_path,
-                    entry_class_name,
+                    entry_module_path: entry.module_path,
+                    entry_class_name: entry.class_name,
                     resolver,
                     target,
-                    require_main,
+                    require_main: is_main,
                     sink,
                     timings,
                 },
