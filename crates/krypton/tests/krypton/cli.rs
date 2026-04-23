@@ -826,3 +826,371 @@ fn test_check_file_still_works() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+// ---------------------------------------------------------------------------
+// `krypton add` / `krypton remove` / `krypton update`
+// ---------------------------------------------------------------------------
+
+/// Invoke `git -C <dir> <args>` and assert success.
+fn git(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap_or_else(|e| panic!("git {args:?} in {}: {e}", dir.display()));
+    assert!(
+        output.status.success(),
+        "git {args:?} in {} failed: stderr={}",
+        dir.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+/// Initialize a self-contained git repo at `dir` with the given files,
+/// commit them on `main`, and return the resulting SHA. Uses a local
+/// identity and disables gpg signing so the test does not depend on
+/// the developer's git config.
+fn git_init_repo(dir: &std::path::Path, files: &[(&str, &str)]) -> String {
+    Command::new("git")
+        .args(["-c", "init.defaultBranch=main", "init", "--quiet"])
+        .arg(dir)
+        .output()
+        .expect("git init");
+    git(dir, &["config", "user.email", "test@example.invalid"]);
+    git(dir, &["config", "user.name", "Test User"]);
+    git(dir, &["config", "commit.gpgsign", "false"]);
+    for (rel, contents) in files {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+    git(dir, &["add", "--all"]);
+    git(dir, &["commit", "-m", "initial", "--quiet"]);
+    let out = git(dir, &["rev-parse", "HEAD"]);
+    String::from_utf8(out.stdout).unwrap().trim().to_string()
+}
+
+fn git_add_commit(dir: &std::path::Path, message: &str, files: &[(&str, &str)]) -> String {
+    for (rel, contents) in files {
+        let path = dir.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, contents).unwrap();
+    }
+    git(dir, &["add", "--all"]);
+    git(dir, &["commit", "-m", message, "--quiet"]);
+    let out = git(dir, &["rev-parse", "HEAD"]);
+    String::from_utf8(out.stdout).unwrap().trim().to_string()
+}
+
+/// Create a sibling path-dep directory `<parent>/mylib/` with a minimal
+/// valid `krypton.toml` and `src/lib.kr`. Returns its absolute path.
+fn write_sibling_path_dep(parent: &std::path::Path, name: &str, canonical: &str) -> PathBuf {
+    let dep = parent.join(name);
+    std::fs::create_dir_all(dep.join("src")).unwrap();
+    std::fs::write(
+        dep.join("krypton.toml"),
+        format!("[package]\nname = \"{canonical}\"\nversion = \"0.1.0\"\n"),
+    )
+    .unwrap();
+    std::fs::write(dep.join("src/lib.kr"), "fun greet() = \"hi\"\n").unwrap();
+    dep
+}
+
+#[test]
+fn test_add_path_dep_updates_manifest_and_lock() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+    write_sibling_path_dep(dir.path(), "mylib", "clementine/mylib");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["add", "clementine/mylib", "--path", "../mylib"])
+        .output()
+        .expect("failed to run krypton add");
+    assert!(
+        output.status.success(),
+        "add should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
+    assert!(
+        toml.contains(r#"mylib = { package = "clementine/mylib", path = "../mylib" }"#),
+        "manifest should list the new dep, got:\n{toml}"
+    );
+
+    let lock = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+    assert!(
+        lock.contains("clementine/mylib"),
+        "lockfile should mention the new dep, got:\n{lock}"
+    );
+}
+
+#[test]
+fn test_add_git_dep_records_git_fields() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+
+    // Build a local git repo that a `--git` dep can point at.
+    let remote = dir.path().join("remote.git");
+    std::fs::create_dir_all(&remote).unwrap();
+    git_init_repo(
+        &remote,
+        &[(
+            "krypton.toml",
+            "[package]\nname = \"clementine/mylib\"\nversion = \"0.1.0\"\n",
+        )],
+    );
+    git(&remote, &["tag", "v0.1.0"]);
+
+    let url = format!("file://{}", remote.display());
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["add", "clementine/mylib", "--git", &url, "--tag", "v0.1.0"])
+        .output()
+        .expect("failed to run krypton add --git");
+    assert!(
+        output.status.success(),
+        "add --git should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
+    assert!(toml.contains("git = "), "manifest should contain git url: {toml}");
+    assert!(
+        toml.contains(r#"tag = "v0.1.0""#),
+        "manifest should contain tag: {toml}"
+    );
+}
+
+#[test]
+fn test_add_errors_on_existing_local_root() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+    let dep_path = write_sibling_path_dep(dir.path(), "mylib", "clementine/mylib");
+
+    // Seed an initial `mylib` entry.
+    let toml_path = project.join("krypton.toml");
+    let mut toml = std::fs::read_to_string(&toml_path).unwrap();
+    toml.push_str(&format!(
+        "mylib = {{ package = \"clementine/mylib\", path = \"{}\" }}\n",
+        dep_path.display()
+    ));
+    std::fs::write(&toml_path, toml).unwrap();
+
+    // A second `krypton add` with the same default local-root must error.
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["add", "clementine/mylib", "--path", "../x"])
+        .output()
+        .expect("failed to run krypton add");
+    assert!(!output.status.success(), "duplicate add should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("dependency 'mylib' already exists"),
+        "stderr should mention duplication, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_add_with_as_flag_uses_custom_local_root() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+    write_sibling_path_dep(dir.path(), "mylib", "clementine/mylib");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args([
+            "add",
+            "clementine/mylib",
+            "--path",
+            "../mylib",
+            "--as",
+            "my_lib",
+        ])
+        .output()
+        .expect("failed to run krypton add --as");
+    assert!(
+        output.status.success(),
+        "add --as should succeed: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
+    assert!(
+        toml.contains(r#"my_lib = { package = "clementine/mylib""#),
+        "manifest should use custom local root 'my_lib': {toml}"
+    );
+    assert!(
+        !toml.contains("\nmylib = "),
+        "default 'mylib' key must not have been inserted: {toml}"
+    );
+}
+
+#[test]
+fn test_remove_existing_dep() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+    write_sibling_path_dep(dir.path(), "mylib", "clementine/mylib");
+
+    // First add, then remove.
+    let add = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["add", "clementine/mylib", "--path", "../mylib"])
+        .output()
+        .expect("failed to run krypton add");
+    assert!(add.status.success(), "add should succeed");
+
+    let remove = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["remove", "mylib"])
+        .output()
+        .expect("failed to run krypton remove");
+    assert!(
+        remove.status.success(),
+        "remove should succeed: stderr={}",
+        String::from_utf8_lossy(&remove.stderr)
+    );
+
+    let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
+    assert!(!toml.contains("clementine/mylib"), "dep should be gone: {toml}");
+
+    let lock = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+    assert!(
+        !lock.contains("clementine/mylib"),
+        "lockfile should no longer reference the dep, got:\n{lock}"
+    );
+}
+
+#[test]
+fn test_remove_nonexistent_errors() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["remove", "does-not-exist"])
+        .output()
+        .expect("failed to run krypton remove");
+    assert!(!output.status.success(), "remove of missing dep must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("dependency 'does-not-exist' not found in [dependencies]"),
+        "stderr should report missing dep, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_update_rewrites_lockfile_for_branch_dep() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+
+    // Build a local git repo we can push additional commits to.
+    let remote = dir.path().join("remote");
+    std::fs::create_dir_all(&remote).unwrap();
+    let first_sha = git_init_repo(
+        &remote,
+        &[(
+            "krypton.toml",
+            "[package]\nname = \"clementine/mylib\"\nversion = \"0.1.0\"\n",
+        )],
+    );
+
+    let url = format!("file://{}", remote.display());
+    // Add a branch-tracked dep, which will populate the lockfile with first_sha.
+    let add = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["add", "clementine/mylib", "--git", &url, "--branch", "main"])
+        .output()
+        .expect("failed to run krypton add --git --branch");
+    assert!(
+        add.status.success(),
+        "add --git --branch should succeed: stderr={}",
+        String::from_utf8_lossy(&add.stderr)
+    );
+    let lock_before = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+    assert!(
+        lock_before.contains(&first_sha),
+        "initial lockfile should pin to first sha {first_sha}, got:\n{lock_before}"
+    );
+
+    // Push a second commit that bumps the dep version.
+    let second_sha = git_add_commit(
+        &remote,
+        "second",
+        &[(
+            "krypton.toml",
+            "[package]\nname = \"clementine/mylib\"\nversion = \"0.2.0\"\n",
+        )],
+    );
+    assert_ne!(first_sha, second_sha);
+
+    let update = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("update")
+        .output()
+        .expect("failed to run krypton update");
+    assert!(
+        update.status.success(),
+        "update should succeed: stderr={}",
+        String::from_utf8_lossy(&update.stderr)
+    );
+
+    let lock_after = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+    assert!(
+        lock_after.contains(&second_sha),
+        "updated lockfile should advance to {second_sha}, got:\n{lock_after}"
+    );
+    assert!(
+        !lock_after.contains(&first_sha),
+        "updated lockfile should no longer reference first sha {first_sha}, got:\n{lock_after}"
+    );
+}
+
+#[test]
+fn test_update_noop_when_nothing_changed() {
+    let dir = tempdir().expect("tempdir");
+    let project = init_project_for_test(dir.path());
+
+    let first = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("update")
+        .output()
+        .expect("failed to run krypton update");
+    assert!(
+        first.status.success(),
+        "first update should succeed: stderr={}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let lock_first = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+
+    let second = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("update")
+        .output()
+        .expect("failed to run second krypton update");
+    assert!(second.status.success(), "second update should succeed");
+    let lock_second = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
+
+    assert_eq!(
+        lock_first, lock_second,
+        "re-running update on a fresh project should be a no-op"
+    );
+}

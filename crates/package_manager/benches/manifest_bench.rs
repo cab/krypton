@@ -1,5 +1,7 @@
+use std::path::{Path, PathBuf};
+
 use criterion::{criterion_group, criterion_main, Criterion};
-use krypton_package_manager::Manifest;
+use krypton_package_manager::{AddSource, Manifest, ManifestEditor};
 
 const TRIVIAL: &str = r#"[package]
 name = "my-org/app"
@@ -37,6 +39,38 @@ fn manifest_benchmarks(c: &mut Criterion) {
     });
     c.bench_function("manifest_parse_spec_example", |b| {
         b.iter(|| Manifest::from_str(std::hint::black_box(SPEC_EXAMPLE)).unwrap());
+    });
+
+    let path = Path::new("krypton.toml");
+    c.bench_function("manifest_edit_add_dep", |b| {
+        b.iter(|| {
+            let mut editor = ManifestEditor::from_str_with_path(
+                std::hint::black_box(SPEC_EXAMPLE),
+                path,
+            )
+            .unwrap();
+            editor
+                .add_dependency(
+                    "clementine/new",
+                    AddSource::Path {
+                        path: PathBuf::from("../new"),
+                    },
+                    None,
+                )
+                .unwrap();
+            std::hint::black_box(editor.render())
+        });
+    });
+    c.bench_function("manifest_edit_remove_dep", |b| {
+        b.iter(|| {
+            let mut editor = ManifestEditor::from_str_with_path(
+                std::hint::black_box(SPEC_EXAMPLE),
+                path,
+            )
+            .unwrap();
+            editor.remove_dependency("http").unwrap();
+            std::hint::black_box(editor.render())
+        });
     });
 }
 

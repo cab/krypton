@@ -3,6 +3,7 @@ pub mod fetch;
 pub mod init;
 pub mod lock;
 pub mod manifest;
+pub mod manifest_edit;
 pub mod maven;
 pub mod resolve;
 pub mod version;
@@ -16,6 +17,7 @@ pub use lock::{
 pub use manifest::{
     DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo,
 };
+pub use manifest_edit::{AddSource, ManifestEditError, ManifestEditor};
 pub use resolve::{
     CanonicalName, ResolveError, ResolvedGraph, ResolvedPackage, SourceDescriptor, SourceType,
     resolve,

@@ -2,9 +2,12 @@ mod inspect;
 mod repl;
 mod repl_compile;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
+use krypton_package_manager::{
+    AddSource, GitRef, Lockfile, Manifest, ManifestEditor,
+};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, Instant};
@@ -135,6 +138,47 @@ enum Commands {
         #[arg(long, default_value = "jvm")]
         target: Target,
     },
+    /// Add a dependency to krypton.toml and re-resolve.
+    #[command(group(
+        ArgGroup::new("source")
+            .required(true)
+            .multiple(false)
+            .args(["git", "path", "version"]),
+    ))]
+    #[command(group(
+        ArgGroup::new("git_ref")
+            .multiple(false)
+            .args(["tag", "branch", "rev"]),
+    ))]
+    Add {
+        /// Canonical package name in `owner/name` form.
+        name: String,
+
+        #[arg(long)]
+        git: Option<String>,
+        #[arg(long)]
+        path: Option<PathBuf>,
+        #[arg(long)]
+        version: Option<String>,
+
+        #[arg(long, requires = "git")]
+        tag: Option<String>,
+        #[arg(long, requires = "git")]
+        branch: Option<String>,
+        #[arg(long, requires = "git")]
+        rev: Option<String>,
+
+        /// Override the default local import-root name.
+        #[arg(long = "as")]
+        as_name: Option<String>,
+    },
+    /// Remove a dependency from krypton.toml and re-resolve.
+    Remove {
+        /// The local import-root name (the key under [dependencies]).
+        name: String,
+    },
+    /// Re-fetch moving refs and regenerate krypton.lock.
+    Update,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -551,6 +595,46 @@ fn find_project_root(start: &Path) -> Option<PathBuf> {
             return None;
         }
     }
+}
+
+/// Resolve the dependency graph for `manifest` rooted at `project_root` and
+/// write `krypton.lock`. Prints errors and exits with code 1 on failure.
+fn resolve_and_write_lockfile(project_root: &Path, manifest: Manifest) {
+    let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let graph = krypton_package_manager::resolve(project_root, manifest, &cache)
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+    let lockfile =
+        Lockfile::generate(&graph, &[], project_root).unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+    let lock_path = project_root.join("krypton.lock");
+    lockfile.write(&lock_path).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+}
+
+/// Locate `krypton.toml` from the current directory and return the project
+/// root and manifest path. Exits with code 1 if no manifest is found.
+fn find_project_root_or_exit() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|e| {
+        eprintln!("Error: could not resolve current directory: {e}");
+        process::exit(1);
+    });
+    find_project_root(&cwd).unwrap_or_else(|| {
+        eprintln!(
+            "Error: project has no krypton.toml (searched from {})",
+            cwd.display()
+        );
+        process::exit(1);
+    })
 }
 
 /// Shared preamble for project-aware commands (`build`, `run`, `check`):
@@ -1405,6 +1489,124 @@ fn main() {
                     process::exit(1);
                 }
             }
+        }
+        Commands::Add {
+            name,
+            git,
+            path,
+            version,
+            tag,
+            branch,
+            rev,
+            as_name,
+        } => {
+            let source = match (git, path, version) {
+                (Some(url), None, None) => {
+                    let git_ref = match (tag, branch, rev) {
+                        (Some(t), None, None) => GitRef::Tag(t),
+                        (None, Some(b), None) => GitRef::Branch(b),
+                        (None, None, Some(r)) => GitRef::Rev(r),
+                        _ => {
+                            eprintln!(
+                                "Error: --git requires exactly one of --tag, --branch, or --rev"
+                            );
+                            process::exit(2);
+                        }
+                    };
+                    AddSource::Git { url, git_ref }
+                }
+                (None, Some(path), None) => AddSource::Path { path },
+                (None, None, Some(version)) => AddSource::Registry { version },
+                // clap's ArgGroup enforces exactly-one; this branch is for
+                // coverage in case that constraint is ever weakened.
+                _ => {
+                    eprintln!(
+                        "Error: exactly one of --git, --path, or --version is required"
+                    );
+                    process::exit(2);
+                }
+            };
+
+            let project_root = find_project_root_or_exit();
+            let manifest_path = project_root.join("krypton.toml");
+
+            let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            let local_root = editor
+                .add_dependency(&name, source, as_name.as_deref())
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
+
+            // Defensive validation: re-parse the edited manifest before
+            // touching the filesystem. Normal writes always produce valid
+            // TOML, but this guards against editor bugs cheaply.
+            let edited = editor.render();
+            let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
+                eprintln!(
+                    "Error: internal error: edited manifest is invalid: {e}"
+                );
+                process::exit(1);
+            });
+
+            std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
+                eprintln!(
+                    "Error: failed to write '{}': {e}",
+                    manifest_path.display()
+                );
+                process::exit(1);
+            });
+
+            resolve_and_write_lockfile(&project_root, manifest);
+            println!("added '{local_root}' ({name})");
+        }
+        Commands::Remove { name } => {
+            let project_root = find_project_root_or_exit();
+            let manifest_path = project_root.join("krypton.toml");
+
+            let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+            editor.remove_dependency(&name).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
+
+            let edited = editor.render();
+            let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
+                eprintln!(
+                    "Error: internal error: edited manifest is invalid: {e}"
+                );
+                process::exit(1);
+            });
+
+            std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
+                eprintln!(
+                    "Error: failed to write '{}': {e}",
+                    manifest_path.display()
+                );
+                process::exit(1);
+            });
+
+            resolve_and_write_lockfile(&project_root, manifest);
+            println!("removed '{name}'");
+        }
+        Commands::Update => {
+            let project_root = find_project_root_or_exit();
+            let manifest_path = project_root.join("krypton.toml");
+            let manifest = Manifest::from_path(&manifest_path).unwrap_or_else(|e| {
+                eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+                process::exit(1);
+            });
+            // `resolve` re-fetches git sources via `fetch_git::ensure_persistent_clone`,
+            // so branch refs naturally advance to current HEAD here.
+            resolve_and_write_lockfile(&project_root, manifest);
+            let lock_path = project_root.join("krypton.lock");
+            println!("updated {}", lock_path.display());
         }
     }
 }

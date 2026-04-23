@@ -348,7 +348,7 @@ fn stray_git_refs(has_tag: bool, has_rev: bool, has_branch: bool) -> String {
     parts.join(", ")
 }
 
-fn validate_owner_name(s: &str) -> Result<(), String> {
+pub(crate) fn validate_owner_name(s: &str) -> Result<(), String> {
     let mut parts = s.split('/');
     let owner = parts.next().unwrap_or("");
     let name = parts.next().unwrap_or("");

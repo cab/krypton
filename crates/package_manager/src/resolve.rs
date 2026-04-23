@@ -161,7 +161,7 @@ fn dep_spec_canonical(spec: &DepSpec) -> &str {
     }
 }
 
-fn default_local_root_name(name_leaf: &str) -> String {
+pub(crate) fn default_local_root_name(name_leaf: &str) -> String {
     name_leaf.replace('-', "_")
 }
 
