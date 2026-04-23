@@ -9,3 +9,4 @@ pub mod version;
 pub use manifest::{
     DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo,
 };
+pub use version::{VersionReq, VersionReqError, VersionReqErrorCode};
