@@ -1,8 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use krypton_package_manager::{
-    AddSource, GitRef, Manifest, ManifestEditError, ManifestEditor,
-};
+use krypton_package_manager::{AddSource, GitRef, Manifest, ManifestEditError, ManifestEditor};
 
 fn editor(src: &str) -> ManifestEditor {
     ManifestEditor::from_str_with_path(src, Path::new("krypton.toml"))

@@ -575,8 +575,7 @@ impl TraitRegistry {
     /// replaces the previous per-query BFS/DFS on the hot path.
     fn build_superclass_cache(&self) -> FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>> {
         use std::collections::VecDeque;
-        let mut cache: FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>> =
-            FxHashMap::default();
+        let mut cache: FxHashMap<TraitName, FxHashMap<TraitName, Vec<Type>>> = FxHashMap::default();
         for (descendant_name, descendant_info) in &self.traits {
             if descendant_info.superclasses.is_empty() {
                 continue;
@@ -594,7 +593,9 @@ impl TraitRegistry {
                 // First visit wins: BFS guarantees the shortest path, and
                 // the previous per-query implementation returned on first
                 // match too, so downstream behavior is preserved.
-                ancestors.entry(cur.clone()).or_insert_with(|| cur_args.clone());
+                ancestors
+                    .entry(cur.clone())
+                    .or_insert_with(|| cur_args.clone());
                 let Some(cur_info) = self.lookup_trait(&cur) else {
                     continue;
                 };
@@ -2159,11 +2160,8 @@ mod tests {
     fn superclass_cache_direct_hop() {
         let mut gen = TypeVarGen::new();
         let (functor, _functor_tv) = trait_info_single_with_gen("Functor", &mut gen, vec![]);
-        let (applicative, applicative_tv) = trait_info_single_with_gen(
-            "Applicative",
-            &mut gen,
-            vec![(tn("Functor"), vec![])],
-        );
+        let (applicative, applicative_tv) =
+            trait_info_single_with_gen("Applicative", &mut gen, vec![(tn("Functor"), vec![])]);
         // Fix up the superclass args to reference Applicative's own type var.
         let mut applicative = applicative;
         applicative.superclasses = vec![(tn("Functor"), vec![Type::Var(applicative_tv)])];
@@ -2316,11 +2314,8 @@ mod tests {
                 if descendant == ancestor {
                     continue;
                 }
-                let reference =
-                    reference_superclass_substitution(&registry, ancestor, descendant);
-                let cached = cache
-                    .get(descendant)
-                    .and_then(|m| m.get(ancestor).cloned());
+                let reference = reference_superclass_substitution(&registry, ancestor, descendant);
+                let cached = cache.get(descendant).and_then(|m| m.get(ancestor).cloned());
                 assert_eq!(
                     cached, reference,
                     "cache/reference divergence for ({descendant:?} → {ancestor:?})"

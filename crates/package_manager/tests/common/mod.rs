@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use tempfile::{TempDir, tempdir};
+use tempfile::{tempdir, TempDir};
 
 pub fn run_in(dir: &Path, args: &[&str]) -> std::process::Output {
     let output = Command::new("git")

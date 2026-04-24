@@ -81,7 +81,8 @@ pub fn module_path_from_file(file: &Path, src_dir: &Path) -> String {
         .strip_prefix(src_dir)
         .expect("file must live under src_dir");
     let stem = rel.with_extension("");
-    stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
+    stem.to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 fn starts_with_dot(name: &OsStr) -> bool {
@@ -209,10 +210,7 @@ mod tests {
 
         let result = walk_project_sources(&src).unwrap();
         assert!(result.sources.is_empty());
-        assert_eq!(
-            relative_paths(&result.tests, &src),
-            vec!["helpers_test.kr"]
-        );
+        assert_eq!(relative_paths(&result.tests, &src), vec!["helpers_test.kr"]);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use krypton_package_manager::{CacheDir, Manifest, resolve};
+use krypton_package_manager::{resolve, CacheDir, Manifest};
 use tempfile::tempdir;
 
 mod common;

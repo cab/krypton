@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use krypton_package_manager::{
-    CacheDir, Lockfile, LockfileError, Manifest, MavenArtifact, resolve,
+    resolve, CacheDir, Lockfile, LockfileError, Manifest, MavenArtifact,
 };
 use tempfile::tempdir;
 
@@ -322,10 +322,7 @@ fn is_current_false_when_git_rev_changed() {
     let sha2 = add_commit(
         &remote,
         "bump",
-        &[(
-            "krypton.toml",
-            &manifest("clementine/http", "0.3.1"),
-        )],
+        &[("krypton.toml", &manifest("clementine/http", "0.3.1"))],
     );
     assert_ne!(sha1, sha2);
 
@@ -465,7 +462,10 @@ fn git_entry_has_rev_path_entry_does_not() {
             );
         }
     }
-    assert!(saw_git && saw_path, "fixture should have one git and one path row");
+    assert!(
+        saw_git && saw_path,
+        "fixture should have one git and one path row"
+    );
 }
 
 #[test]
@@ -497,7 +497,10 @@ fn maven_entries_roundtrip() {
 
     assert_eq!(read_back.maven.len(), 2);
     // Sorted by coord: com.google.guava precedes org.postgresql.
-    assert_eq!(read_back.maven[0].coord, "com.google.guava:guava:33.0.0-jre");
+    assert_eq!(
+        read_back.maven[0].coord,
+        "com.google.guava:guava:33.0.0-jre"
+    );
     assert_eq!(read_back.maven[1].coord, "org.postgresql:postgresql:42.7.1");
     assert_eq!(read_back.maven[0].hash, "sha256:fedcba");
     assert_eq!(
@@ -514,7 +517,10 @@ fn fresh_second_build_scenario() {
 
     // First build: no lockfile → generate + write.
     let lock_path = fx.root_dir.join("krypton.lock");
-    assert!(!lock_path.exists(), "fresh project should not have a lockfile");
+    assert!(
+        !lock_path.exists(),
+        "fresh project should not have a lockfile"
+    );
     let lock = Lockfile::generate(&graph, &[], &fx.root_dir).unwrap();
     lock.write(&lock_path).unwrap();
     assert!(lock_path.exists());

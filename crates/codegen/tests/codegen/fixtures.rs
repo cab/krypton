@@ -183,7 +183,8 @@ fn codegen_fixture(
                     let (ir_modules, module_sources) =
                         lower_all(&typed_modules, "Kr$Test", &link_ctx)
                             .unwrap_or_else(|e| panic!("fixture {name}: lowering failed: {e}"));
-                    match compile_modules(&ir_modules, "Kr$Test", true, &link_ctx, &module_sources) {
+                    match compile_modules(&ir_modules, "Kr$Test", true, &link_ctx, &module_sources)
+                    {
                         Ok(_)
                         | Err(krypton_codegen::emit::CodegenError {
                             kind: krypton_codegen::emit::CodegenErrorKind::NoMainFunction,

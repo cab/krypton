@@ -5265,8 +5265,7 @@ impl<'a> LowerCtx<'a> {
         trait_name: &TraitName,
         target_ids: &[TypeVarId],
     ) -> Result<Option<SuperclassProjectionPlan>, LowerError> {
-        let target_ir_expected: Vec<IrType> =
-            target_ids.iter().copied().map(IrType::Var).collect();
+        let target_ir_expected: Vec<IrType> = target_ids.iter().copied().map(IrType::Var).collect();
 
         // Find the best in-scope descendant: shortest closure distance to
         // `trait_name` at the correctly-substituted targets, tie-break by
@@ -5329,8 +5328,7 @@ impl<'a> LowerCtx<'a> {
         // next hop's target types.
         let mut hops: Vec<SuperclassProjectionHop> = Vec::with_capacity(path.len());
         let mut cur_trait = descendant_trait;
-        let mut cur_args: Vec<IrType> =
-            descendant_tvs.iter().copied().map(IrType::Var).collect();
+        let mut cur_args: Vec<IrType> = descendant_tvs.iter().copied().map(IrType::Var).collect();
         for next_trait in &path {
             let (field_index, stored_next_args) = {
                 let direct = self
@@ -5343,24 +5341,18 @@ impl<'a> LowerCtx<'a> {
                         cur_trait.local_name, next_trait.local_name
                     )));
                 };
-                let stored: Vec<IrType> = direct[idx]
-                    .1
-                    .iter()
-                    .cloned()
-                    .map(IrType::from)
-                    .collect();
+                let stored: Vec<IrType> = direct[idx].1.iter().cloned().map(IrType::from).collect();
                 (idx, stored)
             };
-            let cur_params: Vec<TypeVarId> =
-                match self.link_view.trait_type_var_ids(&cur_trait) {
-                    Some(p) => p.to_vec(),
-                    None => {
-                        return Err(LowerError::InternalError(format!(
-                            "ICE: no type_var_ids for trait {}",
-                            cur_trait.local_name
-                        )));
-                    }
-                };
+            let cur_params: Vec<TypeVarId> = match self.link_view.trait_type_var_ids(&cur_trait) {
+                Some(p) => p.to_vec(),
+                None => {
+                    return Err(LowerError::InternalError(format!(
+                        "ICE: no type_var_ids for trait {}",
+                        cur_trait.local_name
+                    )));
+                }
+            };
             if cur_params.len() != cur_args.len() {
                 return Err(LowerError::InternalError(format!(
                     "ICE: trait {} has {} type params but {} args supplied at projection hop",
@@ -6083,8 +6075,7 @@ impl<'a> LowerCtx<'a> {
         let old_dict_params = std::mem::replace(&mut self.dict_params, new_dict_params);
         // Lambda dict scope is independent; drop the parent's projection
         // cache for the duration of the body and restore it on exit.
-        let old_superclass_projection_cache =
-            std::mem::take(&mut self.superclass_projection_cache);
+        let old_superclass_projection_cache = std::mem::take(&mut self.superclass_projection_cache);
 
         // Save and clear recur/early-return join points — these belong to the
         // enclosing function and must not leak into the lifted lambda.
@@ -7416,9 +7407,7 @@ pub fn lower_module(
             direct_superclasses: trait_def
                 .superclasses
                 .iter()
-                .map(|(n, args)| {
-                    (n.clone(), args.iter().cloned().map(IrType::from).collect())
-                })
+                .map(|(n, args)| (n.clone(), args.iter().cloned().map(IrType::from).collect()))
                 .collect(),
         });
     }
@@ -8302,9 +8291,7 @@ mod tests {
     use super::*;
     use krypton_parser::ast::{Lit, ParamMode};
     use krypton_typechecker::link_context::ModuleLinkView;
-    use krypton_typechecker::module_interface::{
-        ModuleInterface, ModulePath as LinkModulePath,
-    };
+    use krypton_typechecker::module_interface::{ModuleInterface, ModulePath as LinkModulePath};
 
     /// Build a minimal [`LowerCtx`] sufficient to drive `resolve_call_dicts`
     /// into its `bind_type_vars` path. Unused subsystems are left empty.

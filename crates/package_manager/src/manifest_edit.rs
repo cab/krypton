@@ -63,7 +63,11 @@ impl fmt::Display for ManifestEditError {
                 write!(f, "I/O error at '{}': {source}", path.display())
             }
             ManifestEditError::Parse { path, message } => {
-                write!(f, "failed to parse manifest '{}': {message}", path.display())
+                write!(
+                    f,
+                    "failed to parse manifest '{}': {message}",
+                    path.display()
+                )
             }
             ManifestEditError::InvalidCanonical(e) => {
                 write!(f, "invalid package name: {e}")
@@ -106,12 +110,12 @@ impl ManifestEditor {
             path: path.to_path_buf(),
             source,
         })?;
-        let doc: DocumentMut = src.parse().map_err(|e: toml_edit::TomlError| {
-            ManifestEditError::Parse {
-                path: path.to_path_buf(),
-                message: e.to_string(),
-            }
-        })?;
+        let doc: DocumentMut =
+            src.parse()
+                .map_err(|e: toml_edit::TomlError| ManifestEditError::Parse {
+                    path: path.to_path_buf(),
+                    message: e.to_string(),
+                })?;
         Ok(Self {
             path: path.to_path_buf(),
             doc,
@@ -125,12 +129,12 @@ impl ManifestEditor {
         path: impl Into<PathBuf>,
     ) -> Result<Self, ManifestEditError> {
         let path = path.into();
-        let doc: DocumentMut = src.parse().map_err(|e: toml_edit::TomlError| {
-            ManifestEditError::Parse {
-                path: path.clone(),
-                message: e.to_string(),
-            }
-        })?;
+        let doc: DocumentMut =
+            src.parse()
+                .map_err(|e: toml_edit::TomlError| ManifestEditError::Parse {
+                    path: path.clone(),
+                    message: e.to_string(),
+                })?;
         Ok(Self { path, doc })
     }
 
@@ -300,4 +304,3 @@ fn path_to_toml_string(p: &Path) -> String {
         p.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
     }
 }
-

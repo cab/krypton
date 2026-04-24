@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use krypton_package_manager::{CacheDir, FetchError, GitRef, fetch_git};
+use krypton_package_manager::{fetch_git, CacheDir, FetchError, GitRef};
 use tempfile::tempdir;
 
 mod common;
@@ -64,8 +64,8 @@ fn rev_ref_checks_out_exact_sha() {
     .expect("fetch_git rev");
 
     assert_eq!(fetched.sha, first_sha);
-    let on_disk = std::fs::read_to_string(fetched.source_dir.join("krypton.toml"))
-        .expect("read manifest");
+    let on_disk =
+        std::fs::read_to_string(fetched.source_dir.join("krypton.toml")).expect("read manifest");
     assert!(on_disk.contains("0.1.0"));
 }
 

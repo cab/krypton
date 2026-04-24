@@ -1,6 +1,6 @@
 use std::fs;
 
-use krypton_package_manager::{InitError, Manifest, init_project};
+use krypton_package_manager::{init_project, InitError, Manifest};
 use semver::Version;
 use tempfile::tempdir;
 
@@ -12,8 +12,14 @@ fn creates_expected_files_and_directories() {
     assert_eq!(dir, tmp.path().join("my-app"));
     assert!(dir.is_dir(), "project dir should exist");
     assert!(dir.join("src").is_dir(), "src/ should exist");
-    assert!(dir.join("krypton.toml").is_file(), "krypton.toml should exist");
-    assert!(dir.join("src/main.kr").is_file(), "src/main.kr should exist");
+    assert!(
+        dir.join("krypton.toml").is_file(),
+        "krypton.toml should exist"
+    );
+    assert!(
+        dir.join("src/main.kr").is_file(),
+        "src/main.kr should exist"
+    );
     assert!(dir.join(".gitignore").is_file(), ".gitignore should exist");
 }
 
@@ -27,7 +33,10 @@ fn generated_manifest_roundtrips() {
 
     assert_eq!(manifest.package.name, "clementine/my-app");
     assert_eq!(manifest.package.version, Version::parse("0.1.0").unwrap());
-    assert!(manifest.dependencies.is_empty(), "dependencies should be empty");
+    assert!(
+        manifest.dependencies.is_empty(),
+        "dependencies should be empty"
+    );
     assert!(
         manifest.dev_dependencies.is_empty(),
         "dev-dependencies should be empty"
@@ -64,7 +73,10 @@ fn directory_name_is_name_part() {
     let tmp = tempdir().expect("tempdir");
     init_project(tmp.path(), "clementine/my-app").expect("init succeeds");
 
-    assert!(tmp.path().join("my-app").is_dir(), "tempdir should contain my-app/");
+    assert!(
+        tmp.path().join("my-app").is_dir(),
+        "tempdir should contain my-app/"
+    );
     assert!(
         !tmp.path().join("clementine").exists(),
         "tempdir should not contain an owner-named directory"

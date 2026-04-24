@@ -9,17 +9,13 @@ pub mod resolve;
 pub mod version;
 
 pub use cache::{CacheDir, CacheError};
-pub use fetch::{FetchError, FetchedGitDep, fetch_git};
-pub use init::{InitError, init_project};
-pub use lock::{
-    LockedMaven, LockedPackage, LockedSource, Lockfile, LockfileError, MavenArtifact,
-};
-pub use manifest::{
-    DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo,
-};
+pub use fetch::{fetch_git, FetchError, FetchedGitDep};
+pub use init::{init_project, InitError};
+pub use lock::{LockedMaven, LockedPackage, LockedSource, Lockfile, LockfileError, MavenArtifact};
+pub use manifest::{DepSpec, ErrorCode, GitRef, JvmConfig, Manifest, ManifestError, PackageInfo};
 pub use manifest_edit::{AddSource, ManifestEditError, ManifestEditor};
 pub use resolve::{
-    CanonicalName, ResolveError, ResolvedGraph, ResolvedPackage, SourceDescriptor, SourceType,
-    resolve,
+    resolve, CanonicalName, ResolveError, ResolvedGraph, ResolvedPackage, SourceDescriptor,
+    SourceType,
 };
 pub use version::{VersionReq, VersionReqError, VersionReqErrorCode};

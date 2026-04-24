@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use krypton_modules::module_graph::{
-    ModuleGraphError, build_module_graph, build_module_graph_with_hints,
+    build_module_graph, build_module_graph_with_hints, ModuleGraphError,
 };
 use krypton_modules::module_resolver::ModuleResolver;
 

@@ -128,11 +128,7 @@ fn desugar_with_expr(base: Expr, assignments: Vec<WithAssignment>, span: Span) -
 /// once. Conflicts (duplicate leaves, or a leaf mixed with nested paths
 /// under the same head) fall through to last-wins, matching the
 /// existing `{ p | x = 1, x = 2 }` behavior.
-fn build_nested_struct_update(
-    base: Expr,
-    assignments: Vec<WithAssignment>,
-    span: Span,
-) -> Expr {
+fn build_nested_struct_update(base: Expr, assignments: Vec<WithAssignment>, span: Span) -> Expr {
     let mut groups: Vec<(String, Vec<WithAssignment>)> = Vec::new();
     for (path, value) in assignments {
         let mut iter = path.into_iter();

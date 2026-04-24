@@ -16,7 +16,7 @@ use pubgrub::{
 use semver::{BuildMetadata, Comparator, Op, Prerelease, Version};
 
 use crate::cache::CacheDir;
-use crate::fetch::{FetchError, FetchedGitDep, fetch_git};
+use crate::fetch::{fetch_git, FetchError, FetchedGitDep};
 use crate::manifest::{DepSpec, GitRef, Manifest, ManifestError};
 use crate::version::{VersionReq, VersionReqError};
 

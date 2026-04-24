@@ -21,9 +21,7 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 use crate::cache::CacheDir;
 use crate::manifest::{DepSpec, GitRef, Manifest};
-use crate::resolve::{
-    CanonicalName, ResolvedGraph, ResolvedPackage, SourceType,
-};
+use crate::resolve::{CanonicalName, ResolvedGraph, ResolvedPackage, SourceType};
 use crate::version::VersionReq;
 
 /// A fully-materialized `krypton.lock` document.
@@ -97,7 +95,11 @@ impl fmt::Display for LockfileError {
                 write!(f, "I/O error at '{}': {source}", path.display())
             }
             LockfileError::Parse { path, message } => {
-                write!(f, "failed to parse lockfile '{}': {message}", path.display())
+                write!(
+                    f,
+                    "failed to parse lockfile '{}': {message}",
+                    path.display()
+                )
             }
             LockfileError::Invalid { message } => write!(f, "{message}"),
         }
@@ -274,8 +276,7 @@ impl Lockfile {
         for p in &self.packages {
             let (source_path, source_type) = match &p.source {
                 LockedSource::Git { url, rev } => {
-                    let source_path =
-                        cache.package_source_dir(p.name.owner(), p.name.name(), rev);
+                    let source_path = cache.package_source_dir(p.name.owner(), p.name.name(), rev);
                     let manifest_path = source_path.join("krypton.toml");
                     if !manifest_path.exists() {
                         return Err(LockfileError::Invalid {
@@ -313,15 +314,14 @@ impl Lockfile {
             };
 
             let manifest_path = source_path.join("krypton.toml");
-            let manifest = Manifest::from_path(&manifest_path).map_err(|source| {
-                LockfileError::Invalid {
+            let manifest =
+                Manifest::from_path(&manifest_path).map_err(|source| LockfileError::Invalid {
                     message: format!(
                         "failed to load manifest for '{}' from '{}': {source}",
                         p.name,
                         manifest_path.display()
                     ),
-                }
-            })?;
+                })?;
 
             packages.insert(
                 p.name.clone(),
@@ -356,7 +356,8 @@ impl Lockfile {
             let version = Version::parse(&p.version).map_err(|e| LockfileError::Invalid {
                 message: format!("invalid version '{}' for '{}': {e}", p.version, p.name),
             })?;
-            let source = decode_source(&p).map_err(|msg| LockfileError::Invalid { message: msg })?;
+            let source =
+                decode_source(&p).map_err(|msg| LockfileError::Invalid { message: msg })?;
             packages.push(LockedPackage {
                 name: CanonicalName::from_validated(&p.name),
                 version,
@@ -606,11 +607,7 @@ pub(crate) fn hash_source_tree(root: &Path) -> io::Result<String> {
     Ok(format!("sha256:{digest:x}"))
 }
 
-fn collect_files(
-    root: &Path,
-    dir: &Path,
-    out: &mut Vec<(String, PathBuf)>,
-) -> io::Result<()> {
+fn collect_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> io::Result<()> {
     if !dir.exists() {
         return Ok(());
     }
@@ -665,7 +662,10 @@ mod tests {
 
         let ha = hash_source_tree(a.path()).unwrap();
         let hb = hash_source_tree(b.path()).unwrap();
-        assert_eq!(ha, hb, "`.git/` and `target/` must not contribute to the hash");
+        assert_eq!(
+            ha, hb,
+            "`.git/` and `target/` must not contribute to the hash"
+        );
     }
 
     #[test]

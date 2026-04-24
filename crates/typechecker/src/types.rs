@@ -134,11 +134,7 @@ impl Type {
 /// `param_vars`. Only walks the subset of `Type` that can appear in instance /
 /// trait layout data — `Shape` / `MaybeOwn` / `FnHole` pass through unchanged
 /// because those never appear in superclass or impl-head target lists.
-pub fn substitute_type_params(
-    ty: &Type,
-    param_vars: &[TypeVarId],
-    type_args: &[Type],
-) -> Type {
+pub fn substitute_type_params(ty: &Type, param_vars: &[TypeVarId], type_args: &[Type]) -> Type {
     match ty {
         Type::Var(id) => {
             for (i, pv) in param_vars.iter().enumerate() {

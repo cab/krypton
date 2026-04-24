@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use krypton_package_manager::{CacheDir, Lockfile, Manifest, resolve};
-use tempfile::{TempDir, tempdir};
+use criterion::{criterion_group, criterion_main, Criterion};
+use krypton_package_manager::{resolve, CacheDir, Lockfile, Manifest};
+use tempfile::{tempdir, TempDir};
 
 fn write_manifest(dir: &Path, name: &str, version: &str, deps: &[(&str, &str)]) {
     std::fs::create_dir_all(dir).unwrap();
@@ -77,9 +77,7 @@ fn lock_benchmarks(c: &mut Criterion) {
     let graph = resolve(&root_dir, manifest.clone(), &cache).unwrap();
 
     c.bench_function("lockfile_generate", |b| {
-        b.iter(|| {
-            Lockfile::generate(std::hint::black_box(&graph), &[], &root_dir).unwrap()
-        });
+        b.iter(|| Lockfile::generate(std::hint::black_box(&graph), &[], &root_dir).unwrap());
     });
 
     c.bench_function("lockfile_write_read_roundtrip", |b| {

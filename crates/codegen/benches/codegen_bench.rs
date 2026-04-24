@@ -114,12 +114,7 @@ fn codegen_benchmarks(c: &mut Criterion) {
     let chain_link_ctx = krypton_typechecker::link_context::LinkContext::build(chain_interfaces);
     c.bench_function("ir_lower_superclass_chain", |b| {
         b.iter(|| {
-            lower_all(
-                std::hint::black_box(&chain_typed),
-                "Bench",
-                &chain_link_ctx,
-            )
-            .expect("lower")
+            lower_all(std::hint::black_box(&chain_typed), "Bench", &chain_link_ctx).expect("lower")
         });
     });
 

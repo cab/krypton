@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use krypton_package_manager::{CacheDir, Manifest, resolve};
-use tempfile::{TempDir, tempdir};
+use criterion::{criterion_group, criterion_main, Criterion};
+use krypton_package_manager::{resolve, CacheDir, Manifest};
+use tempfile::{tempdir, TempDir};
 
 fn write_manifest(dir: &Path, name: &str, version: &str, deps: &[(&str, &str)]) {
     std::fs::create_dir_all(dir).unwrap();

@@ -185,9 +185,8 @@ fn into_manifest(raw: RawManifest) -> Result<Manifest, ManifestError> {
             "missing required field 'name'",
         )
     })?;
-    validate_owner_name(&name).map_err(|msg| {
-        ManifestError::new(ErrorCode::M0004, "package.name", msg)
-    })?;
+    validate_owner_name(&name)
+        .map_err(|msg| ManifestError::new(ErrorCode::M0004, "package.name", msg))?;
 
     let version_str = pkg_raw.version.ok_or_else(|| {
         ManifestError::new(
@@ -250,9 +249,8 @@ fn convert_dep(base: &str, dep: RawDepSpec) -> Result<DepSpec, ManifestError> {
             "missing required field 'package'",
         )
     })?;
-    validate_owner_name(&package).map_err(|msg| {
-        ManifestError::new(ErrorCode::M0004, format!("{base}.package"), msg)
-    })?;
+    validate_owner_name(&package)
+        .map_err(|msg| ManifestError::new(ErrorCode::M0004, format!("{base}.package"), msg))?;
 
     let has_git = dep.git.is_some();
     let has_path = dep.path.is_some();
@@ -278,8 +276,7 @@ fn convert_dep(base: &str, dep: RawDepSpec) -> Result<DepSpec, ManifestError> {
 
     if has_git {
         let url = dep.git.unwrap();
-        let ref_count =
-            usize::from(has_tag) + usize::from(has_rev) + usize::from(has_branch);
+        let ref_count = usize::from(has_tag) + usize::from(has_rev) + usize::from(has_branch);
         if ref_count != 1 {
             return Err(ManifestError::new(
                 ErrorCode::M0008,
@@ -306,9 +303,7 @@ fn convert_dep(base: &str, dep: RawDepSpec) -> Result<DepSpec, ManifestError> {
         return Err(ManifestError::new(
             ErrorCode::M0007,
             base.to_string(),
-            format!(
-                "non-git dependency has stray git reference field(s): {stray}"
-            ),
+            format!("non-git dependency has stray git reference field(s): {stray}"),
         ));
     }
 

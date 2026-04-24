@@ -1748,10 +1748,7 @@ impl<'a> JsEmitter<'a> {
                                 _ => None,
                             })
                             .collect();
-                        let joined = all_vars
-                            .as_ref()
-                            .map(|vs| vs.join("$"))
-                            .unwrap_or_default();
+                        let joined = all_vars.as_ref().map(|vs| vs.join("$")).unwrap_or_default();
                         if joined.is_empty() {
                             format!("dict$${}$${}", tn.local_name, idx)
                         } else {

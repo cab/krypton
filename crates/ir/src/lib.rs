@@ -572,9 +572,7 @@ fn any_type_var_in(ty: &Type, params: &[TypeVarId]) -> bool {
         }
         Type::Own(inner) => any_type_var_in(inner, params),
         Type::Tuple(elems) => elems.iter().any(|e| any_type_var_in(e, params)),
-        Type::Dict { target_types, .. } => {
-            target_types.iter().any(|t| any_type_var_in(t, params))
-        }
+        Type::Dict { target_types, .. } => target_types.iter().any(|t| any_type_var_in(t, params)),
     }
 }
 
@@ -653,22 +651,34 @@ pub fn substitute_over_bindings(ty: &Type, bindings: &FxHashMap<TypeVarId, Type>
     match ty {
         Type::Var(id) => bindings.get(id).cloned().unwrap_or_else(|| ty.clone()),
         Type::Fn(ps, ret) => Type::Fn(
-            ps.iter().map(|p| substitute_over_bindings(p, bindings)).collect(),
+            ps.iter()
+                .map(|p| substitute_over_bindings(p, bindings))
+                .collect(),
             Box::new(substitute_over_bindings(ret, bindings)),
         ),
         Type::Named(name, args) => Type::Named(
             name.clone(),
-            args.iter().map(|a| substitute_over_bindings(a, bindings)).collect(),
+            args.iter()
+                .map(|a| substitute_over_bindings(a, bindings))
+                .collect(),
         ),
         Type::App(ctor, args) => Type::App(
             Box::new(substitute_over_bindings(ctor, bindings)),
-            args.iter().map(|a| substitute_over_bindings(a, bindings)).collect(),
+            args.iter()
+                .map(|a| substitute_over_bindings(a, bindings))
+                .collect(),
         ),
         Type::Own(inner) => Type::Own(Box::new(substitute_over_bindings(inner, bindings))),
         Type::Tuple(elems) => Type::Tuple(
-            elems.iter().map(|e| substitute_over_bindings(e, bindings)).collect(),
+            elems
+                .iter()
+                .map(|e| substitute_over_bindings(e, bindings))
+                .collect(),
         ),
-        Type::Dict { trait_name, target_types } => Type::Dict {
+        Type::Dict {
+            trait_name,
+            target_types,
+        } => Type::Dict {
             trait_name: trait_name.clone(),
             target_types: target_types
                 .iter()
@@ -1367,10 +1377,7 @@ mod tests {
         // params contains only `a`, but the type references only `b`.
         let params = vec![a];
         let args = vec![Type::Bool];
-        let ty = Type::Named(
-            "Foo".to_string(),
-            vec![Type::Var(b), Type::Int],
-        );
+        let ty = Type::Named("Foo".to_string(), vec![Type::Var(b), Type::Int]);
         let out = substitute_type_vars(&ty, &params, &args);
         assert_eq!(out, ty, "type with no matching var must be untouched");
     }
@@ -1456,10 +1463,7 @@ mod tests {
         let a = gen.fresh();
 
         // Fn: param modes are synthesized as Consume on IR→TC; params carry a type.
-        let ir_fn = Type::Fn(
-            vec![Type::Int, Type::Var(a)],
-            Box::new(Type::Bool),
-        );
+        let ir_fn = Type::Fn(vec![Type::Int, Type::Var(a)], Box::new(Type::Bool));
         let tc_fn: TcType = ir_fn.into();
         match tc_fn {
             TcType::Fn(params, ret) => {
@@ -1478,7 +1482,10 @@ mod tests {
             Box::new(Type::Var(a)),
             vec![Type::Named(
                 "List".to_string(),
-                vec![Type::Tuple(vec![Type::Int, Type::Own(Box::new(Type::Var(a)))])],
+                vec![Type::Tuple(vec![
+                    Type::Int,
+                    Type::Own(Box::new(Type::Var(a))),
+                ])],
             )],
         );
         let tc: TcType = ir.into();

@@ -49,10 +49,7 @@ impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FetchError::GitNotFound => {
-                write!(
-                    f,
-                    "git is required for git dependencies but was not found"
-                )
+                write!(f, "git is required for git dependencies but was not found")
             }
             FetchError::GitCommand {
                 args,
@@ -71,10 +68,7 @@ impl fmt::Display for FetchError {
                 write!(f, "I/O error at {}: {source}", path.display())
             }
             FetchError::MissingManifest { dep_key, url } => {
-                write!(
-                    f,
-                    "dependency '{dep_key}' (git: {url}) has no krypton.toml"
-                )
+                write!(f, "dependency '{dep_key}' (git: {url}) has no krypton.toml")
             }
             FetchError::InvalidManifest {
                 dep_key,
@@ -182,10 +176,7 @@ fn is_full_sha(s: &str) -> bool {
 
 fn ensure_persistent_clone(clone_dir: &Path, url: &str) -> Result<(), FetchError> {
     if clone_dir.join(".git").join("HEAD").exists() {
-        run_git(
-            &["fetch", "--tags", "--prune", "origin"],
-            Some(clone_dir),
-        )?;
+        run_git(&["fetch", "--tags", "--prune", "origin"], Some(clone_dir))?;
         return Ok(());
     }
 
@@ -210,10 +201,7 @@ fn resolve_ref(
     };
     let with_commit = format!("{rev_expr}^{{commit}}");
 
-    let result = run_git(
-        &["rev-parse", "--verify", &with_commit],
-        Some(clone_dir),
-    );
+    let result = run_git(&["rev-parse", "--verify", &with_commit], Some(clone_dir));
     match result {
         Ok(output) => {
             let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -261,11 +249,7 @@ fn extract_sha(clone_dir: &Path, sha_dir: &Path, sha: &str) -> Result<(), FetchE
     Ok(())
 }
 
-fn load_manifest(
-    manifest_path: &Path,
-    dep_key: &str,
-    url: &str,
-) -> Result<Manifest, FetchError> {
+fn load_manifest(manifest_path: &Path, dep_key: &str, url: &str) -> Result<Manifest, FetchError> {
     if !manifest_path.exists() {
         return Err(FetchError::MissingManifest {
             dep_key: dep_key.to_string(),
@@ -339,10 +323,7 @@ fn remove_dir_all(path: &Path) -> Result<(), FetchError> {
 fn path_to_str(path: &Path) -> Result<&str, FetchError> {
     path.to_str().ok_or_else(|| FetchError::Io {
         path: path.to_path_buf(),
-        source: io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "path is not valid UTF-8",
-        ),
+        source: io::Error::new(io::ErrorKind::InvalidInput, "path is not valid UTF-8"),
     })
 }
 

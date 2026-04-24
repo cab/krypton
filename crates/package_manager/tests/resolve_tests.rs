@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use krypton_package_manager::{
-    CacheDir, Manifest, ResolveError, SourceDescriptor, SourceType, resolve,
+    resolve, CacheDir, Manifest, ResolveError, SourceDescriptor, SourceType,
 };
 use semver::Version;
 use tempfile::tempdir;
@@ -112,7 +112,10 @@ fn single_git_dep_resolves() {
         SourceType::Git { sha, .. } => assert_eq!(sha, &b_sha),
         other => panic!("expected Git source, got {other:?}"),
     }
-    assert!(b.source_path.starts_with(cache.root()), "git source under cache");
+    assert!(
+        b.source_path.starts_with(cache.root()),
+        "git source under cache"
+    );
     assert_eq!(
         b.source_path,
         cache.package_source_dir("clementine", "b", &b_sha)
@@ -452,7 +455,10 @@ fn conflict_named_requesters() {
     let err = resolve(&root_dir, root_manifest, &cache).expect_err("should fail");
     match &err {
         ResolveError::Unsatisfiable { rendered } => {
-            assert!(rendered.contains("clementine/b"), "names contested:\n{rendered}");
+            assert!(
+                rendered.contains("clementine/b"),
+                "names contested:\n{rendered}"
+            );
             // At least one of the requesters should appear in the report.
             let mentions_a = rendered.contains("clementine/a");
             let mentions_c = rendered.contains("clementine/c");
@@ -671,7 +677,10 @@ fn cache_hit_skips_git() {
     let root_manifest = load_root(&root_dir);
     let graph = resolve(&root_dir, root_manifest, &cache).expect("resolve");
     let b = find(&graph, "clementine/b");
-    assert_eq!(b.source_path, cache.package_source_dir("clementine", "b", &sha));
+    assert_eq!(
+        b.source_path,
+        cache.package_source_dir("clementine", "b", &sha)
+    );
     match &b.source_type {
         SourceType::Git { sha: got, .. } => assert_eq!(got, &sha),
         other => panic!("expected Git source, got {other:?}"),

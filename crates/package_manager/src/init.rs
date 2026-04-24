@@ -95,7 +95,5 @@ pub fn init_project(parent_dir: &Path, package_name: &str) -> Result<PathBuf, In
 }
 
 fn render_manifest(package_name: &str) -> String {
-    format!(
-        "[package]\nname = \"{package_name}\"\nversion = \"0.1.0\"\n\n[dependencies]\n"
-    )
+    format!("[package]\nname = \"{package_name}\"\nversion = \"0.1.0\"\n\n[dependencies]\n")
 }

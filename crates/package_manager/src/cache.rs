@@ -66,11 +66,7 @@ impl CacheDir {
     /// `<root>/cache/git/<owner>/<name>/` — persistent non-bare clone shared
     /// across every ref fetched from the same remote.
     pub fn git_clone_dir(&self, owner: &str, name: &str) -> PathBuf {
-        self.root
-            .join("cache")
-            .join("git")
-            .join(owner)
-            .join(name)
+        self.root.join("cache").join("git").join(owner).join(name)
     }
 
     /// `<root>/cache/packages/<owner>/<name>/<version>/target/jvm/<compiler_hash>/`

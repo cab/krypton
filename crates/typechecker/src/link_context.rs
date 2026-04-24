@@ -679,12 +679,7 @@ mod tests {
     }
 
     fn make_trait_summary(name: &str, module_path: &str) -> TraitSummary {
-        make_trait_summary_with(
-            name,
-            module_path,
-            vec![crate::types::TypeVarId(0)],
-            vec![],
-        )
+        make_trait_summary_with(name, module_path, vec![crate::types::TypeVarId(0)], vec![])
     }
 
     fn make_trait_summary_with(

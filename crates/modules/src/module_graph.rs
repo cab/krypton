@@ -89,7 +89,13 @@ pub fn build_module_graph_with_hints(
     target: CompileTarget,
     transitive_hints: &[(String, String)],
 ) -> Result<ModuleGraph, ModuleGraphError> {
-    build_module_graph_inner(root, resolver, target, transitive_hints, &FxHashSet::default())
+    build_module_graph_inner(
+        root,
+        resolver,
+        target,
+        transitive_hints,
+        &FxHashSet::default(),
+    )
 }
 
 /// Like [`build_module_graph_with_hints`], but with a `skip_set` of module
@@ -448,4 +454,3 @@ mod tests {
         }
     }
 }
-
