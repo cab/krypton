@@ -111,6 +111,80 @@ struct InstanceSourceInfo {
     source_module: String,
 }
 
+/// Per-decl FnId allocation info captured during `allocate_fn_ids` and
+/// consumed by `lower_function_bodies`. Keeps overload siblings paired with
+/// their resolved parameter and return types so the body-lowering pass does
+/// not need to re-scan `fn_types` by name (which would collapse overloads).
+struct LocalFnAlloc {
+    fn_id: FnId,
+    param_types: Vec<Type>,
+    return_type: Type,
+}
+
+/// True if `t` mentions any `Type::Var` anywhere. Used by
+/// `build_param_instances` and `LowerCtx::has_param_slots` to decide whether
+/// an instance's target slots are parameterized — concrete-target instances
+/// must stay out of `param_instances` so dict resolution routes them through
+/// the singleton `GetDict` strategy.
+fn ty_has_vars(t: &Type) -> bool {
+    match t {
+        Type::Var(_) => true,
+        Type::Named(_, args) => args.iter().any(ty_has_vars),
+        Type::App(ctor, args) => ty_has_vars(ctor) || args.iter().any(ty_has_vars),
+        Type::Fn(params, ret) => params.iter().any(|(_, p)| ty_has_vars(p)) || ty_has_vars(ret),
+        Type::Tuple(elems) => elems.iter().any(ty_has_vars),
+        Type::Own(inner) => ty_has_vars(inner),
+        _ => false,
+    }
+}
+
+/// True if a parameterized instance carries any dict slot — either an
+/// impl-head constraint or an inherited superclass slot from the trait. The
+/// link view is needed because superclass info lives at the trait
+/// declaration, not on the instance.
+fn has_param_slots(
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+    trait_name: &TraitName,
+    target_types: &[Type],
+    constraints: &[typed_ast::ResolvedConstraint],
+) -> bool {
+    if !target_types.iter().any(ty_has_vars) {
+        return false;
+    }
+    !constraints.is_empty()
+        || link_view
+            .trait_direct_superclasses(trait_name)
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
+}
+
+/// Build a `ParamInstanceInfo` from a parameterized instance, copying the
+/// pre-computed sub-dict layout off the instance. Keeps the
+/// `ParamInstance.constraints` order in sync with
+/// `InstanceDef.sub_dict_requirements` (superclass slots first, then
+/// impl-head constraints) by construction. See
+/// `module_interface::compute_instance_sub_dict_requirements` for the
+/// authoritative layout contract.
+fn build_param_info(
+    trait_name: &TraitName,
+    target_types: &[Type],
+    sub_dict_requirements: &[(TraitName, Vec<Type>)],
+    source_module: String,
+    target_type_name: String,
+) -> ParamInstanceInfo {
+    let constraints: Vec<(TraitName, Vec<IrType>)> = sub_dict_requirements
+        .iter()
+        .map(|(tn, tys)| (tn.clone(), tys.iter().cloned().map(IrType::from).collect()))
+        .collect();
+    ParamInstanceInfo {
+        trait_name: trait_name.clone(),
+        target_types: target_types.to_vec(),
+        constraints,
+        source_module,
+        target_type_name,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pattern match compilation types
 // ---------------------------------------------------------------------------
@@ -6357,6 +6431,295 @@ impl<'a> LowerCtx<'a> {
             body,
         })
     }
+
+    /// Construct a `LowerCtx` from the artifacts produced by the
+    /// pre-context phases. Zero-initializes all per-function scratch state
+    /// (`var_scope`, `dict_params`, caches, `lifted_fns`, …) and seeds the
+    /// `instance_exact_index` from `all_instances` so exact-match dict
+    /// resolution is `O(1)` from the first lookup.
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        link_view: &'a krypton_typechecker::link_context::ModuleLinkView<'a>,
+        module_path: String,
+        auto_close: AutoCloseInfo,
+        fn_constraints: FxHashMap<QualifiedName, TraitConstraintList>,
+        fn_schemes: FxHashMap<QualifiedName, TypeScheme>,
+        param_instances: Vec<ParamInstanceInfo>,
+        all_instances: Vec<InstanceSourceInfo>,
+        trait_method_types: FxHashMap<TraitName, TraitMethodTypeInfo>,
+        trait_method_constraints: FxHashMap<TraitName, TraitMethodConstraintInfo>,
+    ) -> Self {
+        let mut instance_exact_index: FxHashMap<(String, String), usize> = FxHashMap::default();
+        for (i, info) in all_instances.iter().enumerate() {
+            let key = (
+                info.trait_name.local_name.clone(),
+                info.target_type_name.clone(),
+            );
+            instance_exact_index.entry(key).or_insert(i);
+        }
+        LowerCtx {
+            link_view,
+            next_var: 0,
+            next_fn: 0,
+            type_var_gen: TypeVarGen::new(),
+            var_scope: FxHashMap::default(),
+            fn_ids: FxHashMap::default(),
+            callable_ids: FxHashMap::default(),
+            struct_fields: FxHashMap::default(),
+            struct_type_params: FxHashMap::default(),
+            sum_variants: FxHashMap::default(),
+            private_type_params: FxHashMap::default(),
+            fn_constraints,
+            dict_params: FxHashMap::default(),
+            superclass_projection_cache: FxHashMap::default(),
+            fn_schemes,
+            module_path,
+            param_instances,
+            trait_method_types,
+            trait_method_constraints,
+            dict_depth: 0,
+            lifted_fns: vec![],
+            var_types: FxHashMap::default(),
+            recur_join: None,
+            early_return_join: None,
+            auto_close,
+            scope_track_stack: Vec::new(),
+            fn_block_scoped_closes: Vec::new(),
+            fn_exit_closes: FxHashMap::default(),
+            all_instances,
+            instance_exact_index,
+        }
+    }
+
+    /// Populate `struct_fields`, `struct_type_params`, and (for private
+    /// structs) `private_type_params` for every struct visible to this
+    /// module. Exported structs use the resolved `exported_type_infos`
+    /// (real `TypeVarId`s allocated upstream); private structs fall back to
+    /// `struct_decls` and get fresh `TypeVarId`s here.
+    fn register_struct_layouts(&mut self, typed: &TypedModule) {
+        let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
+        sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
+        for (name, info) in &sorted_type_infos {
+            let type_ref = typed_ast::ResolvedTypeRef {
+                qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
+            };
+            if let ExportedTypeKind::Record { fields } = &info.kind {
+                self.struct_fields.insert(type_ref.clone(), fields.clone());
+                self.struct_type_params
+                    .insert(type_ref, info.type_param_vars.clone());
+            }
+        }
+        for decl in &typed.struct_decls {
+            let type_ref = typed_ast::ResolvedTypeRef {
+                qualified_name: decl.qualified_name.clone(),
+            };
+            if !self.struct_fields.contains_key(&type_ref) {
+                let type_param_map = build_type_param_map(&decl.type_params, &mut self.type_var_gen);
+                let ordered_params: Vec<TypeVarId> = decl
+                    .type_params
+                    .iter()
+                    .map(|name| type_param_map[name])
+                    .collect();
+                self.private_type_params
+                    .insert(decl.name.clone(), ordered_params.clone());
+                let fields: Vec<(String, Type)> = decl
+                    .fields
+                    .iter()
+                    .map(|(fname, texpr)| {
+                        let ty = resolve_type_expr_simple(texpr, &type_param_map);
+                        (fname.clone(), ty)
+                    })
+                    .collect();
+                self.struct_fields.insert(type_ref.clone(), fields);
+                self.struct_type_params.insert(type_ref, ordered_params);
+            }
+        }
+    }
+
+    /// Populate `sum_variants` (and `private_type_params` for private sum
+    /// types). Exported sums use the resolved `exported_type_infos`; private
+    /// sums fall back to `sum_decls` with fresh `TypeVarId` allocation.
+    fn register_sum_variants(&mut self, typed: &TypedModule) {
+        let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
+        sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
+        for (name, info) in &sorted_type_infos {
+            if let ExportedTypeKind::Sum { variants } = &info.kind {
+                let type_ref = typed_ast::ResolvedTypeRef {
+                    qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
+                };
+                for (tag, variant) in variants.iter().enumerate() {
+                    self.sum_variants.insert(
+                        typed_ast::ResolvedVariantRef {
+                            type_ref: type_ref.clone(),
+                            variant_name: variant.name.clone(),
+                        },
+                        (tag as u32, variant.fields.clone()),
+                    );
+                }
+            }
+        }
+        for decl in &typed.sum_decls {
+            let already = decl.variants.iter().any(|v| {
+                self.sum_variants
+                    .contains_key(&typed_ast::ResolvedVariantRef {
+                        type_ref: typed_ast::ResolvedTypeRef {
+                            qualified_name: decl.qualified_name.clone(),
+                        },
+                        variant_name: v.name.clone(),
+                    })
+            });
+            if !already {
+                let type_param_map = build_type_param_map(&decl.type_params, &mut self.type_var_gen);
+                let ordered_params: Vec<TypeVarId> = decl
+                    .type_params
+                    .iter()
+                    .map(|name| type_param_map[name])
+                    .collect();
+                self.private_type_params
+                    .insert(decl.name.clone(), ordered_params);
+                for (tag, variant) in decl.variants.iter().enumerate() {
+                    let fields: Vec<Type> = variant
+                        .fields
+                        .iter()
+                        .map(|texpr| resolve_type_expr_simple(texpr, &type_param_map))
+                        .collect();
+                    self.sum_variants.insert(
+                        typed_ast::ResolvedVariantRef {
+                            type_ref: typed_ast::ResolvedTypeRef {
+                                qualified_name: decl.qualified_name.clone(),
+                            },
+                            variant_name: variant.name.clone(),
+                        },
+                        (tag as u32, fields),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Allocate `FnId`s for every function the module can call: local
+    /// decls, local extern fns, imported fns, and compiler intrinsics.
+    ///
+    /// Overloads share a bare name and qualified_name, so `fn_ids` and
+    /// `callable_ids` are vecs of (sig_key, FnId) with one entry per
+    /// overload sibling. The returned `Vec<LocalFnAlloc>` aligns 1:1 with
+    /// `typed.functions` so `lower_function_bodies` knows which FnId and
+    /// resolved param/return types belong to which decl — critical when
+    /// `typed.functions` contains overload siblings.
+    fn allocate_fn_ids(&mut self, typed: &TypedModule) -> Result<Vec<LocalFnAlloc>, LowerError> {
+        // Build per-name FIFO queue of local-function fn_types entries. Each
+        // `typed.functions[i]` pulls its corresponding entry from the queue
+        // for its name. Module_driver appends fn_decls to fn_types in order
+        // (module_driver.rs:475-488), so the i-th decl with name N pairs with
+        // the i-th local entry with name N.
+        let local_decl_names: FxHashSet<&str> =
+            typed.functions.iter().map(|d| d.name.as_str()).collect();
+        let mut local_decl_entries: FxHashMap<String, std::collections::VecDeque<&FnTypeEntry>> =
+            FxHashMap::default();
+        for entry in &typed.fn_types {
+            if entry.qualified_name.module_path == typed.module_path
+                && local_decl_names.contains(entry.name.as_str())
+            {
+                local_decl_entries
+                    .entry(entry.name.clone())
+                    .or_default()
+                    .push_back(entry);
+            }
+        }
+
+        let mut local_fn_allocs: Vec<LocalFnAlloc> = Vec::with_capacity(typed.functions.len());
+        for decl in &typed.functions {
+            let entry = local_decl_entries
+                .get_mut(&decl.name)
+                .and_then(|q| q.pop_front())
+                .ok_or_else(|| {
+                    LowerError::InternalError(format!(
+                        "no FnTypeEntry for local decl `{}` (overload queue empty)",
+                        decl.name
+                    ))
+                })?;
+            let (param_types, return_type) = match &entry.scheme.ty {
+                Type::Fn(params, ret) => (
+                    params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
+                    (**ret).clone(),
+                ),
+                other => (Vec::new(), other.clone()),
+            };
+            let sig_key = param_types.clone();
+            let fn_id = self.fresh_fn();
+            self.insert_fn_id(
+                decl.name.clone(),
+                QualifiedName::new(typed.module_path.clone(), decl.name.clone()),
+                sig_key,
+                fn_id,
+            );
+            local_fn_allocs.push(LocalFnAlloc {
+                fn_id,
+                param_types,
+                return_type,
+            });
+        }
+
+        // Extern functions (local). Externs cannot overload (enforced by
+        // check_duplicate_function_names), so they are always singletons.
+        for ext in &typed.extern_fns {
+            if !self.fn_ids.contains_key(&ext.name) {
+                let fn_id = self.fresh_fn();
+                self.insert_fn_id(
+                    ext.name.clone(),
+                    QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
+                    Vec::new(),
+                    fn_id,
+                );
+            }
+        }
+
+        // Imported functions (from fn_types entries with cross-module
+        // provenance). Each entry gets its own FnId so overload siblings
+        // resolve independently — we no longer dedup by bare name.
+        for entry in &typed.fn_types {
+            if !matches!(entry.scheme.ty, Type::Fn(..)) {
+                continue;
+            }
+            if entry.qualified_name.module_path == typed.module_path {
+                continue;
+            }
+            let sig_key: Vec<Type> = match &entry.scheme.ty {
+                Type::Fn(params, _) => params.iter().map(|(_, t)| t.clone()).collect(),
+                _ => Vec::new(),
+            };
+            let already = self
+                .callable_ids
+                .get(&entry.qualified_name)
+                .map(|cands| cands.iter().any(|(ps, _)| types_overlap(ps, &sig_key)))
+                .unwrap_or(false);
+            if already {
+                continue;
+            }
+            let fn_id = self.fresh_fn();
+            self.insert_fn_id(
+                entry.name.clone(),
+                entry.qualified_name.clone(),
+                sig_key,
+                fn_id,
+            );
+        }
+
+        // Register compiler intrinsics (always singleton).
+        for &name in crate::COMPILER_INTRINSICS {
+            if !self.fn_ids.contains_key(name) {
+                let fn_id = self.fresh_fn();
+                self.insert_fn_id(
+                    name.to_string(),
+                    QualifiedName::new("__builtin__".to_string(), name.to_string()),
+                    Vec::new(),
+                    fn_id,
+                );
+            }
+        }
+
+        Ok(local_fn_allocs)
+    }
 }
 
 /// Result of trying to lower a value expression.
@@ -6371,23 +6734,16 @@ enum LoweredValue {
 // Public entry point
 // ---------------------------------------------------------------------------
 
-/// Lower a `TypedModule` to an IR `Module`.
-///
-/// Each IR module is a self-contained compilation unit: local definitions plus
-/// cross-module metadata (imported_structs, imported_sum_types, imported_extern_fns,
-/// imported_extern_types, imported_instances). The codegen compiles each module
-/// independently without access to other modules' IR.
-///
-/// `imported_instances` provides instance defs from other modules needed for
-/// cross-module dict-passing resolution during lowering.
-/// `imported_extern_fns` provides extern fn declarations from other modules
-/// needed for FnId allocation (so calls to imported externs can be resolved).
-pub fn lower_module(
-    typed: &TypedModule,
-    module_name: &str,
-    link_view: &krypton_typechecker::link_context::ModuleLinkView,
-) -> Result<Module, LowerError> {
-    // Build fn_constraints from TypeScheme constraints (embedded during inference)
+// ---------------------------------------------------------------------------
+// Pre-context phases (free fns producing values fed into LowerCtx::new)
+// ---------------------------------------------------------------------------
+
+/// Combine constraint sources into the canonical fn-name → trait-dict map:
+/// (a) `fn_types` schemes (embedded during inference),
+/// (b) `extern_fns` constraints (so dict-passing works for extern calls),
+/// (c) per-method instance constraints (impl-head plus method-level), keyed
+/// by the shared `mangled_method_name` so `lower_fn` can prepend dict params.
+fn build_fn_constraints(typed: &TypedModule) -> FxHashMap<QualifiedName, TraitConstraintList> {
     let mut fn_constraints: FxHashMap<QualifiedName, TraitConstraintList> = FxHashMap::default();
     for entry in &typed.fn_types {
         if !entry.scheme.constraints.is_empty() {
@@ -6397,8 +6753,6 @@ pub fn lower_module(
             );
         }
     }
-
-    // Include extern function constraints so dict-passing works for extern calls.
     for ext in &typed.extern_fns {
         if !ext.constraints.is_empty() {
             fn_constraints.insert(
@@ -6407,9 +6761,6 @@ pub fn lower_module(
             );
         }
     }
-
-    // Add instance method constraints so lower_fn prepends dict params.
-    // Combines impl-head constraints + method-level constraints per method.
     for inst in &typed.instance_defs {
         let impl_constraint_pairs: TraitConstraintList = inst
             .constraints
@@ -6439,13 +6790,18 @@ pub fn lower_module(
                 .or_insert_with(|| all_constraints);
         }
     }
+    fn_constraints
+}
 
-    // Build fn_schemes from fn_types
+/// Build the qualified-name → `TypeScheme` map used by `resolve_call_dicts`
+/// to match type arguments at call sites. Pulls schemes from `fn_types` and
+/// synthesizes one for each constrained extern fn (which has no entry in
+/// `fn_types`).
+fn build_fn_schemes(typed: &TypedModule) -> FxHashMap<QualifiedName, TypeScheme> {
     let mut fn_schemes: FxHashMap<QualifiedName, TypeScheme> = FxHashMap::default();
     for entry in &typed.fn_types {
         fn_schemes.insert(entry.qualified_name.clone(), entry.scheme.clone());
     }
-    // Also add extern fn schemes so resolve_call_dicts can match type args.
     for ext in &typed.extern_fns {
         if !ext.constraints.is_empty() {
             let vars: Vec<TypeVarId> = ext
@@ -6468,404 +6824,134 @@ pub fn lower_module(
             );
         }
     }
+    fn_schemes
+}
 
-    // Helper: build ParamInstanceInfo for a parameterized instance from the
-    // pre-computed sub-dict layout carried on every instance (local or
-    // imported) — see `module_interface::compute_instance_sub_dict_requirements`
-    // for the contract. This keeps the ParamInstance.constraints order in
-    // sync with InstanceDef.sub_dict_requirements (superclass slots first,
-    // then impl-head constraints) by construction, not by convention.
-    let build_param_info = |trait_name: &TraitName,
-                            target_types: &Vec<Type>,
-                            sub_dict_requirements: &[(TraitName, Vec<Type>)],
-                            source_module: String,
-                            target_type_name: String|
-     -> ParamInstanceInfo {
-        let constraints: Vec<(TraitName, Vec<IrType>)> = sub_dict_requirements
-            .iter()
-            .map(|(tn, tys)| (tn.clone(), tys.iter().cloned().map(IrType::from).collect()))
-            .collect();
-        ParamInstanceInfo {
-            trait_name: trait_name.clone(),
-            target_types: target_types.clone(),
-            constraints,
-            source_module,
-            target_type_name,
-        }
-    };
-
-    // A ParamInstance entry is built only when the instance's target is
-    // parameterized (contains at least one Type::Var anywhere in the target
-    // slots). Concrete-target instances route through Strategy 3 (GetDict
-    // singleton) at resolve time, so they must stay out of `param_instances`
-    // even when their trait has superclass slots.
-    fn ty_has_vars(t: &Type) -> bool {
-        match t {
-            Type::Var(_) => true,
-            Type::Named(_, args) => args.iter().any(ty_has_vars),
-            Type::App(ctor, args) => ty_has_vars(ctor) || args.iter().any(ty_has_vars),
-            Type::Fn(params, ret) => params.iter().any(|(_, p)| ty_has_vars(p)) || ty_has_vars(ret),
-            Type::Tuple(elems) => elems.iter().any(ty_has_vars),
-            Type::Own(inner) => ty_has_vars(inner),
-            _ => false,
-        }
-    }
-    let has_param_slots = |trait_name: &TraitName,
-                           target_types: &[Type],
-                           constraints: &[typed_ast::ResolvedConstraint]|
-     -> bool {
-        if !target_types.iter().any(ty_has_vars) {
-            return false;
-        }
-        !constraints.is_empty()
-            || link_view
-                .trait_direct_superclasses(trait_name)
-                .map(|v| !v.is_empty())
-                .unwrap_or(false)
-    };
-
-    let mut ctx = LowerCtx {
-        link_view,
-        next_var: 0,
-        next_fn: 0,
-        type_var_gen: TypeVarGen::new(),
-        var_scope: FxHashMap::default(),
-        fn_ids: FxHashMap::default(),
-        callable_ids: FxHashMap::default(),
-        struct_fields: FxHashMap::default(),
-        struct_type_params: FxHashMap::default(),
-        sum_variants: FxHashMap::default(),
-        private_type_params: FxHashMap::default(),
-        fn_constraints,
-        dict_params: FxHashMap::default(),
-        superclass_projection_cache: FxHashMap::default(),
-        fn_schemes,
-        module_path: typed.module_path.clone(),
-        param_instances: {
-            let local_param = typed
-                .instance_defs
-                .iter()
-                .filter(|inst| {
-                    has_param_slots(&inst.trait_name, &inst.target_types, &inst.constraints)
-                })
-                .map(|inst| {
-                    build_param_info(
-                        &inst.trait_name,
-                        &inst.target_types,
-                        &inst.sub_dict_requirements,
-                        typed.module_path.clone(),
-                        inst.target_type_name.clone(),
-                    )
-                });
-            let imported_param = link_view
-                .all_instances()
-                .into_iter()
-                .filter(|(path, _)| path.as_str() != typed.module_path)
-                .filter(|(_, inst)| {
-                    has_param_slots(&inst.trait_name, &inst.target_types, &inst.constraints)
-                })
-                .map(|(path, inst)| {
-                    build_param_info(
-                        &inst.trait_name,
-                        &inst.target_types,
-                        &inst.sub_dict_requirements,
-                        path.as_str().to_string(),
-                        inst.target_type_name.clone(),
-                    )
-                });
-            local_param.chain(imported_param).collect()
-        },
-        trait_method_types: typed
-            .trait_defs
-            .iter()
-            .map(|t| {
-                assert!(
-                    !t.type_var_ids.is_empty(),
-                    "ICE: trait {} has empty type_var_ids — every trait must carry \
-                     at least one type parameter, populated during trait elaboration",
-                    t.trait_id.local_name
-                );
-                (
-                    t.trait_id.clone(),
-                    (t.type_var_ids.clone(), t.method_tc_types.clone()),
-                )
-            })
-            .collect(),
-        trait_method_constraints: typed
-            .trait_defs
-            .iter()
-            .filter(|t| !t.method_constraints.is_empty())
-            .map(|t| (t.trait_id.clone(), t.method_constraints.clone()))
-            .collect(),
-        dict_depth: 0,
-        lifted_fns: vec![],
-        var_types: FxHashMap::default(),
-        recur_join: None,
-        early_return_join: None,
-        auto_close: typed.auto_close.clone(),
-        scope_track_stack: Vec::new(),
-        fn_block_scoped_closes: Vec::new(),
-        fn_exit_closes: FxHashMap::default(),
-        all_instances: {
-            let mut infos = Vec::new();
-            for inst in &typed.instance_defs {
-                infos.push(InstanceSourceInfo {
-                    trait_name: inst.trait_name.clone(),
-                    target_types: inst.target_types.clone(),
-                    target_type_name: inst.target_type_name.clone(),
-                    source_module: typed.module_path.clone(),
-                });
-            }
-            for (path, inst) in link_view.all_instances() {
-                if path.as_str() != typed.module_path {
-                    infos.push(InstanceSourceInfo {
-                        trait_name: inst.trait_name.clone(),
-                        target_types: inst.target_types.clone(),
-                        target_type_name: inst.target_type_name.clone(),
-                        source_module: path.as_str().to_string(),
-                    });
-                }
-            }
-            infos
-        },
-        instance_exact_index: FxHashMap::default(), // populated below
-    };
-    // Build exact-match index for instance resolution
-    for (i, info) in ctx.all_instances.iter().enumerate() {
-        let key = (
-            info.trait_name.local_name.clone(),
-            info.target_type_name.clone(),
-        );
-        ctx.instance_exact_index.entry(key).or_insert(i);
-    }
-
-    // 1. Build struct_fields from exported_type_infos (has resolved Types + real TypeVarIds)
-    //    Sort by name for deterministic TypeVarId allocation order.
-    let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
-    sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
-    for (name, info) in &sorted_type_infos {
-        let type_ref = typed_ast::ResolvedTypeRef {
-            qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
-        };
-        if let ExportedTypeKind::Record { fields } = &info.kind {
-            ctx.struct_fields.insert(type_ref.clone(), fields.clone());
-            ctx.struct_type_params
-                .insert(type_ref, info.type_param_vars.clone());
-        }
-    }
-    // Fallback: private structs not in exported_type_infos
-    for decl in &typed.struct_decls {
-        let type_ref = typed_ast::ResolvedTypeRef {
-            qualified_name: decl.qualified_name.clone(),
-        };
-        if !ctx.struct_fields.contains_key(&type_ref) {
-            let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
-            let ordered_params: Vec<TypeVarId> = decl
-                .type_params
-                .iter()
-                .map(|name| type_param_map[name])
-                .collect();
-            ctx.private_type_params
-                .insert(decl.name.clone(), ordered_params.clone());
-            let fields: Vec<(String, Type)> = decl
-                .fields
-                .iter()
-                .map(|(fname, texpr)| {
-                    let ty = resolve_type_expr_simple(texpr, &type_param_map);
-                    (fname.clone(), ty)
-                })
-                .collect();
-            ctx.struct_fields.insert(type_ref.clone(), fields);
-            ctx.struct_type_params.insert(type_ref, ordered_params);
-        }
-    }
-
-    // 2. Build sum_variants from exported_type_infos
-    for (name, info) in &sorted_type_infos {
-        if let ExportedTypeKind::Sum { variants } = &info.kind {
-            let type_ref = typed_ast::ResolvedTypeRef {
-                qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
-            };
-            for (tag, variant) in variants.iter().enumerate() {
-                ctx.sum_variants.insert(
-                    typed_ast::ResolvedVariantRef {
-                        type_ref: type_ref.clone(),
-                        variant_name: variant.name.clone(),
-                    },
-                    (tag as u32, variant.fields.clone()),
-                );
-            }
-        }
-    }
-    // Fallback: private sum types
-    for decl in &typed.sum_decls {
-        let already = decl.variants.iter().any(|v| {
-            ctx.sum_variants
-                .contains_key(&typed_ast::ResolvedVariantRef {
-                    type_ref: typed_ast::ResolvedTypeRef {
-                        qualified_name: decl.qualified_name.clone(),
-                    },
-                    variant_name: v.name.clone(),
-                })
+/// Collect all parameterized trait instances (local + imported) whose target
+/// slots contain at least one `Type::Var` AND whose trait carries dict
+/// slots. Concrete-target instances route through Strategy 3 (singleton
+/// `GetDict`) at resolve time, so they must not appear here.
+fn build_param_instances(
+    typed: &TypedModule,
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+) -> Vec<ParamInstanceInfo> {
+    let local_param = typed
+        .instance_defs
+        .iter()
+        .filter(|inst| {
+            has_param_slots(
+                link_view,
+                &inst.trait_name,
+                &inst.target_types,
+                &inst.constraints,
+            )
+        })
+        .map(|inst| {
+            build_param_info(
+                &inst.trait_name,
+                &inst.target_types,
+                &inst.sub_dict_requirements,
+                typed.module_path.clone(),
+                inst.target_type_name.clone(),
+            )
         });
-        if !already {
-            let type_param_map = build_type_param_map(&decl.type_params, &mut ctx.type_var_gen);
-            let ordered_params: Vec<TypeVarId> = decl
-                .type_params
-                .iter()
-                .map(|name| type_param_map[name])
-                .collect();
-            ctx.private_type_params
-                .insert(decl.name.clone(), ordered_params);
-            for (tag, variant) in decl.variants.iter().enumerate() {
-                let fields: Vec<Type> = variant
-                    .fields
-                    .iter()
-                    .map(|texpr| resolve_type_expr_simple(texpr, &type_param_map))
-                    .collect();
-                ctx.sum_variants.insert(
-                    typed_ast::ResolvedVariantRef {
-                        type_ref: typed_ast::ResolvedTypeRef {
-                            qualified_name: decl.qualified_name.clone(),
-                        },
-                        variant_name: variant.name.clone(),
-                    },
-                    (tag as u32, fields),
-                );
-            }
+    let imported_param = link_view
+        .all_instances()
+        .into_iter()
+        .filter(|(path, _)| path.as_str() != typed.module_path)
+        .filter(|(_, inst)| {
+            has_param_slots(
+                link_view,
+                &inst.trait_name,
+                &inst.target_types,
+                &inst.constraints,
+            )
+        })
+        .map(|(path, inst)| {
+            build_param_info(
+                &inst.trait_name,
+                &inst.target_types,
+                &inst.sub_dict_requirements,
+                path.as_str().to_string(),
+                inst.target_type_name.clone(),
+            )
+        });
+    local_param.chain(imported_param).collect()
+}
+
+/// Collect every reachable instance (local + imported, parameterized or
+/// concrete) so dict resolution can build `CanonicalRef`s during `GetDict` /
+/// `MakeDict` emission.
+fn build_all_instances(
+    typed: &TypedModule,
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+) -> Vec<InstanceSourceInfo> {
+    let mut infos = Vec::new();
+    for inst in &typed.instance_defs {
+        infos.push(InstanceSourceInfo {
+            trait_name: inst.trait_name.clone(),
+            target_types: inst.target_types.clone(),
+            target_type_name: inst.target_type_name.clone(),
+            source_module: typed.module_path.clone(),
+        });
+    }
+    for (path, inst) in link_view.all_instances() {
+        if path.as_str() != typed.module_path {
+            infos.push(InstanceSourceInfo {
+                trait_name: inst.trait_name.clone(),
+                target_types: inst.target_types.clone(),
+                target_type_name: inst.target_type_name.clone(),
+                source_module: path.as_str().to_string(),
+            });
         }
     }
+    infos
+}
 
-    // 3. Allocate FnIds for all known functions.
-    //
-    // Overloads share a bare name and qualified_name, so `fn_ids` and
-    // `callable_ids` are vecs of (sig_key, FnId) with one entry per
-    // overload sibling. `sig_key` is the parameter-type list (ParamMode
-    // stripped); `types_overlap` picks the right FnId at lookup time.
-    //
-    // `local_fn_allocs` records per-decl allocation info so Step 6
-    // (lower_fn) knows which FnId / param types belong to which decl —
-    // critical when `typed.functions` contains overload siblings.
-
-    // Build per-name FIFO queue of local-function fn_types entries. Each
-    // `typed.functions[i]` pulls its corresponding entry from the queue
-    // for its name. Module_driver appends fn_decls to fn_types in order
-    // (module_driver.rs:475-488), so the i-th decl with name N pairs with
-    // the i-th local entry with name N.
-    let local_decl_names: FxHashSet<&str> =
-        typed.functions.iter().map(|d| d.name.as_str()).collect();
-    let mut local_decl_entries: FxHashMap<String, std::collections::VecDeque<&FnTypeEntry>> =
-        FxHashMap::default();
-    for entry in &typed.fn_types {
-        if entry.qualified_name.module_path == typed.module_path
-            && local_decl_names.contains(entry.name.as_str())
-        {
-            local_decl_entries
-                .entry(entry.name.clone())
-                .or_default()
-                .push_back(entry);
-        }
-    }
-
-    // Per-decl allocation (FnId + resolved param types + return type)
-    // aligned with `typed.functions`. Step 6 consumes this rather than
-    // re-scanning fn_types by name, which would collapse overloads.
-    let mut local_fn_allocs: Vec<(FnId, Vec<Type>, Type)> =
-        Vec::with_capacity(typed.functions.len());
-    for decl in &typed.functions {
-        let entry = local_decl_entries
-            .get_mut(&decl.name)
-            .and_then(|q| q.pop_front())
-            .ok_or_else(|| {
-                LowerError::InternalError(format!(
-                    "no FnTypeEntry for local decl `{}` (overload queue empty)",
-                    decl.name
-                ))
-            })?;
-        let (param_types, return_type) = match &entry.scheme.ty {
-            Type::Fn(params, ret) => (
-                params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>(),
-                (**ret).clone(),
-            ),
-            other => (Vec::new(), other.clone()),
-        };
-        let sig_key = param_types.clone();
-        let fn_id = ctx.fresh_fn();
-        ctx.insert_fn_id(
-            decl.name.clone(),
-            QualifiedName::new(typed.module_path.clone(), decl.name.clone()),
-            sig_key,
-            fn_id,
-        );
-        local_fn_allocs.push((fn_id, param_types, return_type));
-    }
-
-    // Extern functions (local). Externs cannot overload (enforced by
-    // check_duplicate_function_names), so they are always singletons.
-    for ext in &typed.extern_fns {
-        if !ctx.fn_ids.contains_key(&ext.name) {
-            let fn_id = ctx.fresh_fn();
-            ctx.insert_fn_id(
-                ext.name.clone(),
-                QualifiedName::new(ext.declaring_module_path.clone(), ext.name.clone()),
-                Vec::new(),
-                fn_id,
+/// Build the trait-name → method-signature map used by trait-method
+/// dispatch. ICE if a trait is missing its `type_var_ids` — every trait
+/// must carry at least one type parameter, populated during trait
+/// elaboration.
+fn build_trait_method_types(typed: &TypedModule) -> FxHashMap<TraitName, TraitMethodTypeInfo> {
+    typed
+        .trait_defs
+        .iter()
+        .map(|t| {
+            assert!(
+                !t.type_var_ids.is_empty(),
+                "ICE: trait {} has empty type_var_ids — every trait must carry \
+                 at least one type parameter, populated during trait elaboration",
+                t.trait_id.local_name
             );
-        }
-    }
+            (
+                t.trait_id.clone(),
+                (t.type_var_ids.clone(), t.method_tc_types.clone()),
+            )
+        })
+        .collect()
+}
 
-    // Imported functions (from fn_types entries with cross-module
-    // provenance). Each entry gets its own FnId so overload siblings
-    // resolve independently — we no longer dedup by bare name.
-    for entry in &typed.fn_types {
-        if !matches!(entry.scheme.ty, Type::Fn(..)) {
-            continue;
-        }
-        if entry.qualified_name.module_path == typed.module_path {
-            // Local entries were handled above (decls) or will be below
-            // (constructors, instance methods) — skip here.
-            continue;
-        }
-        let sig_key: Vec<Type> = match &entry.scheme.ty {
-            Type::Fn(params, _) => params.iter().map(|(_, t)| t.clone()).collect(),
-            _ => Vec::new(),
-        };
-        // If another overload sibling with the same qualified_name is
-        // already registered with a matching signature, skip (prevents
-        // duplicate entries when fn_types is visited twice for the same
-        // import path).
-        let already = ctx
-            .callable_ids
-            .get(&entry.qualified_name)
-            .map(|cands| cands.iter().any(|(ps, _)| types_overlap(ps, &sig_key)))
-            .unwrap_or(false);
-        if already {
-            continue;
-        }
-        let fn_id = ctx.fresh_fn();
-        ctx.insert_fn_id(
-            entry.name.clone(),
-            entry.qualified_name.clone(),
-            sig_key,
-            fn_id,
-        );
-    }
+/// Build the trait-name → method-name → method-level where-constraint map.
+/// Traits whose methods have no where-constraints are omitted entirely.
+fn build_trait_method_constraints(
+    typed: &TypedModule,
+) -> FxHashMap<TraitName, TraitMethodConstraintInfo> {
+    typed
+        .trait_defs
+        .iter()
+        .filter(|t| !t.method_constraints.is_empty())
+        .map(|t| (t.trait_id.clone(), t.method_constraints.clone()))
+        .collect()
+}
 
-    // 3b. Register compiler intrinsics (always singleton)
-    for &name in crate::COMPILER_INTRINSICS {
-        if !ctx.fn_ids.contains_key(name) {
-            let fn_id = ctx.fresh_fn();
-            ctx.insert_fn_id(
-                name.to_string(),
-                QualifiedName::new("__builtin__".to_string(), name.to_string()),
-                Vec::new(),
-                fn_id,
-            );
-        }
-    }
+// ---------------------------------------------------------------------------
+// Output phases (free fns reading &LowerCtx, producing IR collections)
+// ---------------------------------------------------------------------------
 
-    // 4. Lower struct definitions (skip imported types)
-    let structs: Vec<StructDef> = typed
+/// Lower local struct decls to IR `StructDef`s. Imported structs are
+/// excluded (they show up in the importing module's `imported_structs`).
+fn lower_struct_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<StructDef> {
+    typed
         .struct_decls
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
@@ -6878,7 +6964,6 @@ pub fn lower_module(
                             decl.name.clone(),
                         ),
                     };
-                    // Struct with no fields has empty field list
                     let fields = ctx
                         .struct_fields
                         .get(&type_ref)
@@ -6886,8 +6971,6 @@ pub fn lower_module(
                         .unwrap_or_default();
                     (info.type_param_vars.clone(), fields)
                 } else {
-                    // Private type — reuse cached TypeVarIds from step 1
-                    // Types without type parameters have no entry
                     let type_params = ctx
                         .private_type_params
                         .get(&decl.name)
@@ -6896,7 +6979,6 @@ pub fn lower_module(
                     let type_ref = typed_ast::ResolvedTypeRef {
                         qualified_name: decl.qualified_name.clone(),
                     };
-                    // Struct with no fields has empty field list
                     let fields = ctx
                         .struct_fields
                         .get(&type_ref)
@@ -6910,10 +6992,13 @@ pub fn lower_module(
                 fields: fields.into_iter().map(|(n, t)| (n, t.into())).collect(),
             }
         })
-        .collect();
+        .collect()
+}
 
-    // 5. Lower sum type definitions (skip imported types)
-    let sum_types: Vec<SumTypeDef> = typed
+/// Lower local sum-type decls to IR `SumTypeDef`s. Imported sums are
+/// excluded.
+fn lower_sum_type_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<SumTypeDef> {
+    typed
         .sum_decls
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
@@ -6921,7 +7006,6 @@ pub fn lower_module(
             let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
                 info.type_param_vars.clone()
             } else {
-                // Types without type parameters have no entry
                 ctx.private_type_params
                     .get(&decl.name)
                     .cloned()
@@ -6938,7 +7022,6 @@ pub fn lower_module(
                         },
                         variant_name: v.name.clone(),
                     };
-                    // Variant with no payload fields has empty field list
                     let fields = ctx
                         .sum_variants
                         .get(&variant_ref)
@@ -6957,30 +7040,45 @@ pub fn lower_module(
                 variants,
             }
         })
-        .collect();
+        .collect()
+}
 
-    // 6. Lower functions. Each TypedFnDecl carries an `exported_symbol`
-    // stamped by the typechecker's shared overload mangler — IR reads it
-    // directly so the two sides cannot diverge.
-    let mut functions = vec![];
-    for (decl, alloc) in typed.functions.iter().zip(local_fn_allocs.into_iter()) {
-        let (fn_id, param_types, return_type) = alloc;
+/// Lower every local `TypedFnDecl` body to an IR `FnDef`, threading the
+/// per-decl allocation info from `allocate_fn_ids`. The caller is
+/// responsible for appending `ctx.lifted_fns` afterwards (lifted lambdas
+/// accumulate as a side effect of `lower_fn`).
+fn lower_function_bodies(
+    typed: &TypedModule,
+    ctx: &mut LowerCtx,
+    allocs: Vec<LocalFnAlloc>,
+) -> Result<Vec<FnDef>, LowerError> {
+    let mut functions = Vec::with_capacity(allocs.len());
+    for (decl, alloc) in typed.functions.iter().zip(allocs.into_iter()) {
+        let LocalFnAlloc {
+            fn_id,
+            param_types,
+            return_type,
+        } = alloc;
         let exported_symbol = decl.exported_symbol.clone();
         let fn_def = ctx.lower_fn(decl, fn_id, param_types, return_type, exported_symbol)?;
         functions.push(fn_def);
     }
+    Ok(functions)
+}
 
-    // 6b. Append lifted lambdas
-    functions.append(&mut ctx.lifted_fns);
-
-    // 6c. Build imported_fns from fn_types entries with provenance.
-    //     Trait methods (origin.is_some()) are dispatched via TraitCall, never
-    //     via Call, so they are not imported as regular functions.
-    //     Deduplicate by (name, source_module, sig_key) so overload siblings
-    //     (which share name + source_module) both flow through — the sig_key
-    //     component distinguishes them.
-    //     Constructed before Step 7 so `fn_identities` can read each
-    //     import's `exported_symbol` when populating `FnIdentity::Imported`.
+/// Build `ImportedFnDef`s from `fn_types` entries with cross-module
+/// provenance. Trait methods (`origin.is_some()`) are dispatched via
+/// `TraitCall`, never via `Call`, so they are excluded. Deduplicated by
+/// (name, source_module, sig_key); overload siblings share the first two
+/// components, so the sig_key distinguishes them. Each entry's
+/// `exported_symbol` is read from the source module's `ExportedFnSummary`
+/// whose scheme matches this overload, falling back to the bare local name
+/// when the interface doesn't publish it.
+fn build_imported_fns(
+    typed: &TypedModule,
+    ctx: &LowerCtx,
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+) -> Vec<ImportedFnDef> {
     let mut imported_fns = vec![];
     let mut imported_fn_seen: FxHashSet<(String, String, Vec<Type>)> = FxHashSet::default();
     for entry in &typed.fn_types {
@@ -6997,9 +7095,6 @@ pub fn lower_module(
             unreachable!()
         };
         let sig_key: Vec<Type> = param_types_tc.iter().map(|(_, t)| t.clone()).collect();
-        // Dedup exact structural matches by (name, source_module, sig_key).
-        // `types_overlap` is used for the actual overload dispatch in
-        // `lookup_callable`; here we only need structural equality.
         let dedup_key = (
             entry.name.clone(),
             entry.qualified_name.module_path.clone(),
@@ -7024,10 +7119,6 @@ pub fn lower_module(
         else {
             continue;
         };
-        // Upstream `exported_symbol` — read from the source module's
-        // `ExportedFnSummary` whose scheme matches this overload. Falls
-        // back to the bare local name when the interface doesn't publish
-        // it (e.g., synthetic bindings not routed through module export).
         let source_path = ModulePath::new(entry.qualified_name.module_path.clone());
         let exported_symbol = link_view
             .exported_fns_for(&source_path)
@@ -7060,13 +7151,21 @@ pub fn lower_module(
             return_type: (**ret).clone().into(),
         });
     }
+    imported_fns
+}
 
-    // 7. Build fn_identities lookup (includes lifted lambdas registered in fn_ids).
-    // Populate `exported_symbol` for Local/Imported entries from the
-    // source-of-truth already computed earlier:
-    //   • Local fns → `functions[i].exported_symbol` (set by Step 6)
-    //   • Imported fns → `ImportedFnDef.exported_symbol` (set by Step 11)
-    //   • Lifted synthetics keep `name` (unique names, no overload)
+/// Build the `FnId → FnIdentity` lookup, including lifted lambdas
+/// registered in `fn_ids`. `exported_symbol` is read from the
+/// source-of-truth already computed earlier:
+///
+/// - Local fns → `functions[i].exported_symbol` (set by `lower_function_bodies`)
+/// - Imported fns → `ImportedFnDef.exported_symbol` (set by `build_imported_fns`)
+/// - Lifted synthetics keep `name` (unique names, no overload)
+fn build_fn_identities(
+    ctx: &LowerCtx,
+    functions: &[FnDef],
+    imported_fns: &[ImportedFnDef],
+) -> FxHashMap<FnId, FnIdentity> {
     let callable_by_id: FxHashMap<FnId, &QualifiedName> = ctx
         .callable_ids
         .iter()
@@ -7126,10 +7225,14 @@ pub fn lower_module(
             fn_identities.insert(id, identity);
         }
     }
+    fn_identities
+}
 
-    // 8. Build extern_fns from local definitions only.
-    //    Cross-module extern fns are in module.imported_extern_fns.
-    //    Build a lookup from trait_name → extern trait info for bridge params.
+/// Build `ExternFnDef`s from local extern declarations only. Cross-module
+/// extern fns travel through `module.imported_extern_fns` instead. Every
+/// type-var parameter constrained by an extern trait gets an
+/// `ExternTraitBridge` so codegen can emit the correct interface witness.
+fn build_extern_fns(typed: &TypedModule, ctx: &LowerCtx) -> Vec<ExternFnDef> {
     let extern_trait_lookup: FxHashMap<
         &krypton_typechecker::typed_ast::TraitName,
         &krypton_typechecker::typed_ast::ExternTraitInfo,
@@ -7138,7 +7241,6 @@ pub fn lower_module(
         .iter()
         .map(|et| (&et.trait_name, et))
         .collect();
-    // Build a lookup from function name → constraints for bridge detection.
     let mut fn_constraints_by_name: FxHashMap<
         &str,
         &[(
@@ -7151,7 +7253,6 @@ pub fn lower_module(
         .filter(|e| !e.scheme.constraints.is_empty())
         .map(|e| (e.name.as_str(), e.scheme.constraints.as_slice()))
         .collect();
-    // Also include extern function constraints so bridge_params is correctly populated.
     for ext in &typed.extern_fns {
         if !ext.constraints.is_empty() {
             fn_constraints_by_name
@@ -7178,8 +7279,6 @@ pub fn lower_module(
                     module: ext.module_path.clone(),
                 },
             };
-            // Build bridge_params: for each parameter, check if it corresponds to
-            // a type variable constrained by an extern trait in this function's where-clause.
             let fn_constraints = fn_constraints_by_name
                 .get(ext.name.as_str())
                 .copied()
@@ -7189,7 +7288,6 @@ pub fn lower_module(
                 .iter()
                 .map(|param_ty| {
                     if let krypton_typechecker::types::Type::Var(tv_id) = param_ty {
-                        // Check if this type var has an extern trait constraint
                         for (trait_name, constrained_tvs) in fn_constraints {
                             if constrained_tvs.contains(tv_id) {
                                 if let Some(et_info) = extern_trait_lookup.get(trait_name) {
@@ -7226,9 +7324,12 @@ pub fn lower_module(
             });
         }
     }
+    extern_fns
+}
 
-    // 9. Build extern_traits from local definitions.
-    let extern_traits: Vec<ExternTraitDef> = typed
+/// Build `ExternTraitDef`s from local extern-trait declarations only.
+fn build_extern_traits(typed: &TypedModule) -> Vec<ExternTraitDef> {
+    typed
         .extern_traits
         .iter()
         .map(|et| ExternTraitDef {
@@ -7244,10 +7345,13 @@ pub fn lower_module(
                 })
                 .collect(),
         })
-        .collect();
+        .collect()
+}
 
-    // 10. Build extern_types from local definitions only (JVM targets only).
-    //     Cross-module extern types are in module.imported_extern_types.
+/// Build `ExternTypeDef`s from local extern-type declarations (JVM
+/// targets only). Cross-module extern types travel through
+/// `module.imported_extern_types` instead.
+fn build_extern_types(typed: &TypedModule) -> Vec<ExternTypeDef> {
     let mut extern_types = vec![];
     for info in &typed.extern_types {
         if info.target == krypton_parser::ast::ExternTarget::Java {
@@ -7259,8 +7363,14 @@ pub fn lower_module(
             });
         }
     }
+    extern_types
+}
 
-    // 12. Build trait definitions from typed_module trait_defs
+/// Build sorted `TraitDef`s from `typed.trait_defs`. Returns `LowerError`
+/// when a trait method declared in `methods` is missing from
+/// `method_tc_types` — that pairing is an upstream invariant the
+/// typechecker is supposed to maintain.
+fn build_traits(typed: &TypedModule) -> Result<Vec<TraitDef>, LowerError> {
     let mut traits = vec![];
     for trait_def in &typed.trait_defs {
         let methods = trait_def
@@ -7284,7 +7394,6 @@ pub fn lower_module(
                 Ok(TraitMethodDef {
                     name: method_name.clone(),
                     param_count: *param_count + method_constraint_count,
-                    // IR strips modes at point of use; only the type half crosses the boundary.
                     param_types: param_types.into_iter().map(|(_, t)| t.into()).collect(),
                     return_type: return_type.into(),
                 })
@@ -7310,18 +7419,25 @@ pub fn lower_module(
         });
     }
     traits.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(traits)
+}
 
-    // 13. Build instance definitions from typed_module instance_defs (local + imported)
-    let mut instances = vec![];
-    // Instance method FnIds are looked up by mangled name (Trait$$Type$$method).
-    // For local instances, all methods must have FnIds (allocated during step 3).
-    // For imported instances, methods may not be present (they're defined elsewhere).
+/// Build `InstanceDef`s for both local and imported instances.
+/// Local-instance method `FnId`s must be present (allocated by
+/// `allocate_fn_ids`); imported-instance methods may be absent (their
+/// definitions live in another module) and are dropped silently.
+fn build_instances(
+    typed: &TypedModule,
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+    ctx: &LowerCtx,
+) -> Vec<InstanceDef> {
+    // Instance method mangled names are unique per (trait, type, method)
+    // — never overloaded — so the singleton entry in fn_ids is the only
+    // one. For imported instances, missing methods just mean the def
+    // lives elsewhere and we don't emit a stub here.
     let lower_instance = |inst: &krypton_typechecker::typed_ast::InstanceDefInfo,
-                          is_imported: bool,
-                          ctx: &LowerCtx| {
-        // Instance method mangled names are unique per (trait, type,
-        // method) — never overloaded — so the singleton entry in fn_ids
-        // is the only one.
+                          is_imported: bool|
+     -> InstanceDef {
         let method_fn_ids: Vec<(String, FnId)> = if is_imported {
             inst.methods
                 .iter()
@@ -7355,15 +7471,12 @@ pub fn lower_module(
                 })
                 .collect()
         };
-        // Dict slot layout: superclass slots first (trait-wide fixed layout,
-        // so projections through a type-var dict param can compute field
-        // indices without knowing the concrete impl's impl-head count),
-        // then impl-head constraint sub_dicts. Direct superclasses appear
-        // Layout is pre-computed at the typechecker layer — see
-        // `module_interface::compute_instance_sub_dict_requirements`. Consuming
-        // it directly keeps a single source of truth for the ordering
-        // (superclass slots then impl-head slots) and the substitution of
-        // trait type_var_ids with the instance's target_types.
+        // Dict slot layout: superclass slots first (trait-wide fixed
+        // layout, so projections through a type-var dict param can
+        // compute field indices without knowing the concrete impl's
+        // impl-head count), then impl-head constraint sub_dicts. Layout
+        // is pre-computed at the typechecker layer — see
+        // `module_interface::compute_instance_sub_dict_requirements`.
         let sub_dict_requirements: InstanceSubDictList = inst
             .sub_dict_requirements
             .iter()
@@ -7379,19 +7492,158 @@ pub fn lower_module(
             is_imported,
         }
     };
+    let mut instances = vec![];
     for inst in &typed.instance_defs {
-        instances.push(lower_instance(inst, false, &ctx));
+        instances.push(lower_instance(inst, false));
     }
-    // Collect tuple arities from all FnDefs
+    // `link_view` is reserved for imported-instance lowering; today we
+    // only emit local instances here (imported instances are surfaced
+    // through `imported_instances`), but keeping the hook in place
+    // documents the eventual extension point.
+    let _ = link_view;
+    instances
+}
+
+/// Sweep every emitted FnDef and instance target type for tuple usage,
+/// returning the deduplicated arity set. Codegen reads this to materialize
+/// the tuple structs that the module references.
+///
+/// Named with the `module_` prefix to avoid colliding with the per-fn
+/// helpers `collect_tuple_arities_from_fn` / `_from_type` defined further
+/// down the file.
+fn collect_module_tuple_arities(
+    functions: &[FnDef],
+    instances: &[InstanceDef],
+) -> std::collections::BTreeSet<usize> {
     let mut tuple_arities = std::collections::BTreeSet::new();
-    for func in &functions {
+    for func in functions {
         collect_tuple_arities_from_fn(func, &mut tuple_arities);
     }
-    for inst in &instances {
+    for inst in instances {
         for ty in &inst.target_types {
             collect_tuple_arities_from_type(&ty.clone(), &mut tuple_arities);
         }
     }
+    tuple_arities
+}
+
+/// Build the FnId-keyed dict-requirement map from `fn_types`,
+/// `extern_fns`, and instance-method constraints (via `ctx.fn_constraints`).
+/// Keying by FnId rather than by name lets overload siblings carry distinct
+/// dict requirements; sig_key matching uses `types_overlap` to pick the
+/// right overload from `callable_ids`.
+fn build_fn_dict_requirements(
+    typed: &TypedModule,
+    ctx: &LowerCtx,
+) -> FxHashMap<FnId, TraitConstraintList> {
+    let mut reqs: FxHashMap<FnId, TraitConstraintList> = FxHashMap::default();
+    let resolve_fn_id = |callable_ids: &FxHashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
+                         qn: &QualifiedName,
+                         sig_key: &[Type]|
+     -> Option<FnId> {
+        let cands = callable_ids.get(qn)?;
+        if cands.len() == 1 {
+            return Some(cands[0].1);
+        }
+        cands
+            .iter()
+            .find(|(stored, _)| types_overlap(stored, sig_key))
+            .map(|(_, id)| *id)
+    };
+    for entry in &typed.fn_types {
+        if entry.scheme.constraints.is_empty() {
+            continue;
+        }
+        let sig_key: Vec<Type> = match &entry.scheme.ty {
+            Type::Fn(p, _) => p.iter().map(|(_, t)| t.clone()).collect(),
+            _ => Vec::new(),
+        };
+        if let Some(fn_id) = resolve_fn_id(&ctx.callable_ids, &entry.qualified_name, &sig_key) {
+            reqs.entry(fn_id)
+                .or_insert_with(|| entry.scheme.constraints.clone());
+        }
+    }
+    for ext in &typed.extern_fns {
+        if ext.constraints.is_empty() {
+            continue;
+        }
+        // Externs are singletons; use the only entry in fn_ids.
+        if let Some(cands) = ctx.fn_ids.get(&ext.name) {
+            if let Some((_, fn_id)) = cands.first() {
+                reqs.entry(*fn_id)
+                    .or_insert_with(|| ext.constraints.clone());
+            }
+        }
+    }
+    for (qn, v) in &ctx.fn_constraints {
+        if qn.module_path != typed.module_path {
+            continue;
+        }
+        // Instance method mangled names map to a single FnId
+        // (mangled names are unique per (trait, type, method)).
+        if let Some(cands) = ctx.callable_ids.get(qn) {
+            if let Some((_, fn_id)) = cands.first() {
+                reqs.entry(*fn_id).or_insert_with(|| v.clone());
+            }
+        }
+    }
+    reqs
+}
+
+/// Lower a `TypedModule` to an IR `Module`.
+///
+/// Each IR module is a self-contained compilation unit: local definitions plus
+/// cross-module metadata (imported_structs, imported_sum_types, imported_extern_fns,
+/// imported_extern_types, imported_instances). The codegen compiles each module
+/// independently without access to other modules' IR.
+///
+/// `imported_instances` provides instance defs from other modules needed for
+/// cross-module dict-passing resolution during lowering. `imported_extern_fns`
+/// provides extern fn declarations from other modules needed for FnId
+/// allocation (so calls to imported externs can be resolved).
+pub fn lower_module(
+    typed: &TypedModule,
+    module_name: &str,
+    link_view: &krypton_typechecker::link_context::ModuleLinkView,
+) -> Result<Module, LowerError> {
+    let fn_constraints = build_fn_constraints(typed);
+    let fn_schemes = build_fn_schemes(typed);
+    let param_instances = build_param_instances(typed, link_view);
+    let all_instances = build_all_instances(typed, link_view);
+    let trait_method_types = build_trait_method_types(typed);
+    let trait_method_constraints = build_trait_method_constraints(typed);
+
+    let mut ctx = LowerCtx::new(
+        link_view,
+        typed.module_path.clone(),
+        typed.auto_close.clone(),
+        fn_constraints,
+        fn_schemes,
+        param_instances,
+        all_instances,
+        trait_method_types,
+        trait_method_constraints,
+    );
+    ctx.register_struct_layouts(typed);
+    ctx.register_sum_variants(typed);
+    let local_fn_allocs = ctx.allocate_fn_ids(typed)?;
+
+    let structs = lower_struct_defs(typed, &ctx);
+    let sum_types = lower_sum_type_defs(typed, &ctx);
+
+    let mut functions = lower_function_bodies(typed, &mut ctx, local_fn_allocs)?;
+    functions.append(&mut ctx.lifted_fns);
+
+    let imported_fns = build_imported_fns(typed, &ctx, link_view);
+    let fn_identities = build_fn_identities(&ctx, &functions, &imported_fns);
+
+    let extern_fns = build_extern_fns(typed, &ctx);
+    let extern_traits = build_extern_traits(typed);
+    let extern_types = build_extern_types(typed);
+    let traits = build_traits(typed)?;
+    let instances = build_instances(typed, link_view, &ctx);
+    let tuple_arities = collect_module_tuple_arities(&functions, &instances);
+    let fn_dict_requirements = build_fn_dict_requirements(typed, &ctx);
 
     let module = Module {
         name: module_name.to_string(),
@@ -7407,67 +7659,7 @@ pub fn lower_module(
         instances,
         tuple_arities,
         module_path: ModulePath::new(typed.module_path.clone()),
-        fn_dict_requirements: {
-            // FnId-keyed so overload siblings carry distinct constraints.
-            // Walks the same sources as before (fn_types + extern + instance-
-            // method fn_constraints) but resolves each entry to its FnId via
-            // `callable_ids` using the entry's parameter types as sig_key.
-            let mut reqs: FxHashMap<FnId, TraitConstraintList> = FxHashMap::default();
-            let resolve_fn_id =
-                |callable_ids: &FxHashMap<QualifiedName, Vec<(Vec<Type>, FnId)>>,
-                 qn: &QualifiedName,
-                 sig_key: &[Type]|
-                 -> Option<FnId> {
-                    let cands = callable_ids.get(qn)?;
-                    if cands.len() == 1 {
-                        return Some(cands[0].1);
-                    }
-                    cands
-                        .iter()
-                        .find(|(stored, _)| types_overlap(stored, sig_key))
-                        .map(|(_, id)| *id)
-                };
-            for entry in &typed.fn_types {
-                if entry.scheme.constraints.is_empty() {
-                    continue;
-                }
-                let sig_key: Vec<Type> = match &entry.scheme.ty {
-                    Type::Fn(p, _) => p.iter().map(|(_, t)| t.clone()).collect(),
-                    _ => Vec::new(),
-                };
-                if let Some(fn_id) =
-                    resolve_fn_id(&ctx.callable_ids, &entry.qualified_name, &sig_key)
-                {
-                    reqs.entry(fn_id)
-                        .or_insert_with(|| entry.scheme.constraints.clone());
-                }
-            }
-            for ext in &typed.extern_fns {
-                if ext.constraints.is_empty() {
-                    continue;
-                }
-                // Externs are singletons; use the only entry in fn_ids.
-                if let Some(cands) = ctx.fn_ids.get(&ext.name) {
-                    if let Some((_, fn_id)) = cands.first() {
-                        reqs.entry(*fn_id)
-                            .or_insert_with(|| ext.constraints.clone());
-                    }
-                }
-            }
-            for (qn, v) in &ctx.fn_constraints {
-                if qn.module_path != typed.module_path {
-                    continue;
-                }
-                // Instance method mangled names map to a single FnId
-                // (mangled names are unique per (trait, type, method)).
-                if let Some(cands) = ctx.callable_ids.get(qn) {
-                    if let Some((_, fn_id)) = cands.first() {
-                        reqs.entry(*fn_id).or_insert_with(|| v.clone());
-                    }
-                }
-            }
-            reqs
-        },
+        fn_dict_requirements,
         fn_exit_closes: ctx.fn_exit_closes,
     };
 
