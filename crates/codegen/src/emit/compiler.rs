@@ -9,7 +9,7 @@ use krypton_parser::ast::Span;
 use ristretto_classfile::attributes::{Attribute, Instruction, VerificationType};
 use ristretto_classfile::{ClassAccessFlags, ClassFile, ConstantPool, Method, MethodAccessFlags};
 
-use super::builder::{BytecodeBuilder, CpoolRefs};
+use super::builder::{BytecodeBuilder, CpoolRefs, FrameState};
 use super::lambda::LambdaState;
 use super::{jvm_type_to_field_descriptor, type_to_jvm_basic, JAVA_21};
 
@@ -419,6 +419,38 @@ pub(super) struct Compiler<'link> {
     pub(super) variant_field_types: HashMap<String, Vec<Type>>,
     pub(super) raw_extern_functions: HashMap<String, FunctionInfo>,
     pub(super) raw_extern_classes: HashMap<String, u16>,
+}
+
+/// Assert that a per-variant compile method left exactly the JVM slot count
+/// for `produced` on the operand stack relative to `before`. The whole point
+/// of `compile_ir_simple_expr` is to enforce *each arm leaves exactly one
+/// JVM value of the returned type on the stack*; this check makes a violation
+/// fail at the offending arm rather than at class-load time.
+///
+/// `assert!` (not `debug_assert!`) per project policy — the invariant must
+/// hold in release builds too. The check is skipped when `dead_code` is set,
+/// because the intrinsic-throw path clears the frame and rebuilds it instead
+/// of incrementing it (see `compile_intrinsic_throw`).
+pub(super) fn assert_stack_delta(
+    frame: &FrameState,
+    dead_code: bool,
+    before: usize,
+    produced: JvmType,
+    ctx: &'static str,
+) {
+    if dead_code {
+        return;
+    }
+    let expected = match produced {
+        JvmType::Long | JvmType::Double => 2,
+        JvmType::Int | JvmType::StructRef(_) => 1,
+    };
+    let after = frame.stack_types.len();
+    let delta = after as isize - before as isize;
+    assert!(
+        after == before + expected,
+        "stack delta mismatch in {ctx}: expected +{expected} slot(s) for {produced:?}, got {delta:+} (before={before}, after={after})",
+    );
 }
 
 impl<'link> Compiler<'link> {
@@ -1303,826 +1335,1047 @@ impl<'link> Compiler<'link> {
     }
 
     /// Compile an IR SimpleExpr.
+    ///
+    /// Dispatches to a dedicated `compile_*` method per `SimpleExprKind`
+    /// variant. Each per-variant method asserts that it leaves exactly the
+    /// JVM slots for the returned `JvmType` on the operand stack — see
+    /// `assert_stack_delta`. The check fires in release builds, so a frame
+    /// bookkeeping bug surfaces at the offending arm rather than at JVM
+    /// class-load time.
     pub(super) fn compile_ir_simple_expr(
         &mut self,
         value: &krypton_ir::SimpleExpr,
         bind_ty: &Type,
-        _ir_module: &krypton_ir::Module,
+        ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
         match &value.kind {
             SimpleExprKind::Atom(atom) => self.compile_ir_atom(atom),
-
             SimpleExprKind::PrimOp { op, args } => self.compile_ir_primop(*op, args),
-
             SimpleExprKind::Call { func, args } => {
-                // Prefer FnIdentity (overload-safe) for the intrinsic check;
-                // fall back to fn_names for the struct/variant checks that
-                // legitimately key by bare name (those don't overload).
-                let is_intrinsic = matches!(
-                    _ir_module.fn_identities.get(func),
-                    Some(krypton_ir::FnIdentity::Intrinsic { .. })
-                );
-                let name = self
-                    .fn_names
-                    .get(func)
-                    .ok_or_else(|| {
-                        CodegenError::UndefinedVariable(
-                            format!("ICE: no name for FnId({})", func.0),
-                            None,
-                        )
-                    })?
-                    .clone();
-
-                // Intrinsics
-                if is_intrinsic && (name == "panic" || name == "todo" || name == "unreachable") {
-                    let re_class = self.builder.refs.runtime_exception_class;
-                    let re_init = self.builder.refs.runtime_exception_init;
-                    self.builder.emit_new_dup(re_class);
-                    self.compile_ir_atom(&args[0])?;
-                    self.builder.emit(Instruction::Invokespecial(re_init));
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.emit(Instruction::Athrow);
-                    self.builder.dead_code = true;
-                    // Record a frame for dead code after athrow so the verifier
-                    // can process any subsequent dead instructions (e.g. Switch goto).
-                    self.builder.frame.stack_types.clear();
-                    let jvm_ret = self.type_to_jvm(bind_ty)?;
-                    self.builder.push_jvm_type(jvm_ret);
-                    let after_athrow = self.builder.code.len() as u16;
-                    self.builder.frame.record_frame(after_athrow);
-                    return Ok(jvm_ret);
-                }
-                // Struct constructor
-                if let Some(si) = self.types.struct_info.get(&name) {
-                    let class_index = si.class_index;
-                    let constructor_ref = si.constructor_ref;
-                    let fields = si.fields.clone();
-                    let result_type = JvmType::StructRef(class_index);
-                    self.builder.emit_new_dup(class_index);
-                    for arg in args {
-                        self.compile_ir_atom(arg)?;
-                    }
-                    for (_, ft) in &fields {
-                        self.builder.pop_jvm_type(*ft);
-                    }
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder
-                        .emit(Instruction::Invokespecial(constructor_ref));
-                    self.builder.push_jvm_type(result_type);
-                    return Ok(result_type);
-                }
-
-                // Variant constructor
-                if self.types.variant_to_sum.contains_key(&name) {
-                    let (class_idx, ctor_ref, iface_idx, fields) =
-                        self.variant_construct_info(&name)?;
-                    self.builder.emit_new_dup(class_idx);
-                    for (i, arg) in args.iter().enumerate() {
-                        let arg_type = self.compile_ir_atom(arg)?;
-                        if fields[i].is_erased {
-                            self.builder.box_if_needed(arg_type);
-                        }
-                    }
-                    let result_type = self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
-                    return Ok(result_type);
-                }
-
-                // Static call (user-defined function)
-                // The IR already includes dict args at the front of the args list,
-                // so we just compile all args in order — no need for emit_dict_argument_for_type.
-                // FnId-keyed dispatch so overload siblings with the same bare
-                // name resolve to their own distinct FunctionInfo.
-                let info = self
-                    .types
-                    .get_function_by_id(*func)
-                    .ok_or_else(|| CodegenError::UndefinedVariable(name.clone(), None))?;
-                let param_types = info.param_types.clone();
-                let return_type = info.return_type;
-                let is_void = info.is_void;
-                let method_ref = info.method_ref;
-
-                for (i, arg) in args.iter().enumerate() {
-                    let arg_type = self.compile_ir_atom(arg)?;
-                    let expected = param_types[i];
-                    if let JvmType::StructRef(idx) = expected {
-                        if idx == self.builder.refs.object_class
-                            && !matches!(arg_type, JvmType::StructRef(_))
-                        {
-                            self.builder.box_if_needed(arg_type);
-                        } else if idx != self.builder.refs.object_class {
-                            if let JvmType::StructRef(arg_idx) = arg_type {
-                                if arg_idx == self.builder.refs.object_class && arg_idx != idx {
-                                    self.builder.emit(Instruction::Checkcast(idx));
-                                    self.builder.frame.pop_type();
-                                    self.builder
-                                        .frame
-                                        .push_type(VerificationType::Object { cpool_index: idx });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                for pt in param_types.iter().rev() {
-                    self.builder.pop_jvm_type(*pt);
-                }
-                self.builder.emit(Instruction::Invokestatic(method_ref));
-                if is_void {
-                    self.builder.emit(Instruction::Iconst_0);
-                    self.builder.frame.push_type(VerificationType::Integer);
-                    Ok(JvmType::Int)
-                } else {
-                    self.builder.push_jvm_type(return_type);
-                    Ok(return_type)
-                }
+                self.compile_call(*func, args, bind_ty, ir_module)
             }
-
             SimpleExprKind::TraitCall {
                 trait_name,
                 method_name,
                 args,
-            } => {
-                if let Some(dispatch) = self.traits.trait_dispatch.get(trait_name) {
-                    let iface_method_ref = dispatch.method_refs[method_name];
-                    let iface_class = dispatch.interface_class;
-
-                    // args[0] is the dict, args[1..] are user args
-                    // Compile dict arg — cast to the trait interface
-                    let dict_jvm = self.compile_ir_atom(&args[0])?;
-                    if let JvmType::StructRef(idx) = dict_jvm {
-                        if idx != iface_class {
-                            self.builder.emit(Instruction::Checkcast(iface_class));
-                            self.builder.frame.pop_type();
-                            self.builder.frame.push_type(VerificationType::Object {
-                                cpool_index: iface_class,
-                            });
-                        }
-                    }
-
-                    // Compile user args (skip dict at args[0])
-                    let user_args = &args[1..];
-                    for arg in user_args {
-                        let arg_type = self.compile_ir_atom(arg)?;
-                        self.builder.box_if_needed(arg_type);
-                    }
-                    // invokeinterface: receiver + user_args
-                    self.builder.emit(Instruction::Invokeinterface(
-                        iface_method_ref,
-                        (user_args.len() + 1) as u8,
-                    ));
-                    for _ in user_args {
-                        self.builder.frame.pop_type();
-                    }
-                    self.builder.frame.pop_type(); // receiver (dict)
-                    let expected_ret = self.type_to_jvm(bind_ty)?;
-                    self.coerce_interface_return(expected_ret);
-                    Ok(expected_ret)
-                } else {
-                    Err(CodegenError::UnsupportedExpr(
-                        format!("no dispatch info for trait {trait_name}.{method_name}"),
-                        None,
-                    ))
-                }
-            }
-
+            } => self.compile_trait_call(trait_name, method_name, args, bind_ty),
             SimpleExprKind::CallClosure { closure, args } => {
-                // Determine arity from closure type
-                let closure_ty = match closure {
-                    krypton_ir::Atom::Var(var_id) => {
-                        self.var_types.get(var_id).cloned().ok_or_else(|| {
-                            CodegenError::TypeError(
-                                format!("CallClosure: var {:?} has no type", var_id),
-                                None,
-                            )
-                        })?
-                    }
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            "CallClosure: closure must be a Var atom".to_string(),
-                            None,
-                        ))
-                    }
-                };
-                let fn_type = match &closure_ty {
-                    Type::Own(inner) => inner.as_ref().clone(),
-                    other => other.clone(),
-                };
-                let (arity, ret_ty) = match &fn_type {
-                    Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            format!("closure call on non-function type: {fn_type:?}"),
-                            None,
-                        ))
-                    }
-                };
-                let ret_jvm = self.type_to_jvm(&ret_ty)?;
+                self.compile_call_closure(closure, args)
+            }
+            SimpleExprKind::MakeClosure { func, captures } => {
+                self.compile_make_closure(*func, captures, bind_ty)
+            }
+            SimpleExprKind::Construct { type_ref, fields } => {
+                self.compile_construct(type_ref, fields)
+            }
+            SimpleExprKind::ConstructVariant { variant, fields, .. } => {
+                self.compile_construct_variant(variant, fields)
+            }
+            SimpleExprKind::Project { value, field_index } => {
+                self.compile_project(value, *field_index, bind_ty)
+            }
+            SimpleExprKind::Tag { .. } => self.compile_tag(),
+            SimpleExprKind::MakeTuple { elements } => self.compile_make_tuple(elements),
+            SimpleExprKind::TupleProject { value, index } => {
+                self.compile_tuple_project(value, *index, bind_ty)
+            }
+            SimpleExprKind::GetDict {
+                trait_name,
+                target_types,
+                ..
+            } => self.compile_get_dict(trait_name, target_types),
+            SimpleExprKind::MakeDict {
+                trait_name,
+                target_types,
+                sub_dicts,
+                ..
+            } => self.compile_make_dict(trait_name, target_types, sub_dicts),
+            SimpleExprKind::ProjectDictField {
+                dict,
+                field_index,
+                result_trait,
+                ..
+            } => self.compile_project_dict_field(dict, *field_index, result_trait),
+            SimpleExprKind::MakeVec { elements, .. } => self.compile_make_vec(elements),
+        }
+    }
 
-                self.lambda.ensure_fun_interface(
-                    arity,
-                    &mut self.cp,
-                    &mut self.types.class_descriptors,
-                )?;
-                let fun_class = self.lambda.fun_classes[&arity];
-                let apply_ref = self.lambda.fun_apply_refs[&arity];
+    fn compile_call(
+        &mut self,
+        func: krypton_ir::FnId,
+        args: &[krypton_ir::Atom],
+        bind_ty: &Type,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        // Prefer FnIdentity (overload-safe) for the intrinsic check;
+        // fall back to fn_names for the struct/variant checks that
+        // legitimately key by bare name (those don't overload).
+        let is_intrinsic = matches!(
+            ir_module.fn_identities.get(&func),
+            Some(krypton_ir::FnIdentity::Intrinsic { .. })
+        );
+        let name = self
+            .fn_names
+            .get(&func)
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(
+                    format!("ICE: no name for FnId({})", func.0),
+                    None,
+                )
+            })?
+            .clone();
 
-                let callee_jvm = self.compile_ir_atom(closure)?;
-                if let JvmType::StructRef(idx) = callee_jvm {
-                    if idx != fun_class {
-                        self.builder.emit(Instruction::Checkcast(fun_class));
-                        self.builder.frame.pop_type();
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: fun_class,
-                        });
-                    }
-                }
+        if is_intrinsic && (name == "panic" || name == "todo" || name == "unreachable") {
+            return self.compile_intrinsic_throw(&args[0], bind_ty);
+        }
 
-                for arg in args {
-                    let arg_type = self.compile_ir_atom(arg)?;
+        let before = self.builder.frame.stack_types.len();
+
+        let result = if let Some(si) = self.types.struct_info.get(&name) {
+            let class_index = si.class_index;
+            let constructor_ref = si.constructor_ref;
+            let fields = si.fields.clone();
+            let result_type = JvmType::StructRef(class_index);
+            self.builder.emit_new_dup(class_index);
+            for arg in args {
+                self.compile_ir_atom(arg)?;
+            }
+            for (_, ft) in &fields {
+                self.builder.pop_jvm_type(*ft);
+            }
+            self.builder.frame.pop_type();
+            self.builder.frame.pop_type();
+            self.builder
+                .emit(Instruction::Invokespecial(constructor_ref));
+            self.builder.push_jvm_type(result_type);
+            result_type
+        } else if self.types.variant_to_sum.contains_key(&name) {
+            let (class_idx, ctor_ref, iface_idx, fields) = self.variant_construct_info(&name)?;
+            self.builder.emit_new_dup(class_idx);
+            for (i, arg) in args.iter().enumerate() {
+                let arg_type = self.compile_ir_atom(arg)?;
+                if fields[i].is_erased {
                     self.builder.box_if_needed(arg_type);
                 }
-
-                self.builder
-                    .emit(Instruction::Invokeinterface(apply_ref, arity + 1));
-                for _ in 0..arity {
-                    self.builder.frame.pop_type();
-                }
-                self.builder.pop_jvm_type(JvmType::StructRef(fun_class));
-
-                self.coerce_interface_return(ret_jvm);
-                Ok(ret_jvm)
             }
+            self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx)
+        } else {
+            // Static call (user-defined function).
+            // The IR already includes dict args at the front of the args list,
+            // so we just compile all args in order — no need for
+            // emit_dict_argument_for_type. FnId-keyed dispatch so overload
+            // siblings with the same bare name resolve to their own distinct
+            // FunctionInfo.
+            let info = self
+                .types
+                .get_function_by_id(func)
+                .ok_or_else(|| CodegenError::UndefinedVariable(name.clone(), None))?;
+            let param_types = info.param_types.clone();
+            let return_type = info.return_type;
+            let is_void = info.is_void;
+            let method_ref = info.method_ref;
 
-            SimpleExprKind::MakeClosure { func, captures } => {
-                let func_name = self
-                    .fn_names
-                    .get(func)
-                    .ok_or_else(|| {
-                        CodegenError::UndefinedVariable(
-                            format!("ICE: no name for FnId({})", func.0),
-                            None,
-                        )
-                    })?
-                    .clone();
-
-                // Get the closure type from bind_ty
-                let fn_type = match bind_ty {
-                    Type::Own(inner) => inner.as_ref().clone(),
-                    other => other.clone(),
-                };
-                let (param_types_tc, ret_ty) = match &fn_type {
-                    Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            format!("MakeClosure bind type is not Fn: {fn_type:?}"),
-                            None,
-                        ))
-                    }
-                };
-                let param_jvm_types: Vec<JvmType> = param_types_tc
-                    .iter()
-                    .map(|t| self.type_to_jvm(t))
-                    .collect::<Result<_, _>>()?;
-                let ret_jvm = self.type_to_jvm(&ret_ty)?;
-                let arity = param_jvm_types.len() as u8;
-
-                self.lambda.ensure_fun_interface(
-                    arity,
-                    &mut self.cp,
-                    &mut self.types.class_descriptors,
-                )?;
-                let fun_class_idx = self.lambda.fun_classes[&arity];
-
-                // Dict captures are now handled in the IR (lower_constrained_fn_as_value),
-                // so captures already includes any needed dict atoms.
-                let capture_count = captures.len();
-
-                // Build bridge method
-                let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
-                self.lambda.lambda_counter += 1;
-                let mut bridge_desc = String::from("(");
-                for _ in 0..capture_count {
-                    bridge_desc.push_str("Ljava/lang/Object;");
-                }
-                for _ in &param_jvm_types {
-                    bridge_desc.push_str("Ljava/lang/Object;");
-                }
-                bridge_desc.push_str(")Ljava/lang/Object;");
-
-                let saved_dict_locals = self.traits.dict_locals.clone();
-                let scope = self.push_method_scope();
-
-                // Set up bridge locals: captures (including dict captures) + params
-                self.builder.next_local = (capture_count + param_jvm_types.len()) as u16;
-                for _ in 0..capture_count {
-                    self.builder
-                        .frame
-                        .local_types
-                        .push(VerificationType::Object {
-                            cpool_index: self.builder.refs.object_class,
-                        });
-                }
-                for _ in &param_jvm_types {
-                    self.builder
-                        .frame
-                        .local_types
-                        .push(VerificationType::Object {
-                            cpool_index: self.builder.refs.object_class,
-                        });
-                }
-
-                // Check if the target function exists (FnId-keyed to pick
-                // the right overload sibling).
-                if let Some(info) = self.types.get_function_by_id(*func) {
-                    let target_param_types = info.param_types.clone();
-                    let target_return_type = info.return_type;
-                    let target_is_void = info.is_void;
-                    let target_method_ref = info.method_ref;
-
-                    // Load capture args with proper unboxing to match target param types
-                    let mut bridge_slot = 0u16;
-                    for &capture_target_type in target_param_types.iter().take(capture_count) {
-                        self.load_bridge_arg(bridge_slot, capture_target_type);
-                        bridge_slot += 1;
-                    }
-
-                    // Load and unbox/cast user params
-                    for (i, actual_type) in param_jvm_types.iter().copied().enumerate() {
-                        self.load_bridge_arg(bridge_slot, actual_type);
-                        let expected_type = target_param_types[capture_count + i];
-                        if let JvmType::StructRef(idx) = expected_type {
-                            if idx == self.builder.refs.object_class
-                                && !matches!(actual_type, JvmType::StructRef(_))
-                            {
-                                self.builder.box_if_needed(actual_type);
-                            }
-                        }
-                        bridge_slot += 1;
-                    }
-
-                    self.builder
-                        .emit(Instruction::Invokestatic(target_method_ref));
-                    for actual_type in target_param_types.iter().rev().copied() {
-                        self.builder.pop_jvm_type(actual_type);
-                    }
-                    if target_is_void {
-                        self.builder.emit(Instruction::Iconst_0);
-                        self.builder.frame.push_type(VerificationType::Integer);
-                    } else {
-                        self.builder.push_jvm_type(target_return_type);
-                        match ret_jvm {
-                            JvmType::Long | JvmType::Double | JvmType::Int if matches!(target_return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
-                            {
-                                self.builder.unbox_if_needed(ret_jvm);
-                            }
-                            JvmType::StructRef(idx)
-                                if idx != self.builder.refs.object_class
-                                    && matches!(target_return_type, JvmType::StructRef(ret_idx) if ret_idx == self.builder.refs.object_class) =>
-                            {
+            for (i, arg) in args.iter().enumerate() {
+                let arg_type = self.compile_ir_atom(arg)?;
+                let expected = param_types[i];
+                if let JvmType::StructRef(idx) = expected {
+                    if idx == self.builder.refs.object_class
+                        && !matches!(arg_type, JvmType::StructRef(_))
+                    {
+                        self.builder.box_if_needed(arg_type);
+                    } else if idx != self.builder.refs.object_class {
+                        if let JvmType::StructRef(arg_idx) = arg_type {
+                            if arg_idx == self.builder.refs.object_class && arg_idx != idx {
                                 self.builder.emit(Instruction::Checkcast(idx));
                                 self.builder.frame.pop_type();
                                 self.builder
                                     .frame
                                     .push_type(VerificationType::Object { cpool_index: idx });
                             }
-                            _ => {}
                         }
                     }
-                } else if let Some(si) = self.types.struct_info.get(&func_name) {
-                    let class_index = si.class_index;
-                    let constructor_ref = si.constructor_ref;
-                    let field_types: Vec<JvmType> = si.fields.iter().map(|(_, ty)| *ty).collect();
-                    self.builder.emit_new_dup(class_index);
-                    for (i, actual_type) in field_types.iter().copied().enumerate() {
-                        self.load_bridge_arg((capture_count + i) as u16, actual_type);
-                    }
-                    self.builder
-                        .emit(Instruction::Invokespecial(constructor_ref));
-                    for actual_type in field_types.iter().rev().copied() {
-                        self.builder.pop_jvm_type(actual_type);
-                    }
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.push_jvm_type(JvmType::StructRef(class_index));
-                } else if self.types.variant_to_sum.contains_key(&func_name) {
-                    let (class_idx, ctor_ref, iface_idx, fields) =
-                        self.variant_construct_info(&func_name)?;
-                    self.builder.emit_new_dup(class_idx);
-                    for (i, (f, actual_type)) in fields
-                        .iter()
-                        .zip(param_jvm_types.iter().copied())
-                        .enumerate()
-                    {
-                        self.load_bridge_arg((capture_count + i) as u16, actual_type);
-                        if f.is_erased {
-                            self.builder.box_if_needed(actual_type);
-                        }
-                    }
-                    self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
-                } else {
-                    return Err(CodegenError::UndefinedVariable(func_name, None));
                 }
+            }
 
-                let bridge_result = self.builder.box_if_needed(ret_jvm);
-                debug_assert!(matches!(bridge_result, JvmType::StructRef(_)));
-                self.builder.emit(Instruction::Areturn);
+            for pt in param_types.iter().rev() {
+                self.builder.pop_jvm_type(*pt);
+            }
+            self.builder.emit(Instruction::Invokestatic(method_ref));
+            if is_void {
+                self.builder.emit(Instruction::Iconst_0);
+                self.builder.frame.push_type(VerificationType::Integer);
+                JvmType::Int
+            } else {
+                self.builder.push_jvm_type(return_type);
+                return_type
+            }
+        };
 
-                let bridge_name_idx = self.cp.add_utf8(&bridge_name)?;
-                let bridge_desc_idx = self.cp.add_utf8(&bridge_desc)?;
-                self.lambda.lambda_methods.push(Method {
-                    access_flags: MethodAccessFlags::PRIVATE
-                        | MethodAccessFlags::STATIC
-                        | MethodAccessFlags::SYNTHETIC,
-                    name_index: bridge_name_idx,
-                    descriptor_index: bridge_desc_idx,
-                    attributes: vec![self.builder.finish_method()],
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_call",
+        );
+        Ok(result)
+    }
+
+    /// Lower an intrinsic throw (panic/todo/unreachable). Sets `dead_code`
+    /// and rebuilds the frame after `athrow`, so the verifier can process
+    /// any subsequent dead instructions (e.g. a Switch goto). Stack-delta
+    /// assertion is skipped because the frame is reset, not incremented —
+    /// the helper short-circuits when `dead_code` is set.
+    fn compile_intrinsic_throw(
+        &mut self,
+        arg: &krypton_ir::Atom,
+        bind_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let re_class = self.builder.refs.runtime_exception_class;
+        let re_init = self.builder.refs.runtime_exception_init;
+        self.builder.emit_new_dup(re_class);
+        self.compile_ir_atom(arg)?;
+        self.builder.emit(Instruction::Invokespecial(re_init));
+        self.builder.frame.pop_type();
+        self.builder.frame.pop_type();
+        self.builder.frame.pop_type();
+        self.builder.emit(Instruction::Athrow);
+        self.builder.dead_code = true;
+        self.builder.frame.stack_types.clear();
+        let jvm_ret = self.type_to_jvm(bind_ty)?;
+        self.builder.push_jvm_type(jvm_ret);
+        let after_athrow = self.builder.code.len() as u16;
+        self.builder.frame.record_frame(after_athrow);
+        Ok(jvm_ret)
+    }
+
+    fn compile_trait_call(
+        &mut self,
+        trait_name: &TraitName,
+        method_name: &str,
+        args: &[krypton_ir::Atom],
+        bind_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let dispatch = self.traits.trait_dispatch.get(trait_name).ok_or_else(|| {
+            CodegenError::UnsupportedExpr(
+                format!("no dispatch info for trait {trait_name}.{method_name}"),
+                None,
+            )
+        })?;
+        let iface_method_ref = dispatch.method_refs[method_name];
+        let iface_class = dispatch.interface_class;
+
+        // args[0] is the dict, args[1..] are user args. Compile dict arg —
+        // cast to the trait interface so invokeinterface dispatches against it.
+        let dict_jvm = self.compile_ir_atom(&args[0])?;
+        if let JvmType::StructRef(idx) = dict_jvm {
+            if idx != iface_class {
+                self.builder.emit(Instruction::Checkcast(iface_class));
+                self.builder.frame.pop_type();
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: iface_class,
                 });
+            }
+        }
 
-                self.pop_method_scope(scope);
-                self.traits.dict_locals = saved_dict_locals;
+        let user_args = &args[1..];
+        for arg in user_args {
+            let arg_type = self.compile_ir_atom(arg)?;
+            self.builder.box_if_needed(arg_type);
+        }
+        self.builder.emit(Instruction::Invokeinterface(
+            iface_method_ref,
+            (user_args.len() + 1) as u8,
+        ));
+        for _ in user_args {
+            self.builder.frame.pop_type();
+        }
+        self.builder.frame.pop_type(); // receiver (dict)
+        let expected_ret = self.type_to_jvm(bind_ty)?;
+        self.coerce_interface_return(expected_ret);
 
-                // Push captures onto stack
-                for capture in captures {
-                    let cap_type = self.compile_ir_atom(capture)?;
-                    self.builder.box_if_needed(cap_type);
-                }
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            expected_ret,
+            "compile_trait_call",
+        );
+        Ok(expected_ret)
+    }
 
-                self.emit_fun_reference_indy(
-                    arity,
-                    &bridge_name,
-                    &bridge_desc,
-                    fun_class_idx,
-                    capture_count,
+    fn compile_call_closure(
+        &mut self,
+        closure: &krypton_ir::Atom,
+        args: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let closure_ty = match closure {
+            krypton_ir::Atom::Var(var_id) => self.var_types.get(var_id).cloned().ok_or_else(|| {
+                CodegenError::TypeError(format!("CallClosure: var {:?} has no type", var_id), None)
+            })?,
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "CallClosure: closure must be a Var atom".to_string(),
+                    None,
+                ))
+            }
+        };
+        let fn_type = match &closure_ty {
+            Type::Own(inner) => inner.as_ref().clone(),
+            other => other.clone(),
+        };
+        let (arity, ret_ty) = match &fn_type {
+            Type::Fn(params, ret) => (params.len() as u8, ret.as_ref().clone()),
+            _ => {
+                return Err(CodegenError::TypeError(
+                    format!("closure call on non-function type: {fn_type:?}"),
+                    None,
+                ))
+            }
+        };
+        let ret_jvm = self.type_to_jvm(&ret_ty)?;
+
+        self.lambda.ensure_fun_interface(
+            arity,
+            &mut self.cp,
+            &mut self.types.class_descriptors,
+        )?;
+        let fun_class = self.lambda.fun_classes[&arity];
+        let apply_ref = self.lambda.fun_apply_refs[&arity];
+
+        let callee_jvm = self.compile_ir_atom(closure)?;
+        if let JvmType::StructRef(idx) = callee_jvm {
+            if idx != fun_class {
+                self.builder.emit(Instruction::Checkcast(fun_class));
+                self.builder.frame.pop_type();
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: fun_class,
+                });
+            }
+        }
+
+        for arg in args {
+            let arg_type = self.compile_ir_atom(arg)?;
+            self.builder.box_if_needed(arg_type);
+        }
+
+        self.builder
+            .emit(Instruction::Invokeinterface(apply_ref, arity + 1));
+        for _ in 0..arity {
+            self.builder.frame.pop_type();
+        }
+        self.builder.pop_jvm_type(JvmType::StructRef(fun_class));
+
+        self.coerce_interface_return(ret_jvm);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            ret_jvm,
+            "compile_call_closure",
+        );
+        Ok(ret_jvm)
+    }
+
+    fn compile_make_closure(
+        &mut self,
+        func: krypton_ir::FnId,
+        captures: &[krypton_ir::Atom],
+        bind_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let func_name = self
+            .fn_names
+            .get(&func)
+            .ok_or_else(|| {
+                CodegenError::UndefinedVariable(
+                    format!("ICE: no name for FnId({})", func.0),
+                    None,
                 )
+            })?
+            .clone();
+
+        // Get the closure type from bind_ty
+        let fn_type = match bind_ty {
+            Type::Own(inner) => inner.as_ref().clone(),
+            other => other.clone(),
+        };
+        let (param_types_tc, ret_ty) = match &fn_type {
+            Type::Fn(params, ret) => (params.clone(), ret.as_ref().clone()),
+            _ => {
+                return Err(CodegenError::TypeError(
+                    format!("MakeClosure bind type is not Fn: {fn_type:?}"),
+                    None,
+                ))
             }
+        };
+        let param_jvm_types: Vec<JvmType> = param_types_tc
+            .iter()
+            .map(|t| self.type_to_jvm(t))
+            .collect::<Result<_, _>>()?;
+        let ret_jvm = self.type_to_jvm(&ret_ty)?;
+        let arity = param_jvm_types.len() as u8;
 
-            SimpleExprKind::Construct { type_ref, fields } => {
-                let type_name = type_ref.symbol.local_name();
-                let si = self.types.struct_info.get(&type_name).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown struct: {type_name}"), None)
-                })?;
-                let class_index = si.class_index;
-                let constructor_ref = si.constructor_ref;
-                let field_types: Vec<JvmType> = si.fields.iter().map(|(_, t)| *t).collect();
-                let result_type = JvmType::StructRef(class_index);
-                self.builder.emit_new_dup(class_index);
-                for (i, atom) in fields.iter().enumerate() {
-                    let arg_type = self.compile_ir_atom(atom)?;
-                    if field_types[i].is_reference() && !arg_type.is_reference() {
-                        self.builder.box_if_needed(arg_type);
-                    }
-                }
-                for ft in field_types.iter().rev() {
-                    self.builder.pop_jvm_type(*ft);
-                }
-                self.builder.frame.pop_type();
-                self.builder.frame.pop_type();
-                self.builder
-                    .emit(Instruction::Invokespecial(constructor_ref));
-                self.builder.push_jvm_type(result_type);
-                Ok(result_type)
-            }
+        self.lambda.ensure_fun_interface(
+            arity,
+            &mut self.cp,
+            &mut self.types.class_descriptors,
+        )?;
+        let fun_class_idx = self.lambda.fun_classes[&arity];
 
-            SimpleExprKind::ConstructVariant {
-                type_ref: _,
-                variant,
-                tag: _,
-                fields,
-            } => {
-                let (class_idx, ctor_ref, iface_idx, variant_fields) =
-                    self.variant_construct_info(variant)?;
-                self.builder.emit_new_dup(class_idx);
-                for (i, atom) in fields.iter().enumerate() {
-                    let arg_type = self.compile_ir_atom(atom)?;
-                    if variant_fields[i].is_erased {
-                        self.builder.box_if_needed(arg_type);
-                    }
-                }
-                Ok(self.emit_variant_invokespecial(ctor_ref, &variant_fields, iface_idx))
-            }
+        // Dict captures are now handled in the IR (lower_constrained_fn_as_value),
+        // so captures already includes any needed dict atoms.
+        let capture_count = captures.len();
 
-            SimpleExprKind::Project { value, field_index } => {
-                let val_type = self.compile_ir_atom(value)?;
-                // Look up struct name from var_types
-                let struct_name = match value {
-                    krypton_ir::Atom::Var(var_id) => match self.var_types.get(var_id) {
-                        Some(Type::Named(name, _)) => name.clone(),
-                        Some(Type::Own(inner)) => match inner.as_ref() {
-                            Type::Named(name, _) => name.clone(),
-                            _ => {
-                                return Err(CodegenError::TypeError(
-                                    "Project on non-struct type".to_string(),
-                                    None,
-                                ))
-                            }
-                        },
-                        _ => {
-                            return Err(CodegenError::TypeError(
-                                "Project on non-struct type".to_string(),
-                                None,
-                            ))
-                        }
-                    },
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            "Project on literal".to_string(),
-                            None,
-                        ))
-                    }
-                };
-                let si = self.types.struct_info.get(&struct_name).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown struct: {struct_name}"), None)
-                })?;
-                let (field_name, field_jvm_type) = &si.fields[*field_index];
-                let accessor_ref = si.accessor_refs[field_name];
-                let field_jvm_type = *field_jvm_type;
+        // Build bridge method
+        let bridge_name = format!("lambda${}", self.lambda.lambda_counter);
+        self.lambda.lambda_counter += 1;
+        let mut bridge_desc = String::from("(");
+        for _ in 0..capture_count {
+            bridge_desc.push_str("Ljava/lang/Object;");
+        }
+        for _ in &param_jvm_types {
+            bridge_desc.push_str("Ljava/lang/Object;");
+        }
+        bridge_desc.push_str(")Ljava/lang/Object;");
 
-                self.builder.pop_jvm_type(val_type);
-                self.builder.emit(Instruction::Invokevirtual(accessor_ref));
-                self.builder.push_jvm_type(field_jvm_type);
+        let saved_dict_locals = self.traits.dict_locals.clone();
+        let scope = self.push_method_scope();
 
-                // Coerce Object→bind_ty if needed
-                let expected = self.type_to_jvm(bind_ty)?;
-                if matches!(field_jvm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                    && !matches!(expected, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
-                {
-                    self.builder.unbox_if_needed(expected);
-                    return Ok(expected);
-                }
-                Ok(field_jvm_type)
-            }
-
-            SimpleExprKind::Tag { .. } => {
-                panic!("ICE: Tag should never be emitted by lowering");
-            }
-
-            SimpleExprKind::MakeTuple { elements } => {
-                let arity = elements.len();
-                let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
-                })?;
-                let class_index = info.class_index;
-                let constructor_ref = info.constructor_ref;
-                self.builder.emit_new_dup(class_index);
-                for atom in elements {
-                    let elem_type = self.compile_ir_atom(atom)?;
-                    self.builder.box_if_needed(elem_type);
-                }
-                for _ in 0..arity {
-                    self.builder.frame.pop_type();
-                }
-                self.builder.frame.pop_type();
-                self.builder.frame.pop_type();
-                self.builder
-                    .emit(Instruction::Invokespecial(constructor_ref));
-                let result_type = JvmType::StructRef(class_index);
-                self.builder.push_jvm_type(result_type);
-                Ok(result_type)
-            }
-
-            SimpleExprKind::TupleProject { value, index } => {
-                self.compile_ir_atom(value)?;
-                // Determine arity from var_types
-                let arity = match value {
-                    krypton_ir::Atom::Var(var_id) => match self.var_types.get(var_id) {
-                        Some(Type::Tuple(elems)) => elems.len(),
-                        _ => {
-                            return Err(CodegenError::TypeError(
-                                "TupleProject on non-tuple type".to_string(),
-                                None,
-                            ))
-                        }
-                    },
-                    _ => {
-                        return Err(CodegenError::TypeError(
-                            "TupleProject on literal".to_string(),
-                            None,
-                        ))
-                    }
-                };
-                let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
-                    CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
-                })?;
-                let field_ref = info.field_refs[*index];
-                let tuple_class = info.class_index;
-
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: tuple_class,
-                });
-                self.builder.emit(Instruction::Invokevirtual(field_ref));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(VerificationType::Object {
+        // Set up bridge locals: captures (including dict captures) + params
+        self.builder.next_local = (capture_count + param_jvm_types.len()) as u16;
+        for _ in 0..capture_count {
+            self.builder
+                .frame
+                .local_types
+                .push(VerificationType::Object {
                     cpool_index: self.builder.refs.object_class,
                 });
+        }
+        for _ in &param_jvm_types {
+            self.builder
+                .frame
+                .local_types
+                .push(VerificationType::Object {
+                    cpool_index: self.builder.refs.object_class,
+                });
+        }
 
-                // Coerce from Object to expected type
-                let expected = self.type_to_jvm(bind_ty)?;
-                match expected {
-                    JvmType::StructRef(idx) if idx != self.builder.refs.object_class => {
+        // Check if the target function exists (FnId-keyed to pick the right
+        // overload sibling).
+        if let Some(info) = self.types.get_function_by_id(func) {
+            let target_param_types = info.param_types.clone();
+            let target_return_type = info.return_type;
+            let target_is_void = info.is_void;
+            let target_method_ref = info.method_ref;
+
+            // Load capture args with proper unboxing to match target param types
+            let mut bridge_slot = 0u16;
+            for &capture_target_type in target_param_types.iter().take(capture_count) {
+                self.load_bridge_arg(bridge_slot, capture_target_type);
+                bridge_slot += 1;
+            }
+
+            // Load and unbox/cast user params
+            for (i, actual_type) in param_jvm_types.iter().copied().enumerate() {
+                self.load_bridge_arg(bridge_slot, actual_type);
+                let expected_type = target_param_types[capture_count + i];
+                if let JvmType::StructRef(idx) = expected_type {
+                    if idx == self.builder.refs.object_class
+                        && !matches!(actual_type, JvmType::StructRef(_))
+                    {
+                        self.builder.box_if_needed(actual_type);
+                    }
+                }
+                bridge_slot += 1;
+            }
+
+            self.builder
+                .emit(Instruction::Invokestatic(target_method_ref));
+            for actual_type in target_param_types.iter().rev().copied() {
+                self.builder.pop_jvm_type(actual_type);
+            }
+            if target_is_void {
+                self.builder.emit(Instruction::Iconst_0);
+                self.builder.frame.push_type(VerificationType::Integer);
+            } else {
+                self.builder.push_jvm_type(target_return_type);
+                match ret_jvm {
+                    JvmType::Long | JvmType::Double | JvmType::Int if matches!(target_return_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class) =>
+                    {
+                        self.builder.unbox_if_needed(ret_jvm);
+                    }
+                    JvmType::StructRef(idx)
+                        if idx != self.builder.refs.object_class
+                            && matches!(target_return_type, JvmType::StructRef(ret_idx) if ret_idx == self.builder.refs.object_class) =>
+                    {
                         self.builder.emit(Instruction::Checkcast(idx));
                         self.builder.frame.pop_type();
                         self.builder
                             .frame
                             .push_type(VerificationType::Object { cpool_index: idx });
                     }
-                    JvmType::Long | JvmType::Double | JvmType::Int => {
-                        self.builder.unbox_if_needed(expected);
-                    }
                     _ => {}
                 }
-                Ok(expected)
             }
-
-            SimpleExprKind::GetDict {
-                instance_ref: _,
-                trait_name,
-                target_types,
-            } => {
-                let pushed_class = self
-                    .traits
-                    .trait_dispatch
-                    .get(trait_name)
-                    .map(|d| d.interface_class)
-                    .unwrap_or(self.builder.refs.object_class);
-                self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
-                Ok(JvmType::StructRef(pushed_class))
+        } else if let Some(si) = self.types.struct_info.get(&func_name) {
+            let class_index = si.class_index;
+            let constructor_ref = si.constructor_ref;
+            let field_types: Vec<JvmType> = si.fields.iter().map(|(_, ty)| *ty).collect();
+            self.builder.emit_new_dup(class_index);
+            for (i, actual_type) in field_types.iter().copied().enumerate() {
+                self.load_bridge_arg((capture_count + i) as u16, actual_type);
             }
-
-            SimpleExprKind::MakeDict {
-                instance_ref: _,
-                trait_name,
-                target_types,
-                sub_dicts,
-            } => {
-                let pushed_class = self
-                    .traits
-                    .trait_dispatch
-                    .get(trait_name)
-                    .map(|d| d.interface_class)
-                    .unwrap_or(self.builder.refs.object_class);
-
-                if let Some(instance_info) = self
-                    .traits
-                    .parameterized_instances
-                    .get(trait_name)
-                    .and_then(|instances| {
-                        instances.iter().find(|inst| {
-                            let mut bindings = FxHashMap::default();
-                            bind_instance_targets(&inst.target_types, target_types, &mut bindings)
-                        })
-                    })
-                    .cloned()
-                {
-                    let inst_class = self.cp.add_class(&instance_info.class_name)?;
-                    self.types
-                        .class_descriptors
-                        .insert(inst_class, format!("L{};", instance_info.class_name));
-                    let mut init_desc = String::from("(");
-                    for _ in &instance_info.requirements {
-                        init_desc.push_str("Ljava/lang/Object;");
-                    }
-                    init_desc.push_str(")V");
-                    let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
-                    self.builder.emit(Instruction::New(inst_class));
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: inst_class,
-                    });
-                    self.builder.emit(Instruction::Dup);
-                    self.builder.frame.push_type(VerificationType::Object {
-                        cpool_index: inst_class,
-                    });
-                    for sub_dict in sub_dicts {
-                        self.compile_ir_atom(sub_dict)?;
-                    }
-                    self.builder.emit(Instruction::Invokespecial(init_ref));
-                    for _ in sub_dicts {
-                        self.builder.frame.pop_type();
-                    }
-                    self.builder.frame.pop_type();
-                    Ok(JvmType::StructRef(pushed_class))
-                } else {
-                    // Two-phase dict resolution: try parameterized instance first, then
-                    // fall back to emit_dict_argument_for_types for structural matching
-                    self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
-                    Ok(JvmType::StructRef(pushed_class))
+            self.builder
+                .emit(Instruction::Invokespecial(constructor_ref));
+            for actual_type in field_types.iter().rev().copied() {
+                self.builder.pop_jvm_type(actual_type);
+            }
+            self.builder.frame.pop_type();
+            self.builder.frame.pop_type();
+            self.builder.push_jvm_type(JvmType::StructRef(class_index));
+        } else if self.types.variant_to_sum.contains_key(&func_name) {
+            let (class_idx, ctor_ref, iface_idx, fields) =
+                self.variant_construct_info(&func_name)?;
+            self.builder.emit_new_dup(class_idx);
+            for (i, (f, actual_type)) in fields
+                .iter()
+                .zip(param_jvm_types.iter().copied())
+                .enumerate()
+            {
+                self.load_bridge_arg((capture_count + i) as u16, actual_type);
+                if f.is_erased {
+                    self.builder.box_if_needed(actual_type);
                 }
             }
+            self.emit_variant_invokespecial(ctor_ref, &fields, iface_idx);
+        } else {
+            return Err(CodegenError::UndefinedVariable(func_name, None));
+        }
 
-            SimpleExprKind::ProjectDictField {
-                dict,
-                field_index,
-                result_trait,
-                result_target_types: _,
-            } => {
-                // Project a stored superclass-dict slot via an
-                // interface-declared accessor method `dictN()Ljava/lang/Object;`.
-                //
-                // We cannot use `Getfield` here: at a generic-function call
-                // site, the descendant dict is bound through a type-var
-                // dict param whose runtime class isn't known at compile
-                // time, and JVM `fieldref` resolution demands a concrete
-                // owner class. Every trait interface that has superclasses
-                // therefore declares accessor methods `dict0 … dictN`,
-                // implemented on each concrete/parameterized instance
-                // class as field getters — see `generate_trait_interface_class`.
-                let descendant_trait =
-                    self.descendant_trait_of_dict_atom(dict).ok_or_else(|| {
-                        CodegenError::TypeError(
-                            "ICE: ProjectDictField dict atom is not dict-typed".to_string(),
-                            None,
-                        )
-                    })?;
-                let iface_class_idx = self
-                    .traits
-                    .trait_dispatch
-                    .get(&descendant_trait)
-                    .map(|d| d.interface_class)
-                    .ok_or_else(|| {
-                        CodegenError::TypeError(
-                            format!(
-                                "ICE: no trait_dispatch entry for descendant {}",
-                                descendant_trait.local_name
-                            ),
-                            None,
-                        )
-                    })?;
+        let bridge_result = self.builder.box_if_needed(ret_jvm);
+        assert!(
+            matches!(bridge_result, JvmType::StructRef(_)),
+            "ICE: bridge result must be a reference type after boxing, got {bridge_result:?}",
+        );
+        self.builder.emit(Instruction::Areturn);
 
-                self.compile_ir_atom(dict)?;
-                let accessor_name = format!("dict{}", field_index);
-                let accessor_desc = String::from("()Ljava/lang/Object;");
-                let method_ref = self.cp.add_interface_method_ref(
-                    iface_class_idx,
-                    &accessor_name,
-                    &accessor_desc,
-                )?;
-                self.builder
-                    .emit(Instruction::Invokeinterface(method_ref, 1));
-                self.builder.frame.pop_type();
+        let bridge_name_idx = self.cp.add_utf8(&bridge_name)?;
+        let bridge_desc_idx = self.cp.add_utf8(&bridge_desc)?;
+        self.lambda.lambda_methods.push(Method {
+            access_flags: MethodAccessFlags::PRIVATE
+                | MethodAccessFlags::STATIC
+                | MethodAccessFlags::SYNTHETIC,
+            name_index: bridge_name_idx,
+            descriptor_index: bridge_desc_idx,
+            attributes: vec![self.builder.finish_method()],
+        });
 
-                let pushed_class = self
-                    .traits
-                    .trait_dispatch
-                    .get(result_trait)
-                    .map(|d| d.interface_class)
-                    .unwrap_or(self.builder.refs.object_class);
-                self.builder.frame.push_type(VerificationType::Object {
-                    cpool_index: pushed_class,
-                });
-                Ok(JvmType::StructRef(pushed_class))
-            }
+        self.pop_method_scope(scope);
+        self.traits.dict_locals = saved_dict_locals;
 
-            SimpleExprKind::MakeVec {
-                element_type: _,
-                elements,
-            } => {
-                let vec_class = self
-                    .types
-                    .struct_info
-                    .get("Vec")
-                    .ok_or_else(|| {
-                        CodegenError::TypeError("ICE: Vec not in struct_info".to_string(), None)
-                    })?
-                    .class_index;
-                let info = self
-                    .vec_builder_info
-                    .as_ref()
-                    .ok_or_else(|| {
-                        CodegenError::TypeError("VecBuilder info not registered".to_string(), None)
-                    })?
-                    .clone();
-                let builder_vtype = VerificationType::Object {
-                    cpool_index: info.builder_class_index,
-                };
-                let arr_vtype = VerificationType::Object {
-                    cpool_index: vec_class,
-                };
+        // Bridge frame is now closed; the outer-method delta is measured from
+        // here, after pop_method_scope restores the caller's frame state.
+        let before = self.builder.frame.stack_types.len();
 
-                self.builder
-                    .emit(Instruction::Invokestatic(info.builder_new_ref));
-                self.builder.frame.push_type(builder_vtype.clone());
+        // Push captures onto stack
+        for capture in captures {
+            let cap_type = self.compile_ir_atom(capture)?;
+            self.builder.box_if_needed(cap_type);
+        }
 
-                for elem in elements.iter() {
-                    let elem_type = self.compile_ir_atom(elem)?;
-                    self.builder.box_if_needed(elem_type);
-                    self.builder
-                        .emit(Instruction::Invokestatic(info.builder_push_ref));
-                    self.builder.frame.pop_type();
-                    self.builder.frame.pop_type();
-                    self.builder.frame.push_type(builder_vtype.clone());
-                }
+        let result = self.emit_fun_reference_indy(
+            arity,
+            &bridge_name,
+            &bridge_desc,
+            fun_class_idx,
+            capture_count,
+        )?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_make_closure",
+        );
+        Ok(result)
+    }
 
-                self.builder
-                    .emit(Instruction::Invokestatic(info.builder_freeze_ref));
-                self.builder.frame.pop_type();
-                self.builder.frame.push_type(arr_vtype);
+    fn compile_construct(
+        &mut self,
+        type_ref: &krypton_ir::CanonicalRef,
+        fields: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
 
-                Ok(JvmType::StructRef(vec_class))
+        let type_name = type_ref.symbol.local_name();
+        let si = self.types.struct_info.get(&type_name).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown struct: {type_name}"), None)
+        })?;
+        let class_index = si.class_index;
+        let constructor_ref = si.constructor_ref;
+        let field_types: Vec<JvmType> = si.fields.iter().map(|(_, t)| *t).collect();
+        let result_type = JvmType::StructRef(class_index);
+        self.builder.emit_new_dup(class_index);
+        for (i, atom) in fields.iter().enumerate() {
+            let arg_type = self.compile_ir_atom(atom)?;
+            if field_types[i].is_reference() && !arg_type.is_reference() {
+                self.builder.box_if_needed(arg_type);
             }
         }
+        for ft in field_types.iter().rev() {
+            self.builder.pop_jvm_type(*ft);
+        }
+        self.builder.frame.pop_type();
+        self.builder.frame.pop_type();
+        self.builder
+            .emit(Instruction::Invokespecial(constructor_ref));
+        self.builder.push_jvm_type(result_type);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result_type,
+            "compile_construct",
+        );
+        Ok(result_type)
+    }
+
+    fn compile_construct_variant(
+        &mut self,
+        variant: &str,
+        fields: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let (class_idx, ctor_ref, iface_idx, variant_fields) =
+            self.variant_construct_info(variant)?;
+        self.builder.emit_new_dup(class_idx);
+        for (i, atom) in fields.iter().enumerate() {
+            let arg_type = self.compile_ir_atom(atom)?;
+            if variant_fields[i].is_erased {
+                self.builder.box_if_needed(arg_type);
+            }
+        }
+        let result = self.emit_variant_invokespecial(ctor_ref, &variant_fields, iface_idx);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_construct_variant",
+        );
+        Ok(result)
+    }
+
+    fn compile_project(
+        &mut self,
+        value: &krypton_ir::Atom,
+        field_index: usize,
+        bind_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let val_type = self.compile_ir_atom(value)?;
+        // Look up struct name from var_types
+        let struct_name = match value {
+            krypton_ir::Atom::Var(var_id) => match self.var_types.get(var_id) {
+                Some(Type::Named(name, _)) => name.clone(),
+                Some(Type::Own(inner)) => match inner.as_ref() {
+                    Type::Named(name, _) => name.clone(),
+                    _ => {
+                        return Err(CodegenError::TypeError(
+                            "Project on non-struct type".to_string(),
+                            None,
+                        ))
+                    }
+                },
+                _ => {
+                    return Err(CodegenError::TypeError(
+                        "Project on non-struct type".to_string(),
+                        None,
+                    ))
+                }
+            },
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "Project on literal".to_string(),
+                    None,
+                ))
+            }
+        };
+        let si = self.types.struct_info.get(&struct_name).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown struct: {struct_name}"), None)
+        })?;
+        let (field_name, field_jvm_type) = &si.fields[field_index];
+        let accessor_ref = si.accessor_refs[field_name];
+        let field_jvm_type = *field_jvm_type;
+
+        self.builder.pop_jvm_type(val_type);
+        self.builder.emit(Instruction::Invokevirtual(accessor_ref));
+        self.builder.push_jvm_type(field_jvm_type);
+
+        // Coerce Object→bind_ty if needed.
+        let expected = self.type_to_jvm(bind_ty)?;
+        let result = if matches!(field_jvm_type, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
+            && !matches!(expected, JvmType::StructRef(idx) if idx == self.builder.refs.object_class)
+        {
+            self.builder.unbox_if_needed(expected);
+            expected
+        } else {
+            field_jvm_type
+        };
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_project",
+        );
+        Ok(result)
+    }
+
+    fn compile_tag(&mut self) -> Result<JvmType, CodegenError> {
+        // Intentional ICE: lowering is responsible for eliminating Tag nodes
+        // before reaching codegen. No stack-delta check — we never return.
+        panic!("ICE: Tag should never be emitted by lowering");
+    }
+
+    fn compile_make_tuple(
+        &mut self,
+        elements: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let arity = elements.len();
+        let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
+        })?;
+        let class_index = info.class_index;
+        let constructor_ref = info.constructor_ref;
+        self.builder.emit_new_dup(class_index);
+        for atom in elements {
+            let elem_type = self.compile_ir_atom(atom)?;
+            self.builder.box_if_needed(elem_type);
+        }
+        for _ in 0..arity {
+            self.builder.frame.pop_type();
+        }
+        self.builder.frame.pop_type();
+        self.builder.frame.pop_type();
+        self.builder
+            .emit(Instruction::Invokespecial(constructor_ref));
+        let result_type = JvmType::StructRef(class_index);
+        self.builder.push_jvm_type(result_type);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result_type,
+            "compile_make_tuple",
+        );
+        Ok(result_type)
+    }
+
+    fn compile_tuple_project(
+        &mut self,
+        value: &krypton_ir::Atom,
+        index: usize,
+        bind_ty: &Type,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        self.compile_ir_atom(value)?;
+        // Determine arity from var_types
+        let arity = match value {
+            krypton_ir::Atom::Var(var_id) => match self.var_types.get(var_id) {
+                Some(Type::Tuple(elems)) => elems.len(),
+                _ => {
+                    return Err(CodegenError::TypeError(
+                        "TupleProject on non-tuple type".to_string(),
+                        None,
+                    ))
+                }
+            },
+            _ => {
+                return Err(CodegenError::TypeError(
+                    "TupleProject on literal".to_string(),
+                    None,
+                ))
+            }
+        };
+        let info = self.types.tuple_info.get(&arity).ok_or_else(|| {
+            CodegenError::TypeError(format!("unknown tuple arity: {arity}"), None)
+        })?;
+        let field_ref = info.field_refs[index];
+        let tuple_class = info.class_index;
+
+        self.builder.frame.pop_type();
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: tuple_class,
+        });
+        self.builder.emit(Instruction::Invokevirtual(field_ref));
+        self.builder.frame.pop_type();
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: self.builder.refs.object_class,
+        });
+
+        // Coerce from Object to expected type
+        let expected = self.type_to_jvm(bind_ty)?;
+        match expected {
+            JvmType::StructRef(idx) if idx != self.builder.refs.object_class => {
+                self.builder.emit(Instruction::Checkcast(idx));
+                self.builder.frame.pop_type();
+                self.builder
+                    .frame
+                    .push_type(VerificationType::Object { cpool_index: idx });
+            }
+            JvmType::Long | JvmType::Double | JvmType::Int => {
+                self.builder.unbox_if_needed(expected);
+            }
+            _ => {}
+        }
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            expected,
+            "compile_tuple_project",
+        );
+        Ok(expected)
+    }
+
+    fn compile_get_dict(
+        &mut self,
+        trait_name: &TraitName,
+        target_types: &[Type],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let pushed_class = self
+            .traits
+            .trait_dispatch
+            .get(trait_name)
+            .map(|d| d.interface_class)
+            .unwrap_or(self.builder.refs.object_class);
+        self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
+        let result = JvmType::StructRef(pushed_class);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_get_dict",
+        );
+        Ok(result)
+    }
+
+    fn compile_make_dict(
+        &mut self,
+        trait_name: &TraitName,
+        target_types: &[Type],
+        sub_dicts: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let pushed_class = self
+            .traits
+            .trait_dispatch
+            .get(trait_name)
+            .map(|d| d.interface_class)
+            .unwrap_or(self.builder.refs.object_class);
+
+        if let Some(instance_info) = self
+            .traits
+            .parameterized_instances
+            .get(trait_name)
+            .and_then(|instances| {
+                instances.iter().find(|inst| {
+                    let mut bindings = FxHashMap::default();
+                    bind_instance_targets(&inst.target_types, target_types, &mut bindings)
+                })
+            })
+            .cloned()
+        {
+            let inst_class = self.cp.add_class(&instance_info.class_name)?;
+            self.types
+                .class_descriptors
+                .insert(inst_class, format!("L{};", instance_info.class_name));
+            let mut init_desc = String::from("(");
+            for _ in &instance_info.requirements {
+                init_desc.push_str("Ljava/lang/Object;");
+            }
+            init_desc.push_str(")V");
+            let init_ref = self.cp.add_method_ref(inst_class, "<init>", &init_desc)?;
+            self.builder.emit(Instruction::New(inst_class));
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            self.builder.emit(Instruction::Dup);
+            self.builder.frame.push_type(VerificationType::Object {
+                cpool_index: inst_class,
+            });
+            for sub_dict in sub_dicts {
+                self.compile_ir_atom(sub_dict)?;
+            }
+            self.builder.emit(Instruction::Invokespecial(init_ref));
+            for _ in sub_dicts {
+                self.builder.frame.pop_type();
+            }
+            self.builder.frame.pop_type();
+        } else {
+            // Two-phase dict resolution: try parameterized instance first, then
+            // fall back to emit_dict_argument_for_types for structural matching.
+            self.emit_dict_argument_for_types(trait_name, target_types, pushed_class)?;
+        }
+        let result = JvmType::StructRef(pushed_class);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_make_dict",
+        );
+        Ok(result)
+    }
+
+    fn compile_project_dict_field(
+        &mut self,
+        dict: &krypton_ir::Atom,
+        field_index: usize,
+        result_trait: &TraitName,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        // Project a stored superclass-dict slot via an interface-declared
+        // accessor method `dictN()Ljava/lang/Object;`.
+        //
+        // We cannot use `Getfield` here: at a generic-function call site, the
+        // descendant dict is bound through a type-var dict param whose runtime
+        // class isn't known at compile time, and JVM `fieldref` resolution
+        // demands a concrete owner class. Every trait interface that has
+        // superclasses therefore declares accessor methods `dict0 … dictN`,
+        // implemented on each concrete/parameterized instance class as field
+        // getters — see `generate_trait_interface_class`.
+        let descendant_trait = self.descendant_trait_of_dict_atom(dict).ok_or_else(|| {
+            CodegenError::TypeError(
+                "ICE: ProjectDictField dict atom is not dict-typed".to_string(),
+                None,
+            )
+        })?;
+        let iface_class_idx = self
+            .traits
+            .trait_dispatch
+            .get(&descendant_trait)
+            .map(|d| d.interface_class)
+            .ok_or_else(|| {
+                CodegenError::TypeError(
+                    format!(
+                        "ICE: no trait_dispatch entry for descendant {}",
+                        descendant_trait.local_name
+                    ),
+                    None,
+                )
+            })?;
+
+        self.compile_ir_atom(dict)?;
+        let accessor_name = format!("dict{}", field_index);
+        let accessor_desc = String::from("()Ljava/lang/Object;");
+        let method_ref =
+            self.cp
+                .add_interface_method_ref(iface_class_idx, &accessor_name, &accessor_desc)?;
+        self.builder
+            .emit(Instruction::Invokeinterface(method_ref, 1));
+        self.builder.frame.pop_type();
+
+        let pushed_class = self
+            .traits
+            .trait_dispatch
+            .get(result_trait)
+            .map(|d| d.interface_class)
+            .unwrap_or(self.builder.refs.object_class);
+        self.builder.frame.push_type(VerificationType::Object {
+            cpool_index: pushed_class,
+        });
+        let result = JvmType::StructRef(pushed_class);
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_project_dict_field",
+        );
+        Ok(result)
+    }
+
+    fn compile_make_vec(
+        &mut self,
+        elements: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+
+        let vec_class = self
+            .types
+            .struct_info
+            .get("Vec")
+            .ok_or_else(|| {
+                CodegenError::TypeError("ICE: Vec not in struct_info".to_string(), None)
+            })?
+            .class_index;
+        let info = self
+            .vec_builder_info
+            .as_ref()
+            .ok_or_else(|| {
+                CodegenError::TypeError("VecBuilder info not registered".to_string(), None)
+            })?
+            .clone();
+        let builder_vtype = VerificationType::Object {
+            cpool_index: info.builder_class_index,
+        };
+        let arr_vtype = VerificationType::Object {
+            cpool_index: vec_class,
+        };
+
+        self.builder
+            .emit(Instruction::Invokestatic(info.builder_new_ref));
+        self.builder.frame.push_type(builder_vtype.clone());
+
+        for elem in elements.iter() {
+            let elem_type = self.compile_ir_atom(elem)?;
+            self.builder.box_if_needed(elem_type);
+            self.builder
+                .emit(Instruction::Invokestatic(info.builder_push_ref));
+            self.builder.frame.pop_type();
+            self.builder.frame.pop_type();
+            self.builder.frame.push_type(builder_vtype.clone());
+        }
+
+        self.builder
+            .emit(Instruction::Invokestatic(info.builder_freeze_ref));
+        self.builder.frame.pop_type();
+        self.builder.frame.push_type(arr_vtype);
+
+        let result = JvmType::StructRef(vec_class);
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_make_vec",
+        );
+        Ok(result)
     }
 
     /// Compile an IR Expr (ExprKind).
@@ -3375,5 +3628,57 @@ impl<'link> Compiler<'link> {
         let mut buffer = Vec::new();
         class_file.to_bytes(&mut buffer)?;
         Ok(buffer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the stack-discipline invariant exercised in
+    //! `compile_ir_simple_expr`. Tests operate on `FrameState` directly so
+    //! they can drive `assert_stack_delta` without constructing a full
+    //! `Compiler<'_>`.
+    use super::*;
+
+    #[test]
+    fn stack_delta_helper_accepts_matching_single_slot_push() {
+        let mut frame = FrameState::default();
+        let before = frame.stack_types.len();
+        frame.push_type(VerificationType::Integer);
+        assert_stack_delta(&frame, false, before, JvmType::Int, "test_int_push");
+    }
+
+    #[test]
+    fn stack_delta_helper_accepts_matching_long_push() {
+        let mut frame = FrameState::default();
+        let before = frame.stack_types.len();
+        frame.push_long_type();
+        assert_stack_delta(&frame, false, before, JvmType::Long, "test_long_push");
+    }
+
+    #[test]
+    fn stack_delta_helper_skips_when_dead_code() {
+        let frame = FrameState::default();
+        // No push at all, but dead_code=true must cause the check to pass.
+        assert_stack_delta(&frame, true, 0, JvmType::Long, "test_dead_code");
+    }
+
+    #[test]
+    #[should_panic(expected = "stack delta mismatch")]
+    fn stack_delta_helper_fires_when_nothing_pushed() {
+        let frame = FrameState::default();
+        let before = frame.stack_types.len();
+        // Deliberately broken: claim an Int was produced but push nothing.
+        assert_stack_delta(&frame, false, before, JvmType::Int, "broken_no_push");
+    }
+
+    #[test]
+    #[should_panic(expected = "stack delta mismatch")]
+    fn stack_delta_helper_fires_when_long_expected_but_int_pushed() {
+        let mut frame = FrameState::default();
+        let before = frame.stack_types.len();
+        // Deliberately broken: only push one slot while declaring a Long
+        // (which requires two slots on the operand stack).
+        frame.push_type(VerificationType::Integer);
+        assert_stack_delta(&frame, false, before, JvmType::Long, "broken_wrong_width");
     }
 }
