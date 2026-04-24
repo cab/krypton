@@ -4,12 +4,13 @@ use krypton_parser::ast::{BinOp, UnaryOp};
 
 use crate::trait_registry::TraitRegistry;
 use crate::typed_ast::{
-    ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName, TypedExpr,
-    TypedExprKind,
+    DeferredId, ResolvedBindingRef, ResolvedCallableRef, ResolvedTraitMethodRef, TraitName,
+    TypedExpr, TypedExprKind,
 };
 use crate::types;
-use crate::types::{Substitution, Type, TypeScheme, TypeVarId};
+use crate::types::{ParamMode, Substitution, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
+use crate::visit::{walk_app, walk_binary_op, walk_expr, walk_unary_op, TypedExprVisitor};
 
 use super::{
     free_vars, leading_type_var, match_type_with_bindings, no_instance_error, spanned, strip_own,
@@ -159,198 +160,196 @@ pub(super) fn check_constrained_function_refs(
     trait_registry: &TraitRegistry,
     var_names: &FxHashMap<TypeVarId, String>,
 ) -> Result<(), SpannedTypeError> {
-    let mut work: Vec<&TypedExpr> = vec![expr];
-    while let Some(expr) = work.pop() {
-        if let Some((name, _callable_ref)) = bare_function_ref(expr) {
-            let fn_type = match &expr.ty {
-                Type::Own(inner) => inner.as_ref(),
-                other => other,
-            };
-            if let Type::Fn(actual_param_types, _) = fn_type {
-                // Functions without constraints have no entry
-                let requirements = fn_schemes
-                    .get(name)
-                    .map(|s| s.constraints.clone())
-                    .unwrap_or_default();
+    let mut walker = ConstrainedFunctionRefWalker {
+        current_requirements,
+        fn_schemes,
+        trait_registry,
+        var_names,
+    };
+    walker.visit_expr(expr)
+}
 
-                if !requirements.is_empty() {
-                    let scheme = fn_schemes.get(name).ok_or_else(|| {
-                        spanned(
-                            TypeError::UnsupportedExpr {
-                                description: format!(
-                                    "missing function type metadata for constrained function reference `{name}`"
-                                ),
-                            },
-                            expr.span,
-                        )
-                    })?;
-                    let declared_param_types = match &scheme.ty {
-                        Type::Fn(params, _) => params,
-                        other => {
-                            return Err(spanned(
-                                TypeError::UnsupportedExpr {
-                                    description: format!(
-                                        "constrained function reference `{name}` has non-function type `{other}`"
-                                    ),
-                                },
-                                expr.span,
-                            ))
-                        }
+struct ConstrainedFunctionRefWalker<'a> {
+    current_requirements: &'a [(TraitName, Vec<TypeVarId>)],
+    fn_schemes: &'a FxHashMap<String, TypeScheme>,
+    trait_registry: &'a TraitRegistry,
+    var_names: &'a FxHashMap<TypeVarId, String>,
+}
+
+impl<'a> ConstrainedFunctionRefWalker<'a> {
+    fn check_bare_function_ref(&self, expr: &TypedExpr) -> Result<(), SpannedTypeError> {
+        let Some((name, _callable_ref)) = bare_function_ref(expr) else {
+            return Ok(());
+        };
+        let fn_type = match &expr.ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+        let Type::Fn(actual_param_types, _) = fn_type else {
+            return Ok(());
+        };
+        // Functions without constraints have no entry.
+        let requirements = self
+            .fn_schemes
+            .get(name)
+            .map(|s| s.constraints.clone())
+            .unwrap_or_default();
+        if requirements.is_empty() {
+            return Ok(());
+        }
+        let scheme = self.fn_schemes.get(name).ok_or_else(|| {
+            spanned(
+                TypeError::UnsupportedExpr {
+                    description: format!(
+                        "missing function type metadata for constrained function reference `{name}`"
+                    ),
+                },
+                expr.span,
+            )
+        })?;
+        let declared_param_types = match &scheme.ty {
+            Type::Fn(params, _) => params,
+            other => return Err(spanned(
+                TypeError::UnsupportedExpr {
+                    description: format!(
+                        "constrained function reference `{name}` has non-function type `{other}`"
+                    ),
+                },
+                expr.span,
+            )),
+        };
+
+        let mut unsatisfied_constraints: Vec<(String, String)> = Vec::new();
+
+        for (req_trait_name, req_type_vars) in &requirements {
+            for req_type_var in req_type_vars {
+                let requirement_ty = resolve_function_ref_requirement_type(
+                    &req_trait_name.local_name,
+                    *req_type_var,
+                    declared_param_types,
+                    actual_param_types,
+                )
+                .ok_or_else(|| {
+                    spanned(
+                        TypeError::UnsupportedExpr {
+                            description: format!(
+                                "could not resolve `{req_trait_name}` for constrained function reference `{name}`"
+                            ),
+                        },
+                        expr.span,
+                    )
+                })?;
+
+                let requirement_ty = strip_own(&requirement_ty);
+                if free_vars(&requirement_ty).is_empty() {
+                    let missing = if self.trait_registry.lookup_trait(req_trait_name).is_some() {
+                        self.trait_registry
+                            .find_instance(req_trait_name, &requirement_ty)
+                            .is_none()
+                    } else {
+                        true
                     };
-
-                    let mut unsatisfied_constraints: Vec<(String, String)> = Vec::new();
-
-                    for (req_trait_name, req_type_vars) in &requirements {
-                        for req_type_var in req_type_vars {
-                            let requirement_ty = resolve_function_ref_requirement_type(
-                                &req_trait_name.local_name,
-                                *req_type_var,
-                                declared_param_types,
-                                actual_param_types,
-                            )
-                            .ok_or_else(|| {
-                                spanned(
-                                    TypeError::UnsupportedExpr {
-                                        description: format!(
-                                            "could not resolve `{req_trait_name}` for constrained function reference `{name}`"
-                                        ),
-                                    },
-                                    expr.span,
-                                )
-                            })?;
-
-                            let requirement_ty = strip_own(&requirement_ty);
-                            if free_vars(&requirement_ty).is_empty() {
-                                let missing =
-                                    if trait_registry.lookup_trait(req_trait_name).is_some() {
-                                        trait_registry
-                                            .find_instance(req_trait_name, &requirement_ty)
-                                            .is_none()
-                                    } else {
-                                        true
-                                    };
-                                if missing {
-                                    return Err(no_instance_error(
-                                        trait_registry,
-                                        req_trait_name,
-                                        std::slice::from_ref(&requirement_ty),
-                                        expr.span,
-                                        var_names,
-                                        crate::type_error::NoInstanceCause::Bound {
-                                            required_by: name.to_string(),
-                                        },
-                                        None,
-                                    ));
-                                }
-                                continue;
-                            }
-
-                            if let Type::Var(type_var) = requirement_ty {
-                                if current_requirements.iter().any(
-                                    |(trait_name, current_type_vars)| {
-                                        trait_name == req_trait_name
-                                            && current_type_vars.contains(&type_var)
-                                    },
-                                ) {
-                                    continue;
-                                }
-                            }
-
-                            if current_requirements
-                                .iter()
-                                .any(|(trait_name, _)| trait_name == req_trait_name)
-                            {
-                                continue;
-                            }
-
-                            let type_param_name = scheme
-                                .var_names
-                                .get(req_type_var)
-                                .cloned()
-                                .unwrap_or_else(|| format!("?{}", req_type_var.0));
-                            unsatisfied_constraints
-                                .push((req_trait_name.local_name.clone(), type_param_name));
-                        }
-                    }
-
-                    if !unsatisfied_constraints.is_empty() {
-                        return Err(spanned(
-                            TypeError::ConstrainedFunctionRef {
-                                name: name.to_string(),
-                                constraints: unsatisfied_constraints,
-                            },
+                    if missing {
+                        return Err(no_instance_error(
+                            self.trait_registry,
+                            req_trait_name,
+                            std::slice::from_ref(&requirement_ty),
                             expr.span,
+                            self.var_names,
+                            crate::type_error::NoInstanceCause::Bound {
+                                required_by: name.to_string(),
+                            },
+                            None,
                         ));
                     }
+                    continue;
                 }
+
+                if let Type::Var(type_var) = requirement_ty {
+                    if self
+                        .current_requirements
+                        .iter()
+                        .any(|(trait_name, current_type_vars)| {
+                            trait_name == req_trait_name && current_type_vars.contains(&type_var)
+                        })
+                    {
+                        continue;
+                    }
+                }
+
+                if self
+                    .current_requirements
+                    .iter()
+                    .any(|(trait_name, _)| trait_name == req_trait_name)
+                {
+                    continue;
+                }
+
+                let type_param_name = scheme
+                    .var_names
+                    .get(req_type_var)
+                    .cloned()
+                    .unwrap_or_else(|| format!("?{}", req_type_var.0));
+                unsatisfied_constraints.push((req_trait_name.local_name.clone(), type_param_name));
             }
         }
 
-        match &expr.kind {
-            TypedExprKind::App { args, .. } => {
-                for arg in args {
-                    work.push(arg);
-                }
-            }
-            TypedExprKind::TypeApp { .. } => {}
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Let { value, body, .. }
-            | TypedExprKind::LetPattern { value, body, .. } => {
-                work.push(value);
-                if let Some(body) = body {
-                    work.push(body);
-                }
-            }
-            TypedExprKind::Do(exprs)
-            | TypedExprKind::Tuple(exprs)
-            | TypedExprKind::VecLit(exprs) => {
-                for expr in exprs {
-                    work.push(expr);
-                }
-            }
-            TypedExprKind::Recur { args, .. } => {
-                for expr in args {
-                    work.push(expr);
-                }
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
-                for arm in arms {
-                    if let Some(guard) = &arm.guard {
-                        work.push(guard);
-                    }
-                    work.push(&arm.body);
-                }
-            }
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                work.push(lhs);
-                work.push(rhs);
-            }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, expr) in fields {
-                    work.push(expr);
-                }
-            }
-            TypedExprKind::StructUpdate { base, fields, .. } => {
-                work.push(base);
-                for (_, expr) in fields {
-                    work.push(expr);
-                }
-            }
-            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
-            TypedExprKind::Discharge(inner) => work.push(inner),
-            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
+        if !unsatisfied_constraints.is_empty() {
+            return Err(spanned(
+                TypeError::ConstrainedFunctionRef {
+                    name: name.to_string(),
+                    constraints: unsatisfied_constraints,
+                },
+                expr.span,
+            ));
         }
+
+        Ok(())
+    }
+}
+
+impl<'a> TypedExprVisitor for ConstrainedFunctionRefWalker<'a> {
+    type Result = Result<(), SpannedTypeError>;
+
+    fn visit_expr(&mut self, expr: &TypedExpr) -> Self::Result {
+        // Pre-descent check: flag unsatisfied constraints on the current node
+        // (the old work-stack popped-and-checked each item before pushing
+        // children). The default `walk_expr` dispatch then fans out to the
+        // per-variant visitors below.
+        self.check_bare_function_ref(expr)?;
+        walk_expr(self, expr)
     }
 
-    Ok(())
+    fn visit_app(
+        &mut self,
+        _func: &TypedExpr,
+        args: &[TypedExpr],
+        _param_modes: &[ParamMode],
+        _deferred_id: Option<DeferredId>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        // The call-site dispatch satisfies the callee's bounds, so the
+        // original walker deliberately skipped the `func` position here
+        // (it only fires for bare function references that are *not* being
+        // called). Preserve that by not descending into `func`.
+        for arg in args {
+            self.visit_expr(arg)?;
+        }
+        Ok(())
+    }
+
+    fn visit_type_app(
+        &mut self,
+        _inner: &TypedExpr,
+        _type_bindings: &[(crate::types::SchemeVarId, Type)],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        // `bare_function_ref` already peels through `TypeApp` to reach the
+        // underlying `Var`, and `visit_expr`'s pre-descent check fired on
+        // the TypeApp node itself. No further descent is required — the
+        // original walker explicitly left `TypeApp` empty.
+        Ok(())
+    }
 }
 
 /// Detect trait method calls on type variables and collect as constraints (used for codegen dict params).
@@ -479,242 +478,205 @@ fn walk_trait_method_calls(
     fn_schemes: &FxHashMap<String, TypeScheme>,
     callback: &mut dyn FnMut(TraitName, Vec<TypeVarId>),
 ) {
-    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
-    work.push(expr);
-    while let Some(expr) = work.pop() {
-        match &expr.kind {
-            TypedExprKind::App { func, args, .. } => {
-                if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
-                    trait_name: trait_id,
-                    method_name,
-                })) = typed_callee_resolved_ref(func)
-                {
-                    let info = trait_registry
-                        .lookup_trait(trait_id)
-                        .expect("trait in trait_method_map must be in registry");
+    let mut walker = TraitMethodCallWalker {
+        trait_registry,
+        subst,
+        fn_type_param_vars,
+        fn_schemes,
+        callback,
+    };
+    walker.visit_expr(expr);
+}
 
-                    // Build a type-var → resolved-Type binding map by unifying
-                    // the method's declared parameter/return types against the
-                    // call-site's actual types. This carries bindings for every
-                    // trait type-parameter (not just the primary dispatch var).
-                    let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
-                    if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
-                        for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
-                            collect_type_var_bindings_strict(
-                                pattern,
-                                &subst.apply(&arg.ty),
-                                &mut bindings,
-                            );
-                        }
-                        let ret_ty = subst.apply(&func.ty);
-                        let actual_ret = match &ret_ty {
-                            Type::Fn(_, ret) => ret.as_ref().clone(),
-                            other => other.clone(),
-                        };
-                        collect_type_var_bindings_strict(
-                            &method.return_type,
-                            &actual_ret,
-                            &mut bindings,
-                        );
-                    }
+struct TraitMethodCallWalker<'a> {
+    trait_registry: &'a TraitRegistry,
+    subst: &'a Substitution,
+    fn_type_param_vars: &'a FxHashSet<TypeVarId>,
+    fn_schemes: &'a FxHashMap<String, TypeScheme>,
+    callback: &'a mut dyn FnMut(TraitName, Vec<TypeVarId>),
+}
 
-                    // For each trait type-parameter, extract a leading type var
-                    // from its resolved binding (or fall back to the param id
-                    // itself, which may still be a free var in fn_type_param_vars).
-                    let mut position_vars: Vec<TypeVarId> =
-                        Vec::with_capacity(info.type_var_ids.len());
-                    let mut all_free_params = true;
-                    for tv_id in &info.type_var_ids {
-                        let resolved = bindings
-                            .get(tv_id)
-                            .cloned()
-                            .map(|t| subst.apply(&t))
-                            .unwrap_or(Type::Var(*tv_id));
-                        let stripped = strip_own(&resolved);
-                        match leading_type_var(&stripped) {
-                            Some(v) if fn_type_param_vars.contains(&v) => {
-                                position_vars.push(v);
-                            }
-                            _ => {
-                                all_free_params = false;
-                                break;
-                            }
-                        }
-                    }
-                    if all_free_params && !position_vars.is_empty() {
-                        callback(trait_id.clone(), position_vars);
-                    }
+impl<'a> TypedExprVisitor for TraitMethodCallWalker<'a> {
+    type Result = ();
 
-                    // Method-level where-constraints propagate independently.
-                    if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
-                        if !method.constraints.is_empty() {
-                            for (req_trait, req_vars) in &method.constraints {
-                                let mut resolved_vars: Vec<TypeVarId> =
-                                    Vec::with_capacity(req_vars.len());
-                                let mut all_ok = true;
-                                for req_var in req_vars {
-                                    let resolved = bindings
-                                        .get(req_var)
-                                        .cloned()
-                                        .map(|t| subst.apply(&t))
-                                        .unwrap_or(Type::Var(*req_var));
-                                    let concrete = strip_own(&resolved);
-                                    match leading_type_var(&concrete) {
-                                        Some(v) if fn_type_param_vars.contains(&v) => {
-                                            resolved_vars.push(v);
-                                        }
-                                        _ => {
-                                            all_ok = false;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if all_ok && !resolved_vars.is_empty() {
-                                    callback(req_trait.clone(), resolved_vars);
-                                }
-                            }
-                        }
-                    }
+    fn visit_app(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        _param_modes: &[ParamMode],
+        _deferred_id: Option<DeferredId>,
+        _expr: &TypedExpr,
+    ) {
+        if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+            trait_name: trait_id,
+            method_name,
+        })) = typed_callee_resolved_ref(func)
+        {
+            let info = self
+                .trait_registry
+                .lookup_trait(trait_id)
+                .expect("trait in trait_method_map must be in registry");
+
+            // Build a type-var → resolved-Type binding map by unifying
+            // the method's declared parameter/return types against the
+            // call-site's actual types. This carries bindings for every
+            // trait type-parameter (not just the primary dispatch var).
+            let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
+            if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
+                for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
+                    collect_type_var_bindings_strict(
+                        pattern,
+                        &self.subst.apply(&arg.ty),
+                        &mut bindings,
+                    );
                 }
-                // Also detect calls to constrained regular functions (e.g., println where a: Show)
-                if matches!(
-                    typed_callee_resolved_ref(func),
-                    Some(ResolvedBindingRef::Callable(_))
-                ) {
-                    if let Some(name) = typed_callee_var_name(func) {
-                        if let Some(scheme) =
-                            fn_schemes.get(name).filter(|s| !s.constraints.is_empty())
-                        {
-                            let declared_param_types = match &scheme.ty {
-                                Type::Fn(params, _) => params.as_slice(),
-                                _ => &[],
-                            };
-                            let actual_param_types: Vec<(crate::types::ParamMode, Type)> = args
-                                .iter()
-                                .map(|a| (crate::types::ParamMode::Consume, subst.apply(&a.ty)))
-                                .collect();
-                            for (req_trait, req_vars) in &scheme.constraints {
-                                let mut resolved_vars: Vec<TypeVarId> =
-                                    Vec::with_capacity(req_vars.len());
-                                let mut all_ok = true;
-                                for req_var in req_vars {
-                                    let resolved = resolve_function_ref_requirement_type(
-                                        &req_trait.local_name,
-                                        *req_var,
-                                        declared_param_types,
-                                        &actual_param_types,
-                                    );
-                                    let v = resolved
-                                        .as_ref()
-                                        .and_then(|t| leading_type_var(&strip_own(t)));
-                                    match v {
-                                        Some(v) if fn_type_param_vars.contains(&v) => {
-                                            resolved_vars.push(v);
-                                        }
-                                        _ => {
-                                            all_ok = false;
-                                            break;
-                                        }
-                                    }
-                                }
-                                if all_ok && !resolved_vars.is_empty() {
-                                    callback(req_trait.clone(), resolved_vars);
-                                }
-                            }
-                        }
-                    }
-                }
-                work.push(func);
-                for a in args {
-                    work.push(a);
-                }
-            }
-            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Let { value, body, .. }
-            | TypedExprKind::LetPattern { value, body, .. } => {
-                work.push(value);
-                if let Some(body) = body {
-                    work.push(body);
-                }
-            }
-            TypedExprKind::Do(exprs) => {
-                for e in exprs {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
-                for arm in arms {
-                    if let Some(guard) = &arm.guard {
-                        work.push(guard);
-                    }
-                    work.push(&arm.body);
-                }
-            }
-            TypedExprKind::BinaryOp { op, lhs, rhs } => {
-                let trait_name = match op {
-                    BinOp::Add => Some(TraitName::core_semigroup()),
-                    BinOp::Sub => Some(TraitName::core_sub()),
-                    BinOp::Mul => Some(TraitName::core_mul()),
-                    BinOp::Div => Some(TraitName::core_div()),
-                    BinOp::Eq | BinOp::Neq => Some(TraitName::core_eq()),
-                    BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::core_ord()),
-                    BinOp::And | BinOp::Or => None,
+                let ret_ty = self.subst.apply(&func.ty);
+                let actual_ret = match &ret_ty {
+                    Type::Fn(_, ret) => ret.as_ref().clone(),
+                    other => other.clone(),
                 };
-                if let Some(tn) = trait_name {
-                    let operand_ty = strip_own(&subst.apply(&lhs.ty));
-                    if let Some(v) = leading_type_var(&operand_ty) {
-                        if fn_type_param_vars.contains(&v) {
-                            callback(tn, vec![v]);
+                collect_type_var_bindings_strict(&method.return_type, &actual_ret, &mut bindings);
+            }
+
+            // For each trait type-parameter, extract a leading type var
+            // from its resolved binding (or fall back to the param id
+            // itself, which may still be a free var in fn_type_param_vars).
+            let mut position_vars: Vec<TypeVarId> = Vec::with_capacity(info.type_var_ids.len());
+            let mut all_free_params = true;
+            for tv_id in &info.type_var_ids {
+                let resolved = bindings
+                    .get(tv_id)
+                    .cloned()
+                    .map(|t| self.subst.apply(&t))
+                    .unwrap_or(Type::Var(*tv_id));
+                let stripped = strip_own(&resolved);
+                match leading_type_var(&stripped) {
+                    Some(v) if self.fn_type_param_vars.contains(&v) => {
+                        position_vars.push(v);
+                    }
+                    _ => {
+                        all_free_params = false;
+                        break;
+                    }
+                }
+            }
+            if all_free_params && !position_vars.is_empty() {
+                (self.callback)(trait_id.clone(), position_vars);
+            }
+
+            // Method-level where-constraints propagate independently.
+            if let Some(method) = info.methods.iter().find(|m| m.name == *method_name) {
+                if !method.constraints.is_empty() {
+                    for (req_trait, req_vars) in &method.constraints {
+                        let mut resolved_vars: Vec<TypeVarId> = Vec::with_capacity(req_vars.len());
+                        let mut all_ok = true;
+                        for req_var in req_vars {
+                            let resolved = bindings
+                                .get(req_var)
+                                .cloned()
+                                .map(|t| self.subst.apply(&t))
+                                .unwrap_or(Type::Var(*req_var));
+                            let concrete = strip_own(&resolved);
+                            match leading_type_var(&concrete) {
+                                Some(v) if self.fn_type_param_vars.contains(&v) => {
+                                    resolved_vars.push(v);
+                                }
+                                _ => {
+                                    all_ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if all_ok && !resolved_vars.is_empty() {
+                            (self.callback)(req_trait.clone(), resolved_vars);
                         }
                     }
                 }
-                work.push(lhs);
-                work.push(rhs);
             }
-            TypedExprKind::UnaryOp { op, operand } => {
-                if matches!(op, UnaryOp::Neg) {
-                    let operand_ty = strip_own(&subst.apply(&operand.ty));
-                    if let Some(v) = leading_type_var(&operand_ty) {
-                        if fn_type_param_vars.contains(&v) {
-                            callback(TraitName::core_neg(), vec![v]);
-                        }
-                    }
-                }
-                work.push(operand);
-            }
-            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::StructUpdate { base, fields, .. } => {
-                work.push(base);
-                for (_, e) in fields {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
-                for e in elems {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Recur { args, .. } => {
-                for e in args {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
-            TypedExprKind::Discharge(inner) => work.push(inner),
-            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
         }
+        // Also detect calls to constrained regular functions (e.g., println where a: Show)
+        if matches!(
+            typed_callee_resolved_ref(func),
+            Some(ResolvedBindingRef::Callable(_))
+        ) {
+            if let Some(name) = typed_callee_var_name(func) {
+                if let Some(scheme) = self
+                    .fn_schemes
+                    .get(name)
+                    .filter(|s| !s.constraints.is_empty())
+                {
+                    let declared_param_types = match &scheme.ty {
+                        Type::Fn(params, _) => params.as_slice(),
+                        _ => &[],
+                    };
+                    let actual_param_types: Vec<(ParamMode, Type)> = args
+                        .iter()
+                        .map(|a| (ParamMode::Consume, self.subst.apply(&a.ty)))
+                        .collect();
+                    for (req_trait, req_vars) in &scheme.constraints {
+                        let mut resolved_vars: Vec<TypeVarId> = Vec::with_capacity(req_vars.len());
+                        let mut all_ok = true;
+                        for req_var in req_vars {
+                            let resolved = resolve_function_ref_requirement_type(
+                                &req_trait.local_name,
+                                *req_var,
+                                declared_param_types,
+                                &actual_param_types,
+                            );
+                            let v = resolved
+                                .as_ref()
+                                .and_then(|t| leading_type_var(&strip_own(t)));
+                            match v {
+                                Some(v) if self.fn_type_param_vars.contains(&v) => {
+                                    resolved_vars.push(v);
+                                }
+                                _ => {
+                                    all_ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if all_ok && !resolved_vars.is_empty() {
+                            (self.callback)(req_trait.clone(), resolved_vars);
+                        }
+                    }
+                }
+            }
+        }
+        walk_app(self, func, args);
+    }
+
+    fn visit_binary_op(&mut self, op: &BinOp, lhs: &TypedExpr, rhs: &TypedExpr, _expr: &TypedExpr) {
+        let trait_name = match op {
+            BinOp::Add => Some(TraitName::core_semigroup()),
+            BinOp::Sub => Some(TraitName::core_sub()),
+            BinOp::Mul => Some(TraitName::core_mul()),
+            BinOp::Div => Some(TraitName::core_div()),
+            BinOp::Eq | BinOp::Neq => Some(TraitName::core_eq()),
+            BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => Some(TraitName::core_ord()),
+            BinOp::And | BinOp::Or => None,
+        };
+        if let Some(tn) = trait_name {
+            let operand_ty = strip_own(&self.subst.apply(&lhs.ty));
+            if let Some(v) = leading_type_var(&operand_ty) {
+                if self.fn_type_param_vars.contains(&v) {
+                    (self.callback)(tn, vec![v]);
+                }
+            }
+        }
+        walk_binary_op(self, lhs, rhs);
+    }
+
+    fn visit_unary_op(&mut self, op: &UnaryOp, operand: &TypedExpr, _expr: &TypedExpr) {
+        if matches!(op, UnaryOp::Neg) {
+            let operand_ty = strip_own(&self.subst.apply(&operand.ty));
+            if let Some(v) = leading_type_var(&operand_ty) {
+                if self.fn_type_param_vars.contains(&v) {
+                    (self.callback)(TraitName::core_neg(), vec![v]);
+                }
+            }
+        }
+        walk_unary_op(self, operand);
     }
 }
 

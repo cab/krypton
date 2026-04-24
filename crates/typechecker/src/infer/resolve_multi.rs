@@ -18,10 +18,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::trait_registry::{freshen_type, PartialMatch, TraitRegistry};
 use crate::typed_ast::{
-    ResolvedBindingRef, ResolvedTraitMethodRef, TraitName, TypedExpr, TypedExprKind,
+    DeferredId, ResolvedBindingRef, ResolvedTraitMethodRef, TraitName, TypedExpr, TypedExprKind,
 };
-use crate::types::{Substitution, Type, TypeVarGen, TypeVarId};
+use crate::types::{ParamMode, Substitution, Type, TypeVarGen, TypeVarId};
 use crate::unify::unify;
+use crate::visit::{walk_app, TypedExprVisitor};
 
 use super::checks::collect_type_var_bindings_strict;
 
@@ -188,138 +189,87 @@ fn collect_entries(
     subst: &Substitution,
     out: &mut Vec<Entry>,
 ) {
-    let mut work: Vec<&TypedExpr> = Vec::with_capacity(16);
-    work.push(expr);
-    while let Some(expr) = work.pop() {
-        if let TypedExprKind::App { func, args, .. } = &expr.kind {
-            if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
-                trait_name,
-                ..
-            })) = typed_callee_resolved_ref(func)
-            {
-                if let Some(info) = trait_registry.lookup_trait(trait_name) {
-                    if info.type_var_ids.len() > 1 {
-                        // Find the named method (by name lookup).
-                        let method_name = match typed_callee_resolved_ref(func) {
-                            Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
-                                method_name,
-                                ..
-                            })) => method_name.as_str(),
-                            _ => unreachable!(),
-                        };
-                        if let Some(method) = info.methods.iter().find(|m| m.name == method_name) {
-                            // Collect bindings: trait_type_var_id -> Type.
-                            let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
-                            for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
-                                collect_type_var_bindings_strict(
-                                    pattern,
-                                    &subst.apply(&arg.ty),
-                                    &mut bindings,
-                                );
-                            }
-                            let ret_ty = subst.apply(&func.ty);
-                            let actual_ret = match &ret_ty {
-                                Type::Fn(_, ret) => ret.as_ref().clone(),
-                                other => other.clone(),
-                            };
+    let mut collector = EntryCollector {
+        owning_fn,
+        trait_registry,
+        subst,
+        out,
+    };
+    collector.visit_expr(expr);
+}
+
+struct EntryCollector<'a> {
+    owning_fn: usize,
+    trait_registry: &'a TraitRegistry,
+    subst: &'a Substitution,
+    out: &'a mut Vec<Entry>,
+}
+
+impl<'a> TypedExprVisitor for EntryCollector<'a> {
+    type Result = ();
+
+    fn visit_app(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        _param_modes: &[ParamMode],
+        _deferred_id: Option<DeferredId>,
+        _expr: &TypedExpr,
+    ) {
+        if let Some(ResolvedBindingRef::TraitMethod(ResolvedTraitMethodRef {
+            trait_name,
+            method_name,
+        })) = typed_callee_resolved_ref(func)
+        {
+            if let Some(info) = self.trait_registry.lookup_trait(trait_name) {
+                if info.type_var_ids.len() > 1 {
+                    if let Some(method) =
+                        info.methods.iter().find(|m| m.name == method_name.as_str())
+                    {
+                        // Collect bindings: trait_type_var_id -> Type.
+                        let mut bindings: FxHashMap<TypeVarId, Type> = FxHashMap::default();
+                        for ((_, pattern), arg) in method.param_types.iter().zip(args.iter()) {
                             collect_type_var_bindings_strict(
-                                &method.return_type,
-                                &actual_ret,
+                                pattern,
+                                &self.subst.apply(&arg.ty),
                                 &mut bindings,
                             );
-                            // Build positions in declaration order. If a trait
-                            // type var didn't appear anywhere in this method,
-                            // skip the entry — there's nothing to constrain.
-                            let mut positions: Vec<Type> =
-                                Vec::with_capacity(info.type_var_ids.len());
-                            let mut all_present = true;
-                            for tv_id in &info.type_var_ids {
-                                if let Some(t) = bindings.get(tv_id) {
-                                    positions.push(t.clone());
-                                } else {
-                                    all_present = false;
-                                    break;
-                                }
+                        }
+                        let ret_ty = self.subst.apply(&func.ty);
+                        let actual_ret = match &ret_ty {
+                            Type::Fn(_, ret) => ret.as_ref().clone(),
+                            other => other.clone(),
+                        };
+                        collect_type_var_bindings_strict(
+                            &method.return_type,
+                            &actual_ret,
+                            &mut bindings,
+                        );
+                        // Build positions in declaration order. If a trait
+                        // type var didn't appear anywhere in this method,
+                        // skip the entry — there's nothing to constrain.
+                        let mut positions: Vec<Type> = Vec::with_capacity(info.type_var_ids.len());
+                        let mut all_present = true;
+                        for tv_id in &info.type_var_ids {
+                            if let Some(t) = bindings.get(tv_id) {
+                                positions.push(t.clone());
+                            } else {
+                                all_present = false;
+                                break;
                             }
-                            if all_present {
-                                out.push(Entry {
-                                    trait_name: trait_name.clone(),
-                                    positions,
-                                    owning_fn,
-                                });
-                            }
+                        }
+                        if all_present {
+                            self.out.push(Entry {
+                                trait_name: trait_name.clone(),
+                                positions,
+                                owning_fn: self.owning_fn,
+                            });
                         }
                     }
                 }
             }
-            work.push(func);
-            for a in args {
-                work.push(a);
-            }
-            continue;
         }
-        // Generic recursion
-        match &expr.kind {
-            TypedExprKind::TypeApp { expr, .. } => work.push(expr),
-            TypedExprKind::Lambda { body, .. } => work.push(body),
-            TypedExprKind::If { cond, then_, else_ } => {
-                work.push(cond);
-                work.push(then_);
-                work.push(else_);
-            }
-            TypedExprKind::Let { value, body, .. }
-            | TypedExprKind::LetPattern { value, body, .. } => {
-                work.push(value);
-                if let Some(body) = body {
-                    work.push(body);
-                }
-            }
-            TypedExprKind::Do(exprs) => {
-                for e in exprs {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Match { scrutinee, arms } => {
-                work.push(scrutinee);
-                for arm in arms {
-                    if let Some(guard) = &arm.guard {
-                        work.push(guard);
-                    }
-                    work.push(&arm.body);
-                }
-            }
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                work.push(lhs);
-                work.push(rhs);
-            }
-            TypedExprKind::UnaryOp { operand, .. } => work.push(operand),
-            TypedExprKind::FieldAccess { expr, .. } => work.push(expr),
-            TypedExprKind::StructLit { fields, .. } => {
-                for (_, e) in fields {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::StructUpdate { base, fields, .. } => {
-                work.push(base);
-                for (_, e) in fields {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Tuple(elems) | TypedExprKind::VecLit(elems) => {
-                for e in elems {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::Recur { args, .. } => {
-                for e in args {
-                    work.push(e);
-                }
-            }
-            TypedExprKind::QuestionMark { expr, .. } => work.push(expr),
-            TypedExprKind::Discharge(inner) => work.push(inner),
-            TypedExprKind::App { .. } => unreachable!("handled above"),
-            TypedExprKind::Lit(_) | TypedExprKind::Var(_) => {}
-        }
+        walk_app(self, func, args);
     }
 }
 

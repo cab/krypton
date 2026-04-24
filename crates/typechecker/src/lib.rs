@@ -16,3 +16,4 @@ pub mod type_registry;
 pub mod typed_ast;
 pub mod types;
 pub mod unify;
+pub mod visit;

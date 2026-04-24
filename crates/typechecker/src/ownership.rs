@@ -1,13 +1,19 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use krypton_parser::ast::{Decl, Expr, FnDecl, Lifts, Module, ParamMode, Span};
+use krypton_parser::ast::{
+    BinOp, Decl, Expr, FnDecl, Lifts, Lit, Module, ParamMode, Span, UnaryOp,
+};
 
 use crate::type_registry::{TypeKind, TypeRegistry};
-use crate::typed_ast::{ParamQualifier, TypedExpr, TypedExprKind, TypedFnDecl, TypedPattern};
-use crate::types::{Type, TypeScheme, TypeVarId};
+use crate::typed_ast::{
+    DeferredId, ParamQualifier, ResolvedTypeRef, TypedExpr, TypedExprKind, TypedFnDecl,
+    TypedMatchArm, TypedPattern,
+};
+use crate::types::{SchemeVarId, Type, TypeScheme, TypeVarId};
 use crate::unify::{
     BareResourceContext, BorrowMisuseContext, SecondaryLabel, SpannedTypeError, TypeError,
 };
+use crate::visit::TypedExprVisitor;
 
 /// (consumed, partially_consumed) maps recorded for one branch of an if/match.
 type BranchConsumeMaps = (FxHashMap<String, Span>, FxHashMap<String, Span>);
@@ -651,7 +657,12 @@ fn free_owned_vars(
     bound: &FxHashSet<String>,
 ) -> FxHashSet<String> {
     let mut result = FxHashSet::default();
-    collect_free_owned(expr, owned, bound, &mut result);
+    let mut collector = FreeVarsCollector {
+        owned,
+        bound: bound.clone(),
+        acc: &mut result,
+    };
+    collector.visit_expr(expr);
     result
 }
 
@@ -664,33 +675,8 @@ fn for_each_tail_position<F>(expr: &TypedExpr, on_tail: &mut F)
 where
     F: FnMut(&TypedExpr),
 {
-    match &expr.kind {
-        TypedExprKind::Do(exprs) => {
-            if let Some(last) = exprs.last() {
-                for_each_tail_position(last, on_tail);
-            }
-        }
-        TypedExprKind::Let {
-            body: Some(body), ..
-        }
-        | TypedExprKind::LetPattern {
-            body: Some(body), ..
-        } => {
-            for_each_tail_position(body, on_tail);
-        }
-        TypedExprKind::If { then_, else_, .. } => {
-            for_each_tail_position(then_, on_tail);
-            for_each_tail_position(else_, on_tail);
-        }
-        TypedExprKind::Match { arms, .. } => {
-            for arm in arms {
-                for_each_tail_position(&arm.body, on_tail);
-            }
-        }
-        TypedExprKind::TypeApp { expr: inner, .. } => for_each_tail_position(inner, on_tail),
-        TypedExprKind::QuestionMark { expr: inner, .. } => for_each_tail_position(inner, on_tail),
-        _ => on_tail(expr),
-    }
+    let mut visitor = TailPositionVisitor { on_tail };
+    visitor.visit_expr(expr);
 }
 
 /// Free variables of `expr` that refer to a binding in `borrowed` and are not
@@ -701,124 +687,137 @@ fn free_borrowed_vars(
     borrowed: &FxHashSet<String>,
     bound: &FxHashSet<String>,
 ) -> FxHashSet<String> {
-    // `collect_free_owned` is generic over "which names are roots to report":
-    // it filters by `owned.contains(name)`. Reuse it by passing the borrowed
-    // set in that parameter position — the traversal and shadowing logic are
-    // identical.
+    // Reuses the same collector by passing the borrowed set in the "roots to
+    // report" position — the traversal and shadowing logic are identical.
     let mut result = FxHashSet::default();
-    collect_free_owned(expr, borrowed, bound, &mut result);
+    let mut collector = FreeVarsCollector {
+        owned: borrowed,
+        bound: bound.clone(),
+        acc: &mut result,
+    };
+    collector.visit_expr(expr);
     result
 }
 
-fn collect_free_owned(
-    expr: &TypedExpr,
-    owned: &FxHashSet<String>,
-    bound: &FxHashSet<String>,
-    acc: &mut FxHashSet<String>,
-) {
-    match &expr.kind {
-        TypedExprKind::Var(name) => {
-            if owned.contains(name) && !bound.contains(name) {
-                acc.insert(name.clone());
+struct FreeVarsCollector<'a> {
+    /// Names that count as roots to report on reference.
+    owned: &'a FxHashSet<String>,
+    /// Names shadowed by enclosing binders. Mutated in-place as we descend
+    /// into new scopes; restored on the way back up.
+    bound: FxHashSet<String>,
+    acc: &'a mut FxHashSet<String>,
+}
+
+impl<'a> TypedExprVisitor for FreeVarsCollector<'a> {
+    type Result = ();
+
+    fn visit_var(&mut self, name: &str, _expr: &TypedExpr) {
+        if self.owned.contains(name) && !self.bound.contains(name) {
+            self.acc.insert(name.to_string());
+        }
+    }
+
+    fn visit_let(
+        &mut self,
+        name: &str,
+        value: &TypedExpr,
+        body: Option<&TypedExpr>,
+        _expr: &TypedExpr,
+    ) {
+        self.visit_expr(value);
+        if let Some(body) = body {
+            let was_new = self.bound.insert(name.to_string());
+            self.visit_expr(body);
+            if was_new {
+                self.bound.remove(name);
             }
         }
-        TypedExprKind::App { func, args, .. } => {
-            collect_free_owned(func, owned, bound, acc);
-            for a in args {
-                collect_free_owned(a, owned, bound, acc);
-            }
+    }
+
+    fn visit_let_pattern(
+        &mut self,
+        pattern: &TypedPattern,
+        value: &TypedExpr,
+        body: Option<&TypedExpr>,
+        _expr: &TypedExpr,
+    ) {
+        self.visit_expr(value);
+        if let Some(body) = body {
+            let added = self.extend_bound(collect_pattern_var_names(pattern));
+            self.visit_expr(body);
+            self.retract_bound(&added);
         }
-        TypedExprKind::TypeApp { expr, .. } => collect_free_owned(expr, owned, bound, acc),
-        TypedExprKind::Let { name, value, body } => {
-            collect_free_owned(value, owned, bound, acc);
-            if let Some(body) = body {
-                let mut inner_bound = bound.clone();
-                inner_bound.insert(name.clone());
-                collect_free_owned(body, owned, &inner_bound, acc);
-            }
+    }
+
+    fn visit_lambda(&mut self, params: &[String], body: &TypedExpr, _expr: &TypedExpr) {
+        let added = self.extend_bound(params.to_vec());
+        self.visit_expr(body);
+        self.retract_bound(&added);
+    }
+
+    fn visit_match_arm(&mut self, arm: &TypedMatchArm) {
+        let added = self.extend_bound(collect_pattern_var_names(&arm.pattern));
+        if let Some(guard) = &arm.guard {
+            self.visit_expr(guard);
         }
-        TypedExprKind::LetPattern {
-            pattern,
-            value,
-            body,
-        } => {
-            collect_free_owned(value, owned, bound, acc);
-            if let Some(body) = body {
-                let mut inner_bound = bound.clone();
-                for name in collect_pattern_var_names(pattern) {
-                    inner_bound.insert(name);
+        self.visit_expr(&arm.body);
+        self.retract_bound(&added);
+    }
+}
+
+impl<'a> FreeVarsCollector<'a> {
+    /// Insert each name into `bound`; return the subset that was newly
+    /// inserted so the caller can undo exactly those on scope exit (names
+    /// already bound by an outer scope aren't touched).
+    fn extend_bound(&mut self, names: Vec<String>) -> Vec<String> {
+        names
+            .into_iter()
+            .filter(|n| self.bound.insert(n.clone()))
+            .collect()
+    }
+
+    fn retract_bound(&mut self, names: &[String]) {
+        for n in names {
+            self.bound.remove(n);
+        }
+    }
+}
+
+/// Visitor that invokes a callback at every tail-value position. See
+/// [`for_each_tail_position`] for the definition of tail positions.
+struct TailPositionVisitor<'a, F: FnMut(&TypedExpr)> {
+    on_tail: &'a mut F,
+}
+
+impl<'a, F: FnMut(&TypedExpr)> TypedExprVisitor for TailPositionVisitor<'a, F> {
+    type Result = ();
+
+    fn visit_expr(&mut self, expr: &TypedExpr) {
+        match &expr.kind {
+            TypedExprKind::Do(exprs) => {
+                if let Some(last) = exprs.last() {
+                    self.visit_expr(last);
                 }
-                collect_free_owned(body, owned, &inner_bound, acc);
             }
-        }
-        TypedExprKind::Do(exprs) => {
-            for e in exprs {
-                collect_free_owned(e, owned, bound, acc);
+            TypedExprKind::Let {
+                body: Some(body), ..
             }
-        }
-        TypedExprKind::If { cond, then_, else_ } => {
-            collect_free_owned(cond, owned, bound, acc);
-            collect_free_owned(then_, owned, bound, acc);
-            collect_free_owned(else_, owned, bound, acc);
-        }
-        TypedExprKind::Match { scrutinee, arms } => {
-            collect_free_owned(scrutinee, owned, bound, acc);
-            for arm in arms {
-                let mut inner_bound = bound.clone();
-                for name in collect_pattern_var_names(&arm.pattern) {
-                    inner_bound.insert(name);
+            | TypedExprKind::LetPattern {
+                body: Some(body), ..
+            } => self.visit_expr(body),
+            TypedExprKind::If { then_, else_, .. } => {
+                self.visit_expr(then_);
+                self.visit_expr(else_);
+            }
+            TypedExprKind::Match { arms, .. } => {
+                for arm in arms {
+                    self.visit_expr(&arm.body);
                 }
-                if let Some(guard) = &arm.guard {
-                    collect_free_owned(guard, owned, &inner_bound, acc);
-                }
-                collect_free_owned(&arm.body, owned, &inner_bound, acc);
             }
+            TypedExprKind::TypeApp { expr: inner, .. } => self.visit_expr(inner),
+            TypedExprKind::QuestionMark { expr: inner, .. } => self.visit_expr(inner),
+            _ => (self.on_tail)(expr),
         }
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            collect_free_owned(lhs, owned, bound, acc);
-            collect_free_owned(rhs, owned, bound, acc);
-        }
-        TypedExprKind::UnaryOp { operand, .. } => {
-            collect_free_owned(operand, owned, bound, acc);
-        }
-        TypedExprKind::Lambda { params, body } => {
-            let mut inner_bound = bound.clone();
-            for p in params {
-                inner_bound.insert(p.clone());
-            }
-            collect_free_owned(body, owned, &inner_bound, acc);
-        }
-        TypedExprKind::FieldAccess { expr, .. } => {
-            collect_free_owned(expr, owned, bound, acc);
-        }
-        TypedExprKind::StructLit { fields, .. } => {
-            for (_, e) in fields {
-                collect_free_owned(e, owned, bound, acc);
-            }
-        }
-        TypedExprKind::StructUpdate { base, fields } => {
-            collect_free_owned(base, owned, bound, acc);
-            for (_, e) in fields {
-                collect_free_owned(e, owned, bound, acc);
-            }
-        }
-        TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
-            for e in elements {
-                collect_free_owned(e, owned, bound, acc);
-            }
-        }
-        TypedExprKind::Recur { args, .. } => {
-            for e in args {
-                collect_free_owned(e, owned, bound, acc);
-            }
-        }
-        TypedExprKind::QuestionMark { expr, .. } => {
-            collect_free_owned(expr, owned, bound, acc);
-        }
-        TypedExprKind::Discharge(inner) => {
-            collect_free_owned(inner, owned, bound, acc);
-        }
-        TypedExprKind::Lit(_) => {}
     }
 }
 
@@ -1081,7 +1080,7 @@ impl<'a> OwnershipChecker<'a> {
 
     fn check_exprs(&mut self, exprs: &[TypedExpr]) -> Result<(), SpannedTypeError> {
         for e in exprs {
-            self.check_expr(e)?;
+            self.visit_expr(e)?;
         }
         Ok(())
     }
@@ -1089,7 +1088,7 @@ impl<'a> OwnershipChecker<'a> {
     fn check_branch(&mut self, expr: &TypedExpr) -> Result<BranchConsumeMaps, SpannedTypeError> {
         let saved_consumed = self.consumed.clone();
         let saved_partial = self.partially_consumed.clone();
-        self.check_expr(expr)?;
+        self.visit_expr(expr)?;
         let branch_consumed = std::mem::replace(&mut self.consumed, saved_consumed);
         let branch_partial = std::mem::replace(&mut self.partially_consumed, saved_partial);
         Ok((branch_consumed, branch_partial))
@@ -1117,7 +1116,7 @@ impl<'a> OwnershipChecker<'a> {
 
         let result = (|| {
             if let Some(guard) = guard {
-                self.check_expr(guard)?;
+                self.visit_expr(guard)?;
                 // Guards cannot consume owned variables — fallthrough would cause use-after-move
                 for (name, span) in &self.consumed {
                     if !saved_consumed.contains_key(name) && self.owned.contains(name) {
@@ -1132,7 +1131,7 @@ impl<'a> OwnershipChecker<'a> {
                     }
                 }
             }
-            self.check_expr(body)
+            self.visit_expr(body)
         })();
 
         let branch_consumed = std::mem::replace(&mut self.consumed, saved_consumed);
@@ -1143,532 +1142,118 @@ impl<'a> OwnershipChecker<'a> {
         result?;
         Ok((branch_consumed, branch_partial))
     }
+}
 
-    fn check_expr(&mut self, expr: &TypedExpr) -> Result<(), SpannedTypeError> {
-        match &expr.kind {
-            TypedExprKind::Var(name) => {
-                // A Var reference to a borrowed binding is just a borrow-place
-                // read; it is not itself an error. The error fires at the
-                // consume points where the borrow-place would flow into an
-                // owning position (see `check_not_borrow_place` callsites
-                // below: App consume-mode args, Let value, StructLit field,
-                // lambda capture, tail-return position).
-                if self.owned.contains(name) {
-                    self.check_not_consumed(name, expr.span, self.own_fn_notes.get(name).cloned())?;
-                    self.consumed.insert(name.clone(), expr.span);
-                    self.moves.insert(expr.span, name.clone());
-                }
-                Ok(())
+impl<'a> TypedExprVisitor for OwnershipChecker<'a> {
+    type Result = Result<(), SpannedTypeError>;
+
+    fn visit_lit(&mut self, _lit: &Lit) -> Self::Result {
+        Ok(())
+    }
+
+    fn visit_var(&mut self, name: &str, expr: &TypedExpr) -> Self::Result {
+        // A Var reference to a borrowed binding is just a borrow-place
+        // read; it is not itself an error. The error fires at the
+        // consume points where the borrow-place would flow into an
+        // owning position (see `check_not_borrow_place` callsites
+        // below: App consume-mode args, Let value, StructLit field,
+        // lambda capture, tail-return position).
+        if self.owned.contains(name) {
+            self.check_not_consumed(name, expr.span, self.own_fn_notes.get(name).cloned())?;
+            self.consumed.insert(name.to_string(), expr.span);
+            self.moves.insert(expr.span, name.to_string());
+        }
+        Ok(())
+    }
+
+    fn visit_app(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        param_modes: &[ParamMode],
+        _deferred_id: Option<DeferredId>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        // Borrow regions (AC #9):
+        // - Arguments are evaluated left-to-right.
+        // - A nested call that borrows a place releases its borrow when the
+        //   call returns: `combine(read(s, 1), write(s, 2))` sees `read` borrow
+        //   `s`, then release, then `write` borrow `s`, then release.
+        // - Sibling arguments to the *same* direct call overlap: `f(s, s)` with
+        //   two exclusive borrows overlaps and is rejected here via aliasing
+        //   detection. Observational borrows of the same root may alias freely.
+        self.visit_expr(func)?;
+        let callee_qualifiers = callee_var_name(func).and_then(|name| self.fn_qualifiers.get(name));
+
+        // Resolve per-argument modes: prefer param_modes from the App node,
+        // fall back to fn_param_info for compatibility.
+        let fallback_modes = callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
+        let get_mode = |i: usize| -> ParamMode {
+            if let Some(m) = param_modes.get(i) {
+                return *m;
             }
-
-            TypedExprKind::App {
-                func,
-                args,
-                param_modes,
-                ..
-            } => {
-                // Borrow regions (AC #9):
-                // - Arguments are evaluated left-to-right.
-                // - A nested call that borrows a place releases its borrow when the
-                //   call returns: `combine(read(s, 1), write(s, 2))` sees `read` borrow
-                //   `s`, then release, then `write` borrow `s`, then release.
-                // - Sibling arguments to the *same* direct call overlap: `f(s, s)` with
-                //   two exclusive borrows overlaps and is rejected here via aliasing
-                //   detection. Observational borrows of the same root may alias freely.
-                self.check_expr(func)?;
-                let callee_qualifiers =
-                    callee_var_name(func).and_then(|name| self.fn_qualifiers.get(name));
-
-                // Resolve per-argument modes: prefer param_modes from the App node,
-                // fall back to fn_param_info for compatibility.
-                let fallback_modes =
-                    callee_var_name(func).and_then(|name| self.fn_param_info.get(name));
-                let get_mode = |i: usize| -> ParamMode {
-                    if let Some(m) = param_modes.get(i) {
-                        return *m;
-                    }
-                    if let Some(modes) = fallback_modes {
-                        if let Some(m) = modes.get(i) {
-                            return *m;
-                        }
-                    }
-                    ParamMode::Consume
-                };
-
-                // First pass: detect exclusive borrow aliasing.
-                // Two exclusive borrows (`&param: ~T`) of the same place root are rejected.
-                // Observational borrows (`&param: T`) do not conflict.
-                let mut exclusive_roots: Vec<(usize, &str)> = Vec::new();
-                for (i, arg) in args.iter().enumerate() {
-                    let mode = get_mode(i);
-                    if matches!(mode, ParamMode::Borrow) {
-                        // Exclusive borrow — reject double-exclusive-borrow of the
-                        // same place root whether the root is an owned local or a
-                        // borrowed parameter being reborrowed.
-                        if let Some(root) = place_root(arg) {
-                            if self.owned.contains(root) || self.borrowed.contains(root) {
-                                for &(j, prev_root) in &exclusive_roots {
-                                    if root == prev_root {
-                                        let _ = j; // used arg index for error context
-                                        return Err(SpannedTypeError {
-                                            error: Box::new(TypeError::AlreadyMoved {
-                                                name: root.to_string(),
-                                            }),
-                                            span: arg.span,
-                                            note: Some(format!(
-                                                "`{}` is already exclusively borrowed by another argument in this call",
-                                                root
-                                            )),
-                                            secondary_span: None,
-                                            source_file: None,
-                                            var_names: None,
-                                        });
-                                    }
-                                }
-                                exclusive_roots.push((i, root));
-                            }
-                        }
-                    }
+            if let Some(modes) = fallback_modes {
+                if let Some(m) = modes.get(i) {
+                    return *m;
                 }
-
-                // Second pass: qualifier checks and borrow/consume processing.
-                for (i, arg) in args.iter().enumerate() {
-                    // Check qualifier mismatch: affine Var arg passed to RequiresU param
-                    if let TypedExprKind::Var(arg_name) = &arg.kind {
-                        if self.affine.contains(arg_name) {
-                            if let Some(quals) = callee_qualifiers {
-                                if let Some((qualifier, param_name)) = quals.get(i) {
-                                    if matches!(qualifier, ParamQualifier::RequiresU) {
-                                        let callee_name = callee_var_name(func)
-                                            .unwrap_or("<anonymous>")
-                                            .to_string();
-                                        return Err(SpannedTypeError {
-                                            error: Box::new(TypeError::QualifierMismatch {
-                                                name: arg_name.clone(),
-                                                callee: callee_name,
-                                                param: param_name.clone(),
-                                            }),
-                                            span: arg.span,
-                                            note: None,
-                                            secondary_span: None,
-                                            source_file: None,
-                                            var_names: None,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Check qualifier mismatch for non-Var affine arguments
-                    if !matches!(&arg.kind, TypedExprKind::Var(_)) {
-                        let is_affine_arg = match &arg.kind {
-                            TypedExprKind::Lambda { .. } => {
-                                self.lambda_own_captures.contains_key(&arg.span)
-                                    || matches!(&arg.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)))
-                            }
-                            _ => false,
-                        };
-                        if is_affine_arg {
-                            if let Some(quals) = callee_qualifiers {
-                                if let Some((qualifier, param_name)) = quals.get(i) {
-                                    match qualifier {
-                                        ParamQualifier::RequiresU => {
-                                            let callee_name = callee_var_name(func)
-                                                .unwrap_or("<anonymous>")
-                                                .to_string();
-                                            return Err(SpannedTypeError {
-                                                error: Box::new(TypeError::QualifierMismatch {
-                                                    name: "<lambda>".to_string(),
-                                                    callee: callee_name,
-                                                    param: param_name.clone(),
-                                                }),
-                                                span: arg.span,
-                                                note: Some(
-                                                    self.lambda_own_captures
-                                                        .get(&arg.span)
-                                                        .map(|cap_name| {
-                                                            format!(
-                                                                "closure is single-use because it captures `~` value `{}`",
-                                                                cap_name
-                                                            )
-                                                        })
-                                                        .unwrap_or_else(|| {
-                                                            "closure captures an owned (`~`) value, making it single-use"
-                                                                .to_string()
-                                                        }),
-                                                ),
-                                                secondary_span: None,
-                                                source_file: None,
-                                                var_names: None,
-                                            });
-                                        }
-                                        ParamQualifier::Polymorphic => {}
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Borrow vs consume: borrow slots do not consume the argument.
-                    let mode = get_mode(i);
-                    let is_borrow =
-                        matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
-                    if is_borrow {
-                        if let Some(root) = place_root(arg) {
-                            // Place expression (variable or field chain) — keep live.
-                            // Owned locals check move state; borrowed params fall
-                            // through unchecked (they cannot be consumed, so
-                            // cannot be in `self.consumed`). Reborrowing a
-                            // borrowed binding is legal.
-                            if self.owned.contains(root) {
-                                self.check_not_consumed(root, arg.span, None)?;
-                            }
-                        } else {
-                            // Non-place expression passed to a borrow slot — reject
-                            return Err(SpannedTypeError {
-                                error: Box::new(TypeError::CannotBorrowTemporary {
-                                    span: arg.span,
-                                }),
-                                span: arg.span,
-                                note: None,
-                                secondary_span: None,
-                                source_file: None,
-                                var_names: None,
-                            });
-                        }
-                    } else {
-                        // Consume-mode slot: a borrow-place cannot flow into
-                        // an owning position. Pre-check before walking the
-                        // arg so the diagnostic points at the arg site.
-                        self.check_not_borrow_place(
-                            arg,
-                            BorrowMisuseContext::ConsumedOrReturned,
-                            None,
-                        )?;
-                        self.check_expr(arg)?;
-                    }
-                }
-                Ok(())
             }
+            ParamMode::Consume
+        };
 
-            TypedExprKind::TypeApp { expr, .. } => self.check_expr(expr),
-
-            TypedExprKind::Let { name, value, body } => {
-                // A borrowed binding (or owning projection of one) cannot be
-                // rebound as an owner by `let`. Plain-data projections like
-                // `let n = t.int_field` are fine — the value type check
-                // inside `check_not_borrow_place` gates on `Type::Own`.
-                if matches!(&value.ty, Type::Own(_)) {
-                    if let Some(root) = place_root(value) {
-                        if self.borrowed.contains(root) {
-                            return Err(SpannedTypeError {
-                                error: Box::new(TypeError::BorrowedBindingMisuse {
-                                    name: root.to_string(),
-                                    context: BorrowMisuseContext::ReboundByLet,
-                                }),
-                                span: value.span,
-                                note: Some(format!("rebinding `{}` as `{}`", root, name)),
-                                secondary_span: None,
-                                source_file: None,
-                                var_names: None,
-                            });
-                        }
-                    }
-                }
-                self.check_expr(value)?;
-                // Fabrication guard: let_own_spans marks bindings that resolved to Type::Own.
-                // Exempt ~fn closures (closure affinity, not value ownership).
-                let is_own_let = self.let_own_spans.contains(&expr.span);
-                if is_own_let {
-                    let is_own_fn = matches!(&value.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
-                    if !is_own_fn && !self.is_owned_expr(value) {
-                        let t = Type::Named("T".into(), vec![]);
-                        return Err(SpannedTypeError {
-                            error: Box::new(TypeError::Mismatch {
-                                expected: Type::Own(Box::new(t.clone())),
-                                actual: t,
-                            }),
-                            span: expr.span,
-                            note: Some(format!(
-                                "annotation `~` on `{}` requires an owned value",
-                                name
-                            )),
-                            secondary_span: None,
-                            source_file: None,
-                            var_names: None,
-                        });
-                    }
-                    self.owned.insert(name.clone());
-                    if let TypedExprKind::Lambda { .. } = &value.kind {
-                        if let Some(cap_name) = self.lambda_own_captures.get(&value.span) {
-                            self.own_fn_notes.insert(
-                                name.clone(),
-                                format!(
-                                    "closure is single-use because it captures `~` value `{}`",
-                                    cap_name
-                                ),
-                            );
-                        }
-                    }
-                }
-                if let Some(body) = body {
-                    self.check_expr(body)?;
-                    if is_own_let {
-                        self.owned.remove(name);
-                        self.consumed.remove(name);
-                        self.partially_consumed.remove(name);
-                    }
-                }
-                Ok(())
-            }
-
-            TypedExprKind::LetPattern {
-                pattern,
-                value,
-                body,
-            } => {
-                self.check_expr(value)?;
-                // Fabrication guard for let-pattern
-                if self.let_own_spans.contains(&expr.span) {
-                    let is_own_fn = matches!(&value.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
-                    if !is_own_fn && !self.is_owned_expr(value) {
-                        let t = Type::Named("T".into(), vec![]);
-                        return Err(SpannedTypeError {
-                            error: Box::new(TypeError::Mismatch {
-                                expected: Type::Own(Box::new(t.clone())),
-                                actual: t,
-                            }),
-                            span: expr.span,
-                            note: Some("annotation `~` requires an owned value".into()),
-                            secondary_span: None,
-                            source_file: None,
-                            var_names: None,
-                        });
-                    }
-                }
-                // Track pattern-bound owned variables
-                let pattern_owned = collect_owned_pattern_vars(pattern);
-                for name in &pattern_owned {
-                    self.owned.insert(name.clone());
-                }
-                if let Some(body) = body {
-                    self.check_expr(body)?;
-                    for name in &pattern_owned {
-                        self.owned.remove(name);
-                        self.consumed.remove(name);
-                        self.partially_consumed.remove(name);
-                    }
-                }
-                Ok(())
-            }
-
-            TypedExprKind::Do(exprs) => self.check_exprs(exprs),
-
-            TypedExprKind::If { cond, then_, else_ } => {
-                self.check_expr(cond)?;
-                let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
-                let (then_consumed, then_partial) = self.check_branch(then_)?;
-                let (else_consumed, else_partial) = self.check_branch(else_)?;
-
-                let then_keys: FxHashSet<String> = then_consumed.keys().cloned().collect();
-                let else_keys: FxHashSet<String> = else_consumed.keys().cloned().collect();
-                let newly_in_then: FxHashSet<String> =
-                    then_keys.difference(&before).cloned().collect();
-                let newly_in_else: FxHashSet<String> =
-                    else_keys.difference(&before).cloned().collect();
-                let in_all: FxHashSet<String> = newly_in_then
-                    .intersection(&newly_in_else)
-                    .cloned()
-                    .collect();
-                let in_some: FxHashSet<String> = newly_in_then
-                    .symmetric_difference(&newly_in_else)
-                    .cloned()
-                    .collect();
-
-                for name in &in_all {
-                    if let Some(&span) = then_consumed.get(name) {
-                        self.consumed.insert(name.clone(), span);
-                    }
-                }
-                for name in &in_some {
-                    let span = then_consumed
-                        .get(name)
-                        .or_else(|| else_consumed.get(name))
-                        .copied()
-                        .unwrap();
-                    self.partially_consumed.insert(name.clone(), span);
-                }
-                for (name, span) in then_partial.iter().chain(else_partial.iter()) {
-                    self.partially_consumed.entry(name.clone()).or_insert(*span);
-                }
-                Ok(())
-            }
-
-            TypedExprKind::Match { scrutinee, arms } => {
-                self.check_expr(scrutinee)?;
-                // A match scrutinee is borrowed only when it roots onto an
-                // already-borrowed binding (e.g., matching on `&x` inside a
-                // function whose slot is `&~T`). Non-place scrutinees —
-                // function calls, arithmetic, constructor applications — are
-                // always owned: Krypton has no `&T`-returning functions,
-                // so these expressions cannot yield a borrow. If that
-                // invariant ever changes, this line must be revisited.
-                let scrutinee_is_borrowed =
-                    place_root(scrutinee).is_some_and(|root| self.borrowed.contains(root));
-                let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
-                let n = arms.len();
-                let mut per_arm_new: Vec<FxHashMap<String, Span>> = Vec::new();
-                let mut merged_partial = self.partially_consumed.clone();
-
-                for arm in arms {
-                    let pattern_owned = collect_owned_pattern_vars(&arm.pattern);
-                    let (arm_consumed, arm_partial) = self.check_match_arm_branch(
-                        &arm.pattern,
-                        arm.guard.as_deref(),
-                        &arm.body,
-                        scrutinee_is_borrowed,
-                    )?;
-
-                    let newly: FxHashMap<String, Span> = arm_consumed
-                        .into_iter()
-                        .filter(|(k, _)| !before.contains(k) && !pattern_owned.contains(k))
-                        .collect();
-                    per_arm_new.push(newly);
-                    for (name, span) in &arm_partial {
-                        if !pattern_owned.contains(name) {
-                            merged_partial.entry(name.clone()).or_insert(*span);
-                        }
-                    }
-                }
-
-                let all_names: FxHashSet<String> =
-                    per_arm_new.iter().flat_map(|s| s.keys().cloned()).collect();
-                for name in &all_names {
-                    let count = per_arm_new.iter().filter(|s| s.contains_key(name)).count();
-                    if count == n {
-                        if let Some(span) = per_arm_new.iter().find_map(|s| s.get(name)).copied() {
-                            self.consumed.insert(name.clone(), span);
-                        }
-                    } else {
-                        let span = per_arm_new
-                            .iter()
-                            .find_map(|s| s.get(name))
-                            .copied()
-                            .unwrap();
-                        merged_partial.insert(name.clone(), span);
-                    }
-                }
-                self.partially_consumed = merged_partial;
-                Ok(())
-            }
-
-            TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-                self.check_expr(lhs)?;
-                self.check_expr(rhs)
-            }
-
-            TypedExprKind::UnaryOp { operand, .. } => self.check_expr(operand),
-
-            TypedExprKind::Lambda { params, body } => {
-                let lambda_params: FxHashSet<String> = params.iter().cloned().collect();
-
-                // Closures cannot capture borrowed bindings: Krypton has no
-                // closure lifetimes, so a borrowed capture could outlive the
-                // borrow. Check before walking the body so this diagnostic
-                // wins over any generic Var-arm error the body walk would
-                // produce for the same reference.
-                let borrowed_captures = free_borrowed_vars(body, &self.borrowed, &lambda_params);
-                if let Some(name) = borrowed_captures.into_iter().next() {
-                    return Err(SpannedTypeError {
-                        error: Box::new(TypeError::BorrowedBindingMisuse {
-                            name,
-                            context: BorrowMisuseContext::CapturedByClosure,
-                        }),
-                        span: expr.span,
-                        note: None,
-                        secondary_span: None,
-                        source_file: None,
-                        var_names: None,
-                    });
-                }
-
-                let captured = free_owned_vars(body, self.owned, &lambda_params);
-                // `lambda_own_captures` is the single source of truth for whether a
-                // lambda is `~fn`: it is written once during inference by
-                // `first_own_capture` (which uses `capture_demands_own` for
-                // borrow-slot-aware own-demand detection) and consulted here. A plain
-                // `fn` closure that only borrows its captures does not consume them.
-                let is_own_lambda = self.lambda_own_captures.contains_key(&expr.span);
-                for name in &captured {
-                    if let Some(&first_span) = self
-                        .consumed
-                        .get(name)
-                        .or_else(|| self.partially_consumed.get(name))
-                    {
-                        return Err(SpannedTypeError {
-                            error: Box::new(TypeError::CapturedMoved { name: name.clone() }),
-                            span: expr.span,
-                            note: None,
-                            secondary_span: Some(Box::new(SecondaryLabel {
-                                span: first_span,
-                                message: "consumed here".into(),
-                                source_file: None,
-                            })),
-                            source_file: None,
-                            var_names: None,
-                        });
-                    }
-                    if is_own_lambda {
-                        self.consumed.insert(name.clone(), expr.span);
-                        self.moves.insert(expr.span, name.clone());
-                    }
-                }
-                let saved_consumed = std::mem::take(&mut self.consumed);
-                let saved_partial = std::mem::take(&mut self.partially_consumed);
-                let result = self.check_expr(body);
-                self.consumed = saved_consumed;
-                self.partially_consumed = saved_partial;
-                result
-            }
-
-            TypedExprKind::FieldAccess { expr: inner, .. } => {
-                if let TypedExprKind::Var(name) = &inner.kind {
-                    if self.owned.contains(name) {
-                        self.check_not_consumed(name, inner.span, None)?;
-                        // If field access returns an owned type, consume the base
-                        if matches!(&expr.ty, Type::Own(_)) {
-                            self.consumed.insert(name.clone(), inner.span);
-                            self.moves.insert(inner.span, name.clone());
-                        }
-                        return Ok(());
-                    }
-                    // Borrowed root: field access yields another borrow-place
-                    // (place-projection rule: `&~T.field: ~U` is `&~U`). Not an
-                    // error at the read site; the containing consume-point
-                    // pre-check is what rejects flow into owning positions.
-                    if self.borrowed.contains(name) {
-                        return Ok(());
-                    }
-                }
-                self.check_expr(inner)
-            }
-
-            TypedExprKind::StructLit { fields, .. } => {
-                // Flag direct storage of a borrowed owning place in a struct
-                // field (the only direction that fabricates ownership).
-                // Plain-data projections are fine; gated on `Type::Own`.
-                for (fname, value) in fields {
-                    if matches!(&value.ty, Type::Own(_)) {
-                        if let Some(root) = place_root(value) {
-                            if self.borrowed.contains(root) {
+        // First pass: detect exclusive borrow aliasing.
+        // Two exclusive borrows (`&param: ~T`) of the same place root are rejected.
+        // Observational borrows (`&param: T`) do not conflict.
+        let mut exclusive_roots: Vec<(usize, &str)> = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+            let mode = get_mode(i);
+            if matches!(mode, ParamMode::Borrow) {
+                // Exclusive borrow — reject double-exclusive-borrow of the
+                // same place root whether the root is an owned local or a
+                // borrowed parameter being reborrowed.
+                if let Some(root) = place_root(arg) {
+                    if self.owned.contains(root) || self.borrowed.contains(root) {
+                        for &(j, prev_root) in &exclusive_roots {
+                            if root == prev_root {
+                                let _ = j; // used arg index for error context
                                 return Err(SpannedTypeError {
-                                    error: Box::new(TypeError::BorrowedBindingMisuse {
+                                    error: Box::new(TypeError::AlreadyMoved {
                                         name: root.to_string(),
-                                        context: BorrowMisuseContext::StoredInField,
                                     }),
-                                    span: value.span,
-                                    note: Some(format!("stored in field `{}`", fname)),
+                                    span: arg.span,
+                                    note: Some(format!(
+                                        "`{}` is already exclusively borrowed by another argument in this call",
+                                        root
+                                    )),
+                                    secondary_span: None,
+                                    source_file: None,
+                                    var_names: None,
+                                });
+                            }
+                        }
+                        exclusive_roots.push((i, root));
+                    }
+                }
+            }
+        }
+
+        // Second pass: qualifier checks and borrow/consume processing.
+        for (i, arg) in args.iter().enumerate() {
+            // Check qualifier mismatch: affine Var arg passed to RequiresU param
+            if let TypedExprKind::Var(arg_name) = &arg.kind {
+                if self.affine.contains(arg_name) {
+                    if let Some(quals) = callee_qualifiers {
+                        if let Some((qualifier, param_name)) = quals.get(i) {
+                            if matches!(qualifier, ParamQualifier::RequiresU) {
+                                let callee_name =
+                                    callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                return Err(SpannedTypeError {
+                                    error: Box::new(TypeError::QualifierMismatch {
+                                        name: arg_name.clone(),
+                                        callee: callee_name,
+                                        param: param_name.clone(),
+                                    }),
+                                    span: arg.span,
+                                    note: None,
                                     secondary_span: None,
                                     source_file: None,
                                     var_names: None,
@@ -1677,149 +1262,645 @@ impl<'a> OwnershipChecker<'a> {
                         }
                     }
                 }
-                for (_, e) in fields {
-                    self.check_expr(e)?;
-                }
-                Ok(())
             }
 
-            TypedExprKind::StructUpdate { base, fields } => {
-                for (_, e) in fields {
-                    self.check_expr(e)?;
-                }
-
-                // Read base type directly from the typed AST
-                let base_is_owned = matches!(&base.ty, Type::Own(_));
-                let inner_ty = match &base.ty {
-                    Type::Own(inner) => inner.as_ref(),
-                    other => other,
+            // Check qualifier mismatch for non-Var affine arguments
+            if !matches!(&arg.kind, TypedExprKind::Var(_)) {
+                let is_affine_arg = match &arg.kind {
+                    TypedExprKind::Lambda { .. } => {
+                        self.lambda_own_captures.contains_key(&arg.span)
+                            || matches!(&arg.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)))
+                    }
+                    _ => false,
                 };
+                if is_affine_arg {
+                    if let Some(quals) = callee_qualifiers {
+                        if let Some((qualifier, param_name)) = quals.get(i) {
+                            match qualifier {
+                                ParamQualifier::RequiresU => {
+                                    let callee_name =
+                                        callee_var_name(func).unwrap_or("<anonymous>").to_string();
+                                    return Err(SpannedTypeError {
+                                        error: Box::new(TypeError::QualifierMismatch {
+                                            name: "<lambda>".to_string(),
+                                            callee: callee_name,
+                                            param: param_name.clone(),
+                                        }),
+                                        span: arg.span,
+                                        note: Some(
+                                            self.lambda_own_captures
+                                                .get(&arg.span)
+                                                .map(|cap_name| {
+                                                    format!(
+                                                        "closure is single-use because it captures `~` value `{}`",
+                                                        cap_name
+                                                    )
+                                                })
+                                                .unwrap_or_else(|| {
+                                                    "closure captures an owned (`~`) value, making it single-use"
+                                                        .to_string()
+                                                }),
+                                        ),
+                                        secondary_span: None,
+                                        source_file: None,
+                                        var_names: None,
+                                    });
+                                }
+                                ParamQualifier::Polymorphic => {}
+                            }
+                        }
+                    }
+                }
+            }
 
-                let (type_name, base_consumed) = if let Type::Named(name, _) = inner_ty {
-                    if let Some(info) = self.registry.lookup_type(name) {
+            // Borrow vs consume: borrow slots do not consume the argument.
+            let mode = get_mode(i);
+            let is_borrow = matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
+            if is_borrow {
+                if let Some(root) = place_root(arg) {
+                    // Place expression (variable or field chain) — keep live.
+                    // Owned locals check move state; borrowed params fall
+                    // through unchecked (they cannot be consumed, so
+                    // cannot be in `self.consumed`). Reborrowing a
+                    // borrowed binding is legal.
+                    if self.owned.contains(root) {
+                        self.check_not_consumed(root, arg.span, None)?;
+                    }
+                } else {
+                    // Non-place expression passed to a borrow slot — reject
+                    return Err(SpannedTypeError {
+                        error: Box::new(TypeError::CannotBorrowTemporary { span: arg.span }),
+                        span: arg.span,
+                        note: None,
+                        secondary_span: None,
+                        source_file: None,
+                        var_names: None,
+                    });
+                }
+            } else {
+                // Consume-mode slot: a borrow-place cannot flow into
+                // an owning position. Pre-check before walking the
+                // arg so the diagnostic points at the arg site.
+                self.check_not_borrow_place(arg, BorrowMisuseContext::ConsumedOrReturned, None)?;
+                self.visit_expr(arg)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_type_app(
+        &mut self,
+        inner: &TypedExpr,
+        _type_bindings: &[(SchemeVarId, Type)],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(inner)
+    }
+
+    fn visit_let(
+        &mut self,
+        name: &str,
+        value: &TypedExpr,
+        body: Option<&TypedExpr>,
+        expr: &TypedExpr,
+    ) -> Self::Result {
+        // A borrowed binding (or owning projection of one) cannot be
+        // rebound as an owner by `let`. Plain-data projections like
+        // `let n = t.int_field` are fine — the value type check
+        // inside `check_not_borrow_place` gates on `Type::Own`.
+        if matches!(&value.ty, Type::Own(_)) {
+            if let Some(root) = place_root(value) {
+                if self.borrowed.contains(root) {
+                    return Err(SpannedTypeError {
+                        error: Box::new(TypeError::BorrowedBindingMisuse {
+                            name: root.to_string(),
+                            context: BorrowMisuseContext::ReboundByLet,
+                        }),
+                        span: value.span,
+                        note: Some(format!("rebinding `{}` as `{}`", root, name)),
+                        secondary_span: None,
+                        source_file: None,
+                        var_names: None,
+                    });
+                }
+            }
+        }
+        self.visit_expr(value)?;
+        // Fabrication guard: let_own_spans marks bindings that resolved to Type::Own.
+        // Exempt ~fn closures (closure affinity, not value ownership).
+        let is_own_let = self.let_own_spans.contains(&expr.span);
+        if is_own_let {
+            let is_own_fn =
+                matches!(&value.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
+            if !is_own_fn && !self.is_owned_expr(value) {
+                let t = Type::Named("T".into(), vec![]);
+                return Err(SpannedTypeError {
+                    error: Box::new(TypeError::Mismatch {
+                        expected: Type::Own(Box::new(t.clone())),
+                        actual: t,
+                    }),
+                    span: expr.span,
+                    note: Some(format!(
+                        "annotation `~` on `{}` requires an owned value",
+                        name
+                    )),
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+            self.owned.insert(name.to_string());
+            if let TypedExprKind::Lambda { .. } = &value.kind {
+                if let Some(cap_name) = self.lambda_own_captures.get(&value.span) {
+                    self.own_fn_notes.insert(
+                        name.to_string(),
+                        format!(
+                            "closure is single-use because it captures `~` value `{}`",
+                            cap_name
+                        ),
+                    );
+                }
+            }
+        }
+        if let Some(body) = body {
+            self.visit_expr(body)?;
+            if is_own_let {
+                self.owned.remove(name);
+                self.consumed.remove(name);
+                self.partially_consumed.remove(name);
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_let_pattern(
+        &mut self,
+        pattern: &TypedPattern,
+        value: &TypedExpr,
+        body: Option<&TypedExpr>,
+        expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(value)?;
+        // Fabrication guard for let-pattern
+        if self.let_own_spans.contains(&expr.span) {
+            let is_own_fn =
+                matches!(&value.ty, Type::Own(inner) if matches!(inner.as_ref(), Type::Fn(_, _)));
+            if !is_own_fn && !self.is_owned_expr(value) {
+                let t = Type::Named("T".into(), vec![]);
+                return Err(SpannedTypeError {
+                    error: Box::new(TypeError::Mismatch {
+                        expected: Type::Own(Box::new(t.clone())),
+                        actual: t,
+                    }),
+                    span: expr.span,
+                    note: Some("annotation `~` requires an owned value".into()),
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+        }
+        // Track pattern-bound owned variables
+        let pattern_owned = collect_owned_pattern_vars(pattern);
+        for name in &pattern_owned {
+            self.owned.insert(name.clone());
+        }
+        if let Some(body) = body {
+            self.visit_expr(body)?;
+            for name in &pattern_owned {
+                self.owned.remove(name);
+                self.consumed.remove(name);
+                self.partially_consumed.remove(name);
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_do(&mut self, exprs: &[TypedExpr], _expr: &TypedExpr) -> Self::Result {
+        self.check_exprs(exprs)
+    }
+
+    fn visit_if(
+        &mut self,
+        cond: &TypedExpr,
+        then_: &TypedExpr,
+        else_: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(cond)?;
+        let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
+        let (then_consumed, then_partial) = self.check_branch(then_)?;
+        let (else_consumed, else_partial) = self.check_branch(else_)?;
+
+        let then_keys: FxHashSet<String> = then_consumed.keys().cloned().collect();
+        let else_keys: FxHashSet<String> = else_consumed.keys().cloned().collect();
+        let newly_in_then: FxHashSet<String> = then_keys.difference(&before).cloned().collect();
+        let newly_in_else: FxHashSet<String> = else_keys.difference(&before).cloned().collect();
+        let in_all: FxHashSet<String> = newly_in_then
+            .intersection(&newly_in_else)
+            .cloned()
+            .collect();
+        let in_some: FxHashSet<String> = newly_in_then
+            .symmetric_difference(&newly_in_else)
+            .cloned()
+            .collect();
+
+        for name in &in_all {
+            if let Some(&span) = then_consumed.get(name) {
+                self.consumed.insert(name.clone(), span);
+            }
+        }
+        for name in &in_some {
+            let span = then_consumed
+                .get(name)
+                .or_else(|| else_consumed.get(name))
+                .copied()
+                .unwrap();
+            self.partially_consumed.insert(name.clone(), span);
+        }
+        for (name, span) in then_partial.iter().chain(else_partial.iter()) {
+            self.partially_consumed.entry(name.clone()).or_insert(*span);
+        }
+        Ok(())
+    }
+
+    fn visit_match(
+        &mut self,
+        scrutinee: &TypedExpr,
+        arms: &[TypedMatchArm],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(scrutinee)?;
+        // A match scrutinee is borrowed only when it roots onto an
+        // already-borrowed binding (e.g., matching on `&x` inside a
+        // function whose slot is `&~T`). Non-place scrutinees —
+        // function calls, arithmetic, constructor applications — are
+        // always owned: Krypton has no `&T`-returning functions,
+        // so these expressions cannot yield a borrow. If that
+        // invariant ever changes, this line must be revisited.
+        let scrutinee_is_borrowed =
+            place_root(scrutinee).is_some_and(|root| self.borrowed.contains(root));
+        let before: FxHashSet<String> = self.consumed.keys().cloned().collect();
+        let n = arms.len();
+        let mut per_arm_new: Vec<FxHashMap<String, Span>> = Vec::new();
+        let mut merged_partial = self.partially_consumed.clone();
+
+        for arm in arms {
+            let pattern_owned = collect_owned_pattern_vars(&arm.pattern);
+            let (arm_consumed, arm_partial) = self.check_match_arm_branch(
+                &arm.pattern,
+                arm.guard.as_deref(),
+                &arm.body,
+                scrutinee_is_borrowed,
+            )?;
+
+            let newly: FxHashMap<String, Span> = arm_consumed
+                .into_iter()
+                .filter(|(k, _)| !before.contains(k) && !pattern_owned.contains(k))
+                .collect();
+            per_arm_new.push(newly);
+            for (name, span) in &arm_partial {
+                if !pattern_owned.contains(name) {
+                    merged_partial.entry(name.clone()).or_insert(*span);
+                }
+            }
+        }
+
+        let all_names: FxHashSet<String> =
+            per_arm_new.iter().flat_map(|s| s.keys().cloned()).collect();
+        for name in &all_names {
+            let count = per_arm_new.iter().filter(|s| s.contains_key(name)).count();
+            if count == n {
+                if let Some(span) = per_arm_new.iter().find_map(|s| s.get(name)).copied() {
+                    self.consumed.insert(name.clone(), span);
+                }
+            } else {
+                let span = per_arm_new
+                    .iter()
+                    .find_map(|s| s.get(name))
+                    .copied()
+                    .unwrap();
+                merged_partial.insert(name.clone(), span);
+            }
+        }
+        self.partially_consumed = merged_partial;
+        Ok(())
+    }
+
+    fn visit_match_arm(&mut self, arm: &TypedMatchArm) -> Self::Result {
+        // Match arm walking is driven entirely by `visit_match` via
+        // `check_match_arm_branch` (which handles per-arm scope save/restore
+        // and pattern-binding introduction). Falling back to the default
+        // `walk_match_arm` from inside `visit_match` would double-walk arms
+        // and skip the branch-isolation logic, so this override is a no-op.
+        // The compiler still forces us to acknowledge the method exists.
+        let _ = arm;
+        Ok(())
+    }
+
+    fn visit_binary_op(
+        &mut self,
+        _op: &BinOp,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(lhs)?;
+        self.visit_expr(rhs)
+    }
+
+    fn visit_unary_op(
+        &mut self,
+        _op: &UnaryOp,
+        operand: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(operand)
+    }
+
+    fn visit_lambda(
+        &mut self,
+        params: &[String],
+        body: &TypedExpr,
+        expr: &TypedExpr,
+    ) -> Self::Result {
+        let lambda_params: FxHashSet<String> = params.iter().cloned().collect();
+
+        // Closures cannot capture borrowed bindings: Krypton has no
+        // closure lifetimes, so a borrowed capture could outlive the
+        // borrow. Check before walking the body so this diagnostic
+        // wins over any generic Var-arm error the body walk would
+        // produce for the same reference.
+        let borrowed_captures = free_borrowed_vars(body, &self.borrowed, &lambda_params);
+        if let Some(name) = borrowed_captures.into_iter().next() {
+            return Err(SpannedTypeError {
+                error: Box::new(TypeError::BorrowedBindingMisuse {
+                    name,
+                    context: BorrowMisuseContext::CapturedByClosure,
+                }),
+                span: expr.span,
+                note: None,
+                secondary_span: None,
+                source_file: None,
+                var_names: None,
+            });
+        }
+
+        let captured = free_owned_vars(body, self.owned, &lambda_params);
+        // `lambda_own_captures` is the single source of truth for whether a
+        // lambda is `~fn`: it is written once during inference by
+        // `first_own_capture` (which uses `capture_demands_own` for
+        // borrow-slot-aware own-demand detection) and consulted here. A plain
+        // `fn` closure that only borrows its captures does not consume them.
+        let is_own_lambda = self.lambda_own_captures.contains_key(&expr.span);
+        for name in &captured {
+            if let Some(&first_span) = self
+                .consumed
+                .get(name)
+                .or_else(|| self.partially_consumed.get(name))
+            {
+                return Err(SpannedTypeError {
+                    error: Box::new(TypeError::CapturedMoved { name: name.clone() }),
+                    span: expr.span,
+                    note: None,
+                    secondary_span: Some(Box::new(SecondaryLabel {
+                        span: first_span,
+                        message: "consumed here".into(),
+                        source_file: None,
+                    })),
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+            if is_own_lambda {
+                self.consumed.insert(name.clone(), expr.span);
+                self.moves.insert(expr.span, name.clone());
+            }
+        }
+        let saved_consumed = std::mem::take(&mut self.consumed);
+        let saved_partial = std::mem::take(&mut self.partially_consumed);
+        let result = self.visit_expr(body);
+        self.consumed = saved_consumed;
+        self.partially_consumed = saved_partial;
+        result
+    }
+
+    fn visit_field_access(
+        &mut self,
+        inner: &TypedExpr,
+        _field: &str,
+        _resolved_type_ref: Option<&ResolvedTypeRef>,
+        expr: &TypedExpr,
+    ) -> Self::Result {
+        if let TypedExprKind::Var(name) = &inner.kind {
+            if self.owned.contains(name) {
+                self.check_not_consumed(name, inner.span, None)?;
+                // If field access returns an owned type, consume the base
+                if matches!(&expr.ty, Type::Own(_)) {
+                    self.consumed.insert(name.clone(), inner.span);
+                    self.moves.insert(inner.span, name.clone());
+                }
+                return Ok(());
+            }
+            // Borrowed root: field access yields another borrow-place
+            // (place-projection rule: `&~T.field: ~U` is `&~U`). Not an
+            // error at the read site; the containing consume-point
+            // pre-check is what rejects flow into owning positions.
+            if self.borrowed.contains(name) {
+                return Ok(());
+            }
+        }
+        self.visit_expr(inner)
+    }
+
+    fn visit_struct_lit(
+        &mut self,
+        _name: &str,
+        fields: &[(String, TypedExpr)],
+        _resolved_type_ref: Option<&ResolvedTypeRef>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        // Flag direct storage of a borrowed owning place in a struct
+        // field (the only direction that fabricates ownership).
+        // Plain-data projections are fine; gated on `Type::Own`.
+        for (fname, value) in fields {
+            if matches!(&value.ty, Type::Own(_)) {
+                if let Some(root) = place_root(value) {
+                    if self.borrowed.contains(root) {
+                        return Err(SpannedTypeError {
+                            error: Box::new(TypeError::BorrowedBindingMisuse {
+                                name: root.to_string(),
+                                context: BorrowMisuseContext::StoredInField,
+                            }),
+                            span: value.span,
+                            note: Some(format!("stored in field `{}`", fname)),
+                            secondary_span: None,
+                            source_file: None,
+                            var_names: None,
+                        });
+                    }
+                }
+            }
+        }
+        for (_, e) in fields {
+            self.visit_expr(e)?;
+        }
+        Ok(())
+    }
+
+    fn visit_struct_update(
+        &mut self,
+        base: &TypedExpr,
+        fields: &[(String, TypedExpr)],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        for (_, e) in fields {
+            self.visit_expr(e)?;
+        }
+
+        // Read base type directly from the typed AST
+        let base_is_owned = matches!(&base.ty, Type::Own(_));
+        let inner_ty = match &base.ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+
+        let (type_name, base_consumed) = if let Type::Named(name, _) = inner_ty {
+            if let Some(info) = self.registry.lookup_type(name) {
+                if let TypeKind::Record {
+                    fields: record_fields,
+                } = &info.kind
+                {
+                    let updated_fields: FxHashSet<&str> =
+                        fields.iter().map(|(n, _)| n.as_str()).collect();
+                    let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
+                        type_contains_own(fty) && !updated_fields.contains(fname.as_str())
+                    });
+                    (Some(name.as_str()), has_unreplaced_own)
+                } else {
+                    (Some(name.as_str()), true)
+                }
+            } else {
+                (None, true)
+            }
+        } else {
+            (None, true)
+        };
+
+        // Fabrication check: shared base with un-replaced owned fields
+        if base_consumed && !base_is_owned {
+            if let TypedExprKind::Var(name) = &base.kind {
+                let mut unreplaced: Vec<String> = Vec::new();
+                let mut first_owned_field_ty: Option<Type> = None;
+                if let Some(type_name) = type_name {
+                    if let Some(info) = self.registry.lookup_type(type_name) {
                         if let TypeKind::Record {
                             fields: record_fields,
                         } = &info.kind
                         {
                             let updated_fields: FxHashSet<&str> =
                                 fields.iter().map(|(n, _)| n.as_str()).collect();
-                            let has_unreplaced_own = record_fields.iter().any(|(fname, fty)| {
-                                type_contains_own(fty) && !updated_fields.contains(fname.as_str())
-                            });
-                            (Some(name.as_str()), has_unreplaced_own)
-                        } else {
-                            (Some(name.as_str()), true)
-                        }
-                    } else {
-                        (None, true)
-                    }
-                } else {
-                    (None, true)
-                };
-
-                // Fabrication check: shared base with un-replaced owned fields
-                if base_consumed && !base_is_owned {
-                    if let TypedExprKind::Var(name) = &base.kind {
-                        let mut unreplaced: Vec<String> = Vec::new();
-                        let mut first_owned_field_ty: Option<Type> = None;
-                        if let Some(type_name) = type_name {
-                            if let Some(info) = self.registry.lookup_type(type_name) {
-                                if let TypeKind::Record {
-                                    fields: record_fields,
-                                } = &info.kind
+                            for (fname, fty) in record_fields {
+                                if type_contains_own(fty)
+                                    && !updated_fields.contains(fname.as_str())
                                 {
-                                    let updated_fields: FxHashSet<&str> =
-                                        fields.iter().map(|(n, _)| n.as_str()).collect();
-                                    for (fname, fty) in record_fields {
-                                        if type_contains_own(fty)
-                                            && !updated_fields.contains(fname.as_str())
-                                        {
-                                            if first_owned_field_ty.is_none() {
-                                                first_owned_field_ty = Some(fty.clone());
-                                            }
-                                            unreplaced.push(fname.clone());
-                                        }
+                                    if first_owned_field_ty.is_none() {
+                                        first_owned_field_ty = Some(fty.clone());
                                     }
+                                    unreplaced.push(fname.clone());
                                 }
                             }
                         }
-                        let (expected_ty, actual_ty) = match first_owned_field_ty {
-                            Some(Type::Own(inner)) => (Type::Own(inner.clone()), (*inner).clone()),
-                            Some(fty) => (Type::Own(Box::new(fty.clone())), fty),
-                            None => {
-                                let t = Type::Named("T".into(), vec![]);
-                                (Type::Own(Box::new(t.clone())), t)
-                            }
-                        };
-                        return Err(SpannedTypeError {
-                            error: Box::new(TypeError::Mismatch {
-                                expected: expected_ty,
-                                actual: actual_ty,
-                            }),
-                            span: base.span,
-                            note: Some(format!(
-                                "struct update on shared `{}` would fabricate owned field(s): {}",
-                                name,
-                                unreplaced.join(", ")
-                            )),
-                            secondary_span: None,
-                            source_file: None,
-                            var_names: None,
-                        });
                     }
-                    self.check_expr(base)?;
-                } else if base_consumed {
-                    self.check_expr(base)?;
-                } else if let TypedExprKind::Var(name) = &base.kind {
-                    if self.owned.contains(name) {
-                        self.check_not_consumed(name, base.span, None)?;
+                }
+                let (expected_ty, actual_ty) = match first_owned_field_ty {
+                    Some(Type::Own(inner)) => (Type::Own(inner.clone()), (*inner).clone()),
+                    Some(fty) => (Type::Own(Box::new(fty.clone())), fty),
+                    None => {
+                        let t = Type::Named("T".into(), vec![]);
+                        (Type::Own(Box::new(t.clone())), t)
+                    }
+                };
+                return Err(SpannedTypeError {
+                    error: Box::new(TypeError::Mismatch {
+                        expected: expected_ty,
+                        actual: actual_ty,
+                    }),
+                    span: base.span,
+                    note: Some(format!(
+                        "struct update on shared `{}` would fabricate owned field(s): {}",
+                        name,
+                        unreplaced.join(", ")
+                    )),
+                    secondary_span: None,
+                    source_file: None,
+                    var_names: None,
+                });
+            }
+            self.visit_expr(base)?;
+        } else if base_consumed {
+            self.visit_expr(base)?;
+        } else if let TypedExprKind::Var(name) = &base.kind {
+            if self.owned.contains(name) {
+                self.check_not_consumed(name, base.span, None)?;
+            }
+        } else {
+            self.visit_expr(base)?;
+        }
+        Ok(())
+    }
+
+    fn visit_tuple(&mut self, elements: &[TypedExpr], _expr: &TypedExpr) -> Self::Result {
+        self.check_exprs(elements)
+    }
+
+    fn visit_vec_lit(&mut self, elements: &[TypedExpr], _expr: &TypedExpr) -> Self::Result {
+        self.check_exprs(elements)
+    }
+
+    fn visit_recur(
+        &mut self,
+        args: &[TypedExpr],
+        param_modes: &[ParamMode],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        for (i, arg) in args.iter().enumerate() {
+            let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
+            let is_borrow = matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
+            if is_borrow {
+                if let Some(root) = place_root(arg) {
+                    if self.owned.contains(root) {
+                        self.check_not_consumed(root, arg.span, None)?;
                     }
                 } else {
-                    self.check_expr(base)?;
+                    return Err(SpannedTypeError {
+                        error: Box::new(TypeError::CannotBorrowTemporary { span: arg.span }),
+                        span: arg.span,
+                        note: None,
+                        secondary_span: None,
+                        source_file: None,
+                        var_names: None,
+                    });
                 }
-                Ok(())
+            } else {
+                self.check_not_borrow_place(arg, BorrowMisuseContext::ConsumedOrReturned, None)?;
+                self.visit_expr(arg)?;
             }
-
-            TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
-                self.check_exprs(elements)
-            }
-            TypedExprKind::Recur { args, param_modes } => {
-                for (i, arg) in args.iter().enumerate() {
-                    let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
-                    let is_borrow =
-                        matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow);
-                    if is_borrow {
-                        if let Some(root) = place_root(arg) {
-                            if self.owned.contains(root) {
-                                self.check_not_consumed(root, arg.span, None)?;
-                            }
-                        } else {
-                            return Err(SpannedTypeError {
-                                error: Box::new(TypeError::CannotBorrowTemporary {
-                                    span: arg.span,
-                                }),
-                                span: arg.span,
-                                note: None,
-                                secondary_span: None,
-                                source_file: None,
-                                var_names: None,
-                            });
-                        }
-                    } else {
-                        self.check_not_borrow_place(
-                            arg,
-                            BorrowMisuseContext::ConsumedOrReturned,
-                            None,
-                        )?;
-                        self.check_expr(arg)?;
-                    }
-                }
-                Ok(())
-            }
-            TypedExprKind::QuestionMark { expr, .. } => self.check_expr(expr),
-            TypedExprKind::Discharge(inner) => self.check_expr(inner),
-            TypedExprKind::Lit(_) => Ok(()),
         }
+        Ok(())
+    }
+
+    fn visit_question_mark(
+        &mut self,
+        inner: &TypedExpr,
+        _is_option: bool,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(inner)
+    }
+
+    fn visit_discharge(&mut self, inner: &TypedExpr, _expr: &TypedExpr) -> Self::Result {
+        self.visit_expr(inner)
     }
 }
 
@@ -1872,7 +1953,7 @@ fn check_fn(
         own_fn_notes: &mut own_fn_notes,
         registry,
     };
-    checker.check_expr(&typed_fn.body)?;
+    checker.visit_expr(&typed_fn.body)?;
 
     // Tail-return positions: a function body's value comes out through these
     // expressions. If any tail is a place rooted in a borrowed parameter, the

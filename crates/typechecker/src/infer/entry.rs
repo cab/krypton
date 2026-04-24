@@ -3,9 +3,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use krypton_parser::ast::{Expr, Pattern, Span};
 
 use crate::type_registry;
-use crate::typed_ast::TypedExpr;
+use crate::typed_ast::{DeferredId, TypedExpr};
 use crate::types::{ParamMode, Substitution, Type, TypeEnv, TypeVarGen};
 use crate::unify::SpannedTypeError;
+use crate::visit::TypedExprVisitor;
 
 use super::expr::InferenceContext;
 /// Infer the type of an expression using Algorithm J.
@@ -102,139 +103,205 @@ pub(crate) fn collect_parser_pattern_bindings(pattern: &Pattern) -> Vec<&str> {
 /// are in known-shared positions: binary-op operands, unary-op operands,
 /// field-access bases, or function args where the param type is not `~T`.
 fn capture_demands_own(body: &TypedExpr, capture_name: &str, subst: &Substitution) -> bool {
+    let mut checker = CaptureDemandChecker {
+        capture_name,
+        subst,
+    };
+    checker.visit_expr(body).is_err()
+}
+
+/// Returns true if `expr` is `Var(capture_name)`.
+fn is_capture(expr: &TypedExpr, capture_name: &str) -> bool {
     use crate::typed_ast::TypedExprKind;
+    matches!(&expr.kind, TypedExprKind::Var(name) if name == capture_name)
+}
 
-    /// Returns true if `expr` is `Var(capture_name)`.
-    fn is_capture(expr: &TypedExpr, capture_name: &str) -> bool {
-        matches!(&expr.kind, TypedExprKind::Var(name) if name == capture_name)
+/// Visitor that returns `Err(())` on the first "own-demanding" reference to
+/// `capture_name`. Shared positions (binary-op operands, unary-op operands,
+/// field-access bases, borrow slots, and non-`~` param positions) suppress
+/// the direct check; the visitor still recurses into non-capture
+/// sub-expressions of those positions so nested uses are still detected.
+struct CaptureDemandChecker<'a> {
+    capture_name: &'a str,
+    subst: &'a Substitution,
+}
+
+impl<'a> TypedExprVisitor for CaptureDemandChecker<'a> {
+    type Result = Result<(), ()>;
+
+    fn visit_var(&mut self, name: &str, _expr: &TypedExpr) -> Self::Result {
+        if name == self.capture_name {
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 
-    match &body.kind {
-        // A bare capture var in a non-shared position demands own
-        // (e.g. return position, let-binding value, etc.)
-        TypedExprKind::Var(name) if name == capture_name => true,
-        TypedExprKind::Var(_) | TypedExprKind::Lit(_) => false,
+    fn visit_lit(&mut self, _lit: &krypton_parser::ast::Lit) -> Self::Result {
+        Ok(())
+    }
 
-        // Binary-op operands are shared: coerces ~T → T
-        TypedExprKind::BinaryOp { lhs, rhs, .. } => {
-            // If the capture is a direct operand, it's shared — skip it.
-            // Only recurse into non-capture sub-expressions.
-            (!is_capture(lhs, capture_name) && capture_demands_own(lhs, capture_name, subst))
-                || (!is_capture(rhs, capture_name) && capture_demands_own(rhs, capture_name, subst))
+    fn visit_binary_op(
+        &mut self,
+        _op: &krypton_parser::ast::BinOp,
+        lhs: &TypedExpr,
+        rhs: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        // Direct-capture operand is shared (coerces ~T → T); still recurse
+        // into non-capture sub-expressions.
+        if !is_capture(lhs, self.capture_name) {
+            self.visit_expr(lhs)?;
         }
-        // Unary-op operand is shared
-        TypedExprKind::UnaryOp { operand, .. } => {
-            !is_capture(operand, capture_name) && capture_demands_own(operand, capture_name, subst)
+        if !is_capture(rhs, self.capture_name) {
+            self.visit_expr(rhs)?;
         }
-        // Field-access base is shared
-        TypedExprKind::FieldAccess { expr, .. } => {
-            !is_capture(expr, capture_name) && capture_demands_own(expr, capture_name, subst)
-        }
+        Ok(())
+    }
 
-        // Function application: check param types and modes to decide shared vs own
-        TypedExprKind::App {
-            func,
-            args,
-            param_modes,
-            ..
-        } => {
-            let func_ty = subst.apply(&func.ty);
-            let fn_params = match &func_ty {
+    fn visit_unary_op(
+        &mut self,
+        _op: &krypton_parser::ast::UnaryOp,
+        operand: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        if !is_capture(operand, self.capture_name) {
+            self.visit_expr(operand)?;
+        }
+        Ok(())
+    }
+
+    fn visit_field_access(
+        &mut self,
+        inner: &TypedExpr,
+        _field: &str,
+        _rt: Option<&crate::typed_ast::ResolvedTypeRef>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        if !is_capture(inner, self.capture_name) {
+            self.visit_expr(inner)?;
+        }
+        Ok(())
+    }
+
+    fn visit_app(
+        &mut self,
+        func: &TypedExpr,
+        args: &[TypedExpr],
+        param_modes: &[ParamMode],
+        _deferred_id: Option<DeferredId>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        let func_ty = self.subst.apply(&func.ty);
+        let fn_params = match &func_ty {
+            Type::Fn(p, _) => Some(p.as_slice()),
+            Type::Own(inner) => match inner.as_ref() {
                 Type::Fn(p, _) => Some(p.as_slice()),
-                Type::Own(inner) => match inner.as_ref() {
-                    Type::Fn(p, _) => Some(p.as_slice()),
-                    _ => None,
-                },
                 _ => None,
-            };
+            },
+            _ => None,
+        };
 
-            for (i, arg) in args.iter().enumerate() {
-                if is_capture(arg, capture_name) {
-                    // Check param mode first: borrow slots never demand own
-                    let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
-                    if matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
-                        // Borrow slot — capture is not consumed, doesn't force ~fn
-                        continue;
-                    }
-                    // Determine if this arg position demands own
-                    let demands = if let Some(params) = fn_params {
-                        if let Some((_, pty)) = params.get(i) {
-                            let resolved = subst.apply(pty);
-                            matches!(
-                                resolved,
-                                Type::Own(_) | Type::Var(_) | Type::Shape(_) | Type::MaybeOwn(_, _)
-                            )
-                        } else {
-                            true // conservative: can't determine param type
-                        }
-                    } else {
-                        true // conservative: can't resolve func type
-                    };
-                    if demands {
-                        return true;
-                    }
-                    // Shared arg position — don't recurse into this arg
-                } else if capture_demands_own(arg, capture_name, subst) {
-                    return true;
+        for (i, arg) in args.iter().enumerate() {
+            if is_capture(arg, self.capture_name) {
+                let mode = param_modes.get(i).copied().unwrap_or(ParamMode::Consume);
+                if matches!(mode, ParamMode::Borrow | ParamMode::ObservationalBorrow) {
+                    continue;
                 }
+                let demands = if let Some(params) = fn_params {
+                    if let Some((_, pty)) = params.get(i) {
+                        let resolved = self.subst.apply(pty);
+                        matches!(
+                            resolved,
+                            Type::Own(_) | Type::Var(_) | Type::Shape(_) | Type::MaybeOwn(_, _)
+                        )
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                };
+                if demands {
+                    return Err(());
+                }
+                // Shared arg position — don't recurse into this arg.
+            } else {
+                self.visit_expr(arg)?;
             }
-            capture_demands_own(func, capture_name, subst)
         }
-
-        // Nodes that just recurse into children
-        TypedExprKind::If { cond, then_, else_ } => {
-            capture_demands_own(cond, capture_name, subst)
-                || capture_demands_own(then_, capture_name, subst)
-                || capture_demands_own(else_, capture_name, subst)
-        }
-        TypedExprKind::Let { value, body, .. } => {
-            capture_demands_own(value, capture_name, subst)
-                || body
-                    .as_ref()
-                    .is_some_and(|b| capture_demands_own(b, capture_name, subst))
-        }
-        TypedExprKind::Do(exprs) => exprs
-            .iter()
-            .any(|e| capture_demands_own(e, capture_name, subst)),
-        TypedExprKind::Match { scrutinee, arms } => {
-            capture_demands_own(scrutinee, capture_name, subst)
-                || arms.iter().any(|arm| {
-                    arm.guard
-                        .as_ref()
-                        .is_some_and(|g| capture_demands_own(g, capture_name, subst))
-                        || capture_demands_own(&arm.body, capture_name, subst)
-                })
-        }
-        TypedExprKind::Lambda { body, .. } => capture_demands_own(body, capture_name, subst),
-        TypedExprKind::TypeApp { expr, .. } => capture_demands_own(expr, capture_name, subst),
-        // Conservative: struct fields, tuple elements, vec/recur elements
-        // all treated as own-requiring when the capture appears directly
-        TypedExprKind::StructLit { fields, .. } => fields.iter().any(|(_, val)| {
-            is_capture(val, capture_name) || capture_demands_own(val, capture_name, subst)
-        }),
-        TypedExprKind::StructUpdate { base, fields } => {
-            capture_demands_own(base, capture_name, subst)
-                || fields.iter().any(|(_, val)| {
-                    is_capture(val, capture_name) || capture_demands_own(val, capture_name, subst)
-                })
-        }
-        TypedExprKind::Tuple(elements) | TypedExprKind::VecLit(elements) => {
-            elements.iter().any(|elem| {
-                is_capture(elem, capture_name) || capture_demands_own(elem, capture_name, subst)
-            })
-        }
-        TypedExprKind::Recur { args, .. } => args.iter().any(|elem| {
-            is_capture(elem, capture_name) || capture_demands_own(elem, capture_name, subst)
-        }),
-        TypedExprKind::LetPattern { value, body, .. } => {
-            capture_demands_own(value, capture_name, subst)
-                || body
-                    .as_ref()
-                    .is_some_and(|b| capture_demands_own(b, capture_name, subst))
-        }
-        TypedExprKind::QuestionMark { expr, .. } => capture_demands_own(expr, capture_name, subst),
-        TypedExprKind::Discharge(inner) => capture_demands_own(inner, capture_name, subst),
+        self.visit_expr(func)
     }
+
+    // Conservative: struct fields, tuple elements, vec/recur elements all
+    // treat a direct capture reference as own-demanding.
+    fn visit_struct_lit(
+        &mut self,
+        _name: &str,
+        fields: &[(String, TypedExpr)],
+        _rt: Option<&crate::typed_ast::ResolvedTypeRef>,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        for (_, val) in fields {
+            if is_capture(val, self.capture_name) {
+                return Err(());
+            }
+            self.visit_expr(val)?;
+        }
+        Ok(())
+    }
+
+    fn visit_struct_update(
+        &mut self,
+        base: &TypedExpr,
+        fields: &[(String, TypedExpr)],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        self.visit_expr(base)?;
+        for (_, val) in fields {
+            if is_capture(val, self.capture_name) {
+                return Err(());
+            }
+            self.visit_expr(val)?;
+        }
+        Ok(())
+    }
+
+    fn visit_tuple(&mut self, elements: &[TypedExpr], _expr: &TypedExpr) -> Self::Result {
+        for elem in elements {
+            if is_capture(elem, self.capture_name) {
+                return Err(());
+            }
+            self.visit_expr(elem)?;
+        }
+        Ok(())
+    }
+
+    fn visit_vec_lit(&mut self, elements: &[TypedExpr], _expr: &TypedExpr) -> Self::Result {
+        for elem in elements {
+            if is_capture(elem, self.capture_name) {
+                return Err(());
+            }
+            self.visit_expr(elem)?;
+        }
+        Ok(())
+    }
+
+    fn visit_recur(
+        &mut self,
+        args: &[TypedExpr],
+        _modes: &[ParamMode],
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        for elem in args {
+            if is_capture(elem, self.capture_name) {
+                return Err(());
+            }
+            self.visit_expr(elem)?;
+        }
+        Ok(())
+    }
+    // Defaults handle: If, Let, Do, Match, Lambda, TypeApp, LetPattern,
+    // QuestionMark, Discharge — they recurse into all children.
 }
 
 pub(crate) fn first_own_capture(
@@ -385,43 +452,33 @@ pub(crate) fn first_own_capture(
 /// that targets THIS lambda. Stops at nested `Lambda` bodies because those
 /// rebind `recur` to themselves (the inner lambda's params).
 pub(crate) fn find_first_recur_span(body: &TypedExpr) -> Option<Span> {
-    use crate::typed_ast::TypedExprKind as K;
-    match &body.kind {
-        K::Recur { .. } => Some(body.span),
-        K::Lambda { .. } => None,
-        K::Lit(_) | K::Var(_) => None,
-        K::App { func, args, .. } => {
-            find_first_recur_span(func).or_else(|| args.iter().find_map(find_first_recur_span))
-        }
-        K::TypeApp { expr, .. } => find_first_recur_span(expr),
-        K::If { cond, then_, else_ } => find_first_recur_span(cond)
-            .or_else(|| find_first_recur_span(then_))
-            .or_else(|| find_first_recur_span(else_)),
-        K::Let { value, body, .. } => {
-            find_first_recur_span(value).or_else(|| body.as_deref().and_then(find_first_recur_span))
-        }
-        K::Do(exprs) => exprs.iter().find_map(find_first_recur_span),
-        K::Match { scrutinee, arms } => find_first_recur_span(scrutinee).or_else(|| {
-            arms.iter().find_map(|arm| {
-                arm.guard
-                    .as_deref()
-                    .and_then(find_first_recur_span)
-                    .or_else(|| find_first_recur_span(&arm.body))
-            })
-        }),
-        K::FieldAccess { expr, .. } => find_first_recur_span(expr),
-        K::Tuple(elems) | K::VecLit(elems) => elems.iter().find_map(find_first_recur_span),
-        K::BinaryOp { lhs, rhs, .. } => {
-            find_first_recur_span(lhs).or_else(|| find_first_recur_span(rhs))
-        }
-        K::UnaryOp { operand, .. } => find_first_recur_span(operand),
-        K::StructLit { fields, .. } => fields.iter().find_map(|(_, v)| find_first_recur_span(v)),
-        K::StructUpdate { base, fields } => find_first_recur_span(base)
-            .or_else(|| fields.iter().find_map(|(_, v)| find_first_recur_span(v))),
-        K::LetPattern { value, body, .. } => {
-            find_first_recur_span(value).or_else(|| body.as_deref().and_then(find_first_recur_span))
-        }
-        K::QuestionMark { expr, .. } => find_first_recur_span(expr),
-        K::Discharge(inner) => find_first_recur_span(inner),
+    RecurFinder.visit_expr(body).err()
+}
+
+/// Visitor that returns `Err(span)` on the first `Recur` encountered. Nested
+/// lambdas are treated as a hard stop boundary — the body of an inner lambda
+/// rebinds `recur` to target that inner lambda, so its recurs don't belong to
+/// the outer one we're searching.
+struct RecurFinder;
+
+impl TypedExprVisitor for RecurFinder {
+    type Result = Result<(), Span>;
+
+    fn visit_recur(
+        &mut self,
+        _args: &[TypedExpr],
+        _modes: &[ParamMode],
+        expr: &TypedExpr,
+    ) -> Self::Result {
+        Err(expr.span)
+    }
+
+    fn visit_lambda(
+        &mut self,
+        _params: &[String],
+        _body: &TypedExpr,
+        _expr: &TypedExpr,
+    ) -> Self::Result {
+        Ok(())
     }
 }
