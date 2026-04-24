@@ -1688,14 +1688,9 @@ fn test_test_test_links_against_source_exports() {
     )
     .expect("write math.kr");
 
-    // Test module imports and uses it. A bare `fn -> Int = add(...)` body
-    // sidesteps an unrelated IR-lowering ICE for a trailing `let _ = ...`
-    // statement in a block (pre-existing; see the do-block slice lowering
-    // at crates/ir/src/lower.rs). The core invariant here is that the
-    // cross-module symbol resolution and type-check succeed.
     std::fs::write(
         project.join("src/math_test.kr"),
-        "import math.{add}\n\nfun test_sum() -> Int = add(1, 2)\n",
+        "import math.{add}\n\nfun test_sum() { let _ = add(1, 2) }\n",
     )
     .expect("write math_test.kr");
 

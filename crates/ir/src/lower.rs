@@ -4202,6 +4202,9 @@ impl<'a> LowerCtx<'a> {
             body: None,
         } = &expr.kind
         {
+            if rest.is_empty() {
+                return self.lower_let_pattern(pattern, value, None, &Type::Unit);
+            }
             let rest_ty = exprs.last().map(|e| e.ty.clone()).unwrap_or(Type::Unit);
             // Synthesize a body that is the rest of the do block as a Do expr
             let rest_body = if rest.len() == 1 {

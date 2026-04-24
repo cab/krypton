@@ -1,0 +1,17 @@
+# expect: ok
+
+import core/io.{println}
+
+fun trailing_wildcard() -> Unit {
+  let _ = 1 + 2
+}
+
+fun trailing_tuple() -> Unit {
+  let (_a, _b) = (1, 2)
+}
+
+fun main() -> Unit {
+  trailing_wildcard()
+  trailing_tuple()
+  println("ok")
+}
