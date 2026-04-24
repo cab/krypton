@@ -209,14 +209,16 @@ impl<'a> ConstrainedFunctionRefWalker<'a> {
         })?;
         let declared_param_types = match &scheme.ty {
             Type::Fn(params, _) => params,
-            other => return Err(spanned(
-                TypeError::UnsupportedExpr {
-                    description: format!(
+            other => {
+                return Err(spanned(
+                    TypeError::UnsupportedExpr {
+                        description: format!(
                         "constrained function reference `{name}` has non-function type `{other}`"
                     ),
-                },
-                expr.span,
-            )),
+                    },
+                    expr.span,
+                ))
+            }
         };
 
         let mut unsatisfied_constraints: Vec<(String, String)> = Vec::new();
