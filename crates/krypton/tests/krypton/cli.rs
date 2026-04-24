@@ -1217,7 +1217,7 @@ fn test_test_no_manifest_errors() {
 }
 
 #[test]
-fn test_test_stub_succeeds_in_project() {
+fn test_test_succeeds_in_project_with_no_test_files() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
@@ -1234,8 +1234,8 @@ fn test_test_stub_succeeds_in_project() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("no tests yet"),
-        "expected 'no tests yet' in stdout, got: {stdout}"
+        stdout.trim().is_empty(),
+        "non-verbose stdout with no test files should be empty, got: {stdout}"
     );
     assert!(
         project.join("krypton.lock").is_file(),
@@ -1333,12 +1333,12 @@ fn test_test_verbose_prints_count_with_tests() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
         .expect("write math_test.kr");
     std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
     std::fs::write(
         project.join("src/parser/lexer_test.kr"),
-        "// empty\n",
+        "# empty\n",
     )
     .expect("write parser/lexer_test.kr");
 
@@ -1365,12 +1365,12 @@ fn test_test_nonverbose_omits_count() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
         .expect("write math_test.kr");
     std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
     std::fs::write(
         project.join("src/parser/lexer_test.kr"),
-        "// empty\n",
+        "# empty\n",
     )
     .expect("write parser/lexer_test.kr");
 
@@ -1496,7 +1496,7 @@ fn test_test_verbose_short_flag() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "// empty\n")
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
         .expect("write math_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
@@ -1514,5 +1514,205 @@ fn test_test_verbose_short_flag() {
     assert!(
         stdout.contains("1 test file"),
         "short-flag verbose output should mention '1 test file', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_source_error_aborts_before_tests() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Source phase error: `main.kr` calls an undefined function.
+    std::fs::write(
+        project.join("src/main.kr"),
+        "fun main() { undefined_fn() }\n",
+    )
+    .expect("overwrite main.kr");
+
+    // A test file that would otherwise compile.
+    std::fs::write(
+        project.join("src/math_test.kr"),
+        "fun test_noop() { }\n",
+    )
+    .expect("write math_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        !output.status.success(),
+        "test should fail when source unit has a type error"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stderr.contains("undefined_fn") || stderr.contains("src/main.kr"),
+        "stderr should name the source error, got: {stderr}"
+    );
+    assert!(
+        !stdout.contains("FAIL math_test") && !stdout.contains("FAIL src/math_test"),
+        "must not print per-test FAIL when source phase aborted, got stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_compile_error_in_one_test_does_not_block_others() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Good test — compiles clean.
+    std::fs::write(
+        project.join("src/good_test.kr"),
+        "fun test_noop() { }\n",
+    )
+    .expect("write good_test.kr");
+
+    // Bad test — type error (assigning a String to an Int).
+    std::fs::write(
+        project.join("src/bad_test.kr"),
+        "fun test_bad() { let x: Int = \"not an int\" }\n",
+    )
+    .expect("write bad_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        !output.status.success(),
+        "test should fail when any test file fails to compile"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("FAIL src/bad_test.kr — compile error"),
+        "stdout should contain FAIL line for bad_test, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("FAIL src/good_test.kr"),
+        "stdout must not FAIL the good test file, got: {stdout}"
+    );
+    // The diagnostic must be indented beneath the FAIL line.
+    let mut lines = stdout.lines();
+    let fail_idx = lines
+        .position(|l| l.starts_with("FAIL src/bad_test.kr"))
+        .expect("FAIL line must exist");
+    let after: Vec<&str> = stdout.lines().skip(fail_idx + 1).collect();
+    assert!(
+        after.iter().any(|l| l.starts_with("  ")),
+        "at least one line after FAIL should be indented (the diagnostic), got:\n{stdout}"
+    );
+}
+
+#[test]
+fn test_test_all_test_files_compile_exits_zero() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/a_test.kr"),
+        "fun test_one() { }\n",
+    )
+    .expect("write a_test.kr");
+    std::fs::write(
+        project.join("src/b_test.kr"),
+        "fun test_two() { }\n",
+    )
+    .expect("write b_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        output.status.success(),
+        "test should succeed: stderr={}  stdout={}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout),
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("FAIL "),
+        "stdout should have no FAIL lines, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_exit_code_one_on_any_compile_error() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/ok_a_test.kr"),
+        "fun test_a() { }\n",
+    )
+    .expect("write ok_a_test.kr");
+    std::fs::write(
+        project.join("src/ok_b_test.kr"),
+        "fun test_b() { }\n",
+    )
+    .expect("write ok_b_test.kr");
+    std::fs::write(
+        project.join("src/bad_test.kr"),
+        "fun test_bad() { let x: Int = \"not an int\" }\n",
+    )
+    .expect("write bad_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        !output.status.success(),
+        "exit code must be non-zero when any test file fails to compile"
+    );
+}
+
+#[test]
+fn test_test_test_links_against_source_exports() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Source module exports `add`.
+    std::fs::write(
+        project.join("src/math.kr"),
+        "pub fun add(x: Int, y: Int) -> Int = x + y\n",
+    )
+    .expect("write math.kr");
+
+    // Test module imports and uses it. A bare `fn -> Int = add(...)` body
+    // sidesteps an unrelated IR-lowering ICE for a trailing `let _ = ...`
+    // statement in a block (pre-existing; see the do-block slice lowering
+    // at crates/ir/src/lower.rs). The core invariant here is that the
+    // cross-module symbol resolution and type-check succeed.
+    std::fs::write(
+        project.join("src/math_test.kr"),
+        "import math.{add}\n\nfun test_sum() -> Int = add(1, 2)\n",
+    )
+    .expect("write math_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    assert!(
+        output.status.success(),
+        "test should succeed when test imports live source exports: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("FAIL "),
+        "stdout should have no FAIL lines, got: {stdout}"
     );
 }

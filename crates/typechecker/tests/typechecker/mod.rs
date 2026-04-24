@@ -5,6 +5,7 @@ mod infer;
 mod link_context;
 mod module_interface;
 mod name_conflicts;
+mod project_source_unit;
 mod resource_ctor_synthesis;
 mod types;
 mod unify;

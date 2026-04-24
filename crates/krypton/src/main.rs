@@ -1021,11 +1021,25 @@ fn check_project(timings: bool) -> ! {
     process::exit(0);
 }
 
-/// Project-mode `test`: skeleton handler. Loads the manifest and resolves
-/// dependencies so manifest/lockfile errors surface here, walks `src/` to
-/// classify `*.kr` and `*_test.kr` files, and (for now) prints "no tests yet"
-/// and exits 0. `filters` is accepted and ignored for forward compatibility
-/// with the full discovery + execution pipeline.
+/// Project-mode `test`: two-phase compile.
+///
+/// **Phase 1 (source unit)**: parse every `src/**/*.kr` non-test file,
+/// typecheck them together as a single project unit, lower to IR, and
+/// codegen. Any error here aborts before any test compiles — the whole
+/// source unit must be sound before the test suite can run.
+///
+/// **Phase 2 (per-test)**: for each discovered `*_test.kr`, parse and
+/// typecheck the file in isolation against the Phase 1 interfaces, then
+/// lower and codegen. A compile error in one test file is reported as
+/// `FAIL <path> — compile error` (with the rendered diagnostic indented
+/// beneath) but does not stop other test files from being compiled.
+///
+/// This ticket stops at producing bytecode. The test *runtime* harness
+/// (discovering `test_*` functions, invoking them, reporting results)
+/// lands in M44-T4.
+///
+/// `filters` is accepted for forward compatibility with the full
+/// discovery + execution pipeline and currently ignored.
 fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
     let (ctx, resolve_dur) = load_project_context();
 
@@ -1039,11 +1053,269 @@ fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
         println!("discovered {} test file(s)", files.tests.len());
     }
 
-    if timings {
-        print_timings(&[("resolve", resolve_dur)]);
+    let deps = ctx.graph.source_roots(&ctx.manifest);
+    let resolver = CompositeResolver::new(Some(src_dir.clone()), deps).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
+
+    // --- Phase 1: source unit -------------------------------------------
+
+    let t = Instant::now();
+    let mut parsed_sources: Vec<(String, krypton_parser::ast::Module, String, String)> =
+        Vec::with_capacity(files.sources.len());
+    for file in &files.sources {
+        let module_path = source_walker::module_path_from_file(file, &src_dir);
+        let source_text = std::fs::read_to_string(file).unwrap_or_else(|e| {
+            eprintln!("Error reading {}: {}", file.display(), e);
+            process::exit(1);
+        });
+        let diag_path = file
+            .strip_prefix(&ctx.project_root)
+            .unwrap_or(file)
+            .to_string_lossy()
+            .to_string();
+        let (module, parse_errors) = do_parse(&source_text);
+        if !parse_errors.is_empty() {
+            let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(
+                &diag_path,
+                &source_text,
+                &parse_errors,
+            );
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+        parsed_sources.push((module_path, module, source_text, diag_path));
     }
-    println!("no tests yet");
-    process::exit(0);
+    phases.push(("parse", t.elapsed()));
+
+    let sources_for_infer: Vec<(String, krypton_parser::ast::Module)> = parsed_sources
+        .iter()
+        .map(|(p, m, _, _)| (p.clone(), m.clone()))
+        .collect();
+
+    let t = Instant::now();
+    let source_unit = match krypton_typechecker::infer::infer_project_source_unit(
+        sources_for_infer,
+        &resolver,
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok(u) => u,
+        Err(errors) => {
+            // Pick a primary source file for diagnostic rendering. The
+            // renderer also sees every module's text via `errors[i].error_source`,
+            // so this choice only affects the fallback path.
+            let (diag_path, diag_source) = parsed_sources
+                .first()
+                .map(|(_, _, src, dp)| (dp.clone(), src.clone()))
+                .unwrap_or_else(|| (String::from("src/"), String::new()));
+            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                &diag_path,
+                &diag_source,
+                &errors,
+            );
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            if timings {
+                phases.push(("typecheck", t.elapsed()));
+                print_timings(&phases);
+            }
+            process::exit(1);
+        }
+    };
+    phases.push(("typecheck", t.elapsed()));
+
+    let link_ctx =
+        krypton_typechecker::link_context::LinkContext::build(source_unit.interfaces.clone());
+
+    let t = Instant::now();
+    let (source_ir_modules, source_module_sources) = match krypton_ir::lower::lower_all(
+        &source_unit.typed_modules,
+        "Kr$SourceUnit",
+        &link_ctx,
+    ) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("IR lowering error: {}", e);
+            process::exit(1);
+        }
+    };
+    phases.push(("lower", t.elapsed()));
+
+    let t = Instant::now();
+    // Source unit is not an executable entry (no `main` wrapping). The
+    // resulting classes are held in memory; M44-T4 will combine them with
+    // the per-test classes when the test harness starts running tests.
+    let _source_classes = match krypton_codegen::emit::compile_modules(
+        &source_ir_modules,
+        "Kr$SourceUnit",
+        false,
+        &link_ctx,
+        &source_module_sources,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            // Best-effort source + diag_path for the codegen renderer.
+            let (diag_path, diag_source) = parsed_sources
+                .first()
+                .map(|(_, _, src, dp)| (dp.as_str(), src.as_str()))
+                .unwrap_or(("src/", ""));
+            let (diags, srcs) =
+                krypton_codegen::diagnostics::lower_codegen_error(diag_path, diag_source, &e);
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    };
+    phases.push(("codegen", t.elapsed()));
+
+    // --- Phase 2: per-test compile --------------------------------------
+
+    enum TestFileOutcome {
+        Compiled,
+        CompileError { rel_path: String, diagnostic: String },
+    }
+
+    let mut outcomes: Vec<TestFileOutcome> = Vec::with_capacity(files.tests.len());
+    let t = Instant::now();
+    for test_file in &files.tests {
+        let test_module_path = source_walker::module_path_from_file(test_file, &src_dir);
+        let rel_path = test_file
+            .strip_prefix(&ctx.project_root)
+            .unwrap_or(test_file)
+            .to_string_lossy()
+            .to_string();
+
+        let test_source = match std::fs::read_to_string(test_file) {
+            Ok(s) => s,
+            Err(e) => {
+                outcomes.push(TestFileOutcome::CompileError {
+                    rel_path,
+                    diagnostic: format!("error reading file: {e}\n"),
+                });
+                continue;
+            }
+        };
+
+        let (test_module, parse_errors) = do_parse(&test_source);
+        if !parse_errors.is_empty() {
+            let (diags, srcs) = krypton_parser::diagnostics::lower_parse_errors(
+                &rel_path,
+                &test_source,
+                &parse_errors,
+            );
+            let rendered = diags
+                .iter()
+                .map(|d| AriadneRenderer.render(d, &srcs))
+                .collect::<String>();
+            outcomes.push(TestFileOutcome::CompileError {
+                rel_path,
+                diagnostic: rendered,
+            });
+            continue;
+        }
+
+        let (typed_test, test_iface) = match krypton_typechecker::infer::infer_test_module(
+            &test_module,
+            test_module_path.clone(),
+            &resolver,
+            krypton_parser::ast::CompileTarget::Jvm,
+            &source_unit,
+            Some(test_source.clone()),
+        ) {
+            Ok(r) => r,
+            Err(errors) => {
+                let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                    &rel_path,
+                    &test_source,
+                    &errors,
+                );
+                let rendered = diags
+                    .iter()
+                    .map(|d| AriadneRenderer.render(d, &srcs))
+                    .collect::<String>();
+                outcomes.push(TestFileOutcome::CompileError {
+                    rel_path,
+                    diagnostic: rendered,
+                });
+                continue;
+            }
+        };
+
+        // Build a per-test LinkContext combining Phase 1 interfaces and the
+        // test module's interface — the test module imports Phase 1 symbols
+        // but Phase 1 never sees tests, so the test's interface is a pure
+        // addition on each iteration.
+        let mut per_test_ifaces = source_unit.interfaces.clone();
+        per_test_ifaces.push(test_iface);
+        let test_link_ctx = krypton_typechecker::link_context::LinkContext::build(per_test_ifaces);
+
+        let test_class_name = class_name_from_stem(&test_module_path);
+        let (test_ir_modules, test_module_sources) = match krypton_ir::lower::lower_all(
+            std::slice::from_ref(&typed_test),
+            &test_class_name,
+            &test_link_ctx,
+        ) {
+            Ok(r) => r,
+            Err(e) => {
+                outcomes.push(TestFileOutcome::CompileError {
+                    rel_path,
+                    diagnostic: format!("IR lowering error: {e}\n"),
+                });
+                continue;
+            }
+        };
+
+        match krypton_codegen::emit::compile_modules(
+            &test_ir_modules,
+            &test_class_name,
+            false,
+            &test_link_ctx,
+            &test_module_sources,
+        ) {
+            Ok(_classes) => {
+                outcomes.push(TestFileOutcome::Compiled);
+            }
+            Err(e) => {
+                let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
+                    &rel_path,
+                    &test_source,
+                    &e,
+                );
+                let rendered = diags
+                    .iter()
+                    .map(|d| AriadneRenderer.render(d, &srcs))
+                    .collect::<String>();
+                outcomes.push(TestFileOutcome::CompileError {
+                    rel_path,
+                    diagnostic: rendered,
+                });
+            }
+        }
+    }
+    phases.push(("tests", t.elapsed()));
+
+    let mut any_failed = false;
+    for outcome in &outcomes {
+        if let TestFileOutcome::CompileError { rel_path, diagnostic } = outcome {
+            any_failed = true;
+            println!("FAIL {rel_path} — compile error");
+            for line in diagnostic.lines() {
+                println!("  {line}");
+            }
+        }
+    }
+
+    if timings {
+        print_timings(&phases);
+    }
+    process::exit(if any_failed { 1 } else { 0 });
 }
 
 fn main() {

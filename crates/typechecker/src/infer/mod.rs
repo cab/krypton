@@ -51,7 +51,10 @@ mod traits_register;
 
 pub use display::display_type;
 pub use entry::infer_expr;
-pub use module_driver::{infer_module, infer_module_single};
+pub use module_driver::{
+    infer_module, infer_module_single, infer_project_source_unit, infer_test_module,
+    ProjectSourceUnit,
+};
 
 pub(super) use display::leading_type_var;
 pub(super) use entry::{find_first_recur_span, first_own_capture, instantiate_field_type};

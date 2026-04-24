@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use krypton_parser::ast::{CompileTarget, Decl, Module, Span};
 use krypton_parser::diagnostics::ParseError;
@@ -89,10 +89,39 @@ pub fn build_module_graph_with_hints(
     target: CompileTarget,
     transitive_hints: &[(String, String)],
 ) -> Result<ModuleGraph, ModuleGraphError> {
+    build_module_graph_inner(root, resolver, target, transitive_hints, &FxHashSet::default())
+}
+
+/// Like [`build_module_graph_with_hints`], but with a `skip_set` of module
+/// paths the DFS should treat as already-resolved. Paths in `skip_set` are
+/// not resolved, parsed, or recursed into, and do not appear in the returned
+/// `modules` list. Callers are responsible for arranging that skipped
+/// modules are already present in any downstream `interface_cache` they
+/// intend to use. Used by the `krypton test` two-phase compile pipeline to
+/// avoid re-walking the source unit once per test module.
+pub fn build_module_graph_with_skip(
+    root: &Module,
+    resolver: &dyn ModuleResolver,
+    target: CompileTarget,
+    transitive_hints: &[(String, String)],
+    skip_set: &FxHashSet<String>,
+) -> Result<ModuleGraph, ModuleGraphError> {
+    build_module_graph_inner(root, resolver, target, transitive_hints, skip_set)
+}
+
+fn build_module_graph_inner(
+    root: &Module,
+    resolver: &dyn ModuleResolver,
+    target: CompileTarget,
+    transitive_hints: &[(String, String)],
+    skip_set: &FxHashSet<String>,
+) -> Result<ModuleGraph, ModuleGraphError> {
     let mut builder = ModuleGraphBuilder {
         resolver,
         target,
         transitive_hints,
+        skip_set,
+        pre_loaded: FxHashMap::default(),
         visited: FxHashSet::default(),
         stack: Vec::new(),
         stack_set: FxHashSet::default(),
@@ -118,11 +147,67 @@ pub fn build_module_graph_with_hints(
     })
 }
 
+/// Build a module graph from **multiple** pre-parsed root modules, each
+/// identified by its module path. Every root is included in the returned
+/// `modules` list (toposorted with transitive imports), unlike the
+/// single-root variant which excludes the root.
+///
+/// The `skip_set` behaves identically to [`build_module_graph_with_skip`] —
+/// DFS visits to any path in the set are short-circuited and the skipped
+/// module does not appear in `modules`.
+pub fn build_module_graph_multi_root(
+    roots: &[(String, Module)],
+    resolver: &dyn ModuleResolver,
+    target: CompileTarget,
+    transitive_hints: &[(String, String)],
+    skip_set: &FxHashSet<String>,
+) -> Result<ModuleGraph, ModuleGraphError> {
+    let mut pre_loaded: FxHashMap<String, Module> = FxHashMap::default();
+    for (path, module) in roots {
+        let mut module = module.clone();
+        filter_by_platform(&mut module, target);
+        pre_loaded.insert(path.clone(), module);
+    }
+
+    let mut builder = ModuleGraphBuilder {
+        resolver,
+        target,
+        transitive_hints,
+        skip_set,
+        pre_loaded,
+        visited: FxHashSet::default(),
+        stack: Vec::new(),
+        stack_set: FxHashSet::default(),
+        result: Vec::new(),
+    };
+
+    builder.visit_prelude_tree("prelude")?;
+    let prelude_tree_paths: FxHashSet<String> =
+        builder.result.iter().map(|m| m.path.clone()).collect();
+
+    for (path, _) in roots {
+        builder.visit_user_module(path, (0, 0))?;
+    }
+
+    Ok(ModuleGraph {
+        modules: builder.result,
+        prelude_tree_paths,
+    })
+}
+
 /// Mutable accumulators used during module graph traversal.
 struct ModuleGraphBuilder<'a> {
     resolver: &'a dyn ModuleResolver,
     target: CompileTarget,
     transitive_hints: &'a [(String, String)],
+    /// Paths the DFS must not resolve, parse, recurse into, or emit.
+    /// The caller guarantees these are already type-checked and present in
+    /// any downstream interface cache.
+    skip_set: &'a FxHashSet<String>,
+    /// Pre-parsed modules supplied by the caller (multi-root mode). When a
+    /// visit encounters a path here, the stored `Module` is used directly
+    /// and the resolver is never asked for this path.
+    pre_loaded: FxHashMap<String, Module>,
     visited: FxHashSet<String>,
     stack: Vec<String>,
     stack_set: FxHashSet<String>,
@@ -132,7 +217,7 @@ struct ModuleGraphBuilder<'a> {
 impl<'a> ModuleGraphBuilder<'a> {
     /// DFS visit a prelude-tree module (stdlib fallback, zero spans for errors).
     fn visit_prelude_tree(&mut self, path: &str) -> Result<(), ModuleGraphError> {
-        if self.visited.contains(path) {
+        if self.visited.contains(path) || self.skip_set.contains(path) {
             return Ok(());
         }
 
@@ -194,7 +279,7 @@ impl<'a> ModuleGraphBuilder<'a> {
 
     /// DFS visit a user-imported module with proper span tracking.
     fn visit_user_module(&mut self, path: &str, import_span: Span) -> Result<(), ModuleGraphError> {
-        if self.visited.contains(path) {
+        if self.visited.contains(path) || self.skip_set.contains(path) {
             return Ok(());
         }
 
@@ -207,21 +292,28 @@ impl<'a> ModuleGraphBuilder<'a> {
             });
         }
 
-        let source = match self.resolver.resolve(path) {
-            Some(s) => s,
-            None => return Err(self.unresolved_error(path, import_span)),
+        // Roots supplied by `build_module_graph_multi_root` are pre-parsed and
+        // platform-filtered; use them directly instead of asking the resolver.
+        let module = if let Some(m) = self.pre_loaded.remove(path) {
+            m
+        } else {
+            let source = match self.resolver.resolve(path) {
+                Some(s) => s,
+                None => return Err(self.unresolved_error(path, import_span)),
+            };
+
+            let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
+            if !parse_errors.is_empty() {
+                return Err(ModuleGraphError::ParseError {
+                    path: path.to_string(),
+                    source,
+                    errors: parse_errors,
+                });
+            }
+
+            filter_by_platform(&mut module, self.target);
+            module
         };
-
-        let (mut module, parse_errors) = krypton_parser::parser::parse(&source);
-        if !parse_errors.is_empty() {
-            return Err(ModuleGraphError::ParseError {
-                path: path.to_string(),
-                source,
-                errors: parse_errors,
-            });
-        }
-
-        filter_by_platform(&mut module, self.target);
 
         self.stack.push(path.to_string());
         self.stack_set.insert(path.to_string());

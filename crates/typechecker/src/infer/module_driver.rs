@@ -252,6 +252,307 @@ pub fn infer_module_single(
     Ok(modules.remove(0))
 }
 
+/// The result of typechecking every non-test source file in a project as a
+/// single unit. Produced by [`infer_project_source_unit`] and consumed by
+/// [`infer_test_module`] so Phase 2 can reuse the Phase 1 interfaces and
+/// skip the already-compiled modules when building the test module's
+/// dependency graph.
+pub struct ProjectSourceUnit {
+    /// Typed modules in toposort order (dependencies first), covering every
+    /// source file supplied to `infer_project_source_unit` plus their
+    /// transitive imports (prelude, stdlib, deps).
+    pub typed_modules: Vec<TypedModule>,
+    /// Module interfaces aligned with `typed_modules`. Safe to pass to
+    /// `LinkContext::build` directly.
+    pub interfaces: Vec<crate::module_interface::ModuleInterface>,
+    /// Every module path whose interface is present in `interfaces`. Used as
+    /// the `skip_set` for per-test graph construction so Phase 2 does not
+    /// re-walk Phase 1's modules.
+    pub all_module_paths: FxHashSet<String>,
+    /// Prelude tree paths (prelude + its transitive `core/*` deps). Used by
+    /// `infer_test_module` to identify whether the test module itself is part
+    /// of the prelude tree (it never is) when invoking `infer_module_inner`.
+    pub prelude_tree_paths: FxHashSet<String>,
+}
+
+/// Typecheck every `src/**/*.kr` non-test source file as a single unit.
+///
+/// Unlike [`infer_module`], there is no distinguished root: each entry in
+/// `sources` is treated as a peer, and the validation of a `main` signature
+/// is skipped (that only makes sense for `run`/`build`, not `test`).
+///
+/// `sources` pairs each source module's path (e.g. `"math"`,
+/// `"parser/lexer"`) with its pre-parsed `Module`. The caller is
+/// responsible for reading the `.kr` files and running the parser — this
+/// function does not re-read anything.
+///
+/// On success, returns a [`ProjectSourceUnit`] whose `typed_modules` and
+/// `interfaces` are toposorted (dependencies before dependents) and
+/// include the sources *and* their transitive imports (prelude, stdlib,
+/// declared deps). On failure, returns every collected inference or parse
+/// error from any source or its transitive dep.
+pub fn infer_project_source_unit(
+    sources: Vec<(String, Module)>,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    target: krypton_parser::ast::CompileTarget,
+) -> Result<ProjectSourceUnit, Vec<InferError>> {
+    use krypton_modules::module_graph;
+    use krypton_modules::stdlib_loader::StdlibLoader;
+
+    let graph = module_graph::build_module_graph_multi_root(
+        &sources,
+        resolver,
+        target,
+        &[],
+        &FxHashSet::default(),
+    )
+    .map_err(|e| {
+        vec![match e {
+            module_graph::ModuleGraphError::ParseError {
+                path,
+                source,
+                errors,
+            } => InferError::ModuleParseError {
+                path,
+                source,
+                errors,
+            },
+            other => InferError::TypeError {
+                error: map_graph_error(other),
+                error_source: None,
+            },
+        }]
+    })?;
+
+    let mut cache: FxHashMap<String, TypedModule> = FxHashMap::default();
+    let mut interface_cache: FxHashMap<String, crate::module_interface::ModuleInterface> =
+        FxHashMap::default();
+
+    for resolved in &graph.modules {
+        if cache.contains_key(&resolved.path) {
+            continue;
+        }
+        let mut dep_paths: Vec<String> =
+            crate::module_interface::collect_direct_deps(&resolved.module)
+                .iter()
+                .map(|p| p.0.clone())
+                .collect();
+        if !graph.prelude_tree_paths.contains(&resolved.path) {
+            dep_paths.push("prelude".to_string());
+        }
+        let typed = infer_module_inner(
+            &resolved.module,
+            &interface_cache,
+            resolved.path.clone(),
+            &graph.prelude_tree_paths,
+        )
+        .map_err(|errors| {
+            let source_text = StdlibLoader::get_source(&resolved.path)
+                .map(|s| s.to_string())
+                .or_else(|| resolver.resolve(&resolved.path));
+            let error_source = source_text.map(|s| (resolved.path.clone(), s));
+            errors
+                .into_iter()
+                .map(|mut e| {
+                    if e.source_file.is_none() {
+                        e.source_file = Some(resolved.path.clone());
+                    }
+                    InferError::TypeError {
+                        error: e,
+                        error_source: error_source.clone(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })?;
+        let mut typed = typed;
+        typed.module_source = StdlibLoader::get_source(&resolved.path)
+            .map(|s| s.to_string())
+            .or_else(|| resolver.resolve(&resolved.path));
+        let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
+        interface_cache.insert(resolved.path.clone(), iface);
+        cache.insert(resolved.path.clone(), typed);
+    }
+
+    let mut typed_modules: Vec<TypedModule> = Vec::with_capacity(graph.modules.len());
+    let mut interfaces: Vec<crate::module_interface::ModuleInterface> =
+        Vec::with_capacity(graph.modules.len());
+    let mut all_module_paths: FxHashSet<String> = FxHashSet::default();
+    for resolved in &graph.modules {
+        if let Some(typed) = cache.remove(&resolved.path) {
+            typed_modules.push(typed);
+        }
+        if let Some(iface) = interface_cache.remove(&resolved.path) {
+            interfaces.push(iface);
+        }
+        all_module_paths.insert(resolved.path.clone());
+    }
+
+    Ok(ProjectSourceUnit {
+        typed_modules,
+        interfaces,
+        all_module_paths,
+        prelude_tree_paths: graph.prelude_tree_paths,
+    })
+}
+
+/// Typecheck a single test module against a pre-built
+/// [`ProjectSourceUnit`]. The test module is treated as a new root whose
+/// imports resolve through the Phase 1 interfaces; the Phase 1 modules are
+/// not re-walked, re-parsed, or re-inferred.
+///
+/// Returns the test module's `TypedModule` (with `module_source` populated
+/// from `test_source`) and its extracted `ModuleInterface`. The interface
+/// contains no externally-importable surface (test modules cannot be
+/// imported) but is convenient to hand to `LinkContext::build` alongside
+/// the Phase 1 interfaces when driving IR lowering and codegen.
+///
+/// A parse/type error in the test module does not invalidate the
+/// `ProjectSourceUnit` — callers typically loop over every test file,
+/// keeping the unit live across failures.
+pub fn infer_test_module(
+    test_module: &Module,
+    test_module_path: String,
+    resolver: &dyn krypton_modules::module_resolver::ModuleResolver,
+    target: krypton_parser::ast::CompileTarget,
+    source_unit: &ProjectSourceUnit,
+    test_source: Option<String>,
+) -> Result<
+    (
+        TypedModule,
+        crate::module_interface::ModuleInterface,
+    ),
+    Vec<InferError>,
+> {
+    use krypton_modules::module_graph;
+
+    // Filter the test module by platform (mirrors `infer_module`).
+    let mut test_module = test_module.clone();
+    krypton_parser::platform::filter_by_platform(&mut test_module, target);
+    let test_module = &test_module;
+
+    // Build a graph for the test module with the entire Phase 1 set skipped.
+    // The test module's imports that point at Phase 1 modules short-circuit
+    // in the DFS; any new module (e.g., a dep that Phase 1 did not transitively
+    // pull in) is walked normally.
+    let graph = module_graph::build_module_graph_with_skip(
+        test_module,
+        resolver,
+        target,
+        &[],
+        &source_unit.all_module_paths,
+    )
+    .map_err(|e| {
+        vec![match e {
+            module_graph::ModuleGraphError::ParseError {
+                path,
+                source,
+                errors,
+            } => InferError::ModuleParseError {
+                path,
+                source,
+                errors,
+            },
+            other => InferError::TypeError {
+                error: map_graph_error(other),
+                error_source: None,
+            },
+        }]
+    })?;
+
+    // Seed the interface cache with Phase 1 interfaces so the test module's
+    // import processing resolves names against the already-compiled sources.
+    let mut interface_cache: FxHashMap<String, crate::module_interface::ModuleInterface> =
+        FxHashMap::default();
+    for iface in &source_unit.interfaces {
+        interface_cache.insert(iface.module_path.as_str().to_string(), iface.clone());
+    }
+
+    // The test-module graph should only contain modules Phase 1 did not cover
+    // (typically empty). Type-check any such stragglers into the cache before
+    // typing the test module itself.
+    let mut extra_cache: FxHashMap<String, TypedModule> = FxHashMap::default();
+    for resolved in &graph.modules {
+        if interface_cache.contains_key(&resolved.path) || extra_cache.contains_key(&resolved.path)
+        {
+            continue;
+        }
+        let mut dep_paths: Vec<String> =
+            crate::module_interface::collect_direct_deps(&resolved.module)
+                .iter()
+                .map(|p| p.0.clone())
+                .collect();
+        if !graph.prelude_tree_paths.contains(&resolved.path) {
+            dep_paths.push("prelude".to_string());
+        }
+        let typed = infer_module_inner(
+            &resolved.module,
+            &interface_cache,
+            resolved.path.clone(),
+            &source_unit.prelude_tree_paths,
+        )
+        .map_err(|errors| {
+            let source_text = krypton_modules::stdlib_loader::StdlibLoader::get_source(
+                &resolved.path,
+            )
+            .map(|s| s.to_string())
+            .or_else(|| resolver.resolve(&resolved.path));
+            let error_source = source_text.map(|s| (resolved.path.clone(), s));
+            errors
+                .into_iter()
+                .map(|mut e| {
+                    if e.source_file.is_none() {
+                        e.source_file = Some(resolved.path.clone());
+                    }
+                    InferError::TypeError {
+                        error: e,
+                        error_source: error_source.clone(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })?;
+        let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
+        interface_cache.insert(resolved.path.clone(), iface);
+        extra_cache.insert(resolved.path.clone(), typed);
+    }
+
+    let mut test_dep_paths: Vec<String> = crate::module_interface::collect_direct_deps(test_module)
+        .iter()
+        .map(|p| p.0.clone())
+        .collect();
+    if !source_unit.prelude_tree_paths.contains(&test_module_path) {
+        test_dep_paths.push("prelude".to_string());
+    }
+
+    let typed = infer_module_inner(
+        test_module,
+        &interface_cache,
+        test_module_path.clone(),
+        &source_unit.prelude_tree_paths,
+    )
+    .map_err(|errors| {
+        let error_source = test_source
+            .as_ref()
+            .map(|s| (test_module_path.clone(), s.clone()));
+        errors
+            .into_iter()
+            .map(|mut e| {
+                if e.source_file.is_none() {
+                    e.source_file = Some(test_module_path.clone());
+                }
+                InferError::TypeError {
+                    error: e,
+                    error_source: error_source.clone(),
+                }
+            })
+            .collect::<Vec<_>>()
+    })?;
+
+    let mut typed = typed;
+    typed.module_source = test_source;
+    let iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
+    Ok((typed, iface))
+}
+
 /// Internal per-module inference with pre-resolved module cache.
 ///
 /// The module graph has already been resolved and toposorted by `infer_module`.

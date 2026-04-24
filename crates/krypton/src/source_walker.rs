@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub struct SourceFiles {
     /// `*.kr` files whose filename does not end with `_test.kr`.
-    // Consumed by the two-phase `krypton test` compile pipeline.
-    #[allow(dead_code)]
     pub sources: Vec<PathBuf>,
     /// `*.kr` files whose filename ends with `_test.kr`.
     pub tests: Vec<PathBuf>,
@@ -68,6 +66,22 @@ pub fn walk_project_sources(src_dir: &Path) -> io::Result<SourceFiles> {
     sort_by_relative_path(&mut tests, src_dir);
 
     Ok(SourceFiles { sources, tests })
+}
+
+/// Derive a module path from a source file's absolute path and the project
+/// `src/` root. Strips `src_dir` and the `.kr` extension, then normalizes
+/// native path separators to `/` so the result matches the `import`-level
+/// module path (e.g., `src/parser/lexer.kr` → `"parser/lexer"`).
+///
+/// Panics if `file` does not start with `src_dir`; callers obtain both paths
+/// from the same walker so this is a structural invariant rather than a
+/// user-facing condition.
+pub fn module_path_from_file(file: &Path, src_dir: &Path) -> String {
+    let rel = file
+        .strip_prefix(src_dir)
+        .expect("file must live under src_dir");
+    let stem = rel.with_extension("");
+    stem.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 fn starts_with_dot(name: &OsStr) -> bool {
