@@ -1,7 +1,8 @@
 use rustc_hash::FxHashSet;
 
-use crate::expr::{Atom, Expr, ExprKind, PrimOp, SimpleExpr, SimpleExprKind};
+use crate::expr::{Atom, Expr, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch};
 use crate::pass::{IrPass, IrPassError};
+use crate::visit::{ExprVisitor, SimpleExprVisitor};
 use crate::{FnDef, FnId, Module, TraitName, Type, VarId};
 
 /// Validates structural invariants of an IR module.
@@ -89,7 +90,7 @@ impl LintContext {
             self.bind_var(var)?;
         }
 
-        self.check_expr(&func.body)
+        self.visit_expr(&func.body)
     }
 
     fn bind_var(&mut self, var: VarId) -> Result<(), IrPassError> {
@@ -108,123 +109,6 @@ impl LintContext {
         while self.var_stack.len() > mark {
             let var = self.var_stack.pop().unwrap();
             self.bound_vars.remove(&var);
-        }
-    }
-
-    fn check_expr(&mut self, expr: &Expr) -> Result<(), IrPassError> {
-        match &expr.kind {
-            ExprKind::Let {
-                bind,
-                ty,
-                value,
-                body,
-            } => {
-                self.check_simple_expr(value, Some(ty))?;
-                self.bind_var(*bind)?;
-                self.check_expr(body)
-            }
-
-            ExprKind::LetRec { bindings, body } => {
-                // All FnIds in LetRec must reference known functions.
-                for (var, _, fn_id, _) in bindings {
-                    if !self.known_fns.contains(fn_id) {
-                        return Err(
-                            self.err(format!("LetRec references unknown FnId({})", fn_id.0))
-                        );
-                    }
-                    self.bind_var(*var)?;
-                }
-                // Check captures.
-                for (_, _, _, captures) in bindings {
-                    for atom in captures {
-                        self.check_atom_not_join(atom)?;
-                    }
-                }
-                self.check_expr(body)
-            }
-
-            ExprKind::LetJoin {
-                name,
-                params,
-                join_body,
-                body,
-                is_recur: _,
-            } => {
-                self.bind_var(*name)?;
-                self.join_points.insert(*name);
-
-                // Join params scope only over join_body, not body.
-                let mark = self.scope_mark();
-                for &(var, _) in params {
-                    self.bind_var(var)?;
-                }
-                self.check_expr(join_body)?;
-                self.restore_scope(mark);
-                self.check_expr(body)
-            }
-
-            ExprKind::Jump { target, args } => {
-                if !self.join_points.contains(target) {
-                    return Err(self.err(format!("Jump target v{} is not a join point", target.0)));
-                }
-                for atom in args {
-                    self.check_atom_not_join(atom)?;
-                }
-                Ok(())
-            }
-
-            ExprKind::BoolSwitch {
-                scrutinee,
-                true_body,
-                false_body,
-            } => {
-                self.check_atom_not_join(scrutinee)?;
-                self.check_expr(true_body)?;
-                self.check_expr(false_body)?;
-                Ok(())
-            }
-
-            ExprKind::Switch {
-                scrutinee,
-                branches,
-                default,
-            } => {
-                self.check_atom_not_join(scrutinee)?;
-                for branch in branches {
-                    // Branch bindings scope only over this branch's body.
-                    let mark = self.scope_mark();
-                    for &(var, _) in &branch.bindings {
-                        self.bind_var(var)?;
-                    }
-                    self.check_expr(&branch.body)?;
-                    self.restore_scope(mark);
-                }
-                if let Some(d) = default {
-                    self.check_expr(d)?;
-                }
-                Ok(())
-            }
-
-            ExprKind::AutoClose {
-                resource,
-                dict,
-                body,
-                ..
-            } => {
-                if !self.bound_vars.contains(resource) {
-                    return Err(self.err(format!(
-                        "AutoClose references unbound resource v{}",
-                        resource.0
-                    )));
-                }
-                self.check_atom_not_join(dict)?;
-                self.check_expr(body)
-            }
-
-            ExprKind::Atom(atom) => {
-                self.check_atom_not_join(atom)?;
-                Ok(())
-            }
         }
     }
 
@@ -384,6 +268,144 @@ impl LintContext {
             }
         }
         Ok(())
+    }
+}
+
+// `SimpleExprVisitor` impl is required only to satisfy the `ExprVisitor:
+// SimpleExprVisitor` supertrait bound. Lint treats `SimpleExpr` as a leaf
+// and routes through `check_simple_expr(value, Some(ty))` from inside
+// `visit_let` — the per-call `let_ty` context makes a visitor override
+// unnecessary and potentially misleading.
+impl SimpleExprVisitor for LintContext {
+    type Result = Result<(), IrPassError>;
+}
+
+impl ExprVisitor for LintContext {
+    fn visit_let(
+        &mut self,
+        bind: VarId,
+        ty: &Type,
+        value: &SimpleExpr,
+        body: &Expr,
+        _expr: &Expr,
+    ) -> Self::Result {
+        self.check_simple_expr(value, Some(ty))?;
+        self.bind_var(bind)?;
+        self.visit_expr(body)
+    }
+
+    fn visit_let_rec(
+        &mut self,
+        bindings: &[(VarId, Type, FnId, Vec<Atom>)],
+        body: &Expr,
+        _expr: &Expr,
+    ) -> Self::Result {
+        for (var, _, fn_id, _) in bindings {
+            if !self.known_fns.contains(fn_id) {
+                return Err(self.err(format!("LetRec references unknown FnId({})", fn_id.0)));
+            }
+            self.bind_var(*var)?;
+        }
+        for (_, _, _, captures) in bindings {
+            for atom in captures {
+                self.check_atom_not_join(atom)?;
+            }
+        }
+        self.visit_expr(body)
+    }
+
+    fn visit_let_join(
+        &mut self,
+        name: VarId,
+        params: &[(VarId, Type)],
+        join_body: &Expr,
+        body: &Expr,
+        _is_recur: bool,
+        _expr: &Expr,
+    ) -> Self::Result {
+        self.bind_var(name)?;
+        self.join_points.insert(name);
+
+        // Join params scope only over join_body, not body.
+        let mark = self.scope_mark();
+        for &(var, _) in params {
+            self.bind_var(var)?;
+        }
+        self.visit_expr(join_body)?;
+        self.restore_scope(mark);
+        self.visit_expr(body)
+    }
+
+    fn visit_jump(&mut self, target: VarId, args: &[Atom], _expr: &Expr) -> Self::Result {
+        if !self.join_points.contains(&target) {
+            return Err(self.err(format!("Jump target v{} is not a join point", target.0)));
+        }
+        for atom in args {
+            self.check_atom_not_join(atom)?;
+        }
+        Ok(())
+    }
+
+    fn visit_bool_switch(
+        &mut self,
+        scrutinee: &Atom,
+        true_body: &Expr,
+        false_body: &Expr,
+        _expr: &Expr,
+    ) -> Self::Result {
+        self.check_atom_not_join(scrutinee)?;
+        self.visit_expr(true_body)?;
+        self.visit_expr(false_body)
+    }
+
+    fn visit_switch(
+        &mut self,
+        scrutinee: &Atom,
+        branches: &[SwitchBranch],
+        default: Option<&Expr>,
+        _expr: &Expr,
+    ) -> Self::Result {
+        self.check_atom_not_join(scrutinee)?;
+        for branch in branches {
+            self.visit_switch_branch(branch)?;
+        }
+        if let Some(d) = default {
+            self.visit_expr(d)?;
+        }
+        Ok(())
+    }
+
+    fn visit_switch_branch(&mut self, branch: &SwitchBranch) -> Self::Result {
+        let mark = self.scope_mark();
+        for &(var, _) in &branch.bindings {
+            self.bind_var(var)?;
+        }
+        self.visit_expr(&branch.body)?;
+        self.restore_scope(mark);
+        Ok(())
+    }
+
+    fn visit_auto_close(
+        &mut self,
+        resource: VarId,
+        dict: &Atom,
+        _type_name: &str,
+        _null_slot: bool,
+        body: &Expr,
+        _expr: &Expr,
+    ) -> Self::Result {
+        if !self.bound_vars.contains(&resource) {
+            return Err(self.err(format!(
+                "AutoClose references unbound resource v{}",
+                resource.0
+            )));
+        }
+        self.check_atom_not_join(dict)?;
+        self.visit_expr(body)
+    }
+
+    fn visit_expr_atom(&mut self, atom: &Atom, _expr: &Expr) -> Self::Result {
+        self.check_atom_not_join(atom)
     }
 }
 

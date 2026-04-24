@@ -2,6 +2,7 @@ use std::fmt;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::visit::{ExprVisitor, SimpleExprVisitor};
 use crate::Type;
 use crate::{
     expr::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExpr, SimpleExprKind, SwitchBranch},
@@ -92,103 +93,122 @@ impl fmt::Display for PrimOp {
 }
 
 // --- SimpleExpr Display ---
+//
+// Both the bare `Display for SimpleExpr` and the `IndentWriter`'s visitor
+// (which has access to a `fn_names` map for prettier output) go through
+// `write_simple_kind`. The only difference is how each renders a `FnId`:
+// `Display` uses `FnId`'s own `{f0}`-style, while `IndentWriter` looks up
+// the declared name. The `fmt_fn` closure threads that policy in.
+
+fn write_simple_kind(
+    f: &mut fmt::Formatter<'_>,
+    kind: &SimpleExprKind,
+    fmt_fn: &dyn Fn(&FnId) -> String,
+) -> fmt::Result {
+    match kind {
+        SimpleExprKind::Call { func, args } => {
+            write!(f, "call {}({})", fmt_fn(func), fmt_atoms(args))
+        }
+        SimpleExprKind::TraitCall {
+            trait_name,
+            method_name,
+            args,
+        } => {
+            write!(
+                f,
+                "trait_call {trait_name}.{method_name}({})",
+                fmt_atoms(args)
+            )
+        }
+        SimpleExprKind::CallClosure { closure, args } => {
+            write!(f, "call_closure {closure}({})", fmt_atoms(args))
+        }
+        SimpleExprKind::MakeClosure { func, captures } => {
+            write!(
+                f,
+                "make_closure({}, [{}])",
+                fmt_fn(func),
+                fmt_atoms(captures)
+            )
+        }
+        SimpleExprKind::Construct { type_ref, fields } => {
+            write!(
+                f,
+                "construct {}({})",
+                crate::canonical_ref_type_name(type_ref),
+                fmt_atoms(fields)
+            )
+        }
+        SimpleExprKind::ConstructVariant {
+            type_ref,
+            variant,
+            tag,
+            fields,
+        } => {
+            write!(
+                f,
+                "construct {}::{variant}#{tag}({})",
+                crate::canonical_ref_type_name(type_ref),
+                fmt_atoms(fields)
+            )
+        }
+        SimpleExprKind::Project { value, field_index } => {
+            write!(f, "project {value}.{field_index}")
+        }
+        SimpleExprKind::Tag { value } => {
+            write!(f, "tag {value}")
+        }
+        SimpleExprKind::MakeTuple { elements } => {
+            write!(f, "tuple({})", fmt_atoms(elements))
+        }
+        SimpleExprKind::TupleProject { value, index } => {
+            write!(f, "tuple_project {value}.{index}")
+        }
+        SimpleExprKind::PrimOp { op, args } => {
+            write!(f, "{op}({})", fmt_atoms(args))
+        }
+        SimpleExprKind::GetDict {
+            trait_name,
+            target_types,
+            ..
+        } => {
+            write!(f, "get_dict {trait_name}[{}]", fmt_types(target_types))
+        }
+        SimpleExprKind::MakeDict {
+            trait_name,
+            target_types,
+            sub_dicts,
+            ..
+        } => {
+            write!(
+                f,
+                "make_dict {trait_name}[{}]({})",
+                fmt_types(target_types),
+                fmt_atoms(sub_dicts)
+            )
+        }
+        SimpleExprKind::ProjectDictField {
+            dict,
+            field_index,
+            result_trait,
+            result_target_types,
+        } => {
+            write!(
+                f,
+                "project_dict_field {dict}.dict{field_index} : {result_trait}[{}]",
+                fmt_types(result_target_types)
+            )
+        }
+        SimpleExprKind::MakeVec { elements, .. } => {
+            write!(f, "make_vec({})", fmt_atoms(elements))
+        }
+        SimpleExprKind::Atom(atom) => write!(f, "{atom}"),
+    }
+}
 
 impl fmt::Display for SimpleExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            SimpleExprKind::Call { func, args } => {
-                write!(f, "call {func}({})", fmt_atoms(args))
-            }
-            SimpleExprKind::TraitCall {
-                trait_name,
-                method_name,
-                args,
-            } => {
-                write!(
-                    f,
-                    "trait_call {trait_name}.{method_name}({})",
-                    fmt_atoms(args)
-                )
-            }
-            SimpleExprKind::CallClosure { closure, args } => {
-                write!(f, "call_closure {closure}({})", fmt_atoms(args))
-            }
-            SimpleExprKind::MakeClosure { func, captures } => {
-                write!(f, "make_closure({func}, [{}])", fmt_atoms(captures))
-            }
-            SimpleExprKind::Construct { type_ref, fields } => {
-                write!(
-                    f,
-                    "construct {}({})",
-                    crate::canonical_ref_type_name(type_ref),
-                    fmt_atoms(fields)
-                )
-            }
-            SimpleExprKind::ConstructVariant {
-                type_ref,
-                variant,
-                tag,
-                fields,
-            } => {
-                write!(
-                    f,
-                    "construct {}::{variant}#{tag}({})",
-                    crate::canonical_ref_type_name(type_ref),
-                    fmt_atoms(fields)
-                )
-            }
-            SimpleExprKind::Project { value, field_index } => {
-                write!(f, "project {value}.{field_index}")
-            }
-            SimpleExprKind::Tag { value } => {
-                write!(f, "tag {value}")
-            }
-            SimpleExprKind::MakeTuple { elements } => {
-                write!(f, "tuple({})", fmt_atoms(elements))
-            }
-            SimpleExprKind::TupleProject { value, index } => {
-                write!(f, "tuple_project {value}.{index}")
-            }
-            SimpleExprKind::PrimOp { op, args } => {
-                write!(f, "{op}({})", fmt_atoms(args))
-            }
-            SimpleExprKind::GetDict {
-                trait_name,
-                target_types,
-                ..
-            } => {
-                write!(f, "get_dict {trait_name}[{}]", fmt_types(target_types))
-            }
-            SimpleExprKind::MakeDict {
-                trait_name,
-                target_types,
-                sub_dicts,
-                ..
-            } => {
-                write!(
-                    f,
-                    "make_dict {trait_name}[{}]({})",
-                    fmt_types(target_types),
-                    fmt_atoms(sub_dicts)
-                )
-            }
-            SimpleExprKind::ProjectDictField {
-                dict,
-                field_index,
-                result_trait,
-                result_target_types,
-            } => {
-                write!(
-                    f,
-                    "project_dict_field {dict}.dict{field_index} : {result_trait}[{}]",
-                    fmt_types(result_target_types)
-                )
-            }
-            SimpleExprKind::MakeVec { elements, .. } => {
-                write!(f, "make_vec({})", fmt_atoms(elements))
-            }
-            SimpleExprKind::Atom(atom) => write!(f, "{atom}"),
-        }
+        write_simple_kind(f, &self.kind, &|id| id.to_string())
     }
 }
 
@@ -217,125 +237,11 @@ struct IndentWriter<'a, 'b> {
 }
 
 impl<'a, 'b> IndentWriter<'a, 'b> {
-    fn new(
-        f: &'a mut fmt::Formatter<'b>,
-        indent: usize,
-        fn_names: &'a FxHashMap<FnId, String>,
-    ) -> Self {
-        Self {
-            f,
-            indent,
-            fn_names,
-        }
-    }
-
     fn fmt_fn(&self, id: &FnId) -> String {
         self.fn_names
             .get(id)
             .cloned()
             .unwrap_or_else(|| format!("{id}"))
-    }
-
-    fn write_simple_expr(&mut self, expr: &SimpleExpr) -> fmt::Result {
-        match &expr.kind {
-            SimpleExprKind::Call { func, args } => {
-                write!(self.f, "call {}({})", self.fmt_fn(func), fmt_atoms(args))
-            }
-            SimpleExprKind::TraitCall {
-                trait_name,
-                method_name,
-                args,
-            } => {
-                write!(
-                    self.f,
-                    "trait_call {trait_name}.{method_name}({})",
-                    fmt_atoms(args)
-                )
-            }
-            SimpleExprKind::CallClosure { closure, args } => {
-                write!(self.f, "call_closure {closure}({})", fmt_atoms(args))
-            }
-            SimpleExprKind::MakeClosure { func, captures } => {
-                write!(
-                    self.f,
-                    "make_closure({}, [{}])",
-                    self.fmt_fn(func),
-                    fmt_atoms(captures)
-                )
-            }
-            SimpleExprKind::Construct { type_ref, fields } => {
-                write!(
-                    self.f,
-                    "construct {}({})",
-                    crate::canonical_ref_type_name(type_ref),
-                    fmt_atoms(fields)
-                )
-            }
-            SimpleExprKind::ConstructVariant {
-                type_ref,
-                variant,
-                tag,
-                fields,
-            } => {
-                write!(
-                    self.f,
-                    "construct {}::{variant}#{tag}({})",
-                    crate::canonical_ref_type_name(type_ref),
-                    fmt_atoms(fields)
-                )
-            }
-            SimpleExprKind::Project { value, field_index } => {
-                write!(self.f, "project {value}.{field_index}")
-            }
-            SimpleExprKind::Tag { value } => {
-                write!(self.f, "tag {value}")
-            }
-            SimpleExprKind::MakeTuple { elements } => {
-                write!(self.f, "tuple({})", fmt_atoms(elements))
-            }
-            SimpleExprKind::TupleProject { value, index } => {
-                write!(self.f, "tuple_project {value}.{index}")
-            }
-            SimpleExprKind::PrimOp { op, args } => {
-                write!(self.f, "{op}({})", fmt_atoms(args))
-            }
-            SimpleExprKind::GetDict {
-                trait_name,
-                target_types,
-                ..
-            } => {
-                write!(self.f, "get_dict {trait_name}[{}]", fmt_types(target_types))
-            }
-            SimpleExprKind::MakeDict {
-                trait_name,
-                target_types,
-                sub_dicts,
-                ..
-            } => {
-                write!(
-                    self.f,
-                    "make_dict {trait_name}[{}]({})",
-                    fmt_types(target_types),
-                    fmt_atoms(sub_dicts)
-                )
-            }
-            SimpleExprKind::ProjectDictField {
-                dict,
-                field_index,
-                result_trait,
-                result_target_types,
-            } => {
-                write!(
-                    self.f,
-                    "project_dict_field {dict}.dict{field_index} : {result_trait}[{}]",
-                    fmt_types(result_target_types)
-                )
-            }
-            SimpleExprKind::MakeVec { elements, .. } => {
-                write!(self.f, "make_vec({})", fmt_atoms(elements))
-            }
-            SimpleExprKind::Atom(atom) => write!(self.f, "{atom}"),
-        }
     }
 
     fn write_indent(&mut self) -> fmt::Result {
@@ -344,128 +250,172 @@ impl<'a, 'b> IndentWriter<'a, 'b> {
         }
         Ok(())
     }
+}
 
-    fn write_expr(&mut self, expr: &Expr) -> fmt::Result {
-        match &expr.kind {
-            ExprKind::Let {
-                bind,
-                ty,
-                value,
-                body,
-            } => {
-                self.write_indent()?;
-                write!(self.f, "let {bind}: {ty} = ")?;
-                self.write_simple_expr(value)?;
-                writeln!(self.f)?;
-                self.write_expr(body)
-            }
-            ExprKind::LetRec { bindings, body } => {
-                for (i, (var, ty, fn_id, captures)) in bindings.iter().enumerate() {
-                    self.write_indent()?;
-                    if i == 0 {
-                        write!(self.f, "let_rec ")?;
-                    } else {
-                        write!(self.f, "    and ")?;
-                    }
-                    writeln!(
-                        self.f,
-                        "{var}: {ty} = make_closure({}, [{}])",
-                        self.fmt_fn(fn_id),
-                        fmt_atoms(captures)
-                    )?;
-                }
-                self.write_indent()?;
-                writeln!(self.f, "in")?;
-                self.write_expr(body)
-            }
-            ExprKind::LetJoin {
-                name,
-                params,
-                join_body,
-                body,
-                is_recur,
-            } => {
-                self.write_indent()?;
-                if *is_recur {
-                    writeln!(self.f, "let_join [recur] {name}({}) =", fmt_params(params))?;
-                } else {
-                    writeln!(self.f, "let_join {name}({}) =", fmt_params(params))?;
-                }
-                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
-                inner.write_expr(join_body)?;
-                self.write_indent()?;
-                writeln!(self.f, "in")?;
-                self.write_expr(body)
-            }
-            ExprKind::Jump { target, args } => {
-                self.write_indent()?;
-                writeln!(self.f, "jump {target}({})", fmt_atoms(args))
-            }
-            ExprKind::BoolSwitch {
-                scrutinee,
-                true_body,
-                false_body,
-            } => {
-                self.write_indent()?;
-                writeln!(self.f, "if {scrutinee} {{")?;
-                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
-                inner.write_expr(true_body)?;
-                self.write_indent()?;
-                writeln!(self.f, "}} else {{")?;
-                let mut inner = IndentWriter::new(self.f, self.indent + 1, self.fn_names);
-                inner.write_expr(false_body)?;
-                self.write_indent()?;
-                writeln!(self.f, "}}")
-            }
-            ExprKind::Switch {
-                scrutinee,
-                branches,
-                default,
-            } => {
-                self.write_indent()?;
-                writeln!(self.f, "switch {scrutinee} {{")?;
-                for branch in branches {
-                    self.write_branch(branch)?;
-                }
-                if let Some(default_expr) = default {
-                    self.write_indent()?;
-                    writeln!(self.f, "  _ ->")?;
-                    let mut inner = IndentWriter::new(self.f, self.indent + 2, self.fn_names);
-                    inner.write_expr(default_expr)?;
-                }
-                self.write_indent()?;
-                writeln!(self.f, "}}")
-            }
-            ExprKind::AutoClose {
-                resource,
-                dict,
-                type_name,
-                null_slot,
-                body,
-            } => {
-                self.write_indent()?;
-                writeln!(
-                    self.f,
-                    "auto_close[{type_name}]({resource}, dict={dict}, null={null_slot})"
-                )?;
-                self.write_expr(body)
-            }
-            ExprKind::Atom(atom) => {
-                self.write_indent()?;
-                writeln!(self.f, "{atom}")
-            }
-        }
+impl<'a, 'b> SimpleExprVisitor for IndentWriter<'a, 'b> {
+    type Result = fmt::Result;
+
+    fn visit_simple_expr(&mut self, simple: &SimpleExpr) -> fmt::Result {
+        // SimpleExpr renders on a single line — the big match lives in
+        // `write_simple_kind` so both this visitor path and
+        // `impl Display for SimpleExpr` share one implementation. Overriding
+        // `visit_simple_expr` short-circuits the default dispatch to the
+        // per-variant `visit_*` methods (which would otherwise duplicate the
+        // whole match). The per-variant defaults below are never exercised
+        // from within the pretty-printer, but they remain present to satisfy
+        // the trait's surface for unrelated callers.
+        let fn_names = self.fn_names;
+        let fmt_fn = |id: &FnId| fn_names.get(id).cloned().unwrap_or_else(|| format!("{id}"));
+        write_simple_kind(self.f, &simple.kind, &fmt_fn)
+    }
+}
+
+impl<'a, 'b> ExprVisitor for IndentWriter<'a, 'b> {
+    fn visit_let(
+        &mut self,
+        bind: VarId,
+        ty: &Type,
+        value: &SimpleExpr,
+        body: &Expr,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        self.write_indent()?;
+        write!(self.f, "let {bind}: {ty} = ")?;
+        self.visit_simple_expr(value)?;
+        writeln!(self.f)?;
+        self.visit_expr(body)
     }
 
-    fn write_branch(&mut self, branch: &SwitchBranch) -> fmt::Result {
+    fn visit_let_rec(
+        &mut self,
+        bindings: &[(VarId, Type, FnId, Vec<Atom>)],
+        body: &Expr,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        for (i, (var, ty, fn_id, captures)) in bindings.iter().enumerate() {
+            self.write_indent()?;
+            if i == 0 {
+                write!(self.f, "let_rec ")?;
+            } else {
+                write!(self.f, "    and ")?;
+            }
+            writeln!(
+                self.f,
+                "{var}: {ty} = make_closure({}, [{}])",
+                self.fmt_fn(fn_id),
+                fmt_atoms(captures)
+            )?;
+        }
+        self.write_indent()?;
+        writeln!(self.f, "in")?;
+        self.visit_expr(body)
+    }
+
+    fn visit_let_join(
+        &mut self,
+        name: VarId,
+        params: &[(VarId, Type)],
+        join_body: &Expr,
+        body: &Expr,
+        is_recur: bool,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        self.write_indent()?;
+        if is_recur {
+            writeln!(self.f, "let_join [recur] {name}({}) =", fmt_params(params))?;
+        } else {
+            writeln!(self.f, "let_join {name}({}) =", fmt_params(params))?;
+        }
+        self.indent += 1;
+        self.visit_expr(join_body)?;
+        self.indent -= 1;
+        self.write_indent()?;
+        writeln!(self.f, "in")?;
+        self.visit_expr(body)
+    }
+
+    fn visit_jump(&mut self, target: VarId, args: &[Atom], _expr: &Expr) -> fmt::Result {
+        self.write_indent()?;
+        writeln!(self.f, "jump {target}({})", fmt_atoms(args))
+    }
+
+    fn visit_bool_switch(
+        &mut self,
+        scrutinee: &Atom,
+        true_body: &Expr,
+        false_body: &Expr,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        self.write_indent()?;
+        writeln!(self.f, "if {scrutinee} {{")?;
+        self.indent += 1;
+        self.visit_expr(true_body)?;
+        self.indent -= 1;
+        self.write_indent()?;
+        writeln!(self.f, "}} else {{")?;
+        self.indent += 1;
+        self.visit_expr(false_body)?;
+        self.indent -= 1;
+        self.write_indent()?;
+        writeln!(self.f, "}}")
+    }
+
+    fn visit_switch(
+        &mut self,
+        scrutinee: &Atom,
+        branches: &[SwitchBranch],
+        default: Option<&Expr>,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        self.write_indent()?;
+        writeln!(self.f, "switch {scrutinee} {{")?;
+        for branch in branches {
+            self.visit_switch_branch(branch)?;
+        }
+        if let Some(default_expr) = default {
+            self.write_indent()?;
+            writeln!(self.f, "  _ ->")?;
+            self.indent += 2;
+            self.visit_expr(default_expr)?;
+            self.indent -= 2;
+        }
+        self.write_indent()?;
+        writeln!(self.f, "}}")
+    }
+
+    fn visit_switch_branch(&mut self, branch: &SwitchBranch) -> fmt::Result {
         self.write_indent()?;
         write!(self.f, "  {} ", branch.tag)?;
         if !branch.bindings.is_empty() {
             write!(self.f, "({}) ", fmt_params(&branch.bindings))?;
         }
         writeln!(self.f, "->")?;
-        let mut inner = IndentWriter::new(self.f, self.indent + 2, self.fn_names);
-        inner.write_expr(&branch.body)
+        self.indent += 2;
+        self.visit_expr(&branch.body)?;
+        self.indent -= 2;
+        Ok(())
+    }
+
+    fn visit_auto_close(
+        &mut self,
+        resource: VarId,
+        dict: &Atom,
+        type_name: &str,
+        null_slot: bool,
+        body: &Expr,
+        _expr: &Expr,
+    ) -> fmt::Result {
+        self.write_indent()?;
+        writeln!(
+            self.f,
+            "auto_close[{type_name}]({resource}, dict={dict}, null={null_slot})"
+        )?;
+        self.visit_expr(body)
+    }
+
+    fn visit_expr_atom(&mut self, atom: &Atom, _expr: &Expr) -> fmt::Result {
+        self.write_indent()?;
+        writeln!(self.f, "{atom}")
     }
 }
 
@@ -543,8 +493,12 @@ impl FnDef {
             fmt_params(&self.params),
             self.return_type,
         )?;
-        let mut writer = IndentWriter::new(f, 1, fn_names);
-        writer.write_expr(&self.body)
+        let mut writer = IndentWriter {
+            f,
+            indent: 1,
+            fn_names,
+        };
+        writer.visit_expr(&self.body)
     }
 }
 

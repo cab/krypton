@@ -3,6 +3,7 @@ pub mod lint;
 pub mod lower;
 pub mod pass;
 pub mod pretty;
+pub mod visit;
 
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;

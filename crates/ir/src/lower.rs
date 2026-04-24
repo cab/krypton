@@ -443,146 +443,44 @@ fn contains_question_mark(expr: &TypedExpr) -> bool {
 
 /// Collect all VarIds referenced in an IR expression tree.
 fn referenced_vars_in_expr(expr: &Expr) -> FxHashSet<VarId> {
+    use crate::visit::ExprVisitor;
     let mut vars = FxHashSet::default();
-    referenced_vars_walk(expr, &mut vars);
+    let mut collector = RefVarCollector { vars: &mut vars };
+    collector.visit_expr(expr);
     vars
 }
 
-fn referenced_vars_walk(expr: &Expr, vars: &mut FxHashSet<VarId>) {
-    match &expr.kind {
-        ExprKind::Atom(atom) => referenced_vars_atom(atom, vars),
-        ExprKind::Let {
-            bind: _,
-            ty: _,
-            value,
-            body,
-        } => {
-            referenced_vars_simple(value, vars);
-            referenced_vars_walk(body, vars);
-        }
-        ExprKind::LetRec { bindings, body } => {
-            for (_, _, _, captures) in bindings {
-                for atom in captures {
-                    referenced_vars_atom(atom, vars);
-                }
-            }
-            referenced_vars_walk(body, vars);
-        }
-        ExprKind::LetJoin {
-            name: _,
-            params: _,
-            join_body,
-            body,
-            is_recur: _,
-        } => {
-            referenced_vars_walk(join_body, vars);
-            referenced_vars_walk(body, vars);
-        }
-        ExprKind::Jump { target: _, args } => {
-            for atom in args {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        ExprKind::BoolSwitch {
-            scrutinee,
-            true_body,
-            false_body,
-        } => {
-            referenced_vars_atom(scrutinee, vars);
-            referenced_vars_walk(true_body, vars);
-            referenced_vars_walk(false_body, vars);
-        }
-        ExprKind::Switch {
-            scrutinee,
-            branches,
-            default,
-        } => {
-            referenced_vars_atom(scrutinee, vars);
-            for branch in branches {
-                referenced_vars_walk(&branch.body, vars);
-            }
-            if let Some(d) = default {
-                referenced_vars_walk(d, vars);
-            }
-        }
-        ExprKind::AutoClose {
-            resource,
-            dict,
-            body,
-            ..
-        } => {
-            vars.insert(*resource);
-            referenced_vars_atom(dict, vars);
-            referenced_vars_walk(body, vars);
+/// Visitor-based replacement for the old `referenced_vars_{walk,simple,atom}`
+/// trio. Atoms are the bottom-line: every variant eventually descends to a
+/// `visit_atom` call. `AutoClose`'s `resource` is a binder-level reference
+/// consumed by the close, so the override inserts it before delegating to
+/// `walk_auto_close`.
+struct RefVarCollector<'a> {
+    vars: &'a mut FxHashSet<VarId>,
+}
+
+impl<'a> crate::visit::SimpleExprVisitor for RefVarCollector<'a> {
+    type Result = ();
+
+    fn visit_atom(&mut self, atom: &Atom) {
+        if let Atom::Var(id) = atom {
+            self.vars.insert(*id);
         }
     }
 }
 
-fn referenced_vars_simple(simple: &SimpleExpr, vars: &mut FxHashSet<VarId>) {
-    match &simple.kind {
-        SimpleExprKind::Call { func: _, args } | SimpleExprKind::TraitCall { args, .. } => {
-            for atom in args {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::CallClosure { closure, args } => {
-            referenced_vars_atom(closure, vars);
-            for atom in args {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::MakeClosure { func: _, captures } => {
-            for atom in captures {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::Construct {
-            type_ref: _,
-            fields,
-        } => {
-            for atom in fields {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::ConstructVariant { fields, .. } => {
-            for atom in fields {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::Project { value, .. } => referenced_vars_atom(value, vars),
-        SimpleExprKind::Tag { value } => referenced_vars_atom(value, vars),
-        SimpleExprKind::MakeTuple { elements } => {
-            for atom in elements {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::TupleProject { value, .. } => referenced_vars_atom(value, vars),
-        SimpleExprKind::PrimOp { op: _, args } => {
-            for atom in args {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::GetDict { .. } => {}
-        SimpleExprKind::MakeDict { sub_dicts, .. } => {
-            for atom in sub_dicts {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::ProjectDictField { dict, .. } => {
-            referenced_vars_atom(dict, vars);
-        }
-        SimpleExprKind::MakeVec { elements, .. } => {
-            for atom in elements {
-                referenced_vars_atom(atom, vars);
-            }
-        }
-        SimpleExprKind::Atom(atom) => referenced_vars_atom(atom, vars),
-    }
-}
-
-fn referenced_vars_atom(atom: &Atom, vars: &mut FxHashSet<VarId>) {
-    if let Atom::Var(id) = atom {
-        vars.insert(*id);
+impl<'a> crate::visit::ExprVisitor for RefVarCollector<'a> {
+    fn visit_auto_close(
+        &mut self,
+        resource: VarId,
+        dict: &Atom,
+        _type_name: &str,
+        _null_slot: bool,
+        body: &Expr,
+        _expr: &Expr,
+    ) {
+        self.vars.insert(resource);
+        crate::visit::walk_auto_close(self, dict, body);
     }
 }
 
