@@ -10,7 +10,7 @@ use crate::types::{type_to_canonical_name, Type, TypeScheme, TypeVarId};
 use crate::unify::{SpannedTypeError, TypeError};
 
 use super::display::substitute_type_var;
-use super::fork::{check_fork, ForkCommit};
+use super::fork::{check_fork, ForkCheckInput, ForkCommit};
 use super::helpers::{
     collect_type_expr_var_names, duplicate_instance_spanned, free_vars, free_vars_ordered,
     require_param_vars, resolve_impl_target, spanned, spanned_with_names, strip_anon_type_args,
@@ -636,16 +636,18 @@ pub(super) fn typecheck_impl_methods(
 
                     let fork_result = check_fork(
                         state,
-                        module_path,
-                        trait_registry,
-                        trait_name,
-                        method,
-                        trait_method,
-                        instance,
-                        &resolved_target,
-                        all_intrinsic,
-                        *span,
-                        &fork_apply,
+                        ForkCheckInput {
+                            module_path,
+                            trait_registry,
+                            trait_name,
+                            method,
+                            trait_method,
+                            instance,
+                            resolved_target: &resolved_target,
+                            all_intrinsic,
+                            impl_span: *span,
+                            fork_apply: &fork_apply,
+                        },
                     );
                     match fork_result {
                         Ok(result) => {

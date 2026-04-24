@@ -27,6 +27,23 @@ pub(crate) struct ForkCommit {
     pub(crate) fn_ty: Type,
 }
 
+/// Per-fork inputs to `check_fork`. The fork-specific substitution
+/// (`fork_apply`, `resolved_target`) is what varies across iterations;
+/// everything else is loop-invariant metadata about the impl method
+/// being checked.
+pub(crate) struct ForkCheckInput<'a, F: Fn(&Type) -> Type> {
+    pub(crate) module_path: &'a str,
+    pub(crate) trait_registry: &'a TraitRegistry,
+    pub(crate) trait_name: &'a str,
+    pub(crate) method: &'a krypton_parser::ast::FnDecl,
+    pub(crate) trait_method: &'a TraitMethod,
+    pub(crate) instance: &'a InstanceInfo,
+    pub(crate) resolved_target: &'a Type,
+    pub(crate) all_intrinsic: bool,
+    pub(crate) impl_span: Span,
+    pub(crate) fork_apply: &'a F,
+}
+
 /// Run one fork of impl-method body checking under a fork-specific type
 /// substitution. Captures the original `typecheck_impl_methods` body-check
 /// logic so it can be invoked per-fork during shape-polymorphic
@@ -36,23 +53,26 @@ pub(crate) struct ForkCommit {
 /// under the fork's shape-variable bindings. For mono impls a single fork
 /// with the primary trait var bound to `resolved_target` reproduces the
 /// original single-check behavior.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn check_fork<F>(
     state: &mut ModuleInferenceState,
-    module_path: &str,
-    trait_registry: &TraitRegistry,
-    trait_name: &str,
-    method: &krypton_parser::ast::FnDecl,
-    trait_method: &TraitMethod,
-    instance: &InstanceInfo,
-    resolved_target: &Type,
-    all_intrinsic: bool,
-    impl_span: Span,
-    fork_apply: &F,
+    input: ForkCheckInput<'_, F>,
 ) -> Result<Option<ForkCommit>, SpannedTypeError>
 where
     F: Fn(&Type) -> Type,
 {
+    let ForkCheckInput {
+        module_path,
+        trait_registry,
+        trait_name,
+        method,
+        trait_method,
+        instance,
+        resolved_target,
+        all_intrinsic,
+        impl_span,
+        fork_apply,
+    } = input;
+
     let concrete_param_types_with_modes: Vec<(ParamMode, Type)> = trait_method
         .param_types
         .iter()

@@ -400,19 +400,36 @@ pub(super) struct ConcreteSuperclassSlot<'a> {
     pub source_class: &'a str,
 }
 
+/// Inputs to `generate_instance_class` — the singleton class identity, the
+/// per-method JVM signatures, and the superclass-dict slots to embed.
+pub(super) struct InstanceClassInput<'a> {
+    pub(super) class_name: &'a str,
+    pub(super) trait_interface_name: &'a str,
+    pub(super) main_class_name: &'a str,
+    /// (iface_method_name, static_method_name, param_count, static_descriptor)
+    pub(super) methods: &'a [(String, String, usize, String)],
+    pub(super) param_jvm_types: &'a HashMap<String, Vec<JvmType>>,
+    pub(super) return_jvm_types: &'a HashMap<String, JvmType>,
+    /// method_name → per-param class names for checkcast
+    pub(super) param_class_names: &'a HashMap<String, Vec<Option<String>>>,
+    pub(super) superclass_slots: &'a [ConcreteSuperclassSlot<'a>],
+}
+
 /// Generate an instance singleton class (e.g., `Eq$Point.class`).
 /// Implements the trait interface, delegates to static methods on the main class.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn generate_instance_class(
-    class_name: &str,
-    trait_interface_name: &str,
-    main_class_name: &str,
-    methods: &[(String, String, usize, String)], // (iface_method_name, static_method_name, param_count, static_descriptor)
-    param_jvm_types: &HashMap<String, Vec<JvmType>>,
-    return_jvm_types: &HashMap<String, JvmType>,
-    param_class_names: &HashMap<String, Vec<Option<String>>>, // method_name → per-param class names for checkcast
-    superclass_slots: &[ConcreteSuperclassSlot<'_>],
+    input: InstanceClassInput<'_>,
 ) -> Result<Vec<u8>, CodegenError> {
+    let InstanceClassInput {
+        class_name,
+        trait_interface_name,
+        main_class_name,
+        methods,
+        param_jvm_types,
+        return_jvm_types,
+        param_class_names,
+        superclass_slots,
+    } = input;
     let mut cp = ConstantPool::default();
 
     let this_class = cp.add_class(class_name)?;

@@ -19,8 +19,8 @@ use super::intrinsics;
 use super::trait_class_gen::{
     generate_builtin_show_instance_class, generate_builtin_trait_instance_class,
     generate_extern_trait_bridge_class, generate_instance_class,
-    generate_parameterized_instance_class, generate_trait_interface_class, TraitClassNames,
-    TraitMethodSignatures,
+    generate_parameterized_instance_class, generate_trait_interface_class, InstanceClassInput,
+    TraitClassNames, TraitMethodSignatures,
 };
 use super::{
     jvm_type_to_field_descriptor, qualify_ir, type_has_vars, type_references_var,
@@ -1051,16 +1051,16 @@ impl<'link> Compiler<'link> {
                         source_class: src_info.class_name.as_str(),
                     });
                 }
-                let instance_bytes = generate_instance_class(
-                    &instance_class_name,
-                    &q_trait,
-                    class_name,
-                    &method_info,
-                    &param_jvm_types_map,
-                    &return_jvm_types_map,
-                    &param_class_names_map,
-                    &superclass_slots,
-                )?;
+                let instance_bytes = generate_instance_class(InstanceClassInput {
+                    class_name: &instance_class_name,
+                    trait_interface_name: &q_trait,
+                    main_class_name: class_name,
+                    methods: &method_info,
+                    param_jvm_types: &param_jvm_types_map,
+                    return_jvm_types: &return_jvm_types_map,
+                    param_class_names: &param_class_names_map,
+                    superclass_slots: &superclass_slots,
+                })?;
                 result_classes.push((instance_class_name.clone(), instance_bytes));
 
                 let inst_class_idx = self.cp.add_class(&instance_class_name)?;
