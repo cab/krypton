@@ -47,6 +47,7 @@ mod pattern;
 mod resolve_multi;
 mod resolve_overloads;
 mod state;
+mod test_signature_validation;
 mod traits_register;
 
 pub use display::display_type;

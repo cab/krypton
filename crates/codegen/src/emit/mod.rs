@@ -8,6 +8,7 @@ mod intrinsics;
 mod lambda;
 mod registration;
 pub mod repl;
+pub mod test_harness;
 mod trait_class_gen;
 
 use std::collections::HashMap;

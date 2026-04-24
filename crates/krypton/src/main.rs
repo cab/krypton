@@ -6,9 +6,7 @@ mod source_walker;
 use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use krypton_diagnostics::{AriadneRenderer, DiagnosticRenderer};
 use krypton_modules::module_resolver::CompositeResolver;
-use krypton_package_manager::{
-    AddSource, GitRef, Lockfile, Manifest, ManifestEditor,
-};
+use krypton_package_manager::{AddSource, GitRef, Lockfile, Manifest, ManifestEditor};
 use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{Duration, Instant};
@@ -369,11 +367,7 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
                     if let Some(parent) = path.parent() {
                         if !parent.as_os_str().is_empty() {
                             std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                eprintln!(
-                                    "Error creating directory {}: {}",
-                                    parent.display(),
-                                    e
-                                );
+                                eprintln!("Error creating directory {}: {}", parent.display(), e);
                                 process::exit(1);
                             });
                         }
@@ -440,12 +434,10 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
             let stem = js_stem.as_str();
             let t = Instant::now();
             let (ir_modules, module_sources) =
-                krypton_ir::lower::lower_all(&typed_modules, stem, &link_ctx).unwrap_or_else(
-                    |e| {
-                        eprintln!("IR lowering error: {}", e);
-                        process::exit(1);
-                    },
-                );
+                krypton_ir::lower::lower_all(&typed_modules, stem, &link_ctx).unwrap_or_else(|e| {
+                    eprintln!("IR lowering error: {}", e);
+                    process::exit(1);
+                });
             let js_module_sources: std::collections::HashMap<String, Option<String>> =
                 module_sources
                     .into_iter()
@@ -463,10 +455,9 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
             ) {
                 Ok(files) => files,
                 Err(e) => {
-                    let (diags, srcs) =
-                        krypton_codegen_js::diagnostics::lower_js_codegen_error(
-                            diag_path, source, &e,
-                        );
+                    let (diags, srcs) = krypton_codegen_js::diagnostics::lower_js_codegen_error(
+                        diag_path, source, &e,
+                    );
                     for d in &diags {
                         eprint!("{}", AriadneRenderer.render(d, &srcs));
                     }
@@ -488,11 +479,7 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
                         let file_path = dir.join(filename);
                         if let Some(parent) = file_path.parent() {
                             std::fs::create_dir_all(parent).unwrap_or_else(|e| {
-                                eprintln!(
-                                    "Error creating directory {}: {}",
-                                    parent.display(),
-                                    e
-                                );
+                                eprintln!("Error creating directory {}: {}", parent.display(), e);
                                 process::exit(1);
                             });
                         }
@@ -504,11 +491,7 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
                             if filename == &entry_filename {
                                 let renamed_path = dir.join(rename);
                                 std::fs::write(&renamed_path, js_source).unwrap_or_else(|e| {
-                                    eprintln!(
-                                        "Error writing {}: {}",
-                                        renamed_path.display(),
-                                        e
-                                    );
+                                    eprintln!("Error writing {}: {}", renamed_path.display(), e);
                                     process::exit(1);
                                 });
                             }
@@ -547,10 +530,7 @@ fn compile_with_resolver(inputs: CompileInputs<'_>, phases: &mut Vec<(&'static s
                             "KRYPTON_DEBUG_JS: generated JS dir: {}",
                             dir.path().display()
                         );
-                        eprintln!(
-                            "KRYPTON_DEBUG_JS: entry module: {}",
-                            entry_file.display()
-                        );
+                        eprintln!("KRYPTON_DEBUG_JS: entry module: {}", entry_file.display());
                     }
                     phases.push(("emit", t.elapsed()));
 
@@ -592,6 +572,25 @@ fn class_name_from_stem(stem: &str) -> String {
     format!("Kr${base}")
 }
 
+/// Build the JVM return-type descriptor for a `test_*` function's typechecker
+/// scheme. The signature has already been validated as `() -> Unit` or
+/// `() -> Never`; both lower to single-slot return values, so the only thing
+/// the harness needs is the descriptor string used for the Invokestatic
+/// constant pool entry.
+fn test_fn_return_descriptor(scheme_ty: &krypton_typechecker::types::Type) -> String {
+    use krypton_typechecker::types::Type;
+    let ret = match scheme_ty {
+        Type::Fn(_, ret) => ret.as_ref(),
+        other => other,
+    };
+    if ret.is_never() {
+        "Lcore/never/Never;".to_string()
+    } else {
+        // Type::Unit lowers to JVM boolean (Z) per codegen's type_to_jvm_basic.
+        "Z".to_string()
+    }
+}
+
 /// Walk up from `start` looking for a `krypton.toml`; the first ancestor
 /// (including `start` itself) that contains one is the project root. Returns
 /// `None` if we reach the filesystem root without finding one.
@@ -614,16 +613,15 @@ fn resolve_and_write_lockfile(project_root: &Path, manifest: Manifest) {
         eprintln!("Error: {e}");
         process::exit(1);
     });
-    let graph = krypton_package_manager::resolve(project_root, manifest, &cache)
-        .unwrap_or_else(|e| {
+    let graph =
+        krypton_package_manager::resolve(project_root, manifest, &cache).unwrap_or_else(|e| {
             eprintln!("Error: {e}");
             process::exit(1);
         });
-    let lockfile =
-        Lockfile::generate(&graph, &[], project_root).unwrap_or_else(|e| {
-            eprintln!("Error: {e}");
-            process::exit(1);
-        });
+    let lockfile = Lockfile::generate(&graph, &[], project_root).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
     let lock_path = project_root.join("krypton.lock");
     lockfile.write(&lock_path).unwrap_or_else(|e| {
         eprintln!("Error: {e}");
@@ -670,12 +668,11 @@ fn load_project_context() -> (ProjectContext, Duration) {
         process::exit(1);
     });
     let manifest_path = project_root.join("krypton.toml");
-    let manifest = krypton_package_manager::Manifest::from_path(&manifest_path).unwrap_or_else(
-        |e| {
+    let manifest =
+        krypton_package_manager::Manifest::from_path(&manifest_path).unwrap_or_else(|e| {
             eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
             process::exit(1);
-        },
-    );
+        });
 
     let t = Instant::now();
     let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
@@ -696,12 +693,11 @@ fn load_project_context() -> (ProjectContext, Duration) {
                     process::exit(1);
                 })
         } else {
-            let graph =
-                krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    });
+            let graph = krypton_package_manager::resolve(&project_root, manifest.clone(), &cache)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
             let regenerated =
                 krypton_package_manager::Lockfile::generate(&graph, &[], &project_root)
                     .unwrap_or_else(|e| {
@@ -819,10 +815,7 @@ fn assemble_jvm_runtime_classpath(
                 ctx.project_root.join(entry)
             };
             if !abs.exists() {
-                return Err(format!(
-                    "classpath entry not found: {}",
-                    entry.display()
-                ));
+                return Err(format!("classpath entry not found: {}", entry.display()));
             }
             parts.push(abs.display().to_string());
         }
@@ -904,11 +897,10 @@ fn run_project(target: Target, timings: bool) -> ! {
                 .join("target")
                 .join("jvm")
                 .join(format!("{leaf}.jar"));
-            let classpath =
-                assemble_jvm_runtime_classpath(&ctx, &jar_path).unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                });
+            let classpath = assemble_jvm_runtime_classpath(&ctx, &jar_path).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
             info!(class = %entry.class_name, "invoking JVM");
             process::Command::new("java")
                 .arg("-cp")
@@ -1005,9 +997,8 @@ fn check_project(timings: bool) -> ! {
             phases.push(("typecheck", t.elapsed()));
         }
         Err(errors) => {
-            let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                &diag_path, &source, &errors,
-            );
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors(&diag_path, &source, &errors);
             for d in &diags {
                 eprint!("{}", AriadneRenderer.render(d, &srcs));
             }
@@ -1149,9 +1140,9 @@ fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
 
     let t = Instant::now();
     // Source unit is not an executable entry (no `main` wrapping). The
-    // resulting classes are held in memory; M44-T4 will combine them with
-    // the per-test classes when the test harness starts running tests.
-    let _source_classes = match krypton_codegen::emit::compile_modules(
+    // resulting classes are held in memory and written alongside per-test
+    // classes when the harness runs.
+    let source_classes = match krypton_codegen::emit::compile_modules(
         &source_ir_modules,
         "Kr$SourceUnit",
         false,
@@ -1177,9 +1168,25 @@ fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
 
     // --- Phase 2: per-test compile --------------------------------------
 
+    struct TestEntry {
+        method_name: String,
+        method_descriptor: String,
+        def_span_start: usize,
+    }
+
+    struct TestFileCompiled {
+        module_path: String,
+        class_name: String,
+        classes: Vec<(String, Vec<u8>)>,
+        tests: Vec<TestEntry>,
+    }
+
     enum TestFileOutcome {
-        Compiled,
-        CompileError { rel_path: String, diagnostic: String },
+        Compiled(TestFileCompiled),
+        CompileError {
+            rel_path: String,
+            diagnostic: String,
+        },
     }
 
     let mut outcomes: Vec<TestFileOutcome> = Vec::with_capacity(files.tests.len());
@@ -1279,15 +1286,36 @@ fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
             &test_link_ctx,
             &test_module_sources,
         ) {
-            Ok(_classes) => {
-                outcomes.push(TestFileOutcome::Compiled);
+            Ok(classes) => {
+                let tests: Vec<TestEntry> = typed_test
+                    .functions
+                    .iter()
+                    .filter(|f| f.name.starts_with("test_"))
+                    .map(|f| {
+                        let ret_desc = typed_test
+                            .fn_types_by_name
+                            .get(&f.name)
+                            .map(|&idx| {
+                                test_fn_return_descriptor(&typed_test.fn_types[idx].scheme.ty)
+                            })
+                            .unwrap_or_else(|| "Z".to_string());
+                        TestEntry {
+                            method_name: f.name.clone(),
+                            method_descriptor: format!("(){ret_desc}"),
+                            def_span_start: f.def_span.0,
+                        }
+                    })
+                    .collect();
+                outcomes.push(TestFileOutcome::Compiled(TestFileCompiled {
+                    module_path: test_module_path.clone(),
+                    class_name: test_class_name.clone(),
+                    classes,
+                    tests,
+                }));
             }
             Err(e) => {
-                let (diags, srcs) = krypton_codegen::diagnostics::lower_codegen_error(
-                    &rel_path,
-                    &test_source,
-                    &e,
-                );
+                let (diags, srcs) =
+                    krypton_codegen::diagnostics::lower_codegen_error(&rel_path, &test_source, &e);
                 let rendered = diags
                     .iter()
                     .map(|d| AriadneRenderer.render(d, &srcs))
@@ -1301,21 +1329,124 @@ fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
     }
     phases.push(("tests", t.elapsed()));
 
-    let mut any_failed = false;
-    for outcome in &outcomes {
-        if let TestFileOutcome::CompileError { rel_path, diagnostic } = outcome {
-            any_failed = true;
-            println!("FAIL {rel_path} — compile error");
-            for line in diagnostic.lines() {
-                println!("  {line}");
+    let mut any_compile_failed = false;
+    let mut compiled_files: Vec<TestFileCompiled> = Vec::new();
+    for outcome in outcomes {
+        match outcome {
+            TestFileOutcome::CompileError {
+                rel_path,
+                diagnostic,
+            } => {
+                any_compile_failed = true;
+                println!("FAIL {rel_path} — compile error");
+                for line in diagnostic.lines() {
+                    println!("  {line}");
+                }
             }
+            TestFileOutcome::Compiled(c) => compiled_files.push(c),
         }
     }
+
+    // If nothing compiled (or there are no test files at all), skip the
+    // harness — there's nothing to run. Exit 1 if any file failed to
+    // compile, else 0.
+    if compiled_files.is_empty() {
+        if timings {
+            print_timings(&phases);
+        }
+        process::exit(if any_compile_failed { 1 } else { 0 });
+    }
+
+    // Build the ordered harness entry list: alphabetical across files,
+    // source order within each file.
+    compiled_files.sort_by(|a, b| a.module_path.cmp(&b.module_path));
+    for f in &mut compiled_files {
+        f.tests.sort_by_key(|t| t.def_span_start);
+    }
+
+    let harness_entries: Vec<krypton_codegen::emit::test_harness::TestHarnessEntry> =
+        compiled_files
+            .iter()
+            .flat_map(|f| {
+                f.tests.iter().map(
+                    move |t| krypton_codegen::emit::test_harness::TestHarnessEntry {
+                        class_name: f.class_name.clone(),
+                        method_name: t.method_name.clone(),
+                        method_descriptor: t.method_descriptor.clone(),
+                        qualified_name: format!("{}/{}", f.module_path, t.method_name),
+                    },
+                )
+            })
+            .collect();
+
+    let t = Instant::now();
+    let harness_bytes =
+        match krypton_codegen::emit::test_harness::generate_test_harness(&harness_entries) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("error: failed to generate test harness: {e}");
+                process::exit(1);
+            }
+        };
+    phases.push(("harness", t.elapsed()));
+
+    // Assemble all class bytes: source unit + each test file + harness.
+    let mut all_classes: Vec<(String, Vec<u8>)> = Vec::new();
+    all_classes.extend(source_classes);
+    for f in compiled_files {
+        all_classes.extend(f.classes);
+    }
+    all_classes.push((
+        krypton_codegen::emit::test_harness::HARNESS_CLASS_NAME.to_string(),
+        harness_bytes,
+    ));
+
+    // Write everything to a temp dir and invoke `java`.
+    let dir = tempdir().unwrap_or_else(|e| {
+        eprintln!("Error creating temp dir: {e}");
+        process::exit(1);
+    });
+    for (name, bytes) in &all_classes {
+        let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                eprintln!("Error creating directory {}: {e}", parent.display());
+                process::exit(1);
+            });
+        }
+        std::fs::write(&class_path, bytes).unwrap_or_else(|e| {
+            eprintln!("Error writing class file {}: {e}", class_path.display());
+            process::exit(1);
+        });
+    }
+
+    let classpath = assemble_jvm_runtime_classpath(&ctx, dir.path()).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let t = Instant::now();
+    let status = process::Command::new("java")
+        .arg("-cp")
+        .arg(&classpath)
+        .arg(krypton_codegen::emit::test_harness::HARNESS_CLASS_NAME)
+        .status()
+        .unwrap_or_else(|e| {
+            eprintln!("Error running java: {e}");
+            process::exit(1);
+        });
+    phases.push(("jvm", t.elapsed()));
 
     if timings {
         print_timings(&phases);
     }
-    process::exit(if any_failed { 1 } else { 0 });
+
+    let harness_failed = !status.success();
+    process::exit(if any_compile_failed || harness_failed {
+        1
+    } else {
+        0
+    });
 }
 
 fn main() {
@@ -1415,7 +1546,9 @@ fn main() {
                         .unwrap_or_else(|| PathBuf::from(format!("{}.jar", stem))),
                 },
                 Target::Js => CompileSink::JsDir {
-                    dir: output.map(PathBuf::from).unwrap_or_else(|| PathBuf::from("./out")),
+                    dir: output
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("./out")),
                     main_rename: None,
                 },
             };
@@ -1664,13 +1797,11 @@ fn main() {
                     eprintln!("Error: {e}");
                     process::exit(1);
                 });
-            let lockfile =
-                krypton_package_manager::Lockfile::generate(&graph, &[], &cwd).unwrap_or_else(
-                    |e| {
-                        eprintln!("Error: {e}");
-                        process::exit(1);
-                    },
-                );
+            let lockfile = krypton_package_manager::Lockfile::generate(&graph, &[], &cwd)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: {e}");
+                    process::exit(1);
+                });
             let lock_path = cwd.join("krypton.lock");
             lockfile.write(&lock_path).unwrap_or_else(|e| {
                 eprintln!("Error: {e}");
@@ -1682,11 +1813,10 @@ fn main() {
             let (ctx, resolve_dur) = load_project_context();
             let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
 
-            let (entry, is_main) =
-                select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                });
+            let (entry, is_main) = select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            });
 
             let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
                 eprintln!("Error reading {}: {}", entry.path.display(), e);
@@ -1828,9 +1958,7 @@ fn main() {
                 // clap's ArgGroup enforces exactly-one; this branch is for
                 // coverage in case that constraint is ever weakened.
                 _ => {
-                    eprintln!(
-                        "Error: exactly one of --git, --path, or --version is required"
-                    );
+                    eprintln!("Error: exactly one of --git, --path, or --version is required");
                     process::exit(2);
                 }
             };
@@ -1854,17 +1982,12 @@ fn main() {
             // TOML, but this guards against editor bugs cheaply.
             let edited = editor.render();
             let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
-                eprintln!(
-                    "Error: internal error: edited manifest is invalid: {e}"
-                );
+                eprintln!("Error: internal error: edited manifest is invalid: {e}");
                 process::exit(1);
             });
 
             std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
-                eprintln!(
-                    "Error: failed to write '{}': {e}",
-                    manifest_path.display()
-                );
+                eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
                 process::exit(1);
             });
 
@@ -1886,17 +2009,12 @@ fn main() {
 
             let edited = editor.render();
             let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
-                eprintln!(
-                    "Error: internal error: edited manifest is invalid: {e}"
-                );
+                eprintln!("Error: internal error: edited manifest is invalid: {e}");
                 process::exit(1);
             });
 
             std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
-                eprintln!(
-                    "Error: failed to write '{}': {e}",
-                    manifest_path.display()
-                );
+                eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
                 process::exit(1);
             });
 

@@ -416,13 +416,7 @@ pub fn infer_test_module(
     target: krypton_parser::ast::CompileTarget,
     source_unit: &ProjectSourceUnit,
     test_source: Option<String>,
-) -> Result<
-    (
-        TypedModule,
-        crate::module_interface::ModuleInterface,
-    ),
-    Vec<InferError>,
-> {
+) -> Result<(TypedModule, crate::module_interface::ModuleInterface), Vec<InferError>> {
     use krypton_modules::module_graph;
 
     // Filter the test module by platform (mirrors `infer_module`).
@@ -491,11 +485,10 @@ pub fn infer_test_module(
             &source_unit.prelude_tree_paths,
         )
         .map_err(|errors| {
-            let source_text = krypton_modules::stdlib_loader::StdlibLoader::get_source(
-                &resolved.path,
-            )
-            .map(|s| s.to_string())
-            .or_else(|| resolver.resolve(&resolved.path));
+            let source_text =
+                krypton_modules::stdlib_loader::StdlibLoader::get_source(&resolved.path)
+                    .map(|s| s.to_string())
+                    .or_else(|| resolver.resolve(&resolved.path));
             let error_source = source_text.map(|s| (resolved.path.clone(), s));
             errors
                 .into_iter()
@@ -548,7 +541,28 @@ pub fn infer_test_module(
     })?;
 
     let mut typed = typed;
-    typed.module_source = test_source;
+    typed.module_source = test_source.clone();
+
+    // Validate `test_*` function signatures: must be `() -> Unit`, not generic.
+    let sig_errors = crate::infer::test_signature_validation::validate_test_signatures(&typed);
+    if !sig_errors.is_empty() {
+        let error_source = test_source
+            .as_ref()
+            .map(|s| (test_module_path.clone(), s.clone()));
+        return Err(sig_errors
+            .into_iter()
+            .map(|mut e| {
+                if e.source_file.is_none() {
+                    e.source_file = Some(test_module_path.clone());
+                }
+                InferError::TypeError {
+                    error: e,
+                    error_source: error_source.clone(),
+                }
+            })
+            .collect::<Vec<_>>());
+    }
+
     let iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
     Ok((typed, iface))
 }

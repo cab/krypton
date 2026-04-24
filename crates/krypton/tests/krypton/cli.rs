@@ -269,10 +269,7 @@ fn test_init_errors_on_invalid_name() {
         .args(["init", "myapp"])
         .output()
         .expect("failed to run krypton");
-    assert!(
-        !output.status.success(),
-        "init should fail on invalid name"
-    );
+    assert!(!output.status.success(), "init should fail on invalid name");
 }
 
 /// Run `krypton init` inside `parent_dir`, returning the created project path
@@ -378,7 +375,11 @@ fn test_build_library_omits_main_class() {
         String::from_utf8_lossy(&output.stderr)
     );
     let jar_path = project.join("target/jvm/my-app.jar");
-    assert!(jar_path.is_file(), "jar should exist at {}", jar_path.display());
+    assert!(
+        jar_path.is_file(),
+        "jar should exist at {}",
+        jar_path.display()
+    );
 
     // Read the JAR manifest and assert Main-Class is absent.
     let jar_bytes = std::fs::read(&jar_path).expect("read jar");
@@ -389,7 +390,9 @@ fn test_build_library_omits_main_class() {
         .expect("manifest entry");
     let mut contents = String::new();
     use std::io::Read;
-    manifest.read_to_string(&mut contents).expect("read manifest");
+    manifest
+        .read_to_string(&mut contents)
+        .expect("read manifest");
     assert!(
         !contents.contains("Main-Class:"),
         "library JAR manifest must not declare Main-Class, got:\n{contents}"
@@ -964,7 +967,10 @@ fn test_add_git_dep_records_git_fields() {
     );
 
     let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
-    assert!(toml.contains("git = "), "manifest should contain git url: {toml}");
+    assert!(
+        toml.contains("git = "),
+        "manifest should contain git url: {toml}"
+    );
     assert!(
         toml.contains(r#"tag = "v0.1.0""#),
         "manifest should contain tag: {toml}"
@@ -1065,7 +1071,10 @@ fn test_remove_existing_dep() {
     );
 
     let toml = std::fs::read_to_string(project.join("krypton.toml")).unwrap();
-    assert!(!toml.contains("clementine/mylib"), "dep should be gone: {toml}");
+    assert!(
+        !toml.contains("clementine/mylib"),
+        "dep should be gone: {toml}"
+    );
 
     let lock = std::fs::read_to_string(project.join("krypton.lock")).unwrap();
     assert!(
@@ -1333,14 +1342,10 @@ fn test_test_verbose_prints_count_with_tests() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
-        .expect("write math_test.kr");
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n").expect("write math_test.kr");
     std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
-    std::fs::write(
-        project.join("src/parser/lexer_test.kr"),
-        "# empty\n",
-    )
-    .expect("write parser/lexer_test.kr");
+    std::fs::write(project.join("src/parser/lexer_test.kr"), "# empty\n")
+        .expect("write parser/lexer_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1365,14 +1370,10 @@ fn test_test_nonverbose_omits_count() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
-        .expect("write math_test.kr");
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n").expect("write math_test.kr");
     std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
-    std::fs::write(
-        project.join("src/parser/lexer_test.kr"),
-        "# empty\n",
-    )
-    .expect("write parser/lexer_test.kr");
+    std::fs::write(project.join("src/parser/lexer_test.kr"), "# empty\n")
+        .expect("write parser/lexer_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1399,11 +1400,7 @@ fn test_build_ignores_broken_test_file() {
 
     // A test file that would fail to parse, but is not imported anywhere.
     // `krypton build` must not touch it.
-    std::fs::write(
-        project.join("src/foo_test.kr"),
-        "fun $$$ @@@\n",
-    )
-    .expect("write foo_test.kr");
+    std::fs::write(project.join("src/foo_test.kr"), "fun $$$ @@@\n").expect("write foo_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1427,11 +1424,7 @@ fn test_run_ignores_broken_test_file() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(
-        project.join("src/foo_test.kr"),
-        "fun $$$ @@@\n",
-    )
-    .expect("write foo_test.kr");
+    std::fs::write(project.join("src/foo_test.kr"), "fun $$$ @@@\n").expect("write foo_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1457,11 +1450,8 @@ fn test_build_rejects_import_of_test_file() {
     let project = init_project_for_test(dir.path());
 
     // Well-formed test module that exports a public binding.
-    std::fs::write(
-        project.join("src/foo_test.kr"),
-        "pub fun helper() = 42\n",
-    )
-    .expect("write foo_test.kr");
+    std::fs::write(project.join("src/foo_test.kr"), "pub fun helper() = 42\n")
+        .expect("write foo_test.kr");
 
     // Main imports the test module — must be rejected.
     std::fs::write(
@@ -1496,8 +1486,7 @@ fn test_test_verbose_short_flag() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(project.join("src/math_test.kr"), "# empty\n")
-        .expect("write math_test.kr");
+    std::fs::write(project.join("src/math_test.kr"), "# empty\n").expect("write math_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1530,11 +1519,8 @@ fn test_test_source_error_aborts_before_tests() {
     .expect("overwrite main.kr");
 
     // A test file that would otherwise compile.
-    std::fs::write(
-        project.join("src/math_test.kr"),
-        "fun test_noop() { }\n",
-    )
-    .expect("write math_test.kr");
+    std::fs::write(project.join("src/math_test.kr"), "fun test_noop() { }\n")
+        .expect("write math_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1564,11 +1550,8 @@ fn test_test_compile_error_in_one_test_does_not_block_others() {
     let project = init_project_for_test(dir.path());
 
     // Good test — compiles clean.
-    std::fs::write(
-        project.join("src/good_test.kr"),
-        "fun test_noop() { }\n",
-    )
-    .expect("write good_test.kr");
+    std::fs::write(project.join("src/good_test.kr"), "fun test_noop() { }\n")
+        .expect("write good_test.kr");
 
     // Bad test — type error (assigning a String to an Int).
     std::fs::write(
@@ -1613,16 +1596,8 @@ fn test_test_all_test_files_compile_exits_zero() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(
-        project.join("src/a_test.kr"),
-        "fun test_one() { }\n",
-    )
-    .expect("write a_test.kr");
-    std::fs::write(
-        project.join("src/b_test.kr"),
-        "fun test_two() { }\n",
-    )
-    .expect("write b_test.kr");
+    std::fs::write(project.join("src/a_test.kr"), "fun test_one() { }\n").expect("write a_test.kr");
+    std::fs::write(project.join("src/b_test.kr"), "fun test_two() { }\n").expect("write b_test.kr");
 
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
@@ -1648,16 +1623,10 @@ fn test_test_exit_code_one_on_any_compile_error() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    std::fs::write(
-        project.join("src/ok_a_test.kr"),
-        "fun test_a() { }\n",
-    )
-    .expect("write ok_a_test.kr");
-    std::fs::write(
-        project.join("src/ok_b_test.kr"),
-        "fun test_b() { }\n",
-    )
-    .expect("write ok_b_test.kr");
+    std::fs::write(project.join("src/ok_a_test.kr"), "fun test_a() { }\n")
+        .expect("write ok_a_test.kr");
+    std::fs::write(project.join("src/ok_b_test.kr"), "fun test_b() { }\n")
+        .expect("write ok_b_test.kr");
     std::fs::write(
         project.join("src/bad_test.kr"),
         "fun test_bad() { let x: Int = \"not an int\" }\n",
@@ -1709,5 +1678,114 @@ fn test_test_test_links_against_source_exports() {
     assert!(
         !stdout.contains("FAIL "),
         "stdout should have no FAIL lines, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_one_passing_one_panicking_exits_1() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/simple_test.kr"),
+        "fun test_passes() { }\nfun test_panics() { panic(\"boom\") }\n",
+    )
+    .expect("write simple_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when any test panics; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok simple_test/test_passes"),
+        "expected 'ok simple_test/test_passes' line, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL simple_test/test_panics"),
+        "expected 'FAIL simple_test/test_panics' line, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed, 1 failed"),
+        "expected summary '1 passed, 1 failed', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_companion_compile_error_still_runs_passing_sibling() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/good_test.kr"), "fun test_x() { }\n")
+        .expect("write good_test.kr");
+    std::fs::write(
+        project.join("src/bad_test.kr"),
+        "fun test_y() { let x: Int = \"not an int\" }\n",
+    )
+    .expect("write bad_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when any test file fails to compile; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok good_test/test_x"),
+        "passing sibling must run even when another test file fails to compile, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL src/bad_test.kr — compile error"),
+        "expected per-file compile-error line, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_invalid_test_signature_is_compile_error() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/bad_sig_test.kr"),
+        "fun test_takes_arg(x: Int) { }\n\
+         fun test_returns_int() -> Int = 1\n\
+         fun test_generic[a]() { }\n\
+         fun test_ok() { }\n",
+    )
+    .expect("write bad_sig_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stdout}{}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when a test file has invalid signatures; combined={combined}"
+    );
+    let e0019_count = combined.matches("E0019").count();
+    assert!(
+        e0019_count >= 2,
+        "expected at least two E0019 diagnostics (one per invalid signature), got {e0019_count}: {combined}"
+    );
+    assert!(
+        !stdout.contains("ok bad_sig_test/test_ok"),
+        "test_ok must not run because the file failed to compile, got: {stdout}"
     );
 }

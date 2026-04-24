@@ -92,7 +92,10 @@ fn infer_project_source_unit_two_sources_import_each_other() {
     // `b` must appear before `a` — toposort puts dependencies first.
     let pos_a = paths.iter().position(|p| p == "a").unwrap();
     let pos_b = paths.iter().position(|p| p == "b").unwrap();
-    assert!(pos_b < pos_a, "b must appear before a in toposort: {paths:?}");
+    assert!(
+        pos_b < pos_a,
+        "b must appear before a in toposort: {paths:?}"
+    );
 }
 
 #[test]
@@ -113,7 +116,10 @@ fn infer_project_source_unit_reports_error_in_any_source() {
     );
     // The error must originate in module `b` (not `a`).
     let attributed_to_b = errors.iter().any(|e| match e {
-        InferError::TypeError { error_source, error } => {
+        InferError::TypeError {
+            error_source,
+            error,
+        } => {
             error_source
                 .as_ref()
                 .map(|(p, _)| p == "b")
@@ -137,8 +143,10 @@ fn infer_test_module_uses_phase1_interfaces() {
     )])
     .expect("phase 1 should typecheck");
 
-    // Phase 2: `math_test` imports `add` from `math` and uses it.
-    let test_src = "import math.{add}\n\nfun test_sum() -> Int = add(1, 2)\n";
+    // Phase 2: `math_test` imports `add` from `math` and uses it. The
+    // function returns `Unit` so it satisfies the `test_*` signature rule
+    // enforced by `validate_test_signatures`.
+    let test_src = "import math.{add}\n\nfun test_sum() { let _ = add(1, 2) }\n";
     let test_module = parse_ok(test_src);
     let resolver = MemoryResolver::new(vec![(
         "math",
@@ -157,9 +165,7 @@ fn infer_test_module_uses_phase1_interfaces() {
 
     // The test module must have inferred `test_sum`.
     assert!(
-        typed_test
-            .fn_types_by_name
-            .contains_key("test_sum"),
+        typed_test.fn_types_by_name.contains_key("test_sum"),
         "test module must have a fn_type entry for `test_sum`, got keys: {:?}",
         typed_test.fn_types_by_name.keys().collect::<Vec<_>>()
     );
@@ -210,7 +216,10 @@ fn infer_test_module_reports_type_error_without_touching_phase1() {
         "must return at least one InferError, got empty vec"
     );
     let attributed_to_test = errors.iter().any(|e| match e {
-        InferError::TypeError { error_source, error } => {
+        InferError::TypeError {
+            error_source,
+            error,
+        } => {
             error_source
                 .as_ref()
                 .map(|(p, _)| p == "math_test")
@@ -232,7 +241,9 @@ fn infer_test_module_reports_type_error_without_touching_phase1() {
         "phase 1 TypedModule for 'math' should be untouched"
     );
     assert!(
-        unit.interfaces.iter().any(|i| i.module_path.as_str() == "math"),
+        unit.interfaces
+            .iter()
+            .any(|i| i.module_path.as_str() == "math"),
         "phase 1 ModuleInterface for 'math' should be untouched"
     );
 }
