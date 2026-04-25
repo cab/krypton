@@ -353,6 +353,15 @@ fn infer_forward_reference() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -376,15 +385,6 @@ fn infer_forward_reference() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     f: (Int) -> Int
     g: (Int) -> Int
     "
@@ -409,6 +409,15 @@ fn infer_module_forward_ref() {
     insta::assert_snapshot!(
         infer_module_types("fun f(x) = g(x)\nfun g(x) = x + 1"),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -432,15 +441,6 @@ fn infer_module_forward_ref() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     f: (Int) -> Int
     g: (Int) -> Int
     "
@@ -454,6 +454,15 @@ fn infer_mutual_recursion() {
             "fun is_even(n) = if n == 0 { true } else { is_odd(n - 1) }\nfun is_odd(n) = if n == 0 { false } else { is_even(n - 1) }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -477,15 +486,6 @@ fn infer_mutual_recursion() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     is_even: (Int) -> Bool
     is_odd: (Int) -> Bool
     "
@@ -513,6 +513,15 @@ fn infer_record_constructor() {
             "type Point = { x: Int, y: Int }\nfun p() = Point(1, 2)"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -536,15 +545,6 @@ fn infer_record_constructor() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Point: (Int, Int) -> Point
     p: () -> Point
     "
@@ -558,6 +558,15 @@ fn infer_sum_constructor() {
             "type Option[a] = Some(a) | None\nfun wrap(x) = Some(x)"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -581,15 +590,6 @@ fn infer_sum_constructor() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     wrap: forall a. (a) -> Option[a]
@@ -604,6 +604,15 @@ fn infer_bare_variant() {
             "type Option[a] = Some(a) | None\nfun none() = None"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -627,15 +636,6 @@ fn infer_bare_variant() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     none: forall a. () -> Option[a]
@@ -660,6 +660,15 @@ fn infer_scc_generalization_order() {
             "fun id(x) = x\nfun f(n) = id(n)\nfun g(s) = id(s)"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -683,15 +692,6 @@ fn infer_scc_generalization_order() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     id: forall a. (a) -> a
     f: forall a. (a) -> a
     g: forall a. (a) -> a
@@ -706,6 +706,15 @@ fn infer_field_access() {
             "type Point = { x: Int, y: Int }\nfun get_x() = Point(1, 2).x"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -729,15 +738,6 @@ fn infer_field_access() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Point: (Int, Int) -> Point
     get_x: () -> Int
     "
@@ -751,6 +751,15 @@ fn infer_struct_update() {
             "type Point = { x: Int, y: Int }\nfun move_x() = { Point(1, 2) | x = 42 }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -774,15 +783,6 @@ fn infer_struct_update() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Point: (Int, Int) -> Point
     move_x: () -> Point
     "
@@ -826,6 +826,15 @@ fn infer_match_option() {
             "type Option[a] = Some(a) | None\nfun unwrap_or(opt, default) = match opt { Some(x) => x, None => default }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -849,15 +858,6 @@ fn infer_match_option() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     unwrap_or: forall a. (Option[a], a) -> a
@@ -872,6 +872,15 @@ fn infer_match_literal() {
             "fun describe(x) = match x { 1 => \"one\", 2 => \"two\", _ => \"other\" }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -895,15 +904,6 @@ fn infer_match_literal() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     describe: (Int) -> String
     "
     );
@@ -916,6 +916,15 @@ fn infer_match_variable() {
             "fun identity(x) = match x { y => y }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -939,15 +948,6 @@ fn infer_match_variable() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     identity: forall a. (a) -> a
     "
     );
@@ -960,6 +960,15 @@ fn infer_match_nested_constructor() {
             "type List[a] = Cons(a, List[a]) | Nil\nfun sum2(xs) = match xs { Cons(h, Cons(h2, t)) => h + h2, _ => 0 }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -983,15 +992,6 @@ fn infer_match_nested_constructor() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Cons: forall a. (a, List[a]) -> List[a]
     Nil: forall a. List[a]
     sum2: (List[Int]) -> Int
@@ -1016,6 +1016,15 @@ fn infer_tuple_in_match() {
             "fun first(p) = match p { (a, b) => a }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -1039,15 +1048,6 @@ fn infer_tuple_in_match() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     first: forall a b. ((a, b)) -> a
     "
     );
@@ -1065,6 +1065,15 @@ fn infer_tuple_polymorphic() {
             "fun swap(p) = match p { (a, b) => (b, a) }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -1088,15 +1097,6 @@ fn infer_tuple_polymorphic() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     swap: forall a b. ((a, b)) -> (b, a)
     "
     );
@@ -1119,6 +1119,15 @@ fn test_exhaustive_complete() {
             "type Option[a] = Some(a) | None\nfun unwrap(opt) = match opt { Some(x) => x, None => 0 }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -1142,15 +1151,6 @@ fn test_exhaustive_complete() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     unwrap: (Option[Int]) -> Int
@@ -1175,6 +1175,15 @@ fn test_exhaustive_wildcard_covers_all() {
             "type Option[a] = Some(a) | None\nfun test(opt) = match opt { _ => 0 }"
         ),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -1198,15 +1207,6 @@ fn test_exhaustive_wildcard_covers_all() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Some: forall a. (a) -> Option[a]
     None: forall a. Option[a]
     test: forall a. (a) -> Int
@@ -3130,6 +3130,15 @@ fn lambda_params_inferred_from_higher_order_fn() {
             fun get_score(p: Player) -> Int = apply(p, (x) -> x.score)
         "#),
         @"
+    Some: forall a. (a) -> Option[a]
+    None: forall a. Option[a]
+    Ok: forall a b. (b) -> Result[a, b]
+    Err: forall a b. (a) -> Result[a, b]
+    Cons: forall a. (a, List[a]) -> List[a]
+    Nil: forall a. List[a]
+    LT: Ordering
+    EQ: Ordering
+    GT: Ordering
     eq: forall a. (a, a) -> Bool
     lt: forall a. (a, a) -> Bool
     combine: forall a. (a, a) -> a
@@ -3153,15 +3162,6 @@ fn lambda_params_inferred_from_higher_order_fn() {
     sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
     empty: forall a. () -> a
     println: forall a. (a) -> Unit where a: Show
-    Some: forall a. (a) -> Option[a]
-    None: forall a. Option[a]
-    Ok: forall a b. (b) -> Result[a, b]
-    Err: forall a b. (a) -> Result[a, b]
-    Cons: forall a. (a, List[a]) -> List[a]
-    Nil: forall a. List[a]
-    LT: Ordering
-    EQ: Ordering
-    GT: Ordering
     Player: (String, Int) -> Player
     apply: (Player, (Player) -> Int) -> Int
     get_score: (Player) -> Int

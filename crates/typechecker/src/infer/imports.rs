@@ -203,66 +203,75 @@ impl ModuleInferenceState {
             }
         }
 
-        // Build alias map from ImportName so explicit-name passes can look
-        // up an alias by canonical name without re-scanning `names`.
-        let aliases: FxHashMap<&str, &str> = names
-            .iter()
-            .filter_map(|n| n.alias.as_deref().map(|a| (n.name.as_str(), a)))
-            .collect();
-
-        // Pass B — explicit name binding. Iterate the iface collections in
-        // the same order the original per-collection loops used, so that
-        // `fn_types` insertion order (load-bearing for env display
-        // snapshots and overload tie-break) stays identical.
-        for ef in &iface.exported_fns {
-            if requested.contains(ef.name.as_str()) {
-                let alias = aliases.get(ef.name.as_str()).copied();
-                self.bind_explicit_exported_fn(
-                    ef,
-                    alias,
-                    iface,
-                    path,
-                    span,
-                    is_synthetic_prelude_import,
-                )?;
-            }
-        }
-        for rf in &iface.reexported_fns {
-            if requested.contains(rf.local_name.as_str()) {
-                let alias = aliases.get(rf.local_name.as_str()).copied();
-                self.bind_explicit_reexported_fn(
-                    rf,
-                    alias,
-                    iface,
-                    interface_cache,
-                    span,
-                    is_synthetic_prelude_import,
-                )?;
-            }
-        }
-        for reex in &iface.reexported_types {
-            if requested.contains(reex.local_name.as_str()) {
-                let alias = aliases.get(reex.local_name.as_str()).copied();
-                self.bind_explicit_reexported_type(
-                    reex,
-                    alias,
-                    interface_cache,
-                    path,
-                    span,
-                    is_synthetic_prelude_import,
-                )?;
-            }
-        }
-        for ts in &iface.exported_types {
-            if requested.contains(ts.name.as_str()) {
-                let alias = aliases.get(ts.name.as_str()).copied();
-                self.bind_explicit_exported_type(
+        // Pass B — explicit-name binding via the resolver dispatcher. Each
+        // requested name routes to a per-arm helper that knows how to bind
+        // the corresponding interface entry; insertion order into
+        // `imported_fn_types` follows the user's name list. The
+        // `Fn` / `ReexportedFn` arms re-scan both fn collections so that
+        // every same-named candidate reaches `bind_import` — a single name
+        // can pick up local exports + facade re-exports (e.g. a module
+        // declaring `length` and pub-importing `length` from a backend) and
+        // multi-source facade re-exports (`pub import a.{f}; pub import b.{f}`).
+        for import_name in names {
+            let alias = import_name.alias.as_deref();
+            let lookup = import_name.name.as_str();
+            match resolver.resolve(lookup) {
+                ResolveResult::Fn(_) | ResolveResult::ReexportedFn(_) => {
+                    for ef in iface.exported_fns.iter().filter(|ef| ef.name == lookup) {
+                        self.bind_explicit_exported_fn(
+                            ef,
+                            alias,
+                            iface,
+                            path,
+                            span,
+                            is_synthetic_prelude_import,
+                        )?;
+                    }
+                    for rf in iface
+                        .reexported_fns
+                        .iter()
+                        .filter(|rf| rf.local_name == lookup)
+                    {
+                        self.bind_explicit_reexported_fn(
+                            rf,
+                            alias,
+                            iface,
+                            interface_cache,
+                            span,
+                            is_synthetic_prelude_import,
+                        )?;
+                    }
+                }
+                ResolveResult::Type(ts) => self.bind_explicit_exported_type(
                     ts,
                     alias,
                     path,
                     span,
                     is_synthetic_prelude_import,
-                )?;
+                )?,
+                ResolveResult::ReexportedType(rt) => self.bind_explicit_reexported_type(
+                    rt,
+                    alias,
+                    interface_cache,
+                    path,
+                    span,
+                    is_synthetic_prelude_import,
+                )?,
+                ResolveResult::ExternType(_) => {
+                    // Bound below in `bind_extern_type_visibility`.
+                }
+                ResolveResult::Trait(td) => self.bind_explicit_trait(td, alias, path, span)?,
+                ResolveResult::TraitMethod { trait_def, method } => self
+                    .bind_explicit_trait_method(
+                        trait_def,
+                        method,
+                        path,
+                        span,
+                        is_synthetic_prelude_import,
+                    )?,
+                ResolveResult::Unknown | ResolveResult::Private => {
+                    unreachable!("Pass A rejects Unknown / Private before Pass B runs");
+                }
             }
         }
 
@@ -307,19 +316,12 @@ impl ModuleInferenceState {
         // whether the name was explicitly requested.
         self.bind_extern_type_visibility(iface, &requested, import_all, path);
 
-        // Trait pass: binds trait defs, registers bare names, and binds
-        // visible methods. Single iteration handles both explicit-by-name
-        // requests (trait or method) and `import_all`, matching the
-        // pre-refactor behavior.
-        self.bind_traits_pass(
-            iface,
-            &requested,
-            import_all,
-            &aliases,
-            path,
-            span,
-            is_synthetic_prelude_import,
-        )?;
+        // Trait pass: explicit trait + trait-method names are already bound
+        // by the per-arm helpers in Pass B. `import_all` still needs to walk
+        // every visible trait and bind its methods.
+        if import_all {
+            self.bind_traits_for_import_all(iface, path, span, is_synthetic_prelude_import)?;
+        }
 
         if is_pub {
             self.process_pub_reexports(names, span)?;
@@ -617,13 +619,33 @@ impl ModuleInferenceState {
                     self.imports.bind_imported_constructor(
                         &mut self.env,
                         cname.clone(),
-                        scheme,
+                        scheme.clone(),
                         path.to_string(),
                         export.name.clone(),
-                        cname,
+                        cname.clone(),
                         kind,
                         is_synthetic_prelude_import,
                     );
+                    // Dual-name (record / same-named-variant) types share an
+                    // identifier between the type and its default constructor.
+                    // When the user aliases the import, the canonical
+                    // constructor binding above misses the alias; bind it
+                    // again under the alias so `import x.{T as U}` lets the
+                    // user write `U(..)` at the call site.
+                    if let Some(alias_name) = alias {
+                        if cname == ts.name && alias_name != cname {
+                            self.imports.bind_imported_constructor(
+                                &mut self.env,
+                                alias_name.to_string(),
+                                scheme,
+                                path.to_string(),
+                                export.name.clone(),
+                                cname,
+                                kind,
+                                is_synthetic_prelude_import,
+                            );
+                        }
+                    }
                 }
             }
         } else if effective_type_name != ts.name {
@@ -688,6 +710,7 @@ impl ModuleInferenceState {
                 }
                 if matches!(original_vis, Visibility::Pub) {
                     for (cname, scheme) in &constructors {
+                        let kind = super::constructor_binding_kind_for_export(export, cname);
                         self.imports.bind_imported_constructor(
                             &mut self.env,
                             cname.clone(),
@@ -695,9 +718,26 @@ impl ModuleInferenceState {
                             orig_path.clone(),
                             reex.canonical_ref.symbol.local_name(),
                             cname.clone(),
-                            super::constructor_binding_kind_for_export(export, cname),
+                            kind,
                             is_synthetic_prelude_import,
                         );
+                        // See `bind_explicit_exported_type` for the dual-name
+                        // alias rationale: same-name type+constructor needs
+                        // the alias to also appear as a constructor binding.
+                        if let Some(alias_name) = alias {
+                            if cname == reex_type_name && alias_name != cname {
+                                self.imports.bind_imported_constructor(
+                                    &mut self.env,
+                                    alias_name.to_string(),
+                                    scheme.clone(),
+                                    orig_path.clone(),
+                                    reex.canonical_ref.symbol.local_name(),
+                                    cname.clone(),
+                                    kind,
+                                    is_synthetic_prelude_import,
+                                );
+                            }
+                        }
                     }
                 }
                 self.imports.bind_type_info(
@@ -721,13 +761,135 @@ impl ModuleInferenceState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn bind_traits_pass(
+    /// Bind a trait when the user names the trait directly
+    /// (`import x.{Trait}`). Pushes the trait def into `imported_trait_defs`
+    /// (idempotent on canonical name+module) and registers the bare name
+    /// (or its alias) as user-visible — so `impl Trait[X]` can resolve.
+    fn bind_explicit_trait(
+        &mut self,
+        trait_summary: &crate::module_interface::TraitSummary,
+        alias: Option<&str>,
+        path: &str,
+        span: Span,
+    ) -> Result<(), SpannedTypeError> {
+        use crate::module_interface;
+
+        if matches!(trait_summary.visibility, Visibility::Private) {
+            return Err(spanned(
+                TypeError::PrivateName {
+                    name: trait_summary.name.clone(),
+                    module_path: path.to_string(),
+                },
+                span,
+            ));
+        }
+
+        let trait_def = module_interface::trait_summary_to_exported_def(trait_summary);
+        let effective_name = alias
+            .map(str::to_string)
+            .unwrap_or_else(|| trait_def.name.clone());
+        let trait_id = TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
+
+        let def_already_pushed = self
+            .imported_trait_defs
+            .iter()
+            .any(|x| x.name == trait_def.name && x.module_path == trait_def.module_path);
+        if !def_already_pushed {
+            self.imported_trait_defs.push(trait_def.clone());
+        }
+
+        // Upgrade a prior silent (internal) registration by recording the
+        // bare name here; `register_imported` is idempotent for matching
+        // `TraitName`s so a duplicate user-level import is harmless.
+        self.trait_names
+            .register_imported(effective_name.clone(), trait_id.clone())
+            .map_err(|e| spanned(e, span))?;
+
+        if effective_name != trait_def.name
+            && !self
+                .trait_aliases
+                .iter()
+                .any(|(a, tn)| a == &effective_name && tn == &trait_id)
+        {
+            self.trait_aliases.push((effective_name, trait_id));
+        }
+
+        Ok(())
+    }
+
+    /// Bind a single trait method when the user names the method directly
+    /// (`import x.{methodName}`). Pulls the trait def into
+    /// `imported_trait_defs` (so dict resolution works) and binds the
+    /// method as an imported fn, but registers the bare trait name as
+    /// internal-only — `impl Trait[X]` requires an explicit
+    /// `import x.{Trait}` from the user. Mirrors the re-exported-fn path
+    /// in `bind_explicit_reexported_fn`.
+    fn bind_explicit_trait_method(
+        &mut self,
+        trait_summary: &crate::module_interface::TraitSummary,
+        method: &crate::module_interface::TraitMethodSummary,
+        path: &str,
+        span: Span,
+        is_synthetic_prelude_import: bool,
+    ) -> Result<(), SpannedTypeError> {
+        use crate::module_interface;
+
+        if matches!(trait_summary.visibility, Visibility::Private) {
+            return Err(spanned(
+                TypeError::PrivateName {
+                    name: trait_summary.name.clone(),
+                    module_path: path.to_string(),
+                },
+                span,
+            ));
+        }
+
+        let trait_def = module_interface::trait_summary_to_exported_def(trait_summary);
+        let trait_id = TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
+
+        let def_already_pushed = self
+            .imported_trait_defs
+            .iter()
+            .any(|x| x.name == trait_def.name && x.module_path == trait_def.module_path);
+        if !def_already_pushed {
+            self.imported_trait_defs.push(trait_def.clone());
+        }
+
+        // Mark the bare trait name as internal so `impl Trait[X]` without
+        // an explicit `import x.{Trait}` errors with `UnknownTrait`. The
+        // method-only import still pulls the def in for dict resolution.
+        self.trait_names.register_internal(&trait_id);
+
+        if !self.imports.contains_name(&method.name) {
+            let scheme = build_trait_method_scheme(
+                &trait_def.type_var_ids,
+                &method.param_types,
+                &method.return_type,
+            );
+            self.imports.bind_import(
+                &mut self.env,
+                crate::infer::ImportBinding {
+                    name: method.name.clone(),
+                    scheme,
+                    origin: Some(trait_id),
+                    source_module: path.to_string(),
+                    original_name: method.name.clone(),
+                    is_prelude: is_synthetic_prelude_import,
+                    span,
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Trait + method binding for `import x.*`: walks every visible trait,
+    /// publishes the bare name, and binds every method that isn't already
+    /// imported. The explicit-name case is handled per-arm in Pass B; this
+    /// helper is the only path that runs when no names are listed.
+    fn bind_traits_for_import_all(
         &mut self,
         iface: &crate::module_interface::ModuleInterface,
-        requested: &FxHashSet<&str>,
-        import_all: bool,
-        aliases: &FxHashMap<&str, &str>,
         path: &str,
         span: Span,
         is_synthetic_prelude_import: bool,
@@ -735,43 +897,13 @@ impl ModuleInferenceState {
         use crate::module_interface;
 
         for trait_summary in &iface.exported_traits {
+            if matches!(trait_summary.visibility, Visibility::Private) {
+                continue;
+            }
+
             let trait_def = module_interface::trait_summary_to_exported_def(trait_summary);
-            let effective_name = aliases
-                .get(trait_def.name.as_str())
-                .map(|a| a.to_string())
-                .unwrap_or_else(|| trait_def.name.clone());
-
-            let explicitly_requested = requested.contains(trait_def.name.as_str())
-                || trait_def
-                    .methods
-                    .iter()
-                    .any(|m| requested.contains(m.name.as_str()));
-
-            if !(explicitly_requested || import_all) {
-                continue;
-            }
-
-            // Private check stays — every import of a private trait must
-            // error consistently, even if an earlier (e.g. alias-punned)
-            // registration happened.
-            if matches!(trait_def.visibility, Visibility::Private) {
-                if explicitly_requested {
-                    return Err(spanned(
-                        TypeError::PrivateName {
-                            name: trait_def.name.clone(),
-                            module_path: path.to_string(),
-                        },
-                        span,
-                    ));
-                }
-                continue;
-            }
-
-            // Build canonical TraitName (always uses original name, not alias).
             let trait_id = TraitName::new(trait_def.module_path.clone(), trait_def.name.clone());
-            // Dedup imported_trait_defs so the registry doesn't see the
-            // same canonical TraitName twice; trait_names handles
-            // bare-name registration and ambiguity separately.
+
             let def_already_pushed = self
                 .imported_trait_defs
                 .iter()
@@ -779,51 +911,33 @@ impl ModuleInferenceState {
             if !def_already_pushed {
                 self.imported_trait_defs.push(trait_def.clone());
             }
-            // Upgrade a prior silent (internal) registration by recording
-            // the bare name here; `register_imported` is idempotent for
-            // matching `TraitName`s so a duplicate user-level import is
-            // harmless.
+
             self.trait_names
-                .register_imported(effective_name.clone(), trait_id.clone())
+                .register_imported(trait_def.name.clone(), trait_id.clone())
                 .map_err(|e| spanned(e, span))?;
-            if effective_name != trait_def.name
-                && !self
-                    .trait_aliases
-                    .iter()
-                    .any(|(a, tn)| a == &effective_name && tn == &trait_id)
-            {
-                self.trait_aliases
-                    .push((effective_name.clone(), trait_id.clone()));
-            }
 
             let origin = Some(trait_id);
-            // Bind visible trait methods as imported functions (skip if
-            // already imported via fn_types). Runs on every import that
-            // names the trait or one of its methods, so a name-only first
-            // import does not poison a later method import of the same
-            // trait.
             for method in &trait_def.methods {
-                let is_visible = import_all || requested.contains(method.name.as_str());
-                let already_imported = self.imports.contains_name(&method.name);
-                if is_visible && !already_imported {
-                    let scheme = build_trait_method_scheme(
-                        &trait_def.type_var_ids,
-                        &method.param_types,
-                        &method.return_type,
-                    );
-                    self.imports.bind_import(
-                        &mut self.env,
-                        crate::infer::ImportBinding {
-                            name: method.name.clone(),
-                            scheme,
-                            origin: origin.clone(),
-                            source_module: path.to_string(),
-                            original_name: method.name.clone(),
-                            is_prelude: is_synthetic_prelude_import,
-                            span,
-                        },
-                    )?;
+                if self.imports.contains_name(&method.name) {
+                    continue;
                 }
+                let scheme = build_trait_method_scheme(
+                    &trait_def.type_var_ids,
+                    &method.param_types,
+                    &method.return_type,
+                );
+                self.imports.bind_import(
+                    &mut self.env,
+                    crate::infer::ImportBinding {
+                        name: method.name.clone(),
+                        scheme,
+                        origin: origin.clone(),
+                        source_module: path.to_string(),
+                        original_name: method.name.clone(),
+                        is_prelude: is_synthetic_prelude_import,
+                        span,
+                    },
+                )?;
             }
         }
         Ok(())

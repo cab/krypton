@@ -9,16 +9,16 @@ type H2 = MkH2#0
 instance core/disposable.Disposable[H1] { dispose=Disposable$$H1$$dispose }
 instance core/disposable.Disposable[H2] { dispose=Disposable$$H2$$dispose }
 extern java "krypton.runtime.KryptonIO" println(x10) -> Unit
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
-import core/option/Some as Some(b) -> Option[b]
-import core/result/Ok as Ok(d) -> Result[c, d]
-import core/result/Err as Err(c) -> Result[c, d]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
 declare panic
 declare println: (x10) -> Unit
 

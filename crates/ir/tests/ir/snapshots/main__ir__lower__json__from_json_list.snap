@@ -4,6 +4,10 @@ expression: ir_module.to_string()
 ---
 module json__from_json_list
 
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -11,16 +15,12 @@ import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
-import core/option/Some as Some(b) -> Option[b]
-import core/result/Ok as Ok(d) -> Result[c, d]
-import core/result/Err as Err(c) -> Result[c, d]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/list/Cons as Cons(j, List[j]) -> List[j]
 import core/list/length as length(List[z]) -> Int
-import core/json/JNum as JNum(Float) -> Json
-import core/json/JArr as JArr(List[Json]) -> Json
 import core/json/JBool as JBool(Bool) -> Json
+import core/json/JNum as JNum(Float) -> Json
 import core/json/JStr as JStr(String) -> Json
+import core/json/JArr as JArr(List[Json]) -> Json
 import core/json/JObj as JObj(Map[String, Json]) -> Json
 declare length: (List[z]) -> Int
 declare println: (g) -> Unit

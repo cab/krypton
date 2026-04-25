@@ -4,16 +4,16 @@ expression: output
 ---
 module resolved_ref_sum_consumer
 
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
-import core/option/Some as Some(b) -> Option[b]
-import core/result/Ok as Ok(d) -> Result[c, d]
-import core/result/Err as Err(c) -> Result[c, d]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/io/println as println(g) -> Unit
 import resolved_ref_sum_lib/Keep as Keep(Int) -> Packet
 declare println: (g) -> Unit
@@ -301,8 +301,8 @@ instance core/applicative.Applicative[List] { pure=Applicative$$List$$pure, appl
 instance core/monad.Monad[List] { flat_map=Monad$$List$$flat_map }
 instance core/traversable.Traversable[List] { traverse=Traversable$$List$$traverse }
 instance core/show.Show[List] { show=Show$$List$$show }
-import core/option/Some as Some(f) -> Option[f]
 import core/option/Some as Some(c) -> Option[c]
+import core/option/Some as Some(f) -> Option[f]
 
 fn length(v0: List[z]) -> Int =
   switch v0 {
@@ -601,10 +601,10 @@ extern java "krypton.runtime.KryptonArrayBuilder" builderFreeze(~VecBuilder[k5])
 extern type java "krypton.runtime.KryptonArray" Vec
 extern type java "krypton.runtime.KryptonArrayBuilder" VecBuilder
 import core/list/Cons as Cons(j, List[j]) -> List[j]
-import core/list/sort_by as list_sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/list/Cons as Cons(c, List[c]) -> List[c]
-import core/option/Some as Some(f) -> Option[f]
+import core/list/sort_by as list_sort_by(List[j5], (j5) -> y4) -> List[j5]
 import core/option/Some as Some(d) -> Option[d]
+import core/option/Some as Some(f) -> Option[f]
 declare builderFreeze: (~VecBuilder[k5]) -> Vec[k5]
 declare builderNew: () -> ~VecBuilder[k5]
 declare builderPush: (~VecBuilder[k5], k5) -> ~VecBuilder[k5]
@@ -1105,10 +1105,10 @@ extern java "krypton.runtime.KryptonMapBuilder" builderFreeze(~MapBuilder[k8, l8
 extern java "krypton.runtime.KryptonArray" staticGet(Vec[m8], Int) -> m8
 extern type java "krypton.runtime.KryptonMap" Map
 extern type java "krypton.runtime.KryptonMapBuilder" MapBuilder
-import core/option/Some as Some(f) -> Option[f]
 import core/option/Some as Some(c) -> Option[c]
-import core/list/Cons as Cons(j, List[j]) -> List[j]
+import core/option/Some as Some(f) -> Option[f]
 import core/list/Cons as Cons(d, List[d]) -> List[d]
+import core/list/Cons as Cons(j, List[j]) -> List[j]
 import core/vec/builder as vec_builder() -> ~VecBuilder[p6]
 import core/vec/push as vec_push(~VecBuilder[w6], w6) -> ~VecBuilder[w6]
 import core/vec/push as vec_push(Vec[b7], b7) -> Vec[b7]
@@ -1295,21 +1295,25 @@ fn print(v4: Dict[core/show.Show, m], v5: m) -> Unit =
 module prelude
 
 import core/peek/peek as peek(d) -> d
-import core/option/Some as Some(f) -> Option[f]
 import core/option/Some as Some(b) -> Option[b]
+import core/option/Some as Some(f) -> Option[f]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/list/Cons as Cons(j, List[j]) -> List[j]
-import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
+import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
 module resolved_ref_sum_lib
 
 type Packet = Keep#0(Int) | Drop#1
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -1317,13 +1321,13 @@ import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
-import core/option/Some as Some(b) -> Option[b]
-import core/result/Ok as Ok(d) -> Result[c, d]
-import core/result/Err as Err(c) -> Result[c, d]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
 
 module resolved_ref_sum_reexport
 
+import core/option/Some as Some(b) -> Option[b]
+import core/result/Ok as Ok(d) -> Result[c, d]
+import core/result/Err as Err(c) -> Result[c, d]
+import core/list/Cons as Cons(e, List[e]) -> List[e]
 import core/peek/peek as peek(d) -> d
 import core/list/last as last(List[e3]) -> Option[e3]
 import core/list/sort_by as sort_by(List[j5], (j5) -> y4) -> List[j5]
@@ -1331,8 +1335,4 @@ import core/list/filter as filter(List[h1], (h1) -> Bool) -> List[h1]
 import core/vec/to_list as to_list(Vec[w10]) -> List[w10]
 import core/traversable/sequence as sequence(o[p[r]]) -> p[o[r]]
 import core/io/println as println(g) -> Unit
-import core/option/Some as Some(b) -> Option[b]
-import core/result/Ok as Ok(d) -> Result[c, d]
-import core/result/Err as Err(c) -> Result[c, d]
-import core/list/Cons as Cons(e, List[e]) -> List[e]
 import resolved_ref_sum_lib/Keep as Keep(Int) -> Packet

@@ -2,6 +2,15 @@
 source: crates/typechecker/tests/typechecker/fixtures.rs
 expression: snapshot
 ---
+Some: forall a. (a) -> Option[a]
+None: forall a. Option[a]
+Ok: forall a b. (b) -> Result[a, b]
+Err: forall a b. (a) -> Result[a, b]
+Cons: forall a. (a, List[a]) -> List[a]
+Nil: forall a. List[a]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
 eq: forall a. (a, a) -> Bool
 lt: forall a. (a, a) -> Bool
 combine: forall a. (a, a) -> a
@@ -25,15 +34,6 @@ traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
 sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
 empty: forall a. () -> a
 println: forall a. (a) -> Unit where a: Show
-Some: forall a. (a) -> Option[a]
-None: forall a. Option[a]
-Ok: forall a b. (b) -> Result[a, b]
-Err: forall a b. (a) -> Result[a, b]
-Cons: forall a. (a, List[a]) -> List[a]
-Nil: forall a. List[a]
-LT: Ordering
-EQ: Ordering
-GT: Ordering
 main: () -> Unit
 Tag$$Vec$Int$$tag: (Vec[Int]) -> String
 Tag$$Vec$String$$tag: (Vec[String]) -> String

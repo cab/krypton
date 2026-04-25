@@ -1,25 +1,31 @@
 use krypton_parser::ast::Visibility;
 
 use crate::module_interface::{
-    ExportedFnSummary, ExternTypeSummary, ModuleInterface, ReexportedFnEntry, ReexportedTypeEntry,
-    TraitMethodSummary, TraitSummary, TypeSummary,
+    ExportedFnSummary, ExternTypeSummary, LocalSymbolKey, ModuleInterface, ReexportedFnEntry,
+    ReexportedTypeEntry, TraitMethodSummary, TraitSummary, TypeSummary,
 };
 
 /// Outcome of resolving a single bare name against a module's interface.
 ///
-/// Returned by `ImportResolver::resolve` for each requested import name; the
-/// caller dispatches on the variant to either bind the named symbol or
-/// surface a visibility diagnostic. The kind-specific payloads are reserved
-/// for future name-keyed dispatch — today's caller only uses
-/// `Unknown` / `Private` to drive Pass-A diagnostics, so the other arms are
-/// `#[allow(dead_code)]`.
-#[allow(dead_code)]
+/// Returned by `ImportResolver::resolve` for each requested import name. The
+/// dispatcher in `process_single_import` matches on the variant to call the
+/// right per-arm helper (`bind_explicit_exported_fn`,
+/// `bind_explicit_reexported_type`, `bind_explicit_trait`, …) or — for
+/// `Unknown` / `Private` — to surface a visibility diagnostic.
+///
+/// `Type` / `ReexportedType` / `Trait` / `TraitMethod` payloads are consumed
+/// directly by their helpers. `Fn` / `ReexportedFn` / `ExternType` payloads
+/// identify the variant kind for visibility but are otherwise unused: the
+/// dispatcher re-scans the iface fn collections to bind every same-named
+/// candidate (overloads from `pub import a.{f}; pub import b.{f}` or from a
+/// local + re-export stack). `ExternType` is bound by
+/// `bind_extern_type_visibility`, not the per-arm dispatcher.
 pub(super) enum ResolveResult<'a> {
-    Fn(&'a ExportedFnSummary),
-    ReexportedFn(&'a ReexportedFnEntry),
+    Fn(#[allow(dead_code)] &'a ExportedFnSummary),
+    ReexportedFn(#[allow(dead_code)] &'a ReexportedFnEntry),
     Type(&'a TypeSummary),
     ReexportedType(&'a ReexportedTypeEntry),
-    ExternType(&'a ExternTypeSummary),
+    ExternType(#[allow(dead_code)] &'a ExternTypeSummary),
     Trait(&'a TraitSummary),
     TraitMethod {
         trait_def: &'a TraitSummary,
@@ -43,31 +49,63 @@ impl<'a> ImportResolver<'a> {
     }
 
     pub(super) fn resolve(&self, name: &str) -> ResolveResult<'a> {
-        if let Some(ef) = self.iface.exported_fns.iter().find(|ef| ef.name == name) {
-            return ResolveResult::Fn(ef);
-        }
-        if let Some(rf) = self
+        let exported_fn = self.iface.exported_fns.iter().find(|ef| ef.name == name);
+        let reexported_fn = self
             .iface
             .reexported_fns
             .iter()
-            .find(|rf| rf.local_name == name)
-        {
-            return ResolveResult::ReexportedFn(rf);
-        }
-        if let Some(ts) = self.iface.exported_types.iter().find(|ts| ts.name == name) {
-            // Defensive: type collection already excludes Private, but the
-            // explicit guard preserves the union-check semantics that lived
-            // at imports.rs:200–203 prior to this refactor.
-            if !matches!(ts.visibility, Visibility::Private) {
-                return ResolveResult::Type(ts);
-            }
-        }
-        if let Some(rt) = self
+            .find(|rf| rf.local_name == name);
+        let exported_type = self
+            .iface
+            .exported_types
+            .iter()
+            .find(|ts| ts.name == name)
+            .filter(|ts| !matches!(ts.visibility, Visibility::Private));
+        let reexported_type = self
             .iface
             .reexported_types
             .iter()
-            .find(|rt| rt.local_name == name)
-        {
+            .find(|rt| rt.local_name == name);
+
+        // Record types share their name with their default constructor; both
+        // entries can land in the iface (Type registration + Constructor in
+        // exported/reexported_fns). The Type-arm helpers register the type
+        // *and* bind the constructor, while the Fn-arm helpers only bind the
+        // constructor — so dispatching to Fn would leave the type
+        // unregistered. Prefer the Type variant whenever a same-name
+        // constructor is paired with a Type entry.
+        let fn_is_self_named_constructor = |key: &LocalSymbolKey, lookup: &str| -> bool {
+            matches!(
+                key,
+                LocalSymbolKey::Constructor { parent_type, name: ctor_name }
+                if parent_type == lookup && ctor_name == lookup
+            )
+        };
+        let dual_record = exported_fn
+            .map(|ef| fn_is_self_named_constructor(&ef.key, name))
+            .unwrap_or(false)
+            || reexported_fn
+                .map(|rf| fn_is_self_named_constructor(&rf.canonical_ref.symbol, name))
+                .unwrap_or(false);
+        if dual_record {
+            if let Some(ts) = exported_type {
+                return ResolveResult::Type(ts);
+            }
+            if let Some(rt) = reexported_type {
+                return ResolveResult::ReexportedType(rt);
+            }
+        }
+
+        if let Some(ef) = exported_fn {
+            return ResolveResult::Fn(ef);
+        }
+        if let Some(rf) = reexported_fn {
+            return ResolveResult::ReexportedFn(rf);
+        }
+        if let Some(ts) = exported_type {
+            return ResolveResult::Type(ts);
+        }
+        if let Some(rt) = reexported_type {
             return ResolveResult::ReexportedType(rt);
         }
         if let Some(et) = self
