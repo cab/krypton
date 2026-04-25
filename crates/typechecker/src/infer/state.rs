@@ -24,6 +24,16 @@ pub(crate) type InferFunctionBodiesResult<'a> = (
     FxHashMap<String, Vec<(TraitName, Vec<TypeVarId>)>>,
 );
 
+/// Per-decl scope artifacts produced by `setup_decl_scope` and consumed by
+/// `infer_decl_body_and_reconcile`. Owns the type-param map for the decl,
+/// resolved param types, and the saved fn_return_type for restoration.
+pub(crate) struct DeclScope {
+    pub(super) type_param_map: FxHashMap<String, TypeVarId>,
+    pub(super) type_param_arity: FxHashMap<String, usize>,
+    pub(super) param_types: Vec<Type>,
+    pub(super) prev_fn_return_type: Option<Type>,
+}
+
 /// Result of `process_traits_and_deriving`: trait registry, exported defs,
 /// extern trait infos, derived/imported instance defs, and trait method map.
 pub(crate) type TraitsAndDerivingResult = (
