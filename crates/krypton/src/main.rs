@@ -1031,7 +1031,7 @@ fn check_project(timings: bool) -> ! {
 ///
 /// `filters` is accepted for forward compatibility with the full
 /// discovery + execution pipeline and currently ignored.
-fn test_project(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
+fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
     let (ctx, resolve_dur) = load_project_context();
 
     let src_dir = ctx.project_root.join("src");
@@ -1481,453 +1481,22 @@ fn main() {
     let cli = Cli::parse();
     let timings = cli.timings;
     match cli.command {
-        Commands::Parse { file, format } => {
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let (module, errors) = do_parse(&source);
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-            match format {
-                OutputFormat::Debug => println!("{:#?}", module),
-                OutputFormat::Surface => {
-                    println!("{}", krypton_parser::pretty::pretty_print(&module))
-                }
-            }
-        }
-        Commands::Fmt { file } => {
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let (module, errors) = do_parse(&source);
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-            println!("{}", krypton_parser::pretty::pretty_print(&module));
-        }
+        Commands::Parse { file, format } => cmd_parse(file, format),
+        Commands::Fmt { file } => cmd_fmt(file),
         Commands::Compile {
             file,
             output,
             target,
-        } => {
-            info!(file = %file, "starting compilation");
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let stem = std::path::Path::new(&file)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Main")
-                .to_string();
-            let entry_class_name = class_name_from_stem(&stem);
-
-            let file_path = std::path::Path::new(&file);
-            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
-            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
-
-            let sink = match target {
-                Target::Jvm => CompileSink::Jar {
-                    path: output
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| PathBuf::from(format!("{}.jar", stem))),
-                },
-                Target::Js => CompileSink::JsDir {
-                    dir: output
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| PathBuf::from("./out")),
-                    main_rename: None,
-                },
-            };
-
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-            compile_with_resolver(
-                CompileInputs {
-                    diag_path: &file,
-                    source: &source,
-                    entry_module_path: root_module_path(&file),
-                    entry_class_name,
-                    resolver,
-                    target,
-                    require_main: true,
-                    sink,
-                    timings,
-                },
-                &mut phases,
-            );
-
-            if timings {
-                print_timings(&phases);
-            }
-        }
-        Commands::Run { file, target } => {
-            let Some(file) = file else {
-                run_project(target, timings);
-            };
-            info!(file = %file, "starting compilation");
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let stem = std::path::Path::new(&file)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Main")
-                .to_string();
-            let entry_class_name = class_name_from_stem(&stem);
-
-            let file_path = std::path::Path::new(&file);
-            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
-            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
-
-            let sink = match target {
-                Target::Jvm => CompileSink::JvmRunTemp,
-                Target::Js => CompileSink::JsRunTemp,
-            };
-
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-            compile_with_resolver(
-                CompileInputs {
-                    diag_path: &file,
-                    source: &source,
-                    entry_module_path: root_module_path(&file),
-                    entry_class_name,
-                    resolver,
-                    target,
-                    require_main: true,
-                    sink,
-                    timings,
-                },
-                &mut phases,
-            );
-            // Unreachable: run sinks exit from inside the helper.
-            unreachable!("run sinks must exit inside compile_with_resolver");
-        }
-        Commands::Check { file } => {
-            let Some(file) = file else {
-                check_project(timings);
-            };
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-
-            let t = Instant::now();
-            let (module, errors) = do_parse(&source);
-            phases.push(("parse", t.elapsed()));
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-
-            let file_path = std::path::Path::new(&file);
-            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
-            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
-
-            let t = Instant::now();
-            match krypton_typechecker::infer::infer_module(
-                &module,
-                &resolver,
-                root_module_path(&file),
-                krypton_parser::ast::CompileTarget::Jvm,
-            ) {
-                Ok((modules, _)) => {
-                    phases.push(("typecheck", t.elapsed()));
-                    let info = &modules[0];
-                    for entry in &info.fn_types {
-                        println!("{} : {}", entry.name, entry.scheme);
-                    }
-                }
-                Err(errors) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                        &file, &source, &errors,
-                    );
-                    for d in &diags {
-                        eprint!("{}", AriadneRenderer.render(d, &srcs));
-                    }
-                    process::exit(1);
-                }
-            }
-
-            if timings {
-                print_timings(&phases);
-            }
-        }
-        Commands::DumpIr { file, all } => {
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-            let mut phases: Vec<(&str, Duration)> = Vec::new();
-
-            let t = Instant::now();
-            let (module, errors) = do_parse(&source);
-            phases.push(("parse", t.elapsed()));
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-
-            let file_path = std::path::Path::new(&file);
-            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
-            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
-
-            let t = Instant::now();
-            let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
-                &module,
-                &resolver,
-                root_module_path(&file),
-                krypton_parser::ast::CompileTarget::Jvm,
-            ) {
-                Ok(result) => result,
-                Err(errors) => {
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                        &file, &source, &errors,
-                    );
-                    for d in &diags {
-                        eprint!("{}", AriadneRenderer.render(d, &srcs));
-                    }
-                    process::exit(1);
-                }
-            };
-            phases.push(("typecheck", t.elapsed()));
-
-            let stem = std::path::Path::new(&file)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("main");
-
-            let mut lower_dur = Duration::ZERO;
-            let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
-            for (i, typed) in typed_modules.iter().enumerate() {
-                if !all && i > 0 {
-                    continue;
-                }
-                let mod_name = if i == 0 {
-                    stem.to_string()
-                } else {
-                    typed.module_path.clone()
-                };
-                let view = link_ctx
-                    .view_for(&krypton_typechecker::module_interface::ModulePath::new(
-                        &typed.module_path,
-                    ))
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "ICE: no LinkContext view for module '{}'",
-                            typed.module_path
-                        )
-                    });
-                let t = Instant::now();
-                match krypton_ir::lower::lower_module(typed, &mod_name, &view) {
-                    Ok(ir_module) => {
-                        lower_dur += t.elapsed();
-                        print!("{}", ir_module);
-                    }
-                    Err(e) => {
-                        eprintln!("IR lowering error (module {}): {}", mod_name, e);
-                        process::exit(1);
-                    }
-                }
-            }
-            phases.push(("lower", lower_dur));
-
-            if timings {
-                print_timings(&phases);
-            }
-        }
-        Commands::Repl => {
-            repl::run_repl().unwrap_or_else(|e| {
-                eprintln!("error: {}", e);
-                process::exit(1);
-            });
-        }
-        Commands::Init { name } => {
-            let cwd = std::env::current_dir().unwrap_or_else(|e| {
-                eprintln!("Error: could not resolve current directory: {e}");
-                process::exit(1);
-            });
-            match krypton_package_manager::init_project(&cwd, &name) {
-                Ok(dir) => println!("created {}", dir.display()),
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                }
-            }
-        }
-        Commands::Lock => {
-            let cwd = std::env::current_dir().unwrap_or_else(|e| {
-                eprintln!("Error: could not resolve current directory: {e}");
-                process::exit(1);
-            });
-            let manifest_path = cwd.join("krypton.toml");
-            let manifest = krypton_package_manager::Manifest::from_path(&manifest_path)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
-                    process::exit(1);
-                });
-            let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-            let graph =
-                krypton_package_manager::resolve(&cwd, manifest, &cache).unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                });
-            let lockfile = krypton_package_manager::Lockfile::generate(&graph, &[], &cwd)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                });
-            let lock_path = cwd.join("krypton.lock");
-            lockfile.write(&lock_path).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-            println!("wrote {}", lock_path.display());
-        }
-        Commands::Build { target } => {
-            let (ctx, resolve_dur) = load_project_context();
-            let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
-
-            let (entry, is_main) = select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-
-            let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", entry.path.display(), e);
-                process::exit(1);
-            });
-
-            let source_root = ctx.project_root.join("src");
-            let deps = ctx.graph.source_roots(&ctx.manifest);
-            let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-
-            let leaf = ctx
-                .manifest
-                .package
-                .name
-                .rsplit('/')
-                .next()
-                .expect("canonical package name has owner/leaf form");
-
-            let sink = match target {
-                Target::Jvm => CompileSink::Jar {
-                    path: ctx
-                        .project_root
-                        .join("target")
-                        .join("jvm")
-                        .join(format!("{leaf}.jar")),
-                },
-                Target::Js => CompileSink::JsDir {
-                    dir: ctx.project_root.join("target").join("js"),
-                    main_rename: Some(format!("{leaf}.mjs")),
-                },
-            };
-
-            let diag_path = entry.path.to_string_lossy().to_string();
-            compile_with_resolver(
-                CompileInputs {
-                    diag_path: &diag_path,
-                    source: &source,
-                    entry_module_path: entry.module_path,
-                    entry_class_name: entry.class_name,
-                    resolver,
-                    target,
-                    require_main: is_main,
-                    sink,
-                    timings,
-                },
-                &mut phases,
-            );
-
-            if timings {
-                print_timings(&phases);
-            }
-        }
-        Commands::Test { filters, verbose } => test_project(filters, verbose, timings),
-        Commands::Inspect { file } => {
-            let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
-                eprintln!("Error reading {}: {}", file, e);
-                process::exit(1);
-            });
-
-            let (module, errors) = do_parse(&source);
-            if !errors.is_empty() {
-                let (diags, srcs) =
-                    krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
-                for d in &diags {
-                    eprint!("{}", AriadneRenderer.render(d, &srcs));
-                }
-                process::exit(1);
-            }
-
-            let file_path = std::path::Path::new(&file);
-            let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
-            let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
-
-            match krypton_typechecker::infer::infer_module(
-                &module,
-                &resolver,
-                root_module_path(&file),
-                krypton_parser::ast::CompileTarget::Jvm,
-            ) {
-                Ok((modules, _)) => {
-                    let info = &modules[0];
-                    let output = inspect::render_inspect(
-                        &module,
-                        &info.auto_close,
-                        &info.functions,
-                        &info.fn_types,
-                        &info.instance_defs,
-                    );
-                    print!("{}", output);
-                }
-                Err(errors) => {
-                    // AC6: on error, print source with line numbers and show the error
-                    let lines: Vec<&str> = source.lines().collect();
-                    let width = lines.len().to_string().len().max(4);
-                    for (i, line) in lines.iter().enumerate() {
-                        println!("{:>width$} | {}", i + 1, line, width = width);
-                    }
-                    println!();
-                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                        &file, &source, &errors,
-                    );
-                    for d in &diags {
-                        eprint!("{}", AriadneRenderer.render(d, &srcs));
-                    }
-                    process::exit(1);
-                }
-            }
-        }
+        } => cmd_compile(file, output, target, timings),
+        Commands::Run { file, target } => cmd_run(file, target, timings),
+        Commands::Check { file } => cmd_check(file, timings),
+        Commands::DumpIr { file, all } => cmd_dump_ir(file, all, timings),
+        Commands::Repl => cmd_repl(),
+        Commands::Init { name } => cmd_init(name),
+        Commands::Lock => cmd_lock(),
+        Commands::Build { target } => cmd_build(target, timings),
+        Commands::Test { filters, verbose } => cmd_test(filters, verbose, timings),
+        Commands::Inspect { file } => cmd_inspect(file),
         Commands::Add {
             name,
             git,
@@ -1937,102 +1506,565 @@ fn main() {
             branch,
             rev,
             as_name,
-        } => {
-            let source = match (git, path, version) {
-                (Some(url), None, None) => {
-                    let git_ref = match (tag, branch, rev) {
-                        (Some(t), None, None) => GitRef::Tag(t),
-                        (None, Some(b), None) => GitRef::Branch(b),
-                        (None, None, Some(r)) => GitRef::Rev(r),
-                        _ => {
-                            eprintln!(
-                                "Error: --git requires exactly one of --tag, --branch, or --rev"
-                            );
-                            process::exit(2);
-                        }
-                    };
-                    AddSource::Git { url, git_ref }
-                }
-                (None, Some(path), None) => AddSource::Path { path },
-                (None, None, Some(version)) => AddSource::Registry { version },
-                // clap's ArgGroup enforces exactly-one; this branch is for
-                // coverage in case that constraint is ever weakened.
+        } => cmd_add(name, git, path, version, tag, branch, rev, as_name),
+        Commands::Remove { name } => cmd_remove(name),
+        Commands::Update => cmd_update(),
+    }
+}
+
+fn cmd_parse(file: String, format: OutputFormat) {
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let (module, errors) = do_parse(&source);
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+    match format {
+        OutputFormat::Debug => println!("{:#?}", module),
+        OutputFormat::Surface => {
+            println!("{}", krypton_parser::pretty::pretty_print(&module))
+        }
+    }
+}
+
+fn cmd_fmt(file: String) {
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let (module, errors) = do_parse(&source);
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+    println!("{}", krypton_parser::pretty::pretty_print(&module));
+}
+
+fn cmd_compile(file: String, output: Option<String>, target: Target, timings: bool) {
+    info!(file = %file, "starting compilation");
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let stem = std::path::Path::new(&file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Main")
+        .to_string();
+    let entry_class_name = class_name_from_stem(&stem);
+
+    let file_path = std::path::Path::new(&file);
+    let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+    let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+    let sink = match target {
+        Target::Jvm => CompileSink::Jar {
+            path: output
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(format!("{}.jar", stem))),
+        },
+        Target::Js => CompileSink::JsDir {
+            dir: output
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("./out")),
+            main_rename: None,
+        },
+    };
+
+    let mut phases: Vec<(&str, Duration)> = Vec::new();
+    compile_with_resolver(
+        CompileInputs {
+            diag_path: &file,
+            source: &source,
+            entry_module_path: root_module_path(&file),
+            entry_class_name,
+            resolver,
+            target,
+            require_main: true,
+            sink,
+            timings,
+        },
+        &mut phases,
+    );
+
+    if timings {
+        print_timings(&phases);
+    }
+}
+
+fn cmd_run(file: Option<String>, target: Target, timings: bool) {
+    let Some(file) = file else {
+        run_project(target, timings);
+    };
+    info!(file = %file, "starting compilation");
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let stem = std::path::Path::new(&file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Main")
+        .to_string();
+    let entry_class_name = class_name_from_stem(&stem);
+
+    let file_path = std::path::Path::new(&file);
+    let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+    let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+    let sink = match target {
+        Target::Jvm => CompileSink::JvmRunTemp,
+        Target::Js => CompileSink::JsRunTemp,
+    };
+
+    let mut phases: Vec<(&str, Duration)> = Vec::new();
+    compile_with_resolver(
+        CompileInputs {
+            diag_path: &file,
+            source: &source,
+            entry_module_path: root_module_path(&file),
+            entry_class_name,
+            resolver,
+            target,
+            require_main: true,
+            sink,
+            timings,
+        },
+        &mut phases,
+    );
+    // Unreachable: run sinks exit from inside the helper.
+    unreachable!("run sinks must exit inside compile_with_resolver");
+}
+
+fn cmd_check(file: Option<String>, timings: bool) {
+    let Some(file) = file else {
+        check_project(timings);
+    };
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+    let t = Instant::now();
+    let (module, errors) = do_parse(&source);
+    phases.push(("parse", t.elapsed()));
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+
+    let file_path = std::path::Path::new(&file);
+    let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+    let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+    let t = Instant::now();
+    match krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        root_module_path(&file),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok((modules, _)) => {
+            phases.push(("typecheck", t.elapsed()));
+            let info = &modules[0];
+            for entry in &info.fn_types {
+                println!("{} : {}", entry.name, entry.scheme);
+            }
+        }
+        Err(errors) => {
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors(&file, &source, &errors);
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    }
+
+    if timings {
+        print_timings(&phases);
+    }
+}
+
+fn cmd_dump_ir(file: String, all: bool, timings: bool) {
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+    let mut phases: Vec<(&str, Duration)> = Vec::new();
+
+    let t = Instant::now();
+    let (module, errors) = do_parse(&source);
+    phases.push(("parse", t.elapsed()));
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+
+    let file_path = std::path::Path::new(&file);
+    let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+    let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+    let t = Instant::now();
+    let (typed_modules, interfaces) = match krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        root_module_path(&file),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok(result) => result,
+        Err(errors) => {
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors(&file, &source, &errors);
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    };
+    phases.push(("typecheck", t.elapsed()));
+
+    let stem = std::path::Path::new(&file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main");
+
+    let mut lower_dur = Duration::ZERO;
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    for (i, typed) in typed_modules.iter().enumerate() {
+        if !all && i > 0 {
+            continue;
+        }
+        let mod_name = if i == 0 {
+            stem.to_string()
+        } else {
+            typed.module_path.clone()
+        };
+        let view = link_ctx
+            .view_for(&krypton_typechecker::module_interface::ModulePath::new(
+                &typed.module_path,
+            ))
+            .unwrap_or_else(|| {
+                panic!(
+                    "ICE: no LinkContext view for module '{}'",
+                    typed.module_path
+                )
+            });
+        let t = Instant::now();
+        match krypton_ir::lower::lower_module(typed, &mod_name, &view) {
+            Ok(ir_module) => {
+                lower_dur += t.elapsed();
+                print!("{}", ir_module);
+            }
+            Err(e) => {
+                eprintln!("IR lowering error (module {}): {}", mod_name, e);
+                process::exit(1);
+            }
+        }
+    }
+    phases.push(("lower", lower_dur));
+
+    if timings {
+        print_timings(&phases);
+    }
+}
+
+fn cmd_repl() {
+    repl::run_repl().unwrap_or_else(|e| {
+        eprintln!("error: {}", e);
+        process::exit(1);
+    });
+}
+
+fn cmd_init(name: String) {
+    let cwd = std::env::current_dir().unwrap_or_else(|e| {
+        eprintln!("Error: could not resolve current directory: {e}");
+        process::exit(1);
+    });
+    match krypton_package_manager::init_project(&cwd, &name) {
+        Ok(dir) => println!("created {}", dir.display()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_lock() {
+    let cwd = std::env::current_dir().unwrap_or_else(|e| {
+        eprintln!("Error: could not resolve current directory: {e}");
+        process::exit(1);
+    });
+    let manifest_path = cwd.join("krypton.toml");
+    let manifest =
+        krypton_package_manager::Manifest::from_path(&manifest_path).unwrap_or_else(|e| {
+            eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+            process::exit(1);
+        });
+    let cache = krypton_package_manager::CacheDir::new().unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let graph = krypton_package_manager::resolve(&cwd, manifest, &cache).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let lockfile =
+        krypton_package_manager::Lockfile::generate(&graph, &[], &cwd).unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+    let lock_path = cwd.join("krypton.lock");
+    lockfile.write(&lock_path).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    println!("wrote {}", lock_path.display());
+}
+
+fn cmd_build(target: Target, timings: bool) {
+    let (ctx, resolve_dur) = load_project_context();
+    let mut phases: Vec<(&str, Duration)> = vec![("resolve", resolve_dur)];
+
+    let (entry, is_main) = select_project_entry(&ctx.project_root).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let source = std::fs::read_to_string(&entry.path).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", entry.path.display(), e);
+        process::exit(1);
+    });
+
+    let source_root = ctx.project_root.join("src");
+    let deps = ctx.graph.source_roots(&ctx.manifest);
+    let resolver = CompositeResolver::new(Some(source_root), deps).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let leaf = ctx
+        .manifest
+        .package
+        .name
+        .rsplit('/')
+        .next()
+        .expect("canonical package name has owner/leaf form");
+
+    let sink = match target {
+        Target::Jvm => CompileSink::Jar {
+            path: ctx
+                .project_root
+                .join("target")
+                .join("jvm")
+                .join(format!("{leaf}.jar")),
+        },
+        Target::Js => CompileSink::JsDir {
+            dir: ctx.project_root.join("target").join("js"),
+            main_rename: Some(format!("{leaf}.mjs")),
+        },
+    };
+
+    let diag_path = entry.path.to_string_lossy().to_string();
+    compile_with_resolver(
+        CompileInputs {
+            diag_path: &diag_path,
+            source: &source,
+            entry_module_path: entry.module_path,
+            entry_class_name: entry.class_name,
+            resolver,
+            target,
+            require_main: is_main,
+            sink,
+            timings,
+        },
+        &mut phases,
+    );
+
+    if timings {
+        print_timings(&phases);
+    }
+}
+
+fn cmd_inspect(file: String) {
+    let source = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+        eprintln!("Error reading {}: {}", file, e);
+        process::exit(1);
+    });
+
+    let (module, errors) = do_parse(&source);
+    if !errors.is_empty() {
+        let (diags, srcs) =
+            krypton_parser::diagnostics::lower_parse_errors(&file, &source, &errors);
+        for d in &diags {
+            eprint!("{}", AriadneRenderer.render(d, &srcs));
+        }
+        process::exit(1);
+    }
+
+    let file_path = std::path::Path::new(&file);
+    let source_root = file_path.parent().unwrap_or(std::path::Path::new("."));
+    let resolver = CompositeResolver::with_source_root(source_root.to_path_buf());
+
+    match krypton_typechecker::infer::infer_module(
+        &module,
+        &resolver,
+        root_module_path(&file),
+        krypton_parser::ast::CompileTarget::Jvm,
+    ) {
+        Ok((modules, _)) => {
+            let info = &modules[0];
+            let output = inspect::render_inspect(
+                &module,
+                &info.auto_close,
+                &info.functions,
+                &info.fn_types,
+                &info.instance_defs,
+            );
+            print!("{}", output);
+        }
+        Err(errors) => {
+            // AC6: on error, print source with line numbers and show the error
+            let lines: Vec<&str> = source.lines().collect();
+            let width = lines.len().to_string().len().max(4);
+            for (i, line) in lines.iter().enumerate() {
+                println!("{:>width$} | {}", i + 1, line, width = width);
+            }
+            println!();
+            let (diags, srcs) =
+                krypton_typechecker::diagnostics::lower_infer_errors(&file, &source, &errors);
+            for d in &diags {
+                eprint!("{}", AriadneRenderer.render(d, &srcs));
+            }
+            process::exit(1);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_add(
+    name: String,
+    git: Option<String>,
+    path: Option<PathBuf>,
+    version: Option<String>,
+    tag: Option<String>,
+    branch: Option<String>,
+    rev: Option<String>,
+    as_name: Option<String>,
+) {
+    let source = match (git, path, version) {
+        (Some(url), None, None) => {
+            let git_ref = match (tag, branch, rev) {
+                (Some(t), None, None) => GitRef::Tag(t),
+                (None, Some(b), None) => GitRef::Branch(b),
+                (None, None, Some(r)) => GitRef::Rev(r),
                 _ => {
-                    eprintln!("Error: exactly one of --git, --path, or --version is required");
+                    eprintln!("Error: --git requires exactly one of --tag, --branch, or --rev");
                     process::exit(2);
                 }
             };
-
-            let project_root = find_project_root_or_exit();
-            let manifest_path = project_root.join("krypton.toml");
-
-            let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-            let local_root = editor
-                .add_dependency(&name, source, as_name.as_deref())
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: {e}");
-                    process::exit(1);
-                });
-
-            // Defensive validation: re-parse the edited manifest before
-            // touching the filesystem. Normal writes always produce valid
-            // TOML, but this guards against editor bugs cheaply.
-            let edited = editor.render();
-            let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
-                eprintln!("Error: internal error: edited manifest is invalid: {e}");
-                process::exit(1);
-            });
-
-            std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
-                eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
-                process::exit(1);
-            });
-
-            resolve_and_write_lockfile(&project_root, manifest);
-            println!("added '{local_root}' ({name})");
+            AddSource::Git { url, git_ref }
         }
-        Commands::Remove { name } => {
-            let project_root = find_project_root_or_exit();
-            let manifest_path = project_root.join("krypton.toml");
-
-            let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-            editor.remove_dependency(&name).unwrap_or_else(|e| {
-                eprintln!("Error: {e}");
-                process::exit(1);
-            });
-
-            let edited = editor.render();
-            let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
-                eprintln!("Error: internal error: edited manifest is invalid: {e}");
-                process::exit(1);
-            });
-
-            std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
-                eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
-                process::exit(1);
-            });
-
-            resolve_and_write_lockfile(&project_root, manifest);
-            println!("removed '{name}'");
+        (None, Some(path), None) => AddSource::Path { path },
+        (None, None, Some(version)) => AddSource::Registry { version },
+        // clap's ArgGroup enforces exactly-one; this branch is for
+        // coverage in case that constraint is ever weakened.
+        _ => {
+            eprintln!("Error: exactly one of --git, --path, or --version is required");
+            process::exit(2);
         }
-        Commands::Update => {
-            let project_root = find_project_root_or_exit();
-            let manifest_path = project_root.join("krypton.toml");
-            let manifest = Manifest::from_path(&manifest_path).unwrap_or_else(|e| {
-                eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
-                process::exit(1);
-            });
-            // `resolve` re-fetches git sources via `fetch_git::ensure_persistent_clone`,
-            // so branch refs naturally advance to current HEAD here.
-            resolve_and_write_lockfile(&project_root, manifest);
-            let lock_path = project_root.join("krypton.lock");
-            println!("updated {}", lock_path.display());
-        }
-    }
+    };
+
+    let project_root = find_project_root_or_exit();
+    let manifest_path = project_root.join("krypton.toml");
+
+    let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    let local_root = editor
+        .add_dependency(&name, source, as_name.as_deref())
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        });
+
+    // Defensive validation: re-parse the edited manifest before
+    // touching the filesystem. Normal writes always produce valid
+    // TOML, but this guards against editor bugs cheaply.
+    let edited = editor.render();
+    let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
+        eprintln!("Error: internal error: edited manifest is invalid: {e}");
+        process::exit(1);
+    });
+
+    std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
+        eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
+        process::exit(1);
+    });
+
+    resolve_and_write_lockfile(&project_root, manifest);
+    println!("added '{local_root}' ({name})");
+}
+
+fn cmd_remove(name: String) {
+    let project_root = find_project_root_or_exit();
+    let manifest_path = project_root.join("krypton.toml");
+
+    let mut editor = ManifestEditor::from_path(&manifest_path).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+    editor.remove_dependency(&name).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+    });
+
+    let edited = editor.render();
+    let manifest = Manifest::from_str(&edited).unwrap_or_else(|e| {
+        eprintln!("Error: internal error: edited manifest is invalid: {e}");
+        process::exit(1);
+    });
+
+    std::fs::write(&manifest_path, &edited).unwrap_or_else(|e| {
+        eprintln!("Error: failed to write '{}': {e}", manifest_path.display());
+        process::exit(1);
+    });
+
+    resolve_and_write_lockfile(&project_root, manifest);
+    println!("removed '{name}'");
+}
+
+fn cmd_update() {
+    let project_root = find_project_root_or_exit();
+    let manifest_path = project_root.join("krypton.toml");
+    let manifest = Manifest::from_path(&manifest_path).unwrap_or_else(|e| {
+        eprintln!("Error: failed to read '{}': {e}", manifest_path.display());
+        process::exit(1);
+    });
+    // `resolve` re-fetches git sources via `fetch_git::ensure_persistent_clone`,
+    // so branch refs naturally advance to current HEAD here.
+    resolve_and_write_lockfile(&project_root, manifest);
+    let lock_path = project_root.join("krypton.lock");
+    println!("updated {}", lock_path.display());
 }
