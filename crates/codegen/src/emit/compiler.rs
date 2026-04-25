@@ -453,6 +453,18 @@ pub(super) fn assert_stack_delta(
     );
 }
 
+/// Frame state saved before entering a multi-branch construct (Switch /
+/// BoolSwitch) so each branch can compile against an identical entry frame
+/// and the post-merge can restore the same view.
+pub(super) struct BranchFrameSnapshot {
+    stack_types: Vec<VerificationType>,
+    locals: HashMap<String, (u16, JvmType)>,
+    local_types: Vec<VerificationType>,
+    next_local: u16,
+    var_locals: HashMap<krypton_ir::VarId, (u16, JvmType)>,
+    var_types: HashMap<krypton_ir::VarId, Type>,
+}
+
 impl<'link> Compiler<'link> {
     pub(super) fn is_abstract_type_ctor(ty: &Type) -> bool {
         match ty {
@@ -2392,86 +2404,10 @@ impl<'link> Compiler<'link> {
                 ty,
                 value,
                 body,
-            } => {
-                let jvm_ty = self.type_to_jvm(ty)?;
-                let val_type = self.compile_ir_simple_expr(value, ty, ir_module)?;
-
-                // Coerce if needed (actual=val_type → target=jvm_ty)
-                self.emit_type_coercion(val_type, jvm_ty);
-
-                // Use pre-allocated slot if one exists (disposable vars null-initialized
-                // at function entry for JVM verifier compatibility in finally handlers).
-                // The slot mapping is kept (not removed) so the function-wide finally
-                // handler can still find block-scoped disposables whose `var_locals`
-                // entries were rolled back by branch restoration.
-                let slot = if let Some(&existing_slot) = self.pre_allocated_slots.get(bind) {
-                    self.builder.emit_store(existing_slot, jvm_ty);
-                    existing_slot
-                } else {
-                    let slot = self.builder.alloc_anonymous_local(jvm_ty);
-                    self.builder.emit_store(slot, jvm_ty);
-                    slot
-                };
-                self.var_locals.insert(*bind, (slot, jvm_ty));
-                self.var_types.insert(*bind, ty.clone());
-
-                // If the value is function-typed, register in local_fn_info for higher-order calls
-                let fn_type = match ty {
-                    Type::Own(inner) => inner.as_ref(),
-                    other => other,
-                };
-                if let Type::Fn(inner_params, inner_ret) = fn_type {
-                    let inner_param_jvm: Vec<JvmType> = inner_params
-                        .iter()
-                        .map(|t| self.type_to_jvm(t))
-                        .collect::<Result<_, _>>()?;
-                    let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
-                    let arity = inner_params.len() as u8;
-                    self.lambda.ensure_fun_interface(
-                        arity,
-                        &mut self.cp,
-                        &mut self.types.class_descriptors,
-                    )?;
-                    // Use a synthetic name for the local_fn_info
-                    let var_name = format!("__ir_var_{}", bind.0);
-                    self.builder.locals.insert(var_name.clone(), (slot, jvm_ty));
-                    self.builder
-                        .local_fn_info
-                        .insert(var_name, (inner_param_jvm, inner_ret_jvm));
-                }
-
-                self.compile_ir_expr(body, ir_module)
-            }
+            } => self.compile_let(*bind, ty, value, body, ir_module),
 
             krypton_ir::ExprKind::LetRec { bindings, body } => {
-                // First pass: allocate locals for all bindings
-                for (var_id, ty, _fn_id, _captures) in bindings {
-                    let jvm_ty = self.type_to_jvm(ty)?;
-                    let slot = self.builder.alloc_anonymous_local(jvm_ty);
-                    self.var_locals.insert(*var_id, (slot, jvm_ty));
-                    self.var_types.insert(*var_id, ty.clone());
-                }
-                // Second pass: compile MakeClosure for each and store
-                for (var_id, ty, fn_id, captures) in bindings {
-                    let make_closure = krypton_ir::SimpleExpr::new(
-                        (0, 0),
-                        SimpleExprKind::MakeClosure {
-                            func: *fn_id,
-                            captures: captures.clone(),
-                        },
-                    );
-                    let val_type = self.compile_ir_simple_expr(&make_closure, ty, ir_module)?;
-                    let &(slot, jvm_ty) = self.var_locals.get(var_id).unwrap();
-                    // Coerce if needed
-                    if jvm_ty != val_type
-                        && matches!(jvm_ty, JvmType::StructRef(_))
-                        && !val_type.is_reference()
-                    {
-                        self.builder.box_if_needed(val_type);
-                    }
-                    self.builder.emit_store(slot, jvm_ty);
-                }
-                self.compile_ir_expr(body, ir_module)
+                self.compile_let_rec(bindings, body, ir_module)
             }
 
             krypton_ir::ExprKind::LetJoin {
@@ -2482,164 +2418,9 @@ impl<'link> Compiler<'link> {
                 is_recur,
             } => {
                 if *is_recur {
-                    // Recur loop: allocate param slots, compile body first (initial jump),
-                    // then set recur target and compile join_body.
-                    let mut param_slots = Vec::new();
-                    for (var_id, ty) in params {
-                        let jvm_ty = self.type_to_jvm(ty)?;
-                        let slot = self.builder.alloc_anonymous_local(jvm_ty);
-                        param_slots.push((slot, jvm_ty));
-                        self.var_types.insert(*var_id, ty.clone());
-                    }
-
-                    // Register join point with forward reference (body's Jump will be patched)
-                    self.join_points.insert(
-                        *name,
-                        JoinPointInfo {
-                            target_offset: 0,
-                            param_slots: param_slots.clone(),
-                            frame_locals: self.builder.frame.local_types.clone(),
-                            forward_jumps: Vec::new(),
-                        },
-                    );
-
-                    // Compile body (contains initial `jump loop(args)` — forward ref)
-                    let _body_type = self.compile_ir_expr(body, ir_module)?;
-
-                    // Set recur target here (where join_body starts).
-                    // No Nop — recur_target overwrites the Jump handler's dead-code frame.
-                    let recur_target = self.builder.code.len() as u16;
-                    self.builder.recur_target = recur_target;
-                    self.builder.fn_params = param_slots.clone();
-                    self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
-
-                    // Update join point with actual target (for back-edge jumps from join_body)
-                    if let Some(jp) = self.join_points.get_mut(name) {
-                        jp.target_offset = recur_target;
-                        jp.frame_locals = self.builder.recur_frame_locals.clone();
-                        for &jump_idx in &jp.forward_jumps.clone() {
-                            self.builder
-                                .patch(jump_idx, Instruction::Goto(recur_target));
-                        }
-                    }
-
-                    // Add params to var_locals (visible in join_body)
-                    for (i, (var_id, _ty)) in params.iter().enumerate() {
-                        let (slot, jvm_ty) = param_slots[i];
-                        self.var_locals.insert(*var_id, (slot, jvm_ty));
-                    }
-
-                    // Record frame at join_body start (clear stale stack from body's Jump)
-                    self.builder.frame.stack_types.clear();
-                    self.builder.frame.record_frame(recur_target);
-
-                    // Compile join_body (jumps are back-edges with target_offset != 0)
-                    self.builder.dead_code = false;
-                    self.compile_ir_expr(join_body, ir_module)
+                    self.compile_let_join_recur(*name, params, join_body, body, ir_module)
                 } else {
-                    // Forward join point
-                    let mut param_slots = Vec::new();
-                    // Save local_types BEFORE pushing Top placeholders
-                    let pre_top_local_types = self.builder.frame.local_types.clone();
-
-                    for (var_id, ty) in params {
-                        let jvm_ty = self.type_to_jvm(ty)?;
-                        let slot = self.builder.next_local;
-                        let slot_size: u16 = match jvm_ty {
-                            JvmType::Long | JvmType::Double => 2,
-                            _ => 1,
-                        };
-                        // Keep Top pushes to maintain local_types/next_local sync
-                        for _ in 0..slot_size {
-                            self.builder.frame.local_types.push(VerificationType::Top);
-                        }
-                        self.builder.next_local += slot_size;
-                        param_slots.push((slot, jvm_ty));
-                        self.var_types.insert(*var_id, ty.clone());
-                    }
-
-                    let saved_locals = self.builder.locals.clone();
-                    let saved_local_types = self.builder.frame.local_types.clone();
-                    let saved_next_local = self.builder.next_local;
-
-                    // Build join frame with actual param types (not Top)
-                    let mut join_frame_locals = pre_top_local_types;
-                    for &(_slot, jvm_ty) in &param_slots {
-                        let vtypes = self.builder.jvm_type_to_vtypes(jvm_ty);
-                        join_frame_locals.extend(vtypes);
-                    }
-
-                    self.join_points.insert(
-                        *name,
-                        JoinPointInfo {
-                            target_offset: 0,
-                            param_slots: param_slots.clone(),
-                            frame_locals: join_frame_locals.clone(),
-                            forward_jumps: Vec::new(),
-                        },
-                    );
-
-                    // Compile body (which contains Jump to this join point)
-                    let body_type = self.compile_ir_expr(body, ir_module)?;
-                    let body_dead = self.builder.dead_code;
-
-                    // Skip over join_body
-                    let skip_goto = self.builder.emit_placeholder(Instruction::Goto(0));
-
-                    // Join body starts here
-                    let join_start = self.builder.current_offset();
-                    // Update the join point target
-                    if let Some(jp) = self.join_points.get_mut(name) {
-                        jp.target_offset = join_start;
-                    }
-
-                    // Restore frame state for join_body
-                    self.builder.max_locals_hwm =
-                        self.builder.max_locals_hwm.max(self.builder.next_local);
-                    self.builder.frame.stack_types.clear();
-                    self.builder.frame.local_types = join_frame_locals.clone();
-                    self.builder.next_local = saved_next_local;
-                    self.builder.locals = saved_locals.clone();
-
-                    // Add params to var_locals (visible in join_body)
-                    for (i, (var_id, _ty)) in params.iter().enumerate() {
-                        let (slot, jvm_ty) = param_slots[i];
-                        self.var_locals.insert(*var_id, (slot, jvm_ty));
-                    }
-                    self.builder.frame.record_frame(join_start);
-
-                    self.builder.dead_code = false;
-                    let join_type = self.compile_ir_expr(join_body, ir_module)?;
-                    let join_dead = self.builder.dead_code;
-
-                    let after = self.builder.current_offset();
-
-                    // Patch skip goto
-                    self.builder.patch(skip_goto, Instruction::Goto(after));
-
-                    // Patch forward jumps
-                    if let Some(jp) = self.join_points.get(name) {
-                        for &jump_idx in &jp.forward_jumps {
-                            self.builder.patch(jump_idx, Instruction::Goto(join_start));
-                        }
-                    }
-
-                    // Record merge frame — use saved state (Top in param positions)
-                    // Both paths (skip_goto with Top, join_body with actual types) are valid
-                    // since everything is assignable to Top.
-                    self.builder.max_locals_hwm =
-                        self.builder.max_locals_hwm.max(self.builder.next_local);
-                    self.builder.frame.stack_types.clear();
-                    self.builder.frame.local_types = saved_local_types;
-                    self.builder.next_local = saved_next_local;
-                    self.builder.locals = saved_locals;
-                    let result_type = body_type;
-                    self.builder.push_jvm_type(result_type);
-                    self.builder.frame.record_frame(after);
-
-                    let _ = join_type;
-                    self.builder.dead_code = body_dead && join_dead;
-                    Ok(result_type)
+                    self.compile_let_join_forward(*name, params, join_body, body, ir_module)
                 }
             }
 
@@ -2651,397 +2432,19 @@ impl<'link> Compiler<'link> {
                 body,
             } => self.compile_auto_close(*resource, dict, type_name, *null_slot, body, ir_module),
 
-            krypton_ir::ExprKind::Jump { target, args } => {
-                let jp = self.join_points.get(target).ok_or_else(|| {
-                    CodegenError::UndefinedVariable(
-                        format!("ICE: no join point for VarId({})", target.0),
-                        None,
-                    )
-                })?;
-                let param_slots = jp.param_slots.clone();
-                let target_offset = jp.target_offset;
-                let frame_locals = jp.frame_locals.clone();
-
-                // Compile args and store into param slots, converting types if needed
-                for (i, arg) in args.iter().enumerate() {
-                    let arg_type = self.compile_ir_atom(arg)?;
-                    let (slot, jvm_ty) = param_slots[i];
-                    if arg_type != jvm_ty {
-                        if matches!(jvm_ty, JvmType::StructRef(_))
-                            && !matches!(arg_type, JvmType::StructRef(_))
-                        {
-                            // Primitive → Object: box
-                            self.builder.box_if_needed(arg_type);
-                        } else if !matches!(jvm_ty, JvmType::StructRef(_))
-                            && matches!(arg_type, JvmType::StructRef(_))
-                        {
-                            // Object → primitive: unbox
-                            self.builder.unbox_if_needed(jvm_ty);
-                        }
-                    }
-                    self.builder.emit_store(slot, jvm_ty);
-                }
-
-                if target_offset == 0 {
-                    // Forward reference: emit placeholder and record for patching
-                    let goto_idx = self.builder.emit_placeholder(Instruction::Goto(0));
-                    if let Some(jp) = self.join_points.get_mut(target) {
-                        jp.forward_jumps.push(goto_idx);
-                    }
-                } else {
-                    // Back-edge (recur): record frame and goto
-                    let initial_locals = super::builder::compact_types(&frame_locals);
-                    self.builder
-                        .frame
-                        .frames
-                        .insert(target_offset, (initial_locals, vec![]));
-                    self.builder.emit(Instruction::Goto(target_offset));
-                }
-
-                self.builder.dead_code = true;
-
-                // Clear stack for dead code after goto, but keep local_types intact
-                // so that enclosing Switch merge frames see the full locals.
-                self.builder.frame.stack_types.clear();
-
-                // Push phantom return type so the dead-code frame's stack matches
-                // the merge target's expected stack.
-                let return_type = self
-                    .builder
-                    .fn_return_type
-                    .expect("ICE: fn_return_type must be set before body compilation");
-                self.builder.push_jvm_type(return_type);
-                let after_goto = self.builder.code.len() as u16;
-                self.builder.frame.record_frame(after_goto);
-                Ok(return_type)
-            }
+            krypton_ir::ExprKind::Jump { target, args } => self.compile_jump(*target, args),
 
             krypton_ir::ExprKind::BoolSwitch {
                 scrutinee,
                 true_body,
                 false_body,
-            } => {
-                let scrutinee_type = self.compile_ir_atom(scrutinee)?;
-                let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
-                self.builder.emit_store(scrutinee_slot, scrutinee_type);
-
-                let stack_at_match = self.builder.frame.stack_types.clone();
-                let saved_locals = self.builder.locals.clone();
-                let saved_local_types = self.builder.frame.local_types.clone();
-                let saved_next_local = self.builder.next_local;
-                let saved_var_locals = self.var_locals.clone();
-                let saved_var_types = self.var_types.clone();
-
-                // Emit: if scrutinee == 0 goto false_branch
-                self.builder.emit_load(scrutinee_slot, scrutinee_type);
-                let false_patch = self.builder.emit_placeholder(Instruction::Ifeq(0));
-                self.builder.frame.pop_type();
-
-                // True branch
-                self.builder.dead_code = false;
-                let true_type = self.compile_ir_expr(true_body, ir_module)?;
-                let target_type = self.builder.fn_return_type.unwrap_or(true_type);
-                self.emit_type_coercion(true_type, target_type);
-                let true_dead = self.builder.dead_code;
-                let goto_patch = self.builder.emit_placeholder(Instruction::Goto(0));
-
-                // False branch — restore state
-                let mut max_next_local = self.builder.next_local;
-                self.builder.frame.stack_types = stack_at_match.clone();
-                self.builder.locals = saved_locals.clone();
-                self.builder.frame.local_types = saved_local_types.clone();
-                self.builder.next_local = saved_next_local;
-                self.var_locals = saved_var_locals.clone();
-                self.var_types = saved_var_types.clone();
-
-                let false_start = self.builder.current_offset();
-                self.builder
-                    .patch(false_patch, Instruction::Ifeq(false_start));
-                self.builder.frame.record_frame(false_start);
-
-                self.builder.dead_code = false;
-                let false_type = self.compile_ir_expr(false_body, ir_module)?;
-                // Always emit coercion for false branch — it falls through to the
-                // merge point, so the verifier traces through even in dead code.
-                self.emit_type_coercion(false_type, target_type);
-                let false_dead = self.builder.dead_code;
-
-                if self.builder.next_local > max_next_local {
-                    max_next_local = self.builder.next_local;
-                }
-
-                // Merge point
-                self.builder.dead_code = true_dead && false_dead;
-                let after_match = self.builder.current_offset();
-                self.builder
-                    .patch(goto_patch, Instruction::Goto(after_match));
-                self.builder.frame.local_types = saved_local_types;
-                self.builder.frame.stack_types = stack_at_match;
-                self.builder.locals = saved_locals;
-                self.builder.next_local = saved_next_local;
-                self.var_locals = saved_var_locals;
-                self.var_types = saved_var_types;
-                self.builder.push_jvm_type(target_type);
-                self.builder.frame.record_frame(after_match);
-
-                if max_next_local > self.builder.max_locals_hwm {
-                    self.builder.max_locals_hwm = max_next_local;
-                }
-
-                Ok(target_type)
-            }
+            } => self.compile_bool_switch(scrutinee, true_body, false_body, ir_module),
 
             krypton_ir::ExprKind::Switch {
                 scrutinee,
                 branches,
                 default,
-            } => {
-                let scrutinee_type = self.compile_ir_atom(scrutinee)?;
-                let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
-                self.builder.emit_store(scrutinee_slot, scrutinee_type);
-
-                let stack_at_match = self.builder.frame.stack_types.clone();
-                let saved_locals = self.builder.locals.clone();
-                let saved_local_types = self.builder.frame.local_types.clone();
-                let saved_next_local = self.builder.next_local;
-                let saved_var_locals = self.var_locals.clone();
-                let saved_var_types = self.var_types.clone();
-
-                let mut goto_patches: Vec<usize> = Vec::new();
-                let mut result_type = None;
-                let mut max_next_local = saved_next_local;
-                let mut all_arms_dead = true;
-
-                let total_branches = branches.len() + if default.is_some() { 1 } else { 0 };
-                let all_tags: Vec<u32> = branches.iter().map(|b| b.tag).collect();
-
-                for (i, branch) in branches.iter().enumerate() {
-                    let is_last = i == total_branches - 1 && default.is_none();
-
-                    if self.builder.next_local > max_next_local {
-                        max_next_local = self.builder.next_local;
-                    }
-
-                    // Restore state for each branch
-                    self.builder.frame.stack_types = stack_at_match.clone();
-                    self.builder.locals = saved_locals.clone();
-                    self.builder.frame.local_types = saved_local_types.clone();
-                    self.builder.next_local = saved_next_local;
-                    self.var_locals = saved_var_locals.clone();
-                    self.var_types = saved_var_types.clone();
-                    self.builder.dead_code = false;
-
-                    if i > 0 {
-                        let branch_start = self.builder.current_offset();
-                        self.builder.frame.record_frame(branch_start);
-                    }
-
-                    // Instanceof check (skip for last branch — it's the fallthrough)
-                    let next_arm_patch = if !is_last {
-                        let variant_name = self.find_variant_by_tag(
-                            scrutinee,
-                            &saved_var_types,
-                            branch.tag,
-                            &all_tags,
-                        )?;
-                        let sum_name = self
-                            .types
-                            .variant_to_sum
-                            .get(&variant_name)
-                            .ok_or_else(|| {
-                                CodegenError::TypeError(
-                                    format!("unknown variant: {variant_name}"),
-                                    None,
-                                )
-                            })?
-                            .clone();
-                        let sum_info = &self.types.sum_type_info[&sum_name];
-                        let vi = &sum_info.variants[&variant_name];
-                        let variant_class_index = vi.class_index;
-
-                        self.builder.emit_load(scrutinee_slot, scrutinee_type);
-                        self.builder
-                            .emit(Instruction::Instanceof(variant_class_index));
-                        self.builder.pop_jvm_type(scrutinee_type);
-                        self.builder.frame.push_type(VerificationType::Integer);
-                        let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
-                        self.builder.frame.pop_type();
-                        Some(idx)
-                    } else {
-                        None
-                    };
-
-                    // Bind branch variables
-                    if !branch.bindings.is_empty() {
-                        let variant_name = self.find_variant_by_tag(
-                            scrutinee,
-                            &saved_var_types,
-                            branch.tag,
-                            &all_tags,
-                        )?;
-                        let sum_name = self.types.variant_to_sum[&variant_name].clone();
-                        let resolved_field_types = self.resolve_variant_field_types(
-                            scrutinee,
-                            &saved_var_types,
-                            &sum_name,
-                            &variant_name,
-                        );
-                        let sum_info = &self.types.sum_type_info[&sum_name];
-                        let vi = &sum_info.variants[&variant_name];
-                        let variant_class_index = vi.class_index;
-                        let field_refs = vi.field_refs.clone();
-                        let fields = vi.fields.clone();
-
-                        self.builder.emit_load(scrutinee_slot, scrutinee_type);
-                        self.builder
-                            .emit(Instruction::Checkcast(variant_class_index));
-                        self.builder.pop_jvm_type(scrutinee_type);
-                        self.builder.frame.push_type(VerificationType::Object {
-                            cpool_index: variant_class_index,
-                        });
-                        let cast_slot = self
-                            .builder
-                            .alloc_anonymous_local(JvmType::StructRef(variant_class_index));
-                        self.builder
-                            .emit_store(cast_slot, JvmType::StructRef(variant_class_index));
-
-                        for (j, (var_id, var_ty)) in branch.bindings.iter().enumerate() {
-                            let f = &fields[j];
-                            let field_ref = field_refs[j];
-                            let resolved_ty_for_field = resolved_field_types
-                                .as_ref()
-                                .and_then(|rft| rft.get(j).cloned());
-                            let actual_type = if f.is_erased {
-                                // Use the resolved concrete type when available so
-                                // primitives (Long/Double/Int) get unboxed correctly.
-                                let concrete_ty = resolved_ty_for_field.as_ref().unwrap_or(var_ty);
-                                self.type_to_jvm(concrete_ty)
-                                    .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
-                            } else {
-                                f.jvm_type
-                            };
-
-                            self.builder
-                                .emit_load(cast_slot, JvmType::StructRef(variant_class_index));
-                            self.builder.emit(Instruction::Getfield(field_ref));
-                            self.builder.frame.pop_type();
-                            if f.is_erased {
-                                self.builder.frame.push_type(VerificationType::Object {
-                                    cpool_index: self.builder.refs.object_class,
-                                });
-                                match actual_type {
-                                    JvmType::StructRef(class_idx)
-                                        if class_idx != self.builder.refs.object_class =>
-                                    {
-                                        self.builder.emit(Instruction::Checkcast(class_idx));
-                                        self.builder.frame.pop_type();
-                                        self.builder.frame.push_type(VerificationType::Object {
-                                            cpool_index: class_idx,
-                                        });
-                                    }
-                                    JvmType::Long | JvmType::Double | JvmType::Int => {
-                                        self.builder.unbox_if_needed(actual_type);
-                                    }
-                                    _ => {}
-                                }
-                            } else {
-                                self.builder.push_jvm_type(f.jvm_type);
-                            }
-
-                            let var_slot = self.builder.alloc_anonymous_local(actual_type);
-                            self.builder.emit_store(var_slot, actual_type);
-                            self.var_locals.insert(*var_id, (var_slot, actual_type));
-                            let resolved_ty = resolved_field_types
-                                .as_ref()
-                                .and_then(|rft| rft.get(j).cloned())
-                                .unwrap_or_else(|| var_ty.clone());
-                            self.var_types.insert(*var_id, resolved_ty);
-                        }
-                    }
-
-                    let arm_type = self.compile_ir_expr(&branch.body, ir_module)?;
-                    all_arms_dead = all_arms_dead && self.builder.dead_code;
-
-                    // Normalize result type
-                    let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
-                    if result_type.is_none() {
-                        result_type = Some(target_type);
-                    }
-
-                    self.emit_type_coercion(arm_type, target_type);
-
-                    if !is_last || default.is_some() {
-                        let goto_idx = self.builder.emit_placeholder(Instruction::Goto(0));
-                        goto_patches.push(goto_idx);
-                    }
-
-                    if let Some(patch_idx) = next_arm_patch {
-                        let target = self.builder.current_offset();
-                        self.builder.patch(patch_idx, Instruction::Ifeq(target));
-                    }
-                }
-
-                // Default branch
-                if let Some(default_body) = default {
-                    if self.builder.next_local > max_next_local {
-                        max_next_local = self.builder.next_local;
-                    }
-                    self.builder.frame.stack_types = stack_at_match.clone();
-                    self.builder.locals = saved_locals.clone();
-                    self.builder.frame.local_types = saved_local_types.clone();
-                    self.builder.next_local = saved_next_local;
-                    self.var_locals = saved_var_locals.clone();
-                    self.var_types = saved_var_types.clone();
-                    self.builder.dead_code = false;
-
-                    let default_start = self.builder.current_offset();
-                    self.builder.frame.record_frame(default_start);
-
-                    let arm_type = self.compile_ir_expr(default_body, ir_module)?;
-                    all_arms_dead = all_arms_dead && self.builder.dead_code;
-                    let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
-                    if result_type.is_none() {
-                        result_type = Some(target_type);
-                    }
-                    // Default branch always falls through — emit coercion for verifier
-                    self.emit_type_coercion(arm_type, target_type);
-                } else {
-                    // No default arm — implicit fallthrough is reachable
-                    all_arms_dead = false;
-                }
-
-                if self.builder.next_local > max_next_local {
-                    max_next_local = self.builder.next_local;
-                }
-
-                self.builder.dead_code = all_arms_dead;
-                let after_match = self.builder.current_offset();
-                self.builder.frame.local_types = saved_local_types;
-                self.builder.frame.stack_types = stack_at_match;
-                self.builder.locals = saved_locals;
-                self.builder.next_local = saved_next_local;
-                self.var_locals = saved_var_locals;
-                self.var_types = saved_var_types;
-                if let Some(rt) = result_type {
-                    self.builder.push_jvm_type(rt);
-                }
-                self.builder.frame.record_frame(after_match);
-
-                for goto_idx in goto_patches {
-                    self.builder.patch(goto_idx, Instruction::Goto(after_match));
-                }
-
-                if max_next_local > self.builder.max_locals_hwm {
-                    self.builder.max_locals_hwm = max_next_local;
-                }
-
-                Ok(result_type.ok_or_else(|| {
-                    CodegenError::TypeError(
-                        "switch expression produced no result type".to_string(),
-                        None,
-                    )
-                })?)
-            }
+            } => self.compile_switch(scrutinee, branches, default.as_deref(), ir_module),
         }
     }
 
@@ -3313,6 +2716,644 @@ impl<'link> Compiler<'link> {
     /// Compile an `ExprKind::AutoClose` node: evaluate `dispose(dict, resource)`
     /// via the Disposable trait, optionally null the resource slot so the
     /// function-wide finally handler skips it, then compile `body`.
+    fn compile_let(
+        &mut self,
+        bind: krypton_ir::VarId,
+        ty: &Type,
+        value: &krypton_ir::SimpleExpr,
+        body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        let jvm_ty = self.type_to_jvm(ty)?;
+        let val_type = self.compile_ir_simple_expr(value, ty, ir_module)?;
+
+        self.emit_type_coercion(val_type, jvm_ty);
+
+        // Use pre-allocated slot if one exists (disposable vars null-initialized
+        // at function entry for JVM verifier compatibility in finally handlers).
+        // The slot mapping is kept (not removed) so the function-wide finally
+        // handler can still find block-scoped disposables whose `var_locals`
+        // entries were rolled back by branch restoration.
+        let slot = if let Some(&existing_slot) = self.pre_allocated_slots.get(&bind) {
+            self.builder.emit_store(existing_slot, jvm_ty);
+            existing_slot
+        } else {
+            let slot = self.builder.alloc_anonymous_local(jvm_ty);
+            self.builder.emit_store(slot, jvm_ty);
+            slot
+        };
+        self.var_locals.insert(bind, (slot, jvm_ty));
+        self.var_types.insert(bind, ty.clone());
+
+        let fn_type = match ty {
+            Type::Own(inner) => inner.as_ref(),
+            other => other,
+        };
+        if let Type::Fn(inner_params, inner_ret) = fn_type {
+            let inner_param_jvm: Vec<JvmType> = inner_params
+                .iter()
+                .map(|t| self.type_to_jvm(t))
+                .collect::<Result<_, _>>()?;
+            let inner_ret_jvm = self.type_to_jvm(inner_ret)?;
+            let arity = inner_params.len() as u8;
+            self.lambda.ensure_fun_interface(
+                arity,
+                &mut self.cp,
+                &mut self.types.class_descriptors,
+            )?;
+            let var_name = format!("__ir_var_{}", bind.0);
+            self.builder.locals.insert(var_name.clone(), (slot, jvm_ty));
+            self.builder
+                .local_fn_info
+                .insert(var_name, (inner_param_jvm, inner_ret_jvm));
+        }
+
+        let result = self.compile_ir_expr(body, ir_module)?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_let",
+        );
+        Ok(result)
+    }
+
+    fn snapshot_branch_frame(&self) -> BranchFrameSnapshot {
+        BranchFrameSnapshot {
+            stack_types: self.builder.frame.stack_types.clone(),
+            locals: self.builder.locals.clone(),
+            local_types: self.builder.frame.local_types.clone(),
+            next_local: self.builder.next_local,
+            var_locals: self.var_locals.clone(),
+            var_types: self.var_types.clone(),
+        }
+    }
+
+    fn restore_branch_frame(&mut self, snap: &BranchFrameSnapshot) {
+        self.builder.frame.stack_types = snap.stack_types.clone();
+        self.builder.locals = snap.locals.clone();
+        self.builder.frame.local_types = snap.local_types.clone();
+        self.builder.next_local = snap.next_local;
+        self.var_locals = snap.var_locals.clone();
+        self.var_types = snap.var_types.clone();
+    }
+
+    fn restore_branch_frame_owned(&mut self, snap: BranchFrameSnapshot) {
+        self.builder.frame.stack_types = snap.stack_types;
+        self.builder.locals = snap.locals;
+        self.builder.frame.local_types = snap.local_types;
+        self.builder.next_local = snap.next_local;
+        self.var_locals = snap.var_locals;
+        self.var_types = snap.var_types;
+    }
+
+    fn compile_bool_switch(
+        &mut self,
+        scrutinee: &krypton_ir::Atom,
+        true_body: &krypton_ir::Expr,
+        false_body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        let scrutinee_type = self.compile_ir_atom(scrutinee)?;
+        let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
+        self.builder.emit_store(scrutinee_slot, scrutinee_type);
+
+        let snap = self.snapshot_branch_frame();
+
+        self.builder.emit_load(scrutinee_slot, scrutinee_type);
+        let false_patch = self.builder.emit_placeholder(Instruction::Ifeq(0));
+        self.builder.frame.pop_type();
+
+        // True branch
+        self.builder.dead_code = false;
+        let true_type = self.compile_ir_expr(true_body, ir_module)?;
+        let target_type = self.builder.fn_return_type.unwrap_or(true_type);
+        self.emit_type_coercion(true_type, target_type);
+        let true_dead = self.builder.dead_code;
+        let goto_patch = self.builder.emit_placeholder(Instruction::Goto(0));
+
+        // False branch — restore state
+        let mut max_next_local = self.builder.next_local;
+        self.restore_branch_frame(&snap);
+
+        let false_start = self.builder.current_offset();
+        self.builder
+            .patch(false_patch, Instruction::Ifeq(false_start));
+        self.builder.frame.record_frame(false_start);
+
+        self.builder.dead_code = false;
+        let false_type = self.compile_ir_expr(false_body, ir_module)?;
+        // Always emit coercion for false branch — it falls through to the
+        // merge point, so the verifier traces through even in dead code.
+        self.emit_type_coercion(false_type, target_type);
+        let false_dead = self.builder.dead_code;
+
+        if self.builder.next_local > max_next_local {
+            max_next_local = self.builder.next_local;
+        }
+
+        // Merge point
+        self.builder.dead_code = true_dead && false_dead;
+        let after_match = self.builder.current_offset();
+        self.builder
+            .patch(goto_patch, Instruction::Goto(after_match));
+        self.restore_branch_frame_owned(snap);
+        self.builder.push_jvm_type(target_type);
+        self.builder.frame.record_frame(after_match);
+
+        if max_next_local > self.builder.max_locals_hwm {
+            self.builder.max_locals_hwm = max_next_local;
+        }
+
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            target_type,
+            "compile_bool_switch",
+        );
+        Ok(target_type)
+    }
+
+    fn compile_switch(
+        &mut self,
+        scrutinee: &krypton_ir::Atom,
+        branches: &[krypton_ir::SwitchBranch],
+        default: Option<&krypton_ir::Expr>,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        let scrutinee_type = self.compile_ir_atom(scrutinee)?;
+        let scrutinee_slot = self.builder.alloc_anonymous_local(scrutinee_type);
+        self.builder.emit_store(scrutinee_slot, scrutinee_type);
+
+        let snap = self.snapshot_branch_frame();
+
+        let mut goto_patches: Vec<usize> = Vec::new();
+        let mut result_type = None;
+        let mut max_next_local = snap.next_local;
+        let mut all_arms_dead = true;
+
+        let total_branches = branches.len() + if default.is_some() { 1 } else { 0 };
+        let all_tags: Vec<u32> = branches.iter().map(|b| b.tag).collect();
+
+        for (i, branch) in branches.iter().enumerate() {
+            let is_last = i == total_branches - 1 && default.is_none();
+
+            if self.builder.next_local > max_next_local {
+                max_next_local = self.builder.next_local;
+            }
+
+            self.restore_branch_frame(&snap);
+            self.builder.dead_code = false;
+
+            if i > 0 {
+                let branch_start = self.builder.current_offset();
+                self.builder.frame.record_frame(branch_start);
+            }
+
+            // Instanceof check (skip for last branch — it's the fallthrough)
+            let next_arm_patch = if !is_last {
+                let variant_name = self.find_variant_by_tag(
+                    scrutinee,
+                    &snap.var_types,
+                    branch.tag,
+                    &all_tags,
+                )?;
+                let sum_name = self
+                    .types
+                    .variant_to_sum
+                    .get(&variant_name)
+                    .ok_or_else(|| {
+                        CodegenError::TypeError(
+                            format!("unknown variant: {variant_name}"),
+                            None,
+                        )
+                    })?
+                    .clone();
+                let sum_info = &self.types.sum_type_info[&sum_name];
+                let vi = &sum_info.variants[&variant_name];
+                let variant_class_index = vi.class_index;
+
+                self.builder.emit_load(scrutinee_slot, scrutinee_type);
+                self.builder
+                    .emit(Instruction::Instanceof(variant_class_index));
+                self.builder.pop_jvm_type(scrutinee_type);
+                self.builder.frame.push_type(VerificationType::Integer);
+                let idx = self.builder.emit_placeholder(Instruction::Ifeq(0));
+                self.builder.frame.pop_type();
+                Some(idx)
+            } else {
+                None
+            };
+
+            // Bind branch variables
+            if !branch.bindings.is_empty() {
+                let variant_name = self.find_variant_by_tag(
+                    scrutinee,
+                    &snap.var_types,
+                    branch.tag,
+                    &all_tags,
+                )?;
+                let sum_name = self.types.variant_to_sum[&variant_name].clone();
+                let resolved_field_types = self.resolve_variant_field_types(
+                    scrutinee,
+                    &snap.var_types,
+                    &sum_name,
+                    &variant_name,
+                );
+                let sum_info = &self.types.sum_type_info[&sum_name];
+                let vi = &sum_info.variants[&variant_name];
+                let variant_class_index = vi.class_index;
+                let field_refs = vi.field_refs.clone();
+                let fields = vi.fields.clone();
+
+                self.builder.emit_load(scrutinee_slot, scrutinee_type);
+                self.builder
+                    .emit(Instruction::Checkcast(variant_class_index));
+                self.builder.pop_jvm_type(scrutinee_type);
+                self.builder.frame.push_type(VerificationType::Object {
+                    cpool_index: variant_class_index,
+                });
+                let cast_slot = self
+                    .builder
+                    .alloc_anonymous_local(JvmType::StructRef(variant_class_index));
+                self.builder
+                    .emit_store(cast_slot, JvmType::StructRef(variant_class_index));
+
+                for (j, (var_id, var_ty)) in branch.bindings.iter().enumerate() {
+                    let f = &fields[j];
+                    let field_ref = field_refs[j];
+                    let resolved_ty_for_field = resolved_field_types
+                        .as_ref()
+                        .and_then(|rft| rft.get(j).cloned());
+                    let actual_type = if f.is_erased {
+                        // Use the resolved concrete type when available so
+                        // primitives (Long/Double/Int) get unboxed correctly.
+                        let concrete_ty = resolved_ty_for_field.as_ref().unwrap_or(var_ty);
+                        self.type_to_jvm(concrete_ty)
+                            .unwrap_or(JvmType::StructRef(self.builder.refs.object_class))
+                    } else {
+                        f.jvm_type
+                    };
+
+                    self.builder
+                        .emit_load(cast_slot, JvmType::StructRef(variant_class_index));
+                    self.builder.emit(Instruction::Getfield(field_ref));
+                    self.builder.frame.pop_type();
+                    if f.is_erased {
+                        self.builder.frame.push_type(VerificationType::Object {
+                            cpool_index: self.builder.refs.object_class,
+                        });
+                        match actual_type {
+                            JvmType::StructRef(class_idx)
+                                if class_idx != self.builder.refs.object_class =>
+                            {
+                                self.builder.emit(Instruction::Checkcast(class_idx));
+                                self.builder.frame.pop_type();
+                                self.builder.frame.push_type(VerificationType::Object {
+                                    cpool_index: class_idx,
+                                });
+                            }
+                            JvmType::Long | JvmType::Double | JvmType::Int => {
+                                self.builder.unbox_if_needed(actual_type);
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        self.builder.push_jvm_type(f.jvm_type);
+                    }
+
+                    let var_slot = self.builder.alloc_anonymous_local(actual_type);
+                    self.builder.emit_store(var_slot, actual_type);
+                    self.var_locals.insert(*var_id, (var_slot, actual_type));
+                    let resolved_ty = resolved_field_types
+                        .as_ref()
+                        .and_then(|rft| rft.get(j).cloned())
+                        .unwrap_or_else(|| var_ty.clone());
+                    self.var_types.insert(*var_id, resolved_ty);
+                }
+            }
+
+            let arm_type = self.compile_ir_expr(&branch.body, ir_module)?;
+            all_arms_dead = all_arms_dead && self.builder.dead_code;
+
+            let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
+            if result_type.is_none() {
+                result_type = Some(target_type);
+            }
+
+            self.emit_type_coercion(arm_type, target_type);
+
+            if !is_last || default.is_some() {
+                let goto_idx = self.builder.emit_placeholder(Instruction::Goto(0));
+                goto_patches.push(goto_idx);
+            }
+
+            if let Some(patch_idx) = next_arm_patch {
+                let target = self.builder.current_offset();
+                self.builder.patch(patch_idx, Instruction::Ifeq(target));
+            }
+        }
+
+        // Default branch
+        if let Some(default_body) = default {
+            if self.builder.next_local > max_next_local {
+                max_next_local = self.builder.next_local;
+            }
+            self.restore_branch_frame(&snap);
+            self.builder.dead_code = false;
+
+            let default_start = self.builder.current_offset();
+            self.builder.frame.record_frame(default_start);
+
+            let arm_type = self.compile_ir_expr(default_body, ir_module)?;
+            all_arms_dead = all_arms_dead && self.builder.dead_code;
+            let target_type = self.builder.fn_return_type.unwrap_or(arm_type);
+            if result_type.is_none() {
+                result_type = Some(target_type);
+            }
+            // Default branch always falls through — emit coercion for verifier
+            self.emit_type_coercion(arm_type, target_type);
+        } else {
+            // No default arm — implicit fallthrough is reachable
+            all_arms_dead = false;
+        }
+
+        if self.builder.next_local > max_next_local {
+            max_next_local = self.builder.next_local;
+        }
+
+        self.builder.dead_code = all_arms_dead;
+        let after_match = self.builder.current_offset();
+        self.restore_branch_frame_owned(snap);
+        if let Some(rt) = result_type {
+            self.builder.push_jvm_type(rt);
+        }
+        self.builder.frame.record_frame(after_match);
+
+        for goto_idx in goto_patches {
+            self.builder.patch(goto_idx, Instruction::Goto(after_match));
+        }
+
+        if max_next_local > self.builder.max_locals_hwm {
+            self.builder.max_locals_hwm = max_next_local;
+        }
+
+        let result = result_type.ok_or_else(|| {
+            CodegenError::TypeError(
+                "switch expression produced no result type".to_string(),
+                None,
+            )
+        })?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_switch",
+        );
+        Ok(result)
+    }
+
+    fn compile_let_rec(
+        &mut self,
+        bindings: &[(
+            krypton_ir::VarId,
+            Type,
+            krypton_ir::FnId,
+            Vec<krypton_ir::Atom>,
+        )],
+        body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        for (var_id, ty, _fn_id, _captures) in bindings {
+            let jvm_ty = self.type_to_jvm(ty)?;
+            let slot = self.builder.alloc_anonymous_local(jvm_ty);
+            self.var_locals.insert(*var_id, (slot, jvm_ty));
+            self.var_types.insert(*var_id, ty.clone());
+        }
+        for (var_id, ty, fn_id, captures) in bindings {
+            let make_closure = krypton_ir::SimpleExpr::new(
+                (0, 0),
+                SimpleExprKind::MakeClosure {
+                    func: *fn_id,
+                    captures: captures.clone(),
+                },
+            );
+            let val_type = self.compile_ir_simple_expr(&make_closure, ty, ir_module)?;
+            let &(slot, jvm_ty) = self.var_locals.get(var_id).unwrap();
+            if jvm_ty != val_type
+                && matches!(jvm_ty, JvmType::StructRef(_))
+                && !val_type.is_reference()
+            {
+                self.builder.box_if_needed(val_type);
+            }
+            self.builder.emit_store(slot, jvm_ty);
+        }
+        let result = self.compile_ir_expr(body, ir_module)?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_let_rec",
+        );
+        Ok(result)
+    }
+
+    fn compile_let_join_recur(
+        &mut self,
+        name: krypton_ir::VarId,
+        params: &[(krypton_ir::VarId, Type)],
+        join_body: &krypton_ir::Expr,
+        body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        // Recur loop: allocate param slots, compile body first (initial jump),
+        // then set recur target and compile join_body.
+        let mut param_slots = Vec::new();
+        for (var_id, ty) in params {
+            let jvm_ty = self.type_to_jvm(ty)?;
+            let slot = self.builder.alloc_anonymous_local(jvm_ty);
+            param_slots.push((slot, jvm_ty));
+            self.var_types.insert(*var_id, ty.clone());
+        }
+
+        self.join_points.insert(
+            name,
+            JoinPointInfo {
+                target_offset: 0,
+                param_slots: param_slots.clone(),
+                frame_locals: self.builder.frame.local_types.clone(),
+                forward_jumps: Vec::new(),
+            },
+        );
+
+        // Compile body (contains initial `jump loop(args)` — forward ref)
+        let _body_type = self.compile_ir_expr(body, ir_module)?;
+
+        // Set recur target here (where join_body starts).
+        // No Nop — recur_target overwrites the Jump handler's dead-code frame.
+        let recur_target = self.builder.code.len() as u16;
+        self.builder.recur_target = recur_target;
+        self.builder.fn_params = param_slots.clone();
+        self.builder.recur_frame_locals = self.builder.frame.local_types.clone();
+
+        // Update join point with actual target (for back-edge jumps from join_body).
+        // The .clone() on forward_jumps is load-bearing: we need to release the
+        // mutable borrow of self.join_points before calling self.builder.patch.
+        if let Some(jp) = self.join_points.get_mut(&name) {
+            jp.target_offset = recur_target;
+            jp.frame_locals = self.builder.recur_frame_locals.clone();
+            for &jump_idx in &jp.forward_jumps.clone() {
+                self.builder
+                    .patch(jump_idx, Instruction::Goto(recur_target));
+            }
+        }
+
+        for (i, (var_id, _ty)) in params.iter().enumerate() {
+            let (slot, jvm_ty) = param_slots[i];
+            self.var_locals.insert(*var_id, (slot, jvm_ty));
+        }
+
+        // Record frame at join_body start (clear stale stack from body's Jump).
+        self.builder.frame.stack_types.clear();
+        self.builder.frame.record_frame(recur_target);
+
+        // Take `before` AFTER the stack clear+record_frame; otherwise the
+        // assertion compares against the pre-clear stack and falsely fires.
+        let before = self.builder.frame.stack_types.len();
+        self.builder.dead_code = false;
+        let result = self.compile_ir_expr(join_body, ir_module)?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_let_join_recur",
+        );
+        Ok(result)
+    }
+
+    fn compile_let_join_forward(
+        &mut self,
+        name: krypton_ir::VarId,
+        params: &[(krypton_ir::VarId, Type)],
+        join_body: &krypton_ir::Expr,
+        body: &krypton_ir::Expr,
+        ir_module: &krypton_ir::Module,
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        let mut param_slots = Vec::new();
+        // Save local_types BEFORE pushing Top placeholders
+        let pre_top_local_types = self.builder.frame.local_types.clone();
+
+        for (var_id, ty) in params {
+            let jvm_ty = self.type_to_jvm(ty)?;
+            let slot = self.builder.next_local;
+            let slot_size: u16 = match jvm_ty {
+                JvmType::Long | JvmType::Double => 2,
+                _ => 1,
+            };
+            for _ in 0..slot_size {
+                self.builder.frame.local_types.push(VerificationType::Top);
+            }
+            self.builder.next_local += slot_size;
+            param_slots.push((slot, jvm_ty));
+            self.var_types.insert(*var_id, ty.clone());
+        }
+
+        let saved_locals = self.builder.locals.clone();
+        let saved_local_types = self.builder.frame.local_types.clone();
+        let saved_next_local = self.builder.next_local;
+
+        // Build join frame with actual param types (not Top)
+        let mut join_frame_locals = pre_top_local_types;
+        for &(_slot, jvm_ty) in &param_slots {
+            let vtypes = self.builder.jvm_type_to_vtypes(jvm_ty);
+            join_frame_locals.extend(vtypes);
+        }
+
+        self.join_points.insert(
+            name,
+            JoinPointInfo {
+                target_offset: 0,
+                param_slots: param_slots.clone(),
+                frame_locals: join_frame_locals.clone(),
+                forward_jumps: Vec::new(),
+            },
+        );
+
+        let body_type = self.compile_ir_expr(body, ir_module)?;
+        let body_dead = self.builder.dead_code;
+
+        // Skip over join_body
+        let skip_goto = self.builder.emit_placeholder(Instruction::Goto(0));
+
+        // Join body starts here
+        let join_start = self.builder.current_offset();
+        if let Some(jp) = self.join_points.get_mut(&name) {
+            jp.target_offset = join_start;
+        }
+
+        // Restore frame state for join_body
+        self.builder.max_locals_hwm =
+            self.builder.max_locals_hwm.max(self.builder.next_local);
+        self.builder.frame.stack_types.clear();
+        self.builder.frame.local_types = join_frame_locals.clone();
+        self.builder.next_local = saved_next_local;
+        self.builder.locals = saved_locals.clone();
+
+        for (i, (var_id, _ty)) in params.iter().enumerate() {
+            let (slot, jvm_ty) = param_slots[i];
+            self.var_locals.insert(*var_id, (slot, jvm_ty));
+        }
+        self.builder.frame.record_frame(join_start);
+
+        self.builder.dead_code = false;
+        let join_type = self.compile_ir_expr(join_body, ir_module)?;
+        let join_dead = self.builder.dead_code;
+
+        let after = self.builder.current_offset();
+
+        self.builder.patch(skip_goto, Instruction::Goto(after));
+
+        if let Some(jp) = self.join_points.get(&name) {
+            for &jump_idx in &jp.forward_jumps {
+                self.builder.patch(jump_idx, Instruction::Goto(join_start));
+            }
+        }
+
+        // Record merge frame — use saved state (Top in param positions).
+        // Both paths (skip_goto with Top, join_body with actual types) are valid
+        // since everything is assignable to Top.
+        self.builder.max_locals_hwm =
+            self.builder.max_locals_hwm.max(self.builder.next_local);
+        self.builder.frame.stack_types.clear();
+        self.builder.frame.local_types = saved_local_types;
+        self.builder.next_local = saved_next_local;
+        self.builder.locals = saved_locals;
+        let result_type = body_type;
+        self.builder.push_jvm_type(result_type);
+        self.builder.frame.record_frame(after);
+
+        let _ = join_type;
+        self.builder.dead_code = body_dead && join_dead;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result_type,
+            "compile_let_join_forward",
+        );
+        Ok(result_type)
+    }
+
     fn compile_auto_close(
         &mut self,
         resource: krypton_ir::VarId,
@@ -3322,6 +3363,7 @@ impl<'link> Compiler<'link> {
         body: &krypton_ir::Expr,
         ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
         // Resolve the resource's slot. block-scoped disposables may have had
         // their var_locals entry rolled back by branch restoration; fall
         // back to pre_allocated_slots which persists for the whole fn.
@@ -3382,7 +3424,83 @@ impl<'link> Compiler<'link> {
         }
 
         // Continue with the body of the AutoClose (the actual return path).
-        self.compile_ir_expr(body, ir_module)
+        let result = self.compile_ir_expr(body, ir_module)?;
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            result,
+            "compile_auto_close",
+        );
+        Ok(result)
+    }
+
+    fn compile_jump(
+        &mut self,
+        target: krypton_ir::VarId,
+        args: &[krypton_ir::Atom],
+    ) -> Result<JvmType, CodegenError> {
+        let before = self.builder.frame.stack_types.len();
+        let jp = self.join_points.get(&target).ok_or_else(|| {
+            CodegenError::UndefinedVariable(
+                format!("ICE: no join point for VarId({})", target.0),
+                None,
+            )
+        })?;
+        let param_slots = jp.param_slots.clone();
+        let target_offset = jp.target_offset;
+        let frame_locals = jp.frame_locals.clone();
+
+        // Compile args and store into param slots, converting types if needed
+        for (i, arg) in args.iter().enumerate() {
+            let arg_type = self.compile_ir_atom(arg)?;
+            let (slot, jvm_ty) = param_slots[i];
+            if arg_type != jvm_ty {
+                if matches!(jvm_ty, JvmType::StructRef(_))
+                    && !matches!(arg_type, JvmType::StructRef(_))
+                {
+                    self.builder.box_if_needed(arg_type);
+                } else if !matches!(jvm_ty, JvmType::StructRef(_))
+                    && matches!(arg_type, JvmType::StructRef(_))
+                {
+                    self.builder.unbox_if_needed(jvm_ty);
+                }
+            }
+            self.builder.emit_store(slot, jvm_ty);
+        }
+
+        if target_offset == 0 {
+            let goto_idx = self.builder.emit_placeholder(Instruction::Goto(0));
+            if let Some(jp) = self.join_points.get_mut(&target) {
+                jp.forward_jumps.push(goto_idx);
+            }
+        } else {
+            let initial_locals = super::builder::compact_types(&frame_locals);
+            self.builder
+                .frame
+                .frames
+                .insert(target_offset, (initial_locals, vec![]));
+            self.builder.emit(Instruction::Goto(target_offset));
+        }
+
+        self.builder.dead_code = true;
+        self.builder.frame.stack_types.clear();
+
+        let return_type = self
+            .builder
+            .fn_return_type
+            .expect("ICE: fn_return_type must be set before body compilation");
+        self.builder.push_jvm_type(return_type);
+        let after_goto = self.builder.code.len() as u16;
+        self.builder.frame.record_frame(after_goto);
+        assert_stack_delta(
+            &self.builder.frame,
+            self.builder.dead_code,
+            before,
+            return_type,
+            "compile_jump",
+        );
+        Ok(return_type)
     }
 
     /// Emit a finally handler that calls dispose() on disposables when an exception occurs.
