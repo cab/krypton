@@ -41,6 +41,7 @@ mod fork;
 mod helpers;
 mod impls;
 mod import_ctx;
+mod import_resolver;
 mod imports;
 mod module_driver;
 mod pattern;
