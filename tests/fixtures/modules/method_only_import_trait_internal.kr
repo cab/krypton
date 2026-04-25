@@ -1,0 +1,12 @@
+# expect: error E0307
+# A method-only import (`display`) pulls the trait def in for dict resolution
+# but keeps the bare name internal, so writing `impl Printable[Greeting]`
+# without also importing `Printable` must error with `UnknownTrait`. Adding
+# `Printable` to the import list (or using `import_all`) lifts the rule —
+# see use_user_trait.kr for the working form.
+import user_trait_lib.{Point, MkPoint, display}
+type Greeting = MkGreeting(String)
+impl Printable[Greeting] {
+  fun display(g: Greeting) -> String = "hi"
+}
+fun main() = ()
