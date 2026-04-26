@@ -1,4 +1,6 @@
 import core/string.{concat}
+import core/result.{Result, Ok, Err}
+import core/option.{Option, Some, None}
 
 pub fun assert(cond: Bool) -> Unit =
     if cond { () } else { panic("assertion failed: assert") }
@@ -25,3 +27,23 @@ pub fun assert_neq[a](left: a, right: a) -> Unit where a: Eq + Show + shared =
     } else {
         ()
     }
+
+pub fun assert_ok[e, a](r: Result[e, a]) -> a where e: Show + shared = match r {
+    Ok(x) => x,
+    Err(err) => panic(concat("assertion failed: assert_ok\n  got Err: ", show(err))),
+}
+
+pub fun assert_err[e, a](r: Result[e, a]) -> e where a: Show + shared = match r {
+    Err(err) => err,
+    Ok(x) => panic(concat("assertion failed: assert_err\n  got Ok: ", show(x))),
+}
+
+pub fun assert_some[a](o: Option[a]) -> a = match o {
+    Some(v) => v,
+    None => panic("assertion failed: assert_some\n  got None"),
+}
+
+pub fun assert_none[a](o: Option[a]) -> Unit where a: Show + shared = match o {
+    None => (),
+    Some(v) => panic(concat("assertion failed: assert_none\n  got Some: ", show(v))),
+}
