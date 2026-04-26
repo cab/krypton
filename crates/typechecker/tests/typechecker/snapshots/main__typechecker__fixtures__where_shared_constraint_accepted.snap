@@ -1,0 +1,38 @@
+---
+source: crates/typechecker/tests/typechecker/fixtures.rs
+assertion_line: 102
+expression: snapshot
+---
+Some: forall a. (a) -> Option[a]
+None: forall a. Option[a]
+Ok: forall a b. (b) -> Result[a, b]
+Err: forall a b. (a) -> Result[a, b]
+Cons: forall a. (a, List[a]) -> List[a]
+Nil: forall a. List[a]
+LT: Ordering
+EQ: Ordering
+GT: Ordering
+eq: forall a. (a, a) -> Bool
+lt: forall a. (a, a) -> Bool
+combine: forall a. (a, a) -> a
+sub: forall a. (a, a) -> a
+mul: forall a. (a, a) -> a
+div: forall a. (a, a) -> a
+neg: forall a. (a) -> a
+show: forall a. (a) -> String
+hash: forall a. (a) -> Int
+dispose: forall a. (~a) -> Unit
+peek: forall a. (a) -> a
+last: forall a. (List[a]) -> Option[a]
+sort_by: forall b a. (List[a], (a) -> b) -> List[a] where b: Ord
+filter: forall a. (List[a], (a) -> Bool) -> List[a]
+to_list: forall a. (Vec[a]) -> List[a]
+map: forall a b c. (a[b], (b) -> c) -> a[c]
+pure: forall a b. (b) -> a[b]
+flat_map: forall a b c. (a[b], (b) -> a[c]) -> a[c]
+fold: forall a b c. (a[b], c, (c, b) -> c) -> c
+traverse: forall a b c d. (a[b], (b) -> c[d]) -> c[a[d]]
+sequence: forall t g a. (t[g[a]]) -> g[t[a]] where t: Traversable, g: Applicative
+empty: forall a. () -> a
+println: forall a. (a) -> Unit where a: Show
+id_shared: forall a. (a) -> a

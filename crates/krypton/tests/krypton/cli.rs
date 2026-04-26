@@ -1789,3 +1789,204 @@ fn test_test_invalid_test_signature_is_compile_error() {
         "test_ok must not run because the file failed to compile, got: {stdout}"
     );
 }
+
+#[test]
+fn test_test_assert_eq_passes_and_fails() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/eq_test.kr"),
+        "import core/test.{assert_eq}\n\
+         \n\
+         fun test_assert_eq_passes() { assert_eq(3, 3) }\n\
+         fun test_assert_eq_fails() { assert_eq(3, 4) }\n",
+    )
+    .expect("write eq_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when an assert_eq panics; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok eq_test/test_assert_eq_passes"),
+        "expected 'ok eq_test/test_assert_eq_passes', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL eq_test/test_assert_eq_fails"),
+        "expected 'FAIL eq_test/test_assert_eq_fails', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_assert_true_false_and_assert() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/bool_test.kr"),
+        "import core/test.{assert, assert_true, assert_false}\n\
+         \n\
+         fun test_assert_true_pass() { assert(true) }\n\
+         fun test_assert_true_fail() { assert(false) }\n\
+         fun test_assert_true_helper_pass() { assert_true(true) }\n\
+         fun test_assert_true_helper_fail() { assert_true(false) }\n\
+         fun test_assert_false_pass() { assert_false(false) }\n\
+         fun test_assert_false_fail() { assert_false(true) }\n",
+    )
+    .expect("write bool_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when an assertion panics; stdout={stdout} stderr={stderr}"
+    );
+    for name in [
+        "test_assert_true_pass",
+        "test_assert_true_helper_pass",
+        "test_assert_false_pass",
+    ] {
+        let line = format!("ok bool_test/{name}");
+        assert!(
+            stdout.contains(&line),
+            "expected '{line}' line, got: {stdout}"
+        );
+    }
+    for name in [
+        "test_assert_true_fail",
+        "test_assert_true_helper_fail",
+        "test_assert_false_fail",
+    ] {
+        let line = format!("FAIL bool_test/{name}");
+        assert!(
+            stdout.contains(&line),
+            "expected '{line}' line, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_test_assert_neq_passes_and_fails() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/neq_test.kr"),
+        "import core/test.{assert_neq}\n\
+         \n\
+         fun test_assert_neq_passes() { assert_neq(3, 4) }\n\
+         fun test_assert_neq_fails() { assert_neq(3, 3) }\n",
+    )
+    .expect("write neq_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when assert_neq panics; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok neq_test/test_assert_neq_passes"),
+        "expected 'ok neq_test/test_assert_neq_passes', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL neq_test/test_assert_neq_fails"),
+        "expected 'FAIL neq_test/test_assert_neq_fails', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_assert_does_not_consume_borrowed_subject() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/borrow_test.kr"),
+        "import core/test.{assert_eq}\n\
+         import core/string.{length, concat}\n\
+         \n\
+         fun test_buffer_length() {\n\
+         \x20   let buf = \"hello\"\n\
+         \x20   assert_eq(length(buf), 5)\n\
+         \x20   let _ = concat(buf, \"!\")\n\
+         }\n",
+    )
+    .expect("write borrow_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should pass when assert_eq does not consume its subject; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok borrow_test/test_buffer_length"),
+        "expected 'ok borrow_test/test_buffer_length', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_import_core_test_from_non_test_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/util.kr"),
+        "import core/test.{assert_eq}\n\
+         \n\
+         pub fun check_one() -> Unit = assert_eq(1, 1)\n",
+    )
+    .expect("write util.kr");
+
+    std::fs::write(
+        project.join("src/util_test.kr"),
+        "import util.{check_one}\n\
+         \n\
+         fun test_check_one_passes() { check_one() }\n",
+    )
+    .expect("write util_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "non-test files must be allowed to import core/test assertions; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok util_test/test_check_one_passes"),
+        "expected 'ok util_test/test_check_one_passes', got: {stdout}"
+    );
+}

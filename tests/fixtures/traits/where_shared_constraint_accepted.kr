@@ -1,0 +1,3 @@
+# expect: ok
+
+fun id_shared[a](x: a) -> a where a: shared = x

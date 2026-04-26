@@ -401,14 +401,26 @@ pub fn infer_project_source_unit(
 /// not re-walked, re-parsed, or re-inferred.
 ///
 /// Returns the test module's `TypedModule` (with `module_source` populated
-/// from `test_source`) and its extracted `ModuleInterface`. The interface
-/// contains no externally-importable surface (test modules cannot be
-/// imported) but is convenient to hand to `LinkContext::build` alongside
-/// the Phase 1 interfaces when driving IR lowering and codegen.
+/// from `test_source`) and its extracted `ModuleInterface`, plus a vector
+/// of `(TypedModule, ModuleInterface)` pairs in toposort order for every
+/// module the test pulled in transitively that Phase 1 did not already
+/// cover (e.g. `core/test`, which is intentionally absent from the
+/// prelude). The caller is responsible for lowering and emitting bytecode
+/// for those extras and for adding their interfaces to any `LinkContext`
+/// used to compile this test.
 ///
 /// A parse/type error in the test module does not invalidate the
 /// `ProjectSourceUnit` — callers typically loop over every test file,
 /// keeping the unit live across failures.
+/// `(typed test module, its interface, transitive extras)` — see
+/// [`infer_test_module`] for what each element means. Aliased to keep the
+/// function signature readable.
+pub type TestModuleResult = (
+    TypedModule,
+    crate::module_interface::ModuleInterface,
+    Vec<(TypedModule, crate::module_interface::ModuleInterface)>,
+);
+
 pub fn infer_test_module(
     test_module: &Module,
     test_module_path: String,
@@ -416,7 +428,7 @@ pub fn infer_test_module(
     target: krypton_parser::ast::CompileTarget,
     source_unit: &ProjectSourceUnit,
     test_source: Option<String>,
-) -> Result<(TypedModule, crate::module_interface::ModuleInterface), Vec<InferError>> {
+) -> Result<TestModuleResult, Vec<InferError>> {
     use krypton_modules::module_graph;
 
     // Filter the test module by platform (mirrors `infer_module`).
@@ -461,13 +473,17 @@ pub fn infer_test_module(
         interface_cache.insert(iface.module_path.as_str().to_string(), iface.clone());
     }
 
-    // The test-module graph should only contain modules Phase 1 did not cover
-    // (typically empty). Type-check any such stragglers into the cache before
-    // typing the test module itself.
-    let mut extra_cache: FxHashMap<String, TypedModule> = FxHashMap::default();
+    // The test-module graph contains every module the test imports but
+    // Phase 1 did not cover. For non-test files this is typically empty, but
+    // a test file importing e.g. `core/test` (kept out of the prelude) will
+    // pull `core/test` and its transitive deps in here. Type-check them and
+    // collect the typed forms in toposort order so the caller can lower and
+    // emit their bytecode alongside Phase 1's classes.
+    let mut extras_seen: FxHashSet<String> = FxHashSet::default();
+    let mut extras_ordered: Vec<(TypedModule, crate::module_interface::ModuleInterface)> =
+        Vec::new();
     for resolved in &graph.modules {
-        if interface_cache.contains_key(&resolved.path) || extra_cache.contains_key(&resolved.path)
-        {
+        if interface_cache.contains_key(&resolved.path) || extras_seen.contains(&resolved.path) {
             continue;
         }
         let mut dep_paths: Vec<String> =
@@ -503,9 +519,16 @@ pub fn infer_test_module(
                 })
                 .collect::<Vec<_>>()
         })?;
+        let mut typed = typed;
+        typed.module_source = krypton_modules::stdlib_loader::StdlibLoader::get_source(
+            &resolved.path,
+        )
+        .map(|s| s.to_string())
+        .or_else(|| resolver.resolve(&resolved.path));
         let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
-        interface_cache.insert(resolved.path.clone(), iface);
-        extra_cache.insert(resolved.path.clone(), typed);
+        interface_cache.insert(resolved.path.clone(), iface.clone());
+        extras_seen.insert(resolved.path.clone());
+        extras_ordered.push((typed, iface));
     }
 
     let mut test_dep_paths: Vec<String> = crate::module_interface::collect_direct_deps(test_module)
@@ -564,7 +587,7 @@ pub fn infer_test_module(
     }
 
     let iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
-    Ok((typed, iface))
+    Ok((typed, iface, extras_ordered))
 }
 
 /// Internal per-module inference with pre-resolved module cache.

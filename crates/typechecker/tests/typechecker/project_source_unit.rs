@@ -153,7 +153,7 @@ fn infer_test_module_uses_phase1_interfaces() {
         "pub fun add(x: Int, y: Int) -> Int = x + y\n",
     )]);
 
-    let (typed_test, _iface) = infer_test_module(
+    let (typed_test, _iface, _extras) = infer_test_module(
         &test_module,
         "math_test".to_string(),
         &resolver,

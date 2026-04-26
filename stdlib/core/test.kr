@@ -1,0 +1,27 @@
+import core/string.{concat}
+
+pub fun assert(cond: Bool) -> Unit =
+    if cond { () } else { panic("assertion failed: assert") }
+
+pub fun assert_true(cond: Bool) -> Unit =
+    if cond { () } else { panic("assertion failed: assert_true") }
+
+pub fun assert_false(cond: Bool) -> Unit =
+    if cond { panic("assertion failed: assert_false") } else { () }
+
+pub fun assert_eq[a](left: a, right: a) -> Unit where a: Eq + Show + shared =
+    if eq(left, right) {
+        ()
+    } else {
+        panic(concat(
+            concat("assertion failed: assert_eq\n  expected: ", show(right)),
+            concat("\n  got:      ", show(left))
+        ))
+    }
+
+pub fun assert_neq[a](left: a, right: a) -> Unit where a: Eq + Show + shared =
+    if eq(left, right) {
+        panic(concat("assertion failed: assert_neq (both equal): ", show(left)))
+    } else {
+        ()
+    }

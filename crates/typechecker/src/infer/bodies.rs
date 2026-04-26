@@ -450,6 +450,12 @@ fn setup_decl_scope(
     saved_type_param_maps.insert(idx, type_param_map.clone());
     if !decl.constraints.is_empty() {
         for constraint in &decl.constraints {
+            // `shared` is a qualifier-lattice constraint, not a trait. Recognize it
+            // here so it parses cleanly; ownership inference handles the actual
+            // sharing semantics on the function body.
+            if constraint.trait_name == "shared" {
+                continue;
+            }
             if state
                 .resolve_trait(trait_registry, &constraint.trait_name)
                 .is_none()
@@ -467,6 +473,9 @@ fn setup_decl_scope(
             .constraints
             .iter()
             .map(|constraint| {
+                if constraint.trait_name == "shared" {
+                    return Ok(None);
+                }
                 let tv_names = require_param_vars(constraint)?;
                 let tvs: Vec<TypeVarId> = tv_names
                     .iter()

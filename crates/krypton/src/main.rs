@@ -1189,6 +1189,15 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
         },
     }
 
+    // Modules pulled in only by test imports (e.g. `core/test`, which is
+    // intentionally absent from the prelude). Phase 1 never compiles them,
+    // so they need to be lowered and emitted explicitly before the harness
+    // can run. Tracked in toposort order — earliest-discovered first — so
+    // the eventual codegen pass sees dependencies before dependents.
+    let mut extras_seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut extras_typed: Vec<krypton_typechecker::typed_ast::TypedModule> = Vec::new();
+    let mut extras_iface: Vec<krypton_typechecker::module_interface::ModuleInterface> = Vec::new();
+
     let mut outcomes: Vec<TestFileOutcome> = Vec::with_capacity(files.tests.len());
     let t = Instant::now();
     for test_file in &files.tests {
@@ -1228,38 +1237,51 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
             continue;
         }
 
-        let (typed_test, test_iface) = match krypton_typechecker::infer::infer_test_module(
-            &test_module,
-            test_module_path.clone(),
-            &resolver,
-            krypton_parser::ast::CompileTarget::Jvm,
-            &source_unit,
-            Some(test_source.clone()),
-        ) {
-            Ok(r) => r,
-            Err(errors) => {
-                let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
-                    &rel_path,
-                    &test_source,
-                    &errors,
-                );
-                let rendered = diags
-                    .iter()
-                    .map(|d| AriadneRenderer.render(d, &srcs))
-                    .collect::<String>();
-                outcomes.push(TestFileOutcome::CompileError {
-                    rel_path,
-                    diagnostic: rendered,
-                });
-                continue;
-            }
-        };
+        let (typed_test, test_iface, new_extras) =
+            match krypton_typechecker::infer::infer_test_module(
+                &test_module,
+                test_module_path.clone(),
+                &resolver,
+                krypton_parser::ast::CompileTarget::Jvm,
+                &source_unit,
+                Some(test_source.clone()),
+            ) {
+                Ok(r) => r,
+                Err(errors) => {
+                    let (diags, srcs) = krypton_typechecker::diagnostics::lower_infer_errors(
+                        &rel_path,
+                        &test_source,
+                        &errors,
+                    );
+                    let rendered = diags
+                        .iter()
+                        .map(|d| AriadneRenderer.render(d, &srcs))
+                        .collect::<String>();
+                    outcomes.push(TestFileOutcome::CompileError {
+                        rel_path,
+                        diagnostic: rendered,
+                    });
+                    continue;
+                }
+            };
 
-        // Build a per-test LinkContext combining Phase 1 interfaces and the
-        // test module's interface — the test module imports Phase 1 symbols
-        // but Phase 1 never sees tests, so the test's interface is a pure
-        // addition on each iteration.
+        // Merge any newly-discovered test-only modules into the global
+        // extras list, preserving toposort (each test's extras already come
+        // back in dependency order; appending in test-iteration order keeps
+        // dependencies before dependents because every extra only references
+        // modules that are either Phase 1 or earlier extras).
+        for (extra_typed, extra_iface) in new_extras {
+            if extras_seen.insert(extra_typed.module_path.clone()) {
+                extras_typed.push(extra_typed);
+                extras_iface.push(extra_iface);
+            }
+        }
+
+        // Build a per-test LinkContext combining Phase 1 interfaces, every
+        // extras interface accumulated so far (which includes this test's
+        // own new extras), and the test module's own interface.
         let mut per_test_ifaces = source_unit.interfaces.clone();
+        per_test_ifaces.extend(extras_iface.iter().cloned());
         per_test_ifaces.push(test_iface);
         let test_link_ctx = krypton_typechecker::link_context::LinkContext::build(per_test_ifaces);
 
@@ -1329,6 +1351,51 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
     }
     phases.push(("tests", t.elapsed()));
 
+    // Lower and emit bytecode for every test-only extra module accumulated
+    // across the per-test loop (e.g. `core/test` and its transitive deps).
+    // Phase 1 deliberately did not see these modules, so their classes only
+    // exist after this step. The link context covers Phase 1 plus every
+    // extras interface, in the same toposort order codegen will see.
+    let extras_classes: Vec<(String, Vec<u8>)> = if extras_typed.is_empty() {
+        Vec::new()
+    } else {
+        let t = Instant::now();
+        let mut extras_link_ifaces = source_unit.interfaces.clone();
+        extras_link_ifaces.extend(extras_iface.iter().cloned());
+        let extras_link_ctx =
+            krypton_typechecker::link_context::LinkContext::build(extras_link_ifaces);
+        // `compile_modules` renames the first module's class to the
+        // `main_class_name` argument. Extras have no distinguished entry —
+        // each module must keep its natural class name (e.g. `core/test`,
+        // `core/string`), so pass the first module's own path as the
+        // entry class name to make the rename a no-op.
+        let extras_entry_class = extras_typed[0].module_path.clone();
+        let (extras_ir, extras_module_sources) = krypton_ir::lower::lower_all(
+            &extras_typed,
+            &extras_entry_class,
+            &extras_link_ctx,
+        )
+        .unwrap_or_else(|e| {
+            eprintln!("error: IR lowering of test-only stdlib modules failed: {e}");
+            process::exit(1);
+        });
+        let classes = match krypton_codegen::emit::compile_modules(
+            &extras_ir,
+            &extras_entry_class,
+            false,
+            &extras_link_ctx,
+            &extras_module_sources,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: codegen of test-only stdlib modules failed: {e:?}");
+                process::exit(1);
+            }
+        };
+        phases.push(("extras", t.elapsed()));
+        classes
+    };
+
     let mut any_compile_failed = false;
     let mut compiled_files: Vec<TestFileCompiled> = Vec::new();
     for outcome in outcomes {
@@ -1390,9 +1457,11 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
         };
     phases.push(("harness", t.elapsed()));
 
-    // Assemble all class bytes: source unit + each test file + harness.
+    // Assemble all class bytes: source unit + test-only extras + each test
+    // file + harness.
     let mut all_classes: Vec<(String, Vec<u8>)> = Vec::new();
     all_classes.extend(source_classes);
+    all_classes.extend(extras_classes);
     for f in compiled_files {
         all_classes.extend(f.classes);
     }
