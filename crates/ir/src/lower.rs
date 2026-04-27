@@ -6430,7 +6430,8 @@ impl<'a> LowerCtx<'a> {
                 qualified_name: decl.qualified_name.clone(),
             };
             if !self.struct_fields.contains_key(&type_ref) {
-                let type_param_map = build_type_param_map(&decl.type_params, &mut self.type_var_gen);
+                let type_param_map =
+                    build_type_param_map(&decl.type_params, &mut self.type_var_gen);
                 let ordered_params: Vec<TypeVarId> = decl
                     .type_params
                     .iter()
@@ -6487,7 +6488,8 @@ impl<'a> LowerCtx<'a> {
                     })
             });
             if !already {
-                let type_param_map = build_type_param_map(&decl.type_params, &mut self.type_var_gen);
+                let type_param_map =
+                    build_type_param_map(&decl.type_params, &mut self.type_var_gen);
                 let ordered_params: Vec<TypeVarId> = decl
                     .type_params
                     .iter()
@@ -7932,20 +7934,13 @@ fn seed_type_var_gen_past_typed(typed: &TypedModule, gen: &mut TypeVarGen) {
                     collect(a, out);
                 }
             }
-            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
-                collect(inner, out)
-            }
+            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => collect(inner, out),
             Type::Tuple(elts) => {
                 for e in elts {
                     collect(e, out);
                 }
             }
-            Type::Int
-            | Type::Float
-            | Type::Bool
-            | Type::String
-            | Type::Unit
-            | Type::FnHole => {}
+            Type::Int | Type::Float | Type::Bool | Type::String | Type::Unit | Type::FnHole => {}
         }
     }
 
@@ -7999,7 +7994,7 @@ fn seed_type_var_gen_past_typed(typed: &TypedModule, gen: &mut TypeVarGen) {
         for &id in &td.type_var_ids {
             bump(id);
         }
-        for (_, (params, ret)) in &td.method_tc_types {
+        for (params, ret) in td.method_tc_types.values() {
             for (_, p) in params {
                 collect(p, &mut bump);
             }
