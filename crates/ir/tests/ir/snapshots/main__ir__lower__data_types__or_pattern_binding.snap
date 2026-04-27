@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module data_types__or_pattern_binding
 
-type Wrapper[a] = Some#0(a) | Wrap#1(a)
+type Wrapper[x10] = Some#0(x10) | Wrap#1(x10)
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]

@@ -176,16 +176,16 @@ impl ModuleInferenceState {
         let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
         let mut qualified_exports: FxHashMap<String, QualifiedExport> = FxHashMap::default();
 
-        // If this module is a `_test.kr` companion of a source-unit module,
-        // imports of that exact source-unit path see private fns and types
-        // through the resolver's bypass mode. Every other import path —
-        // siblings, stdlib, deps — uses the standard filtered resolver.
-        let is_companion_import = self
-            .companion_path
+        // If this module is the private friend of another module, imports
+        // of that exact friend-target path see private fns and types through
+        // the resolver's bypass mode. Every other import path — siblings,
+        // stdlib, deps — uses the standard filtered resolver.
+        let is_friend_import = self
+            .friend_module_path
             .as_ref()
             .is_some_and(|cp| cp.as_str() == path);
-        let resolver = if is_companion_import {
-            ImportResolver::for_companion(iface)
+        let resolver = if is_friend_import {
+            ImportResolver::for_private_friend(iface)
         } else {
             ImportResolver::new(iface)
         };
@@ -253,7 +253,7 @@ impl ModuleInferenceState {
                             is_synthetic_prelude_import,
                         )?;
                     }
-                    if is_companion_import {
+                    if is_friend_import {
                         for ef in iface.private_fns.iter().filter(|ef| ef.name == lookup) {
                             self.bind_explicit_exported_fn(
                                 ef,
@@ -321,7 +321,7 @@ impl ModuleInferenceState {
             &qualifier_name,
             span,
             is_synthetic_prelude_import,
-            is_companion_import,
+            is_friend_import,
             &mut qualified_exports,
         )?;
 
@@ -620,12 +620,12 @@ impl ModuleInferenceState {
         let effective_type_name = alias
             .map(str::to_string)
             .unwrap_or_else(|| ts.name.clone());
-        // Non-companion imports never see `Visibility::Private` here
+        // Non-friend imports never see `Visibility::Private` here
         // (`extract_exported_types` filters them and the resolver returns
-        // `Private` instead of `Type`). For the test-companion bypass the
+        // `Private` instead of `Type`). For the private-friend bypass the
         // resolver routes `private_types` entries through this helper with
-        // `Visibility::Private`; their constructors must bind so the test
-        // file can construct and pattern-match the private type. Only
+        // `Visibility::Private`; their constructors must bind so the friend
+        // module can construct and pattern-match the private type. Only
         // `Opaque` types skip constructor binding regardless.
         if self.registry.lookup_type(&ts.name).is_none() {
             let export = module_interface::type_summary_to_export_info(ts, path);
@@ -1079,15 +1079,16 @@ impl ModuleInferenceState {
         qualifier_name: &str,
         span: Span,
         is_synthetic_prelude_import: bool,
-        is_companion_import: bool,
+        is_friend_import: bool,
         qualified_exports: &mut FxHashMap<String, QualifiedExport>,
     ) -> Result<(), SpannedTypeError> {
         use crate::module_interface;
 
-        // For an import-all from a `_test.kr` companion's source unit, surface
-        // private types and their constructors alongside the public ones; the
-        // explicit-name path already handled named-private imports in Pass B.
-        let private_types_iter: &[_] = if is_companion_import {
+        // For an import-all from a private-friend module's friend target,
+        // surface private types and their constructors alongside the public
+        // ones; the explicit-name path already handled named-private imports
+        // in Pass B.
+        let private_types_iter: &[_] = if is_friend_import {
             iface.private_types.as_slice()
         } else {
             &[]
@@ -1100,12 +1101,12 @@ impl ModuleInferenceState {
                 continue;
             }
             if import_all {
-                // Skip private types when the bypass isn't active. Inside the
-                // bypass, private_types_iter feeds them in; the
-                // exported_types loop here still filters them out so we don't
-                // double-bind, since `iface.exported_types` may also contain
-                // them (e.g. for diagnostics).
-                if matches!(ts.visibility, Visibility::Private) && !is_companion_import {
+                // `extract_exported_types` filters out `Visibility::Private`
+                // before they ever reach `iface.exported_types`, so this
+                // branch only ever runs for non-private entries here. Private
+                // types reach this loop exclusively through the chained
+                // `private_types_iter` slice when the friend bypass is active.
+                if matches!(ts.visibility, Visibility::Private) {
                     continue;
                 }
                 self.registry.mark_user_visible(&ts.name);

@@ -367,21 +367,21 @@ fn test_module_with_no_companion_compiles() {
     .expect("standalone test module should typecheck");
     assert!(typed.fn_types_by_name.contains_key("test_x"));
     assert!(
-        iface.is_test_companion_of.is_none(),
-        "no companion should be recorded when the source twin doesn't exist"
+        iface.private_friend_module.is_none(),
+        "no friend should be recorded when the source twin doesn't exist"
     );
 }
 
 #[test]
 fn test_companion_bypass_does_not_propagate_to_extras() {
-    // The companion bypass must be scoped to the test file itself. Extras
+    // The friend bypass must be scoped to the test file itself. Extras
     // (modules pulled in by the test's import graph that Phase 1 didn't
     // cover) must NOT see the bypass — they typecheck like any other
     // consumer. We verify this structurally by checking the test
-    // interface's `is_test_companion_of`: it points at `parser`, so the
+    // interface's `private_friend_module`: it points at `parser`, so the
     // test module bypasses `parser`'s privates, but no extras-loop module
     // could possibly carry that flag because `infer_test_module` clears
-    // the companion arg for every extras call.
+    // the friend arg for every extras call.
     let parser_src = "fun internal() -> Int = 1\npub fun add(x: Int) -> Int = x + 1\n";
     let test_src = "import parser.{internal}\n\nfun test_x() { let _ = internal() }\n";
     let (_typed, iface, extras) = infer_companion_test(
@@ -391,18 +391,18 @@ fn test_companion_bypass_does_not_propagate_to_extras() {
     )
     .expect("companion access should typecheck");
     assert_eq!(
-        iface.is_test_companion_of.as_ref().map(|p| p.as_str()),
+        iface.private_friend_module.as_ref().map(|p| p.as_str()),
         Some("parser"),
-        "test interface must record its companion"
+        "test interface must record its friend module"
     );
     // Every extras interface — should there be any — must have a `None`
-    // companion flag. (Most commonly the extras list is empty when the
-    // test file pulls in nothing beyond the source unit; both cases are
-    // valid AC #5 evidence.)
+    // friend flag. (Most commonly the extras list is empty when the test
+    // file pulls in nothing beyond the source unit; both cases are valid
+    // AC #5 evidence.)
     for (_, extra_iface) in &extras {
         assert!(
-            extra_iface.is_test_companion_of.is_none(),
-            "extras module {} must not carry a companion flag",
+            extra_iface.private_friend_module.is_none(),
+            "extras module {} must not carry a friend flag",
             extra_iface.module_path
         );
     }

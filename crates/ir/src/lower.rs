@@ -1363,6 +1363,16 @@ impl<'a> LowerCtx<'a> {
         }
         let mut subst = krypton_typechecker::types::Substitution::new();
         for (&id, ty) in params.iter().zip(args.iter()) {
+            // Skip identity mappings — both sides now share the
+            // typechecker's TypeVarId namespace after IR private-type
+            // unification, so a struct accessed through its own type
+            // params produces `Var(id) -> Var(id)` pairs that would
+            // otherwise self-cycle in `Substitution::apply`.
+            if let Type::Var(arg_id) = ty {
+                if *arg_id == id {
+                    continue;
+                }
+            }
             subst.insert(id, ty.clone());
         }
         Ok(fields
@@ -6394,31 +6404,18 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    /// Populate `struct_fields`, `struct_type_params`, and (for private
-    /// structs) `private_type_params` for every struct visible to this
-    /// module. Exported structs use the resolved `exported_type_infos`
-    /// (real `TypeVarId`s allocated upstream); private structs fall back to
-    /// `struct_decls` and get fresh `TypeVarId`s here.
+    /// Populate `struct_fields` and `struct_type_params` for every struct
+    /// visible to this module. Both public and private locally-declared
+    /// types flow through `exported_type_infos` with the same registry-
+    /// allocated `TypeVarId`s, so downstream lookups (struct construction,
+    /// field access, pattern matching) all see the same ids regardless of
+    /// visibility. The trailing `struct_decls` loop is a defensive fallback
+    /// for any decl that somehow isn't in `exported_type_infos`; populates
+    /// `private_type_params` only if it fires.
     fn register_struct_layouts(&mut self, typed: &TypedModule) {
         let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
         sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
         for (name, info) in &sorted_type_infos {
-            // Skip locally-declared private types here so the second loop
-            // can register them with fresh IR-side TypeVarIds. The interface
-            // extractor still reads them out of `exported_type_infos` for
-            // the test-companion bypass, but IR lowering needs its own ID
-            // namespace for private types to avoid colliding with the
-            // typechecker's registry IDs that flow through other paths.
-            if info.source_module == typed.module_path {
-                let is_private = typed
-                    .type_visibility
-                    .get(*name)
-                    .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
-                    .unwrap_or(false);
-                if is_private {
-                    continue;
-                }
-            }
             let type_ref = typed_ast::ResolvedTypeRef {
                 qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
             };
@@ -6455,25 +6452,15 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    /// Populate `sum_variants` (and `private_type_params` for private sum
-    /// types). Exported sums use the resolved `exported_type_infos`; private
-    /// sums fall back to `sum_decls` with fresh `TypeVarId` allocation.
+    /// Populate `sum_variants` for every sum type visible to this module.
+    /// Public and private locally-declared sums both flow through
+    /// `exported_type_infos`; the trailing `sum_decls` loop is a defensive
+    /// fallback that populates `private_type_params` only when a decl
+    /// somehow isn't in `exported_type_infos`.
     fn register_sum_variants(&mut self, typed: &TypedModule) {
         let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
         sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
         for (name, info) in &sorted_type_infos {
-            // Skip locally-declared private sums; the second loop owns them
-            // (see `register_struct_layouts` for the same rationale).
-            if info.source_module == typed.module_path {
-                let is_private = typed
-                    .type_visibility
-                    .get(*name)
-                    .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
-                    .unwrap_or(false);
-                if is_private {
-                    continue;
-                }
-            }
             if let ExportedTypeKind::Sum { variants } = &info.kind {
                 let type_ref = typed_ast::ResolvedTypeRef {
                     qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
@@ -6887,49 +6874,28 @@ fn lower_struct_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<StructDef> {
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
-            // Locally-declared private structs use the IR-side fresh-id path
-            // (`register_struct_layouts` second loop) for self-consistency
-            // — registry-allocated ids that flow through `exported_type_infos`
-            // would mismatch the ids used by every other private-aware lookup.
-            let is_private = typed
-                .type_visibility
-                .get(&decl.name)
-                .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
-                .unwrap_or(false);
-            let info = if is_private {
-                None
-            } else {
-                typed.exported_type_infos.get(&decl.name)
+            // Public and private locally-declared structs both flow through
+            // `exported_type_infos` with registry-allocated ids; the
+            // `private_type_params` fallback below only fires when the
+            // defensive second loop in `register_struct_layouts` populated
+            // it for a decl that wasn't in `exported_type_infos`.
+            let info = typed.exported_type_infos.get(&decl.name);
+            let type_ref = typed_ast::ResolvedTypeRef {
+                qualified_name: decl.qualified_name.clone(),
             };
-            let (type_params, fields) = if let Some(info) = info {
-                    let type_ref = typed_ast::ResolvedTypeRef {
-                        qualified_name: QualifiedName::new(
-                            info.source_module.clone(),
-                            decl.name.clone(),
-                        ),
-                    };
-                    let fields = ctx
-                        .struct_fields
-                        .get(&type_ref)
-                        .cloned()
-                        .unwrap_or_default();
-                    (info.type_param_vars.clone(), fields)
-                } else {
-                    let type_params = ctx
-                        .private_type_params
-                        .get(&decl.name)
-                        .cloned()
-                        .unwrap_or_default();
-                    let type_ref = typed_ast::ResolvedTypeRef {
-                        qualified_name: decl.qualified_name.clone(),
-                    };
-                    let fields = ctx
-                        .struct_fields
-                        .get(&type_ref)
-                        .cloned()
-                        .unwrap_or_default();
-                    (type_params, fields)
-                };
+            let type_params = if let Some(info) = info {
+                info.type_param_vars.clone()
+            } else {
+                ctx.private_type_params
+                    .get(&decl.name)
+                    .cloned()
+                    .unwrap_or_default()
+            };
+            let fields = ctx
+                .struct_fields
+                .get(&type_ref)
+                .cloned()
+                .unwrap_or_default();
             StructDef {
                 name: decl.name.clone(),
                 type_params,
@@ -6947,17 +6913,11 @@ fn lower_sum_type_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<SumTypeDef> {
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
-            let is_private = typed
-                .type_visibility
-                .get(&decl.name)
-                .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
-                .unwrap_or(false);
-            let info = if is_private {
-                None
-            } else {
-                typed.exported_type_infos.get(&decl.name)
-            };
-            let type_params = if let Some(info) = info {
+            // Public and private locally-declared sums both flow through
+            // `exported_type_infos`; the `private_type_params` fallback only
+            // fires for the defensive second-loop case in
+            // `register_sum_variants`.
+            let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
                 info.type_param_vars.clone()
             } else {
                 ctx.private_type_params
@@ -7076,10 +7036,12 @@ fn build_imported_fns(
         let source_path = ModulePath::new(entry.qualified_name.module_path.clone());
         let exported_symbol = link_view
             .exported_fns_for(&source_path)
-            .and_then(|fns| {
-                fns.iter()
-                    .filter(|s| s.name == entry.qualified_name.local_name)
-                    .find_map(|s| match &s.scheme.ty {
+            .and_then(|mut fns| {
+                fns.find_map(|s| {
+                    if s.name != entry.qualified_name.local_name {
+                        return None;
+                    }
+                    match &s.scheme.ty {
                         Type::Fn(p, _) => {
                             let stored: Vec<Type> = p.iter().map(|(_, t)| t.clone()).collect();
                             if types_overlap(&stored, &sig_key) {
@@ -7089,7 +7051,8 @@ fn build_imported_fns(
                             }
                         }
                         _ => None,
-                    })
+                    }
+                })
             })
             .unwrap_or_else(|| entry.qualified_name.local_name.clone());
         imported_fns.push(ImportedFnDef {
@@ -7578,6 +7541,12 @@ pub fn lower_module(
         trait_method_types,
         trait_method_constraints,
     );
+    // Reserve the IR-side `type_var_gen` past every TypeVarId visible from
+    // the typechecker so fresh allocations made during lowering (instance
+    // dispatch, defensive private-type fallback, expression freshening)
+    // cannot collide with registry-allocated ids carried in
+    // `exported_type_infos`, fn schemes, or instance defs.
+    seed_type_var_gen_past_typed(typed, &mut ctx.type_var_gen);
     ctx.register_struct_layouts(typed);
     ctx.register_sum_variants(typed);
     let local_fn_allocs = ctx.allocate_fn_ids(typed)?;
@@ -7935,6 +7904,108 @@ fn build_type_param_map(
         .iter()
         .map(|name| (name.clone(), gen.fresh()))
         .collect()
+}
+
+/// Walk every TypeVarId reachable from `typed` and ensure `gen` produces
+/// strictly higher ids on subsequent `.fresh()` calls. Run once after
+/// `LowerCtx::new` so IR-side fresh allocations do not collide with
+/// typechecker-allocated ids that flow through `exported_type_infos`,
+/// fn schemes, instance defs, or trait defs.
+fn seed_type_var_gen_past_typed(typed: &TypedModule, gen: &mut TypeVarGen) {
+    fn collect(ty: &Type, out: &mut impl FnMut(TypeVarId)) {
+        match ty {
+            Type::Var(id) => out(*id),
+            Type::Fn(params, ret) => {
+                for (_, p) in params {
+                    collect(p, out);
+                }
+                collect(ret, out);
+            }
+            Type::Named(_, args) => {
+                for a in args {
+                    collect(a, out);
+                }
+            }
+            Type::App(head, args) => {
+                collect(head, out);
+                for a in args {
+                    collect(a, out);
+                }
+            }
+            Type::Own(inner) | Type::Shape(inner) | Type::MaybeOwn(_, inner) => {
+                collect(inner, out)
+            }
+            Type::Tuple(elts) => {
+                for e in elts {
+                    collect(e, out);
+                }
+            }
+            Type::Int
+            | Type::Float
+            | Type::Bool
+            | Type::String
+            | Type::Unit
+            | Type::FnHole => {}
+        }
+    }
+
+    let mut bump = |id: TypeVarId| gen.reserve_past(id);
+
+    for info in typed.exported_type_infos.values() {
+        for &id in &info.type_param_vars {
+            bump(id);
+        }
+        match &info.kind {
+            ExportedTypeKind::Record { fields } => {
+                for (_, t) in fields {
+                    collect(t, &mut bump);
+                }
+            }
+            ExportedTypeKind::Sum { variants } => {
+                for v in variants {
+                    for t in &v.fields {
+                        collect(t, &mut bump);
+                    }
+                }
+            }
+            ExportedTypeKind::Opaque => {}
+        }
+    }
+
+    for entry in &typed.fn_types {
+        for &id in &entry.scheme.vars {
+            bump(id);
+        }
+        collect(&entry.scheme.ty, &mut bump);
+    }
+
+    for inst in &typed.instance_defs {
+        for &id in inst.type_var_ids.values() {
+            bump(id);
+        }
+        for t in &inst.target_types {
+            collect(t, &mut bump);
+        }
+        for m in &inst.methods {
+            for &id in &m.scheme.vars {
+                bump(id);
+            }
+            collect(&m.scheme.ty, &mut bump);
+        }
+    }
+
+    for td in &typed.trait_defs {
+        bump(td.type_var_id);
+        for &id in &td.type_var_ids {
+            bump(id);
+        }
+        for (_, (params, ret)) in &td.method_tc_types {
+            for (_, p) in params {
+                collect(p, &mut bump);
+            }
+            collect(ret, &mut bump);
+        }
+    }
 }
 
 /// Simple TypeExpr → Type conversion for private types.
@@ -8392,7 +8463,7 @@ mod tests {
             private_names: FxHashSet::default(),
             private_fns: vec![],
             private_types: vec![],
-            is_test_companion_of: None,
+            private_friend_module: None,
         };
         krypton_typechecker::link_context::LinkContext::build(vec![iface])
     }

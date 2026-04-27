@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_run
 
-type Result[a, b] = Ok#0(b) | Err#1(a)
+type Result[x10, y10] = Ok#0(y10) | Err#1(x10)
 trait Fmap[p11] { fmap(p11[q11], (q11) -> r11): p11[r11] }
 instance hkt__partial_apply_run.Fmap[Result$$Var0$$Var1] { fmap=Fmap$$Result$$Var0$$Var1$$fmap }
 import core/option/Some as Some(b) -> Option[b]
@@ -57,7 +57,7 @@ fn main() -> Unit =
       let v27: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v28: Unit = call println(v27, v26)
       v28
-    1 (v29: a) ->
+    1 (v29: x10) ->
       let v31: Int = neg_int(1)
       let v30: Dict[core/show.Show, Int] = get_dict core/show.Show[Int]
       let v32: Unit = call println(v30, v31)

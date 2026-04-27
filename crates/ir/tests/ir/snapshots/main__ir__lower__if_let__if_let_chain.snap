@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module if_let__if_let_chain
 
-type Option[a] = Some#0(a) | None#1
-type Result[b, c] = Ok#0(c) | Err#1(b)
+type Option[x10] = Some#0(x10) | None#1
+type Result[y10, z10] = Ok#0(z10) | Err#1(y10)
 type Input = OptVal#0(Option[Int]) | ResVal#1(Result[String, Int])
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
@@ -24,13 +24,13 @@ fn classify(v0: Input) -> String =
   switch v0 {
     0 (v1: Option[Int]) ->
       switch v1 {
-        0 (v2: a) ->
+        0 (v2: x10) ->
           "first"
         _ ->
           switch v0 {
             1 (v3: Result[String, Int]) ->
               switch v3 {
-                0 (v4: c) ->
+                0 (v4: z10) ->
                   "second"
                 _ ->
                   "neither"
@@ -43,7 +43,7 @@ fn classify(v0: Input) -> String =
       switch v0 {
         1 (v5: Result[String, Int]) ->
           switch v5 {
-            0 (v6: c) ->
+            0 (v6: z10) ->
               "second"
             _ ->
               "neither"

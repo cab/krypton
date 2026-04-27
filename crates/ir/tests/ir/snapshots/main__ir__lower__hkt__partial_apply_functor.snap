@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_functor
 
-type Result[a, b] = Ok#0(b) | Err#1(a)
+type Result[x10, y10] = Ok#0(y10) | Err#1(x10)
 trait Functor[p11] { fmap(p11[q11], (q11) -> r11): p11[r11] }
 instance hkt__partial_apply_functor.Functor[Result$$Var0$$Var1] { fmap=Functor$$Result$$Var0$$Var1$$fmap }
 import core/option/Some as Some(b) -> Option[b]

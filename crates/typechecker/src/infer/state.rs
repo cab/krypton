@@ -70,17 +70,17 @@ pub(crate) struct ModuleInferenceState {
     pub(super) reexported_trait_defs: Vec<ExportedTraitDef>,
     // Prelude tracking
     pub(super) prelude_imported_names: FxHashSet<String>,
-    /// If this state is being built for a `_test.kr` companion module whose
-    /// source-unit companion exists, holds the companion's module path. The
+    /// If this state is being built for a module designated as another
+    /// module's private friend, holds the friend target's module path. The
     /// import resolver and type-binding pass treat imports of this exact path
     /// as bypassing the standard private-name visibility check; all other
     /// imports go through the normal export-only filter. Always `None` for
-    /// non-test modules and for `_test.kr` files with no companion.
-    pub(super) companion_path: Option<ModulePath>,
+    /// modules that are not anyone's private friend.
+    pub(super) friend_module_path: Option<ModulePath>,
 }
 
 impl ModuleInferenceState {
-    pub(super) fn new(is_core_module: bool, companion_path: Option<ModulePath>) -> Self {
+    pub(super) fn new(is_core_module: bool, friend_module_path: Option<ModulePath>) -> Self {
         let mut env = TypeEnv::new();
         let mut gen = TypeVarGen::new();
         let mut registry = TypeRegistry::new();
@@ -105,7 +105,7 @@ impl ModuleInferenceState {
             reexported_type_visibility: FxHashMap::default(),
             reexported_trait_defs: Vec::new(),
             prelude_imported_names: FxHashSet::default(),
-            companion_path,
+            friend_module_path,
         }
     }
 

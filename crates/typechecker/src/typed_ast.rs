@@ -662,6 +662,15 @@ impl TypedModule {
                     .map(|d| d.qualified_name.module_path.as_str())
             })
     }
+
+    /// Whether `name` is declared private in this module. Returns `false` for
+    /// names not in the visibility map (i.e., not a type declared here).
+    pub fn is_private_type(&self, name: &str) -> bool {
+        matches!(
+            self.type_visibility.get(name),
+            Some(krypton_parser::ast::Visibility::Private)
+        )
+    }
 }
 
 /// Build the JVM-mangled name for a trait instance method.

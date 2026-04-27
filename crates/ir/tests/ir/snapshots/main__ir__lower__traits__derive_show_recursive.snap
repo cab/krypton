@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__derive_show_recursive
 
-type List[a] = Cons#0(a, List[a]) | Nil#1
+type List[x10] = Cons#0(x10, List[x10]) | Nil#1
 instance core/show.Show[List] { show=Show$$List$$show }
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

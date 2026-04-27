@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module inference__self_type_generic
 
-struct Wrapper[a] { value: a }
+struct Wrapper[x10] { value: x10 }
 trait MyEq[o11] { my_eq(o11, o11): Bool }
 instance inference__self_type_generic.MyEq[String] { my_eq=MyEq$$String$$my_eq }
 instance inference__self_type_generic.MyEq[Wrapper$$Var0] { my_eq=MyEq$$Wrapper$$Var0$$my_eq }

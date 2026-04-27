@@ -115,8 +115,11 @@ pub fn infer_module(
             typed.module_source = StdlibLoader::get_source(&resolved.path)
                 .map(|s| s.to_string())
                 .or_else(|| resolver.resolve(&resolved.path));
-            // Extract interface for downstream modules
-            let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
+            // Extract interface for downstream modules. Production
+            // build/run paths skip private extraction — only test runs
+            // need to walk the private surface.
+            let iface =
+                crate::module_interface::extract_interface(&typed, &dep_paths, None, false);
             interface_cache.insert(resolved.path.clone(), iface);
             cache.insert(resolved.path.clone(), typed);
         }
@@ -191,7 +194,8 @@ pub fn infer_module(
         }
     }
 
-    let root_iface = crate::module_interface::extract_interface(&main, &root_dep_paths);
+    let root_iface =
+        crate::module_interface::extract_interface(&main, &root_dep_paths, None, false);
 
     let mut result = vec![main];
     // Collect cached imported modules in topological order (dependencies first)
@@ -371,7 +375,11 @@ pub fn infer_project_source_unit(
         typed.module_source = StdlibLoader::get_source(&resolved.path)
             .map(|s| s.to_string())
             .or_else(|| resolver.resolve(&resolved.path));
-        let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
+        // Source-unit modules are read by test modules through the
+        // private-friend bypass, so the privates surface must be extracted
+        // here even though the modules themselves are not test files.
+        let iface =
+            crate::module_interface::extract_interface(&typed, &dep_paths, None, true);
         interface_cache.insert(resolved.path.clone(), iface);
         cache.insert(resolved.path.clone(), typed);
     }
@@ -529,7 +537,11 @@ pub fn infer_test_module(
         )
         .map(|s| s.to_string())
         .or_else(|| resolver.resolve(&resolved.path));
-        let iface = crate::module_interface::extract_interface(&typed, &dep_paths);
+        // Extras (modules pulled in by the test's import graph that
+        // Phase 1 didn't cover) might be imported by other test modules
+        // in some future setup, so cheaply include their privates.
+        let iface =
+            crate::module_interface::extract_interface(&typed, &dep_paths, None, true);
         interface_cache.insert(resolved.path.clone(), iface.clone());
         extras_seen.insert(resolved.path.clone());
         extras_ordered.push((typed, iface));
@@ -543,21 +555,22 @@ pub fn infer_test_module(
         test_dep_paths.push("prelude".to_string());
     }
 
-    // The companion is the source-unit module whose path drops the `_test`
-    // suffix from this test file's leaf segment. The bypass only fires when
-    // such a module actually exists in the source unit — `helpers_test.kr`
-    // with no `helpers.kr` companion gets `None` and behaves like any other
-    // module under the standard visibility rules.
-    let companion_path = krypton_modules::module_resolver::companion_module_path(&test_module_path)
-        .filter(|cp| source_unit.all_module_paths.contains(cp))
-        .map(crate::module_interface::ModulePath::new);
+    // The friend module is the source-unit module whose path drops the
+    // `_test` suffix from this test file's leaf segment. The bypass only
+    // fires when such a module actually exists in the source unit —
+    // `helpers_test.kr` with no `helpers.kr` companion gets `None` and
+    // behaves like any other module under the standard visibility rules.
+    let friend_module_path =
+        krypton_modules::module_resolver::companion_module_path(&test_module_path)
+            .filter(|cp| source_unit.all_module_paths.contains(cp))
+            .map(crate::module_interface::ModulePath::new);
 
     let typed = infer_module_inner(
         test_module,
         &interface_cache,
         test_module_path.clone(),
         &source_unit.prelude_tree_paths,
-        companion_path.clone(),
+        friend_module_path.clone(),
     )
     .map_err(|errors| {
         let error_source = test_source
@@ -600,8 +613,12 @@ pub fn infer_test_module(
             .collect::<Vec<_>>());
     }
 
-    let mut iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
-    iface.is_test_companion_of = companion_path;
+    let iface = crate::module_interface::extract_interface(
+        &typed,
+        &test_dep_paths,
+        friend_module_path,
+        true,
+    );
     Ok((typed, iface, extras_ordered))
 }
 
@@ -632,12 +649,12 @@ pub(crate) fn infer_module_inner(
     interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     module_path: String,
     prelude_tree_paths: &FxHashSet<String>,
-    companion_path: Option<crate::module_interface::ModulePath>,
+    friend_module_path: Option<crate::module_interface::ModulePath>,
 ) -> Result<TypedModule, Vec<SpannedTypeError>> {
     let is_core_module = module_path.starts_with("core/");
     let is_prelude_tree = prelude_tree_paths.contains(&module_path);
 
-    let mut state = ModuleInferenceState::new(is_core_module, companion_path);
+    let mut state = ModuleInferenceState::new(is_core_module, friend_module_path);
 
     let synthetic_prelude_import =
         state.build_synthetic_prelude_import(is_prelude_tree, interface_cache);
@@ -1296,10 +1313,10 @@ impl ModuleInferenceState {
         }
 
         // Include imported types (sum and record) in exported_type_infos so
-        // IR lowering can resolve them without AST fallback. For a `_test.kr`
-        // companion module, an import of the source twin's private type lands
-        // in `imported_type_info` too — fall back to the twin's `private_types`
-        // when it is missing from `exported_types`.
+        // IR lowering can resolve them without AST fallback. For a private-
+        // friend module, an import of the friend target's private type lands
+        // in `imported_type_info` too — fall back to the target's
+        // `private_types` when it is missing from `exported_types`.
         for (type_name, (source_path, _vis)) in &self.imports.imported_type_info {
             if exported_type_infos.contains_key(type_name) {
                 continue;

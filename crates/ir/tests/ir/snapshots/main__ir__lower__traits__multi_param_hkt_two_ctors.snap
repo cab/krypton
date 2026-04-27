@@ -4,8 +4,8 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_hkt_two_ctors
 
-type Box[a] = Box#0(a)
-type Bag[b] = Bag#0(b)
+type Box[x10] = Box#0(x10)
+type Bag[y10] = Bag#0(y10)
 trait BoxConvert[p11] { box_convert(p11[q11]): q11 }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Box$$Int] { box_convert=BoxConvert$$Box$$Int$$box_convert }
 instance traits__multi_param_hkt_two_ctors.BoxConvert[Bag$$Int] { box_convert=BoxConvert$$Bag$$Int$$box_convert }

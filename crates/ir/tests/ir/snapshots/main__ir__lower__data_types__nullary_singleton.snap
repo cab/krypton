@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module data_types__nullary_singleton
 
-type Option[a] = None#0 | Some#1(a)
+type Option[x10] = None#0 | Some#1(x10)
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]

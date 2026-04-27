@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module data_types__or_pattern_basic
 
 type ABC = A#0 | B#1 | C#2
-type Option[a] = Some#0(a) | None#1
+type Option[x10] = Some#0(x10) | None#1
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -31,7 +31,7 @@ fn classify(v0: ABC) -> String =
 
 fn classify_nested(v1: Option[ABC]) -> String =
   switch v1 {
-    0 (v2: a) ->
+    0 (v2: x10) ->
       switch v2 {
         0 ->
           "yes"

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module data_types__result_basic
 
-type Result[a, b] = Ok#0(b) | Err#1(a)
+type Result[x10, y10] = Ok#0(y10) | Err#1(x10)
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]

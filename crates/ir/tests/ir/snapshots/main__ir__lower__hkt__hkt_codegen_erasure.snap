@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__hkt_codegen_erasure
 
-type Box[a] = Box#0(a)
+type Box[x10] = Box#0(x10)
 trait Functor[o11] { fmap(o11[p11], (p11) -> q11): o11[q11] }
 instance hkt__hkt_codegen_erasure.Functor[Box] { fmap=Functor$$Box$$fmap }
 import core/option/Some as Some(b) -> Option[b]

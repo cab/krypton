@@ -126,19 +126,19 @@ pub struct ModuleInterface {
     pub private_names: FxHashSet<String>,
     /// Summaries of locally-defined private fns (non-pub functions and private
     /// constructors). Mirrors `exported_fns` in shape but is filtered out of
-    /// every cross-module visibility check except the test-companion bypass:
-    /// a `_test.kr` companion module reads these to typecheck and link
-    /// against its source module's internals.
+    /// every cross-module visibility check except the private-friend bypass:
+    /// a module designated as this module's friend reads these to typecheck
+    /// and link against its internals.
     pub private_fns: Vec<ExportedFnSummary>,
     /// Summaries of locally-defined private types (records and sums declared
-    /// without `pub`). Same companion-bypass rule as `private_fns`.
+    /// without `pub`). Same private-friend rule as `private_fns`.
     pub private_types: Vec<TypeSummary>,
-    /// If this interface belongs to a `_test.kr` companion module, holds the
-    /// path of the source module it shadows (e.g. `parser_test` →
-    /// `Some("parser")`). Set only when the companion source module exists in
-    /// the same source unit; `None` for standalone test files and for every
-    /// non-test module.
-    pub is_test_companion_of: Option<ModulePath>,
+    /// If this interface designates another module as its private friend,
+    /// holds that module's path. The friend module gets privileged read access
+    /// to this module's `private_fns` and `private_types`. Currently only set
+    /// by the test pipeline (a `_test.kr` file's source twin), but the
+    /// mechanism itself is generic. `None` for modules with no friend.
+    pub private_friend_module: Option<ModulePath>,
 }
 
 /// Summary of an exported function.
@@ -387,9 +387,21 @@ pub fn populate_sub_dict_requirements(
 
 /// Extract a `ModuleInterface` from a fully-assembled `TypedModule`.
 ///
-/// This is Phase 1 extraction — runs alongside the existing path
-/// without replacing any consumers.
-pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> ModuleInterface {
+/// `private_friend_module` designates another module as this module's
+/// private friend (currently set only for `_test.kr` modules whose source
+/// twin exists in the same source unit, but the mechanism is generic).
+///
+/// `include_private` gates the relatively expensive `extract_private_fns`
+/// and `extract_private_types` passes. Set to `true` only for builds that
+/// will actually consume the private surface (e.g. test runs); production
+/// `build` / `run` paths pass `false` so each module-interface extraction
+/// stays cheap regardless of how many private decls a module has.
+pub fn extract_interface(
+    typed: &TypedModule,
+    direct_dep_paths: &[String],
+    private_friend_module: Option<ModulePath>,
+    include_private: bool,
+) -> ModuleInterface {
     let module_path = ModulePath::new(&typed.module_path);
 
     let direct_deps = direct_dep_paths.iter().map(ModulePath::new).collect();
@@ -420,8 +432,14 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
     // Build private_names: all top-level names that exist but aren't exported.
     let private_names = extract_private_names(typed);
 
-    let private_fns = extract_private_fns(typed, &exported_fns, &constructor_names);
-    let private_types = extract_private_types(typed);
+    let (private_fns, private_types) = if include_private {
+        (
+            extract_private_fns(typed, &exported_fns, &constructor_names),
+            extract_private_types(typed),
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
 
     ModuleInterface {
         module_path,
@@ -438,7 +456,7 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
         private_names,
         private_fns,
         private_types,
-        is_test_companion_of: None,
+        private_friend_module,
     }
 }
 
@@ -747,9 +765,9 @@ fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
 }
 
 /// Locally-defined private functions and constructors of private types.
-/// Used by the test-companion bypass so a `_test.kr` module can typecheck
-/// and link against its source unit's internals without going through the
-/// public-export path. Mirrors `extract_exported_fns` in shape, but draws
+/// Used by the private-friend bypass so a designated friend module can
+/// typecheck and link against this module's internals without going through
+/// the public-export path. Mirrors `extract_exported_fns` in shape, but draws
 /// schemes from `typed.fn_types` and pairs each entry with the corresponding
 /// `TypedFnDecl.def_span` so overload mangling is stable across the public
 /// and private surface.
@@ -840,7 +858,7 @@ fn extract_private_fns(
 }
 
 /// Locally-defined private types (records and sums declared without `pub`).
-/// Used by the test-companion bypass; only types declared in this module
+/// Used by the private-friend bypass; only types declared in this module
 /// land in the result. Extern types are excluded because the public path
 /// emits them as `Opaque` regardless.
 fn extract_private_types(typed: &TypedModule) -> Vec<TypeSummary> {
@@ -850,11 +868,24 @@ fn extract_private_types(typed: &TypedModule) -> Vec<TypeSummary> {
         .map(|et| et.krypton_name.as_str())
         .collect();
 
+    // Re-exported types reuse a local-name slot in the interface's type
+    // index. A locally-declared private type sharing that slot would force
+    // a silent overwrite at LinkContext index time — exclude such names so
+    // the legitimate disjointness invariant holds at the source.
+    let reexported_type_names: FxHashSet<&str> = typed
+        .reexported_type_names
+        .iter()
+        .map(String::as_str)
+        .collect();
+
     typed
         .exported_type_infos
         .iter()
         .filter_map(|(name, info)| {
             if extern_type_names.contains(name.as_str()) {
+                return None;
+            }
+            if reexported_type_names.contains(name.as_str()) {
                 return None;
             }
             // Only types declared in this module count as private. The

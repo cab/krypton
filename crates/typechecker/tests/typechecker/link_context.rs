@@ -105,7 +105,7 @@ fn extract_multi(
                 };
                 dep_strs
             };
-            let iface = extract_interface(typed, &dep_strs);
+            let iface = extract_interface(typed, &dep_strs, None, false);
             (typed.module_path.clone(), iface)
         })
         .collect()

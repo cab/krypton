@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module disposable__disposable_derive_generic
 
 struct Resource { id: Int }
-struct Box[a] { value: ~a }
+struct Box[x10] { value: ~x10 }
 instance core/disposable.Disposable[Resource] { dispose=Disposable$$Resource$$dispose }
 instance core/disposable.Disposable[Box] { dispose=Disposable$$Box$$dispose }
 import core/option/Some as Some(b) -> Option[b]

@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__trait_hierarchy_superclass
 
-type Box[a] = Box#0(a)
+type Box[x10] = Box#0(x10)
 instance core/functor.Functor[Box] { map=Functor$$Box$$map }
 instance core/applicative.Applicative[Box] { pure=Applicative$$Box$$pure, apply=Applicative$$Box$$apply }
 import core/option/Some as Some(b) -> Option[b]

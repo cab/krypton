@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__constrained_instance_multi_bound_ok
 
-type Pair[a, b] = Pair#0(a, b)
+type Pair[x10, y10] = Pair#0(x10, y10)
 instance core/show.Show[Pair$$Var0$$Var1] { show=Show$$Pair$$Var0$$Var1$$show }
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

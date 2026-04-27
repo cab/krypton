@@ -164,7 +164,7 @@ mod tests {
             private_names: Default::default(),
             private_fns: vec![],
             private_types: vec![],
-            is_test_companion_of: None,
+            private_friend_module: None,
         };
         LinkContext::build(vec![iface])
     }

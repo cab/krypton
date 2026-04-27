@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module ownership__enum_own_constructor
 
-type Option[a] = Some#0(a) | None#1
+type Option[x10] = Some#0(x10) | None#1
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]

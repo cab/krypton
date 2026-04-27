@@ -69,7 +69,7 @@ fn typecheck_and_extract(src: &str) -> ModuleInterface {
         krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("typecheck failed");
-    extract_interface(&modules[0], &dep_strs)
+    extract_interface(&modules[0], &dep_strs, None, true)
 }
 
 fn extract_multi(root_src: &str, libs: Vec<(&str, &str)>) -> ModuleInterface {
@@ -85,7 +85,7 @@ fn extract_multi(root_src: &str, libs: Vec<(&str, &str)>) -> ModuleInterface {
         krypton_parser::ast::CompileTarget::Jvm,
     )
     .expect("typecheck failed");
-    extract_interface(&modules[0], &dep_strs)
+    extract_interface(&modules[0], &dep_strs, None, true)
 }
 
 // ===========================================================================

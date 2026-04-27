@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module hkt__partial_apply_non_last
 
-struct Predicate[a, b] { check: (a) -> b }
+struct Predicate[x10, y10] { check: (x10) -> y10 }
 trait Contravariant[p11] { contramap(p11[q11], (r11) -> q11): p11[r11] }
 instance hkt__partial_apply_non_last.Contravariant[Predicate$$Var0$$Var1] { contramap=Contravariant$$Predicate$$Var0$$Var1$$contramap }
 import core/option/Some as Some(b) -> Option[b]

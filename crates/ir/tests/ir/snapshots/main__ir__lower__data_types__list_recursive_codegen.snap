@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module data_types__list_recursive_codegen
 
-type List[a] = Cons#0(a, List[a]) | Nil#1
+type List[x10] = Cons#0(x10, List[x10]) | Nil#1
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -20,9 +20,9 @@ declare println: (g) -> Unit
 
 fn second(v0: List[Int]) -> Int =
   switch v0 {
-    0 (v1: Int, v2: List[a]) ->
+    0 (v1: Int, v2: List[x10]) ->
       switch v2 {
-        0 (v3: Int, v4: List[a]) ->
+        0 (v3: Int, v4: List[x10]) ->
           v3
         _ ->
           0

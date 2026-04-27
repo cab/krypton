@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module data_types__or_pattern_mixed_wildcard
 
-type Option[a] = Some#0(a) | None#1
+type Option[x10] = Some#0(x10) | None#1
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -20,7 +20,7 @@ declare println: (g) -> Unit
 
 fn check(v0: Option[Int]) -> String =
   switch v0 {
-    0 (v1: a) ->
+    0 (v1: x10) ->
       let v3: Bool = eq_int(v1, 1)
       if v3 {
         "found"

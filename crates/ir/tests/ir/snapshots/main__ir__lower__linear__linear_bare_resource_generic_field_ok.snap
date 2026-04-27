@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module linear__linear_bare_resource_generic_field_ok
 
-struct Box[a] { value: a }
+struct Box[x10] { value: x10 }
 extern type java "net.Sock" Sock
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]

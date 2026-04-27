@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_hkt_param_ground
 
-type Box[a] = Box#0(a)
+type Box[x10] = Box#0(x10)
 trait BoxConvert[o11] { box_convert(o11[p11]): p11 }
 instance traits__multi_param_hkt_param_ground.BoxConvert[Box$$$Var0] { box_convert=BoxConvert$$Box$$$Var0$$box_convert }
 import core/option/Some as Some(b) -> Option[b]

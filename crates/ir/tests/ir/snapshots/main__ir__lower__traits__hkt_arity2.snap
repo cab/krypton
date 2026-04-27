@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__hkt_arity2
 
-type Pair[a, b] = Pair#0(a, b)
+type Pair[x10, y10] = Pair#0(x10, y10)
 trait Bifunctor[p11] { bimap(p11[q11, r11], (q11) -> s11, (r11) -> t11): p11[s11, t11] }
 instance traits__hkt_arity2.Bifunctor[Pair] { bimap=Bifunctor$$Pair$$bimap }
 import core/option/Some as Some(b) -> Option[b]

@@ -5,7 +5,7 @@ expression: ir_module.to_string()
 module data_types__or_pattern_nested
 
 type Expr = Lit#0(Int) | Neg#1(Expr) | Add#2(Expr, Expr)
-type Option[a] = Some#0(a) | None#1
+type Option[x10] = Some#0(x10) | None#1
 import core/option/Some as Some(b) -> Option[b]
 import core/result/Ok as Ok(d) -> Result[c, d]
 import core/result/Err as Err(c) -> Result[c, d]
@@ -21,7 +21,7 @@ declare println: (g) -> Unit
 
 fn classify(v0: Option[Expr]) -> String =
   switch v0 {
-    0 (v1: a) ->
+    0 (v1: x10) ->
       switch v1 {
         0 (v2: Int) ->
           "lit"

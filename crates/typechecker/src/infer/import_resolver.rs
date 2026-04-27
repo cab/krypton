@@ -44,7 +44,7 @@ pub(super) struct ImportResolver<'a> {
     /// When true, suppress the standard private-visibility filter so the
     /// resolver returns `Fn`/`Type` variants for entries in
     /// `iface.private_fns` / `iface.private_types`. Set only when resolving
-    /// a `_test.kr` companion's import of its source-unit twin; every other
+    /// a private-friend module's import of the friend target; every other
     /// import path uses the standard filtered resolver.
     bypass_visibility: bool,
 }
@@ -57,11 +57,11 @@ impl<'a> ImportResolver<'a> {
         }
     }
 
-    /// Resolver variant for a `_test.kr` companion module reading its source
-    /// unit twin. Returns `Fn`/`Type` for entries in `iface.private_fns` /
-    /// `iface.private_types` and lets `Visibility::Private` `exported_types`
-    /// flow through unfiltered.
-    pub(super) fn for_companion(iface: &'a ModuleInterface) -> Self {
+    /// Resolver variant for a private-friend module reading the friend
+    /// target's interface. Returns `Fn`/`Type` for entries in
+    /// `iface.private_fns` / `iface.private_types` and lets
+    /// `Visibility::Private` `exported_types` flow through unfiltered.
+    pub(super) fn for_private_friend(iface: &'a ModuleInterface) -> Self {
         Self {
             iface,
             bypass_visibility: true,
@@ -101,7 +101,7 @@ impl<'a> ImportResolver<'a> {
                 if parent_type == lookup && ctor_name == lookup
             )
         };
-        // For the test-companion bypass, the same dual-record rule must
+        // For the private-friend bypass, the same dual-record rule must
         // see private_fns and private_types: a private record `T` lives in
         // both vectors (as a Constructor in private_fns and as a Type in
         // private_types). Prefer the Type arm so the helper registers the
@@ -204,7 +204,7 @@ mod tests {
             private_names: FxHashSet::default(),
             private_fns: Vec::new(),
             private_types: Vec::new(),
-            is_test_companion_of: None,
+            private_friend_module: None,
         }
     }
 
@@ -386,32 +386,22 @@ mod tests {
     }
 
     #[test]
-    fn companion_bypass_resolves_private_fn() {
+    fn private_friend_bypass_resolves_private_fn() {
         let mut iface = empty_iface();
         iface.private_fns.push(make_fn_summary("private_x"));
         iface.private_names.insert("private_x".to_string());
-        let r = ImportResolver::for_companion(&iface);
+        let r = ImportResolver::for_private_friend(&iface);
         assert!(matches!(r.resolve("private_x"), ResolveResult::Fn(_)));
     }
 
     #[test]
-    fn companion_bypass_resolves_private_type() {
+    fn private_friend_bypass_resolves_private_type() {
         let mut iface = empty_iface();
         iface
             .private_types
             .push(make_type_summary("Inner", Visibility::Private));
         iface.private_names.insert("Inner".to_string());
-        let r = ImportResolver::for_companion(&iface);
-        assert!(matches!(r.resolve("Inner"), ResolveResult::Type(_)));
-    }
-
-    #[test]
-    fn companion_bypass_returns_private_exported_type_directly() {
-        let mut iface = empty_iface();
-        iface
-            .exported_types
-            .push(make_type_summary("Inner", Visibility::Private));
-        let r = ImportResolver::for_companion(&iface);
+        let r = ImportResolver::for_private_friend(&iface);
         assert!(matches!(r.resolve("Inner"), ResolveResult::Type(_)));
     }
 

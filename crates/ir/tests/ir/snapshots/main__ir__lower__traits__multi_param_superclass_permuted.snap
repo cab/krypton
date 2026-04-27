@@ -4,7 +4,7 @@ expression: ir_module.to_string()
 ---
 module traits__multi_param_superclass_permuted
 
-type MyPair[a, b] = MyPair#0(a, b)
+type MyPair[x10, y10] = MyPair#0(x10, y10)
 trait MyShow[p11] { my_show(p11): String }
 trait Swap[q11] { swap(q11, r11): MyPair[r11, q11] }
 instance traits__multi_param_superclass_permuted.MyShow[Bool] { my_show=MyShow$$Bool$$my_show }

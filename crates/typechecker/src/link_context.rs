@@ -1,4 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::hash_map::Entry;
 use std::collections::VecDeque;
 
 use crate::module_interface::{
@@ -59,7 +60,7 @@ enum FnEntry {
         /// `true` when the entry indexes into `iface.private_fns` rather than
         /// `iface.exported_fns`. Lookup methods read this to pick the right
         /// vector, and `ModuleLinkView` enforces that private entries are only
-        /// reachable from the defining module or its `_test.kr` companion.
+        /// reachable from the defining module or its designated private friend.
         private: bool,
     },
     Reexport {
@@ -117,6 +118,28 @@ pub struct LinkContext {
     trait_superclass: FxHashMap<TraitName, TraitSuperclassInfo>,
 }
 
+fn insert_type_or_ice(
+    index: &mut FxHashMap<(ModuleId, String), TypeEntry>,
+    interner: &ModuleIdInterner,
+    mod_id: ModuleId,
+    name: String,
+    entry: TypeEntry,
+) {
+    match index.entry((mod_id, name)) {
+        Entry::Vacant(slot) => {
+            slot.insert(entry);
+        }
+        Entry::Occupied(occupied) => {
+            let (mid, n) = occupied.key();
+            panic!(
+                "ICE: duplicate type entry for ({}, {}) in LinkContext::build",
+                interner.resolve(*mid).as_str(),
+                n,
+            );
+        }
+    }
+}
+
 impl LinkContext {
     /// Build the link context from a set of module interfaces.
     pub fn build(interfaces: Vec<ModuleInterface>) -> Self {
@@ -137,8 +160,15 @@ impl LinkContext {
             iface_map.insert(id, iface);
         }
 
-        // Step 3: Build fn_index
-        let mut fn_index = FxHashMap::default();
+        // Step 3: Build fn_index. Multiple entries can share a `(module,
+        // name)` key when the user declares fn overloads — same bare name,
+        // distinct `exported_symbol`. The index keeps the last sibling (the
+        // existing lookup contract); overload-aware code paths use
+        // `exported_fns_for` instead. The collision invariant we *do* care
+        // about — that a name appears in at most one of
+        // exported_fns / reexported_fns / private_fns — is upheld at the
+        // source by `extract_private_fns`'s `exposed_names` filter.
+        let mut fn_index: FxHashMap<(ModuleId, String), FnEntry> = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, f) in iface.exported_fns.iter().enumerate() {
                 fn_index.insert(
@@ -160,11 +190,10 @@ impl LinkContext {
                     },
                 );
             }
-            // Private fns live in their own vector so the test-companion
+            // Private fns live in their own vector so the private-friend
             // bypass can index them without polluting the public surface.
             // Each private entry's name is disjoint from the public set
-            // (extract_private_fns filters out names that appear publicly),
-            // so insert is safe.
+            // (extract_private_fns filters out names that appear publicly).
             for (i, f) in iface.private_fns.iter().enumerate() {
                 fn_index.insert(
                     (mod_id, f.name.clone()),
@@ -176,12 +205,15 @@ impl LinkContext {
             }
         }
 
-        // Step 4: Build type_index
-        let mut type_index = FxHashMap::default();
+        // Step 4: Build type_index — same disjointness invariant as fn_index.
+        let mut type_index: FxHashMap<(ModuleId, String), TypeEntry> = FxHashMap::default();
         for (&mod_id, iface) in &iface_map {
             for (i, t) in iface.exported_types.iter().enumerate() {
-                type_index.insert(
-                    (mod_id, t.name.clone()),
+                insert_type_or_ice(
+                    &mut type_index,
+                    &interner,
+                    mod_id,
+                    t.name.clone(),
                     TypeEntry::Direct {
                         index: i,
                         private: false,
@@ -190,8 +222,11 @@ impl LinkContext {
             }
             for t in &iface.reexported_types {
                 let canonical_mod = interner.intern(&t.canonical_ref.module);
-                type_index.insert(
-                    (mod_id, t.local_name.clone()),
+                insert_type_or_ice(
+                    &mut type_index,
+                    &interner,
+                    mod_id,
+                    t.local_name.clone(),
                     TypeEntry::Reexport {
                         canonical_module: canonical_mod,
                         canonical_name: t.canonical_ref.symbol.local_name(),
@@ -199,8 +234,11 @@ impl LinkContext {
                 );
             }
             for (i, t) in iface.private_types.iter().enumerate() {
-                type_index.insert(
-                    (mod_id, t.name.clone()),
+                insert_type_or_ice(
+                    &mut type_index,
+                    &interner,
+                    mod_id,
+                    t.name.clone(),
                     TypeEntry::Direct {
                         index: i,
                         private: true,
@@ -542,20 +580,20 @@ impl LinkContext {
     pub fn view_for(&self, path: &ModulePath) -> Option<ModuleLinkView<'_>> {
         let id = self.interner.lookup(path)?;
         let reachable = self.transitive_deps.get(&id)?;
-        // If this module is a `_test.kr` companion, resolve the source-unit
-        // twin's ModuleId once. Lookups treat that one ModuleId as if it were
-        // `module_id` for the purposes of private visibility, but no other
-        // ModuleId.
-        let companion_id = self
+        // If this module designates a private friend, resolve the friend
+        // target's ModuleId once. Lookups treat that one ModuleId as if it
+        // were `module_id` for the purposes of private visibility, but no
+        // other ModuleId.
+        let friend_module_id = self
             .interfaces
             .get(&id)
-            .and_then(|iface| iface.is_test_companion_of.as_ref())
+            .and_then(|iface| iface.private_friend_module.as_ref())
             .and_then(|cp| self.interner.lookup(cp));
         Some(ModuleLinkView {
             ctx: self,
             module_id: id,
             reachable,
-            companion_id,
+            friend_module_id,
         })
     }
 }
@@ -568,11 +606,10 @@ pub struct ModuleLinkView<'a> {
     ctx: &'a LinkContext,
     module_id: ModuleId,
     reachable: &'a FxHashSet<ModuleId>,
-    /// Set when `module_id` is a `_test.kr` companion module: the ModuleId
-    /// of the source-unit twin whose privates this view is allowed to read.
-    /// `None` for every other module (including standalone `_test.kr` files
-    /// with no source companion).
-    companion_id: Option<ModuleId>,
+    /// Set when `module_id` designates a private friend: the ModuleId of
+    /// the friend target whose privates this view is allowed to read.
+    /// `None` for every other module.
+    friend_module_id: Option<ModuleId>,
 }
 
 impl<'a> ModuleLinkView<'a> {
@@ -597,11 +634,11 @@ impl<'a> ModuleLinkView<'a> {
             return None;
         }
         // Reject hits in the target module's `private_fns` unless the caller
-        // is the defining module itself or its `_test.kr` companion.
+        // is the defining module itself or its designated private friend.
         if let Some(FnEntry::Direct { private: true, .. }) =
             self.ctx.fn_index.get(&(target_id, name.to_string()))
         {
-            if target_id != self.module_id && Some(target_id) != self.companion_id {
+            if target_id != self.module_id && Some(target_id) != self.friend_module_id {
                 return None;
             }
         }
@@ -615,9 +652,9 @@ impl<'a> ModuleLinkView<'a> {
         }
         let summary = self.ctx.lookup_type_summary(path, name)?;
         // Visibility check: private types hidden unless own module or its
-        // test companion.
+        // designated private friend.
         if target_id != self.module_id
-            && Some(target_id) != self.companion_id
+            && Some(target_id) != self.friend_module_id
             && summary.visibility == Visibility::Private
         {
             return None;
@@ -652,36 +689,41 @@ impl<'a> ModuleLinkView<'a> {
 
     /// Enumerate fns the calling module is permitted to read from `path` —
     /// always the target module's `exported_fns`, plus its `private_fns`
-    /// when this view is the target's `_test.kr` companion (or the target
-    /// itself). Used by IR lowering to resolve the wire symbol for an
-    /// imported overload group, which under the companion bypass spans both
-    /// public and private siblings.
-    pub fn exported_fns_for(&self, path: &ModulePath) -> Option<Vec<&'a ExportedFnSummary>> {
+    /// when this view is the target's designated private friend (or the
+    /// target itself). Used by IR lowering to resolve the wire symbol for an
+    /// imported overload group, which under the private-friend bypass spans
+    /// both public and private siblings.
+    pub fn exported_fns_for(
+        &self,
+        path: &ModulePath,
+    ) -> Option<impl Iterator<Item = &'a ExportedFnSummary>> {
         let id = self.ctx.interner.lookup(path)?;
         if !self.reachable.contains(&id) {
             return None;
         }
         let iface = self.ctx.interfaces.get(&id)?;
-        let mut out: Vec<&ExportedFnSummary> = iface.exported_fns.iter().collect();
-        if id == self.module_id || Some(id) == self.companion_id {
-            out.extend(iface.private_fns.iter());
-        }
-        Some(out)
+        let private_slice: &[ExportedFnSummary] =
+            if id == self.module_id || Some(id) == self.friend_module_id {
+                &iface.private_fns
+            } else {
+                &[]
+            };
+        Some(iface.exported_fns.iter().chain(private_slice.iter()))
     }
 
     pub fn all_exported_types(&self) -> Vec<(&'a ModulePath, &'a TypeSummary)> {
-        let companion_id = self.companion_id;
+        let friend_module_id = self.friend_module_id;
         self.ctx
             .interfaces
             .iter()
             .filter(|(mod_id, _)| self.reachable.contains(mod_id))
             .flat_map(move |(mod_id, iface)| {
                 let path = self.ctx.interner.resolve(*mod_id);
-                // Only the test-companion view sees the source-unit twin's
+                // Only the private-friend view sees the friend target's
                 // private types — the defining module always sees them
                 // through `ir_module.structs` / `ir_module.sums` directly,
                 // never via this iterator.
-                let private_iter: &[_] = if Some(*mod_id) == companion_id {
+                let private_iter: &[_] = if Some(*mod_id) == friend_module_id {
                     iface.private_types.as_slice()
                 } else {
                     &[]
@@ -758,7 +800,7 @@ mod tests {
             private_names: FxHashSet::default(),
             private_fns: vec![],
             private_types: vec![],
-            is_test_companion_of: None,
+            private_friend_module: None,
         }
     }
 
