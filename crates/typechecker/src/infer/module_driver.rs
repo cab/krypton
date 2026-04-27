@@ -89,6 +89,7 @@ pub fn infer_module(
                 &interface_cache,
                 resolved.path.clone(),
                 &graph.prelude_tree_paths,
+                None,
             )
             .map_err(|errors| {
                 // Re-resolve source for the failing module (error path only)
@@ -136,6 +137,7 @@ pub fn infer_module(
         &interface_cache,
         root_module_path,
         &graph.prelude_tree_paths,
+        None,
     )
     .map_err(|errors| {
         errors
@@ -345,6 +347,7 @@ pub fn infer_project_source_unit(
             &interface_cache,
             resolved.path.clone(),
             &graph.prelude_tree_paths,
+            None,
         )
         .map_err(|errors| {
             let source_text = StdlibLoader::get_source(&resolved.path)
@@ -499,6 +502,7 @@ pub fn infer_test_module(
             &interface_cache,
             resolved.path.clone(),
             &source_unit.prelude_tree_paths,
+            None,
         )
         .map_err(|errors| {
             let source_text =
@@ -539,11 +543,21 @@ pub fn infer_test_module(
         test_dep_paths.push("prelude".to_string());
     }
 
+    // The companion is the source-unit module whose path drops the `_test`
+    // suffix from this test file's leaf segment. The bypass only fires when
+    // such a module actually exists in the source unit — `helpers_test.kr`
+    // with no `helpers.kr` companion gets `None` and behaves like any other
+    // module under the standard visibility rules.
+    let companion_path = krypton_modules::module_resolver::companion_module_path(&test_module_path)
+        .filter(|cp| source_unit.all_module_paths.contains(cp))
+        .map(crate::module_interface::ModulePath::new);
+
     let typed = infer_module_inner(
         test_module,
         &interface_cache,
         test_module_path.clone(),
         &source_unit.prelude_tree_paths,
+        companion_path.clone(),
     )
     .map_err(|errors| {
         let error_source = test_source
@@ -586,7 +600,8 @@ pub fn infer_test_module(
             .collect::<Vec<_>>());
     }
 
-    let iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
+    let mut iface = crate::module_interface::extract_interface(&typed, &test_dep_paths);
+    iface.is_test_companion_of = companion_path;
     Ok((typed, iface, extras_ordered))
 }
 
@@ -617,11 +632,12 @@ pub(crate) fn infer_module_inner(
     interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
     module_path: String,
     prelude_tree_paths: &FxHashSet<String>,
+    companion_path: Option<crate::module_interface::ModulePath>,
 ) -> Result<TypedModule, Vec<SpannedTypeError>> {
     let is_core_module = module_path.starts_with("core/");
     let is_prelude_tree = prelude_tree_paths.contains(&module_path);
 
-    let mut state = ModuleInferenceState::new(is_core_module);
+    let mut state = ModuleInferenceState::new(is_core_module, companion_path);
 
     let synthetic_prelude_import =
         state.build_synthetic_prelude_import(is_prelude_tree, interface_cache);
@@ -1206,13 +1222,16 @@ impl ModuleInferenceState {
 
         // Build exported_type_infos from fully-resolved TypeInfo in the registry.
         // This allows importers to register types without re-resolving from AST.
+        // Private types are included so the interface's `private_types`
+        // collection can read field/variant data here; consumers that walk
+        // exported_type_infos for module-public information must filter by
+        // `type_visibility` (IR lowering does this in `register_struct_layouts`
+        // / `register_sum_variants` to keep its fresh-id path for private
+        // types unchanged).
         let mut exported_type_infos: FxHashMap<String, typed_ast::ExportedTypeInfo> =
             FxHashMap::default();
         for decl in &module.decls {
             if let Decl::DefType(td) = decl {
-                if matches!(td.visibility, Visibility::Private) {
-                    continue;
-                }
                 if let Some(type_info) = self.registry.lookup_type(&td.name) {
                     let kind = match &type_info.kind {
                         crate::type_registry::TypeKind::Record { fields } => {
@@ -1277,13 +1296,21 @@ impl ModuleInferenceState {
         }
 
         // Include imported types (sum and record) in exported_type_infos so
-        // IR lowering can resolve them without AST fallback.
+        // IR lowering can resolve them without AST fallback. For a `_test.kr`
+        // companion module, an import of the source twin's private type lands
+        // in `imported_type_info` too — fall back to the twin's `private_types`
+        // when it is missing from `exported_types`.
         for (type_name, (source_path, _vis)) in &self.imports.imported_type_info {
             if exported_type_infos.contains_key(type_name) {
                 continue;
             }
             if let Some(iface) = interface_cache.get(source_path.as_str()) {
-                if let Some(ts) = iface.exported_types.iter().find(|t| t.name == *type_name) {
+                let summary = iface
+                    .exported_types
+                    .iter()
+                    .find(|t| t.name == *type_name)
+                    .or_else(|| iface.private_types.iter().find(|t| t.name == *type_name));
+                if let Some(ts) = summary {
                     let export =
                         crate::module_interface::type_summary_to_export_info(ts, source_path);
                     exported_type_infos.insert(type_name.clone(), export);

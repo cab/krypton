@@ -41,11 +41,31 @@ pub(super) enum ResolveResult<'a> {
 /// small (a few dozen entries per module in practice).
 pub(super) struct ImportResolver<'a> {
     iface: &'a ModuleInterface,
+    /// When true, suppress the standard private-visibility filter so the
+    /// resolver returns `Fn`/`Type` variants for entries in
+    /// `iface.private_fns` / `iface.private_types`. Set only when resolving
+    /// a `_test.kr` companion's import of its source-unit twin; every other
+    /// import path uses the standard filtered resolver.
+    bypass_visibility: bool,
 }
 
 impl<'a> ImportResolver<'a> {
     pub(super) fn new(iface: &'a ModuleInterface) -> Self {
-        Self { iface }
+        Self {
+            iface,
+            bypass_visibility: false,
+        }
+    }
+
+    /// Resolver variant for a `_test.kr` companion module reading its source
+    /// unit twin. Returns `Fn`/`Type` for entries in `iface.private_fns` /
+    /// `iface.private_types` and lets `Visibility::Private` `exported_types`
+    /// flow through unfiltered.
+    pub(super) fn for_companion(iface: &'a ModuleInterface) -> Self {
+        Self {
+            iface,
+            bypass_visibility: true,
+        }
     }
 
     pub(super) fn resolve(&self, name: &str) -> ResolveResult<'a> {
@@ -55,12 +75,12 @@ impl<'a> ImportResolver<'a> {
             .reexported_fns
             .iter()
             .find(|rf| rf.local_name == name);
-        let exported_type = self
-            .iface
-            .exported_types
-            .iter()
-            .find(|ts| ts.name == name)
-            .filter(|ts| !matches!(ts.visibility, Visibility::Private));
+        let exported_type = self.iface.exported_types.iter().find(|ts| ts.name == name);
+        let exported_type = if self.bypass_visibility {
+            exported_type
+        } else {
+            exported_type.filter(|ts| !matches!(ts.visibility, Visibility::Private))
+        };
         let reexported_type = self
             .iface
             .reexported_types
@@ -81,11 +101,29 @@ impl<'a> ImportResolver<'a> {
                 if parent_type == lookup && ctor_name == lookup
             )
         };
+        // For the test-companion bypass, the same dual-record rule must
+        // see private_fns and private_types: a private record `T` lives in
+        // both vectors (as a Constructor in private_fns and as a Type in
+        // private_types). Prefer the Type arm so the helper registers the
+        // type AND binds the constructor.
+        let private_fn = if self.bypass_visibility {
+            self.iface.private_fns.iter().find(|ef| ef.name == name)
+        } else {
+            None
+        };
+        let private_type = if self.bypass_visibility {
+            self.iface.private_types.iter().find(|ts| ts.name == name)
+        } else {
+            None
+        };
         let dual_record = exported_fn
             .map(|ef| fn_is_self_named_constructor(&ef.key, name))
             .unwrap_or(false)
             || reexported_fn
                 .map(|rf| fn_is_self_named_constructor(&rf.canonical_ref.symbol, name))
+                .unwrap_or(false)
+            || private_fn
+                .map(|pf| fn_is_self_named_constructor(&pf.key, name))
                 .unwrap_or(false);
         if dual_record {
             if let Some(ts) = exported_type {
@@ -93,6 +131,9 @@ impl<'a> ImportResolver<'a> {
             }
             if let Some(rt) = reexported_type {
                 return ResolveResult::ReexportedType(rt);
+            }
+            if let Some(pt) = private_type {
+                return ResolveResult::Type(pt);
             }
         }
 
@@ -126,6 +167,12 @@ impl<'a> ImportResolver<'a> {
                 return ResolveResult::TraitMethod { trait_def, method };
             }
         }
+        if let Some(pf) = private_fn {
+            return ResolveResult::Fn(pf);
+        }
+        if let Some(pt) = private_type {
+            return ResolveResult::Type(pt);
+        }
         if self.iface.private_names.contains(name) {
             return ResolveResult::Private;
         }
@@ -155,6 +202,9 @@ mod tests {
             exported_fn_qualifiers: FxHashMap::default(),
             type_visibility: FxHashMap::default(),
             private_names: FxHashSet::default(),
+            private_fns: Vec::new(),
+            private_types: Vec::new(),
+            is_test_companion_of: None,
         }
     }
 
@@ -333,6 +383,45 @@ mod tests {
         let iface = empty_iface();
         let r = ImportResolver::new(&iface);
         assert!(matches!(r.resolve("missing"), ResolveResult::Unknown));
+    }
+
+    #[test]
+    fn companion_bypass_resolves_private_fn() {
+        let mut iface = empty_iface();
+        iface.private_fns.push(make_fn_summary("private_x"));
+        iface.private_names.insert("private_x".to_string());
+        let r = ImportResolver::for_companion(&iface);
+        assert!(matches!(r.resolve("private_x"), ResolveResult::Fn(_)));
+    }
+
+    #[test]
+    fn companion_bypass_resolves_private_type() {
+        let mut iface = empty_iface();
+        iface
+            .private_types
+            .push(make_type_summary("Inner", Visibility::Private));
+        iface.private_names.insert("Inner".to_string());
+        let r = ImportResolver::for_companion(&iface);
+        assert!(matches!(r.resolve("Inner"), ResolveResult::Type(_)));
+    }
+
+    #[test]
+    fn companion_bypass_returns_private_exported_type_directly() {
+        let mut iface = empty_iface();
+        iface
+            .exported_types
+            .push(make_type_summary("Inner", Visibility::Private));
+        let r = ImportResolver::for_companion(&iface);
+        assert!(matches!(r.resolve("Inner"), ResolveResult::Type(_)));
+    }
+
+    #[test]
+    fn no_bypass_still_returns_private_for_known_private_fn() {
+        let mut iface = empty_iface();
+        iface.private_fns.push(make_fn_summary("private_x"));
+        iface.private_names.insert("private_x".to_string());
+        let r = ImportResolver::new(&iface);
+        assert!(matches!(r.resolve("private_x"), ResolveResult::Private));
     }
 
     #[test]

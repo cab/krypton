@@ -58,6 +58,9 @@ mod tests {
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         LinkContext::build(vec![iface])
     }

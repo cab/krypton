@@ -176,7 +176,19 @@ impl ModuleInferenceState {
         let qualifier_name = path.rsplit('/').next().unwrap_or(path).to_string();
         let mut qualified_exports: FxHashMap<String, QualifiedExport> = FxHashMap::default();
 
-        let resolver = ImportResolver::new(iface);
+        // If this module is a `_test.kr` companion of a source-unit module,
+        // imports of that exact source-unit path see private fns and types
+        // through the resolver's bypass mode. Every other import path —
+        // siblings, stdlib, deps — uses the standard filtered resolver.
+        let is_companion_import = self
+            .companion_path
+            .as_ref()
+            .is_some_and(|cp| cp.as_str() == path);
+        let resolver = if is_companion_import {
+            ImportResolver::for_companion(iface)
+        } else {
+            ImportResolver::new(iface)
+        };
 
         // Pass A — visibility
         for name in &requested {
@@ -241,6 +253,18 @@ impl ModuleInferenceState {
                             is_synthetic_prelude_import,
                         )?;
                     }
+                    if is_companion_import {
+                        for ef in iface.private_fns.iter().filter(|ef| ef.name == lookup) {
+                            self.bind_explicit_exported_fn(
+                                ef,
+                                alias,
+                                iface,
+                                path,
+                                span,
+                                is_synthetic_prelude_import,
+                            )?;
+                        }
+                    }
                 }
                 ResolveResult::Type(ts) => self.bind_explicit_exported_type(
                     ts,
@@ -297,6 +321,7 @@ impl ModuleInferenceState {
             &qualifier_name,
             span,
             is_synthetic_prelude_import,
+            is_companion_import,
             &mut qualified_exports,
         )?;
 
@@ -429,11 +454,12 @@ impl ModuleInferenceState {
                 let kind = iface
                     .exported_types
                     .iter()
+                    .chain(iface.private_types.iter())
                     .find(|ts| ts.name == *parent_type)
                     .map(constructor_kind_from_summary)
                     .unwrap_or_else(|| {
                         panic!(
-                            "ICE: constructor parent type '{}' not in exported_types",
+                            "ICE: constructor parent type '{}' not in exported_types or private_types",
                             parent_type
                         )
                     });
@@ -594,8 +620,13 @@ impl ModuleInferenceState {
         let effective_type_name = alias
             .map(str::to_string)
             .unwrap_or_else(|| ts.name.clone());
-        // Private types are already excluded from exported_types, and the
-        // visibility check in Pass A catches private_names.
+        // Non-companion imports never see `Visibility::Private` here
+        // (`extract_exported_types` filters them and the resolver returns
+        // `Private` instead of `Type`). For the test-companion bypass the
+        // resolver routes `private_types` entries through this helper with
+        // `Visibility::Private`; their constructors must bind so the test
+        // file can construct and pattern-match the private type. Only
+        // `Opaque` types skip constructor binding regardless.
         if self.registry.lookup_type(&ts.name).is_none() {
             let export = module_interface::type_summary_to_export_info(ts, path);
             self.registry.register_name(&export.name);
@@ -613,7 +644,7 @@ impl ModuleInferenceState {
             if path == "prelude" {
                 self.registry.set_prelude(&ts.name);
             }
-            if matches!(ts.visibility, Visibility::Pub) {
+            if !matches!(ts.visibility, Visibility::Opaque) {
                 for (cname, scheme) in constructors {
                     let kind = super::constructor_binding_kind_for_export(&export, &cname);
                     self.imports.bind_imported_constructor(
@@ -1048,17 +1079,33 @@ impl ModuleInferenceState {
         qualifier_name: &str,
         span: Span,
         is_synthetic_prelude_import: bool,
+        is_companion_import: bool,
         qualified_exports: &mut FxHashMap<String, QualifiedExport>,
     ) -> Result<(), SpannedTypeError> {
         use crate::module_interface;
 
-        for ts in &iface.exported_types {
+        // For an import-all from a `_test.kr` companion's source unit, surface
+        // private types and their constructors alongside the public ones; the
+        // explicit-name path already handled named-private imports in Pass B.
+        let private_types_iter: &[_] = if is_companion_import {
+            iface.private_types.as_slice()
+        } else {
+            &[]
+        };
+        let all_types = iface.exported_types.iter().chain(private_types_iter.iter());
+
+        for ts in all_types {
             if requested.contains(ts.name.as_str()) {
                 // Explicit-name binding for this type already happened in Pass B.
                 continue;
             }
             if import_all {
-                if matches!(ts.visibility, Visibility::Private) {
+                // Skip private types when the bypass isn't active. Inside the
+                // bypass, private_types_iter feeds them in; the
+                // exported_types loop here still filters them out so we don't
+                // double-bind, since `iface.exported_types` may also contain
+                // them (e.g. for diagnostics).
+                if matches!(ts.visibility, Visibility::Private) && !is_companion_import {
                     continue;
                 }
                 self.registry.mark_user_visible(&ts.name);
@@ -1074,7 +1121,7 @@ impl ModuleInferenceState {
                     if path == "prelude" {
                         self.registry.set_prelude(&ts.name);
                     }
-                    if matches!(ts.visibility, Visibility::Pub) {
+                    if !matches!(ts.visibility, Visibility::Opaque) {
                         for (cname, scheme) in constructors {
                             let hidden_name = format!("__qual${}${}", qualifier_name, cname);
                             let kind = super::constructor_binding_kind_for_export(&export, &cname);

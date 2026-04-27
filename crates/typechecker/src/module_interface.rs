@@ -4,8 +4,8 @@ use std::fmt;
 use krypton_parser::ast::{ExternTarget, Span, Visibility};
 
 use crate::typed_ast::{
-    ExportedFn, ExportedTypeKind, ExternTypeInfo, InstanceDefInfo, ParamQualifier, TraitDefInfo,
-    TraitName, TypedModule,
+    ExportedFn, ExportedTypeKind, ExternTypeInfo, FnTypeEntry, InstanceDefInfo, ParamQualifier,
+    TraitDefInfo, TraitName, TypedModule,
 };
 use crate::types::{substitute_type_params, Type, TypeScheme, TypeVarId};
 
@@ -124,6 +124,21 @@ pub struct ModuleInterface {
     pub type_visibility: FxHashMap<String, Visibility>,
     /// All top-level names that exist but aren't exported — enables "exists but private" diagnostics.
     pub private_names: FxHashSet<String>,
+    /// Summaries of locally-defined private fns (non-pub functions and private
+    /// constructors). Mirrors `exported_fns` in shape but is filtered out of
+    /// every cross-module visibility check except the test-companion bypass:
+    /// a `_test.kr` companion module reads these to typecheck and link
+    /// against its source module's internals.
+    pub private_fns: Vec<ExportedFnSummary>,
+    /// Summaries of locally-defined private types (records and sums declared
+    /// without `pub`). Same companion-bypass rule as `private_fns`.
+    pub private_types: Vec<TypeSummary>,
+    /// If this interface belongs to a `_test.kr` companion module, holds the
+    /// path of the source module it shadows (e.g. `parser_test` →
+    /// `Some("parser")`). Set only when the companion source module exists in
+    /// the same source unit; `None` for standalone test files and for every
+    /// non-test module.
+    pub is_test_companion_of: Option<ModulePath>,
 }
 
 /// Summary of an exported function.
@@ -405,6 +420,9 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
     // Build private_names: all top-level names that exist but aren't exported.
     let private_names = extract_private_names(typed);
 
+    let private_fns = extract_private_fns(typed, &exported_fns, &constructor_names);
+    let private_types = extract_private_types(typed);
+
     ModuleInterface {
         module_path,
         direct_deps,
@@ -418,6 +436,9 @@ pub fn extract_interface(typed: &TypedModule, direct_dep_paths: &[String]) -> Mo
         exported_fn_qualifiers: typed.exported_fn_qualifiers.clone(),
         type_visibility: typed.type_visibility.clone(),
         private_names,
+        private_fns,
+        private_types,
+        is_test_companion_of: None,
     }
 }
 
@@ -721,6 +742,165 @@ fn extract_extern_types(externs: &[ExternTypeInfo]) -> Vec<ExternTypeSummary> {
             host_module: et.host_module.clone(),
             target: et.target.clone(),
             lifts: et.lifts.clone(),
+        })
+        .collect()
+}
+
+/// Locally-defined private functions and constructors of private types.
+/// Used by the test-companion bypass so a `_test.kr` module can typecheck
+/// and link against its source unit's internals without going through the
+/// public-export path. Mirrors `extract_exported_fns` in shape, but draws
+/// schemes from `typed.fn_types` and pairs each entry with the corresponding
+/// `TypedFnDecl.def_span` so overload mangling is stable across the public
+/// and private surface.
+fn extract_private_fns(
+    typed: &TypedModule,
+    exported_fns: &[ExportedFnSummary],
+    constructor_names: &FxHashMap<String, String>,
+) -> Vec<ExportedFnSummary> {
+    let exposed_names: FxHashSet<&str> = exported_fns
+        .iter()
+        .map(|f| f.name.as_str())
+        .chain(typed.reexported_fn_types.iter().map(|f| f.name.as_str()))
+        .collect();
+
+    // Spans of private (non-pub) local fn decls, in source order, keyed by
+    // bare name. Multiple entries sharing a name are private overloads; we
+    // pop them off in declaration order as we walk fn_types so each scheme
+    // pairs with its declaring decl's span.
+    let mut decl_span_queue: FxHashMap<String, std::collections::VecDeque<Span>> =
+        FxHashMap::default();
+    for f in &typed.functions {
+        if !matches!(f.visibility, Visibility::Pub) {
+            decl_span_queue
+                .entry(f.name.clone())
+                .or_default()
+                .push_back(f.def_span);
+        }
+    }
+
+    let mut entries: Vec<(&FnTypeEntry, Option<Span>)> = Vec::new();
+    for entry in &typed.fn_types {
+        if entry.qualified_name.module_path != typed.module_path {
+            continue;
+        }
+        // Instance methods live in `exported_instances`; the `$$`-mangled
+        // entries in `fn_types` are an internal flat-list artifact, never
+        // imported by name from outside the trait machinery.
+        if entry.name.contains("$$") {
+            continue;
+        }
+        if exposed_names.contains(entry.name.as_str()) {
+            continue;
+        }
+        let def_span = decl_span_queue
+            .get_mut(entry.name.as_str())
+            .and_then(|q| q.pop_front());
+        entries.push((entry, def_span));
+    }
+
+    // Mangle within the private set so private overload siblings get
+    // distinguishable wire names. Public overloads are mangled separately
+    // by `extract_exported_fns`; the two sets never share a name (entries
+    // present in `exposed_names` are filtered out above).
+    let exported_for_mangle: Vec<ExportedFn> = entries
+        .iter()
+        .map(|(e, span)| ExportedFn {
+            name: e.name.clone(),
+            scheme: e.scheme.clone(),
+            origin: e.origin.clone(),
+            def_span: *span,
+            qualified_name: None,
+        })
+        .collect();
+    let mangled_symbols = mangle_overload_symbols(&exported_for_mangle);
+
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, (e, span))| {
+            let key = if let Some(parent) = constructor_names.get(&e.name) {
+                LocalSymbolKey::Constructor {
+                    parent_type: parent.clone(),
+                    name: e.name.clone(),
+                }
+            } else {
+                LocalSymbolKey::Function(e.name.clone())
+            };
+            ExportedFnSummary {
+                key,
+                name: e.name.clone(),
+                exported_symbol: mangled_symbols[i].clone(),
+                scheme: e.scheme.clone(),
+                origin: e.origin.clone(),
+                def_span: span,
+            }
+        })
+        .collect()
+}
+
+/// Locally-defined private types (records and sums declared without `pub`).
+/// Used by the test-companion bypass; only types declared in this module
+/// land in the result. Extern types are excluded because the public path
+/// emits them as `Opaque` regardless.
+fn extract_private_types(typed: &TypedModule) -> Vec<TypeSummary> {
+    let extern_type_names: FxHashSet<&str> = typed
+        .extern_types
+        .iter()
+        .map(|et| et.krypton_name.as_str())
+        .collect();
+
+    typed
+        .exported_type_infos
+        .iter()
+        .filter_map(|(name, info)| {
+            if extern_type_names.contains(name.as_str()) {
+                return None;
+            }
+            // Only types declared in this module count as private. The
+            // exported_type_infos cache also stores imported types so
+            // downstream lookups don't re-resolve them — those have a
+            // different source_module and would default to Private below.
+            if info.source_module != typed.module_path {
+                return None;
+            }
+            let vis = typed
+                .type_visibility
+                .get(name)
+                .copied()
+                .unwrap_or(Visibility::Private);
+            if !matches!(vis, Visibility::Private) {
+                return None;
+            }
+            let parent_name = name.clone();
+            let kind = match &info.kind {
+                ExportedTypeKind::Opaque => TypeSummaryKind::Opaque,
+                ExportedTypeKind::Record { fields } => TypeSummaryKind::Record {
+                    fields: fields.clone(),
+                },
+                ExportedTypeKind::Sum { variants } => TypeSummaryKind::Sum {
+                    variants: variants
+                        .iter()
+                        .map(|v| VariantSummary {
+                            key: LocalSymbolKey::Constructor {
+                                parent_type: parent_name.clone(),
+                                name: v.name.clone(),
+                            },
+                            name: v.name.clone(),
+                            fields: v.fields.clone(),
+                        })
+                        .collect(),
+                },
+            };
+            Some(TypeSummary {
+                key: LocalSymbolKey::Type(name.clone()),
+                name: name.clone(),
+                type_params: info.type_params.clone(),
+                type_param_vars: info.type_param_vars.clone(),
+                kind,
+                lifts: info.lifts.clone(),
+                visibility: Visibility::Private,
+            })
         })
         .collect()
 }

@@ -2758,6 +2758,9 @@ mod tests {
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         LinkContext::build(vec![iface])
     }
@@ -2883,6 +2886,9 @@ mod tests {
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         let main_iface = ModuleInterface {
             module_path: LinkModulePath::new("app/main"),
@@ -2897,6 +2903,9 @@ mod tests {
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         let link_ctx = LinkContext::build(vec![main_iface, stringlib_iface]);
         let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();
@@ -3134,6 +3143,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         let helpers_b_iface = ModuleInterface {
             module_path: LinkModulePath::new("helpers_b"),
@@ -3148,6 +3160,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         let main_iface = ModuleInterface {
             module_path: LinkModulePath::new("app/main"),
@@ -3165,6 +3180,9 @@ fun main() = { let _ = render_key[String]("hi"); () }
             exported_fn_qualifiers: Default::default(),
             type_visibility: Default::default(),
             private_names: Default::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         let link_ctx = LinkContext::build(vec![main_iface, helpers_a_iface, helpers_b_iface]);
         let view = link_ctx.view_for(&LinkModulePath::new("app/main")).unwrap();

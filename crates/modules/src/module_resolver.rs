@@ -17,6 +17,29 @@ pub fn is_test_module_path(module_path: &str) -> bool {
     leaf.ends_with("_test")
 }
 
+/// Strip the `_test` suffix from `module_path`'s leaf segment.
+/// Returns `None` if the leaf doesn't end with `_test`, or if the leaf is
+/// exactly `_test` (no companion base name).
+///
+/// `"math_test"` → `Some("math")`,
+/// `"parser/lexer_test"` → `Some("parser/lexer")`,
+/// `"math"` → `None`,
+/// `"_test"` → `None`.
+pub fn companion_module_path(module_path: &str) -> Option<String> {
+    let (parent, leaf) = match module_path.rsplit_once('/') {
+        Some((p, l)) => (Some(p), l),
+        None => (None, module_path),
+    };
+    let base = leaf.strip_suffix("_test")?;
+    if base.is_empty() {
+        return None;
+    }
+    Some(match parent {
+        Some(p) => format!("{p}/{base}"),
+        None => base.to_string(),
+    })
+}
+
 /// Resolves modules from the filesystem relative to a source root.
 pub struct FileSystemResolver {
     pub source_root: PathBuf,
@@ -218,6 +241,31 @@ mod tests {
             source_root: src.clone(),
         };
         assert_eq!(resolver.resolve("parser/lexer_test"), None);
+    }
+
+    #[test]
+    fn companion_module_path_strips_bare_test_suffix() {
+        assert_eq!(companion_module_path("math_test"), Some("math".to_string()));
+    }
+
+    #[test]
+    fn companion_module_path_strips_nested_test_suffix() {
+        assert_eq!(
+            companion_module_path("parser/lexer_test"),
+            Some("parser/lexer".to_string())
+        );
+    }
+
+    #[test]
+    fn companion_module_path_returns_none_for_non_test() {
+        assert_eq!(companion_module_path("math"), None);
+        assert_eq!(companion_module_path("parser/lexer"), None);
+    }
+
+    #[test]
+    fn companion_module_path_returns_none_for_bare_test() {
+        assert_eq!(companion_module_path("_test"), None);
+        assert_eq!(companion_module_path("parser/_test"), None);
     }
 
     #[test]

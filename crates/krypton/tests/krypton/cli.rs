@@ -2201,3 +2201,215 @@ fn test_test_assert_ok_chained_unwrap() {
         "expected 'ok chain_test/test_assert_ok_chained', got: {stdout}"
     );
 }
+
+#[test]
+fn test_test_companion_private_fn_callable_from_test_file() {
+    // The companion `_test.kr` file invokes a non-pub function from its
+    // source twin and asserts the return value. The compiler accepts the
+    // import via the companion bypass and the test runs to completion.
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/parser.kr"),
+        "fun tokenize(x: Int) -> Int = x + 1\n",
+    )
+    .expect("write parser.kr");
+    std::fs::write(
+        project.join("src/parser_test.kr"),
+        "import parser.{tokenize}\n\
+         import core/test.{assert_eq}\n\
+         \n\
+         fun test_tokenize() { assert_eq(tokenize(41), 42) }\n",
+    )
+    .expect("write parser_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should succeed when test imports companion's private fn; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok parser_test/test_tokenize"),
+        "expected 'ok parser_test/test_tokenize', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_sibling_private_inaccessible() {
+    // `lexer_test` (companion of `lexer`) tries to import a private fn
+    // from `parser` — a sibling, not its companion. Compilation must
+    // fail with the standard E0503 PrivateName diagnostic.
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/parser.kr"),
+        "fun private_x(x: Int) -> Int = x\npub fun parse(x: Int) -> Int = private_x(x)\n",
+    )
+    .expect("write parser.kr");
+    std::fs::write(
+        project.join("src/lexer.kr"),
+        "pub fun lex() -> Int = 0\n",
+    )
+    .expect("write lexer.kr");
+    std::fs::write(
+        project.join("src/lexer_test.kr"),
+        "import parser.{private_x}\n\nfun test_x() { let _ = private_x(1) }\n",
+    )
+    .expect("write lexer_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be non-zero when sibling imports a private name"
+    );
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("E0503"),
+        "expected E0503 diagnostic for sibling-private import, got stdout={stdout} stderr={stderr}"
+    );
+}
+
+#[test]
+fn test_test_companion_private_type_and_constructor_visible() {
+    // The companion test constructs a private record from the source twin
+    // and reads its field, exercising both private-type binding and
+    // private-constructor binding through the bypass.
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/data.kr"),
+        "type Inner = { x: Int }\n\
+         pub fun zero() -> Int = 0\n",
+    )
+    .expect("write data.kr");
+    std::fs::write(
+        project.join("src/data_test.kr"),
+        "import data.{Inner}\n\
+         import core/test.{assert_eq}\n\
+         \n\
+         fun test_inner() {\n\
+         \x20 let inner = Inner { x = 7 }\n\
+         \x20 assert_eq(inner.x, 7)\n\
+         }\n",
+    )
+    .expect("write data_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should succeed when test constructs companion's private type; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok data_test/test_inner"),
+        "expected 'ok data_test/test_inner', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_helpers_test_with_no_companion_compiles() {
+    // `helpers_test.kr` has no `helpers.kr` source twin. The file must
+    // still typecheck and run as a standalone test module — no companion
+    // bypass is set, but no error fires either.
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/helpers_test.kr"),
+        "fun test_x() { }\n",
+    )
+    .expect("write helpers_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "standalone test file with no companion source must still run; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok helpers_test/test_x"),
+        "expected 'ok helpers_test/test_x', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_imported_module_cannot_access_test_companion_privates() {
+    // A sibling source module (`util.kr`) tries to import a private fn
+    // from `parser`. Even with `parser_test.kr` present in the project,
+    // ordinary cross-module visibility rules apply: the compiler emits
+    // E0503. The bypass is scoped to the test file itself, not propagated
+    // to other consumers.
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/parser.kr"),
+        "fun private_x(x: Int) -> Int = x\npub fun parse(x: Int) -> Int = private_x(x)\n",
+    )
+    .expect("write parser.kr");
+    std::fs::write(
+        project.join("src/parser_test.kr"),
+        "import parser.{parse}\n\nfun test_p() { let _ = parse(1) }\n",
+    )
+    .expect("write parser_test.kr");
+    std::fs::write(
+        project.join("src/util.kr"),
+        "import parser.{private_x}\n\npub fun u(x: Int) -> Int = private_x(x)\n",
+    )
+    .expect("write util.kr");
+    // Wire `util` into the build's transitive closure so `build` actually
+    // typechecks it (the build entry is `src/main.kr`, which the init
+    // template populates with a no-import `println`).
+    std::fs::write(
+        project.join("src/main.kr"),
+        "import util.{u}\n\nfun main() = println(show(u(1)))\n",
+    )
+    .expect("overwrite main.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "build must reject ordinary modules that import companion privates"
+    );
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("E0503"),
+        "expected E0503 diagnostic for non-test sibling consumer, got stdout={stdout} stderr={stderr}"
+    );
+}

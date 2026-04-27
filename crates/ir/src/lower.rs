@@ -6403,6 +6403,22 @@ impl<'a> LowerCtx<'a> {
         let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
         sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
         for (name, info) in &sorted_type_infos {
+            // Skip locally-declared private types here so the second loop
+            // can register them with fresh IR-side TypeVarIds. The interface
+            // extractor still reads them out of `exported_type_infos` for
+            // the test-companion bypass, but IR lowering needs its own ID
+            // namespace for private types to avoid colliding with the
+            // typechecker's registry IDs that flow through other paths.
+            if info.source_module == typed.module_path {
+                let is_private = typed
+                    .type_visibility
+                    .get(*name)
+                    .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
+                    .unwrap_or(false);
+                if is_private {
+                    continue;
+                }
+            }
             let type_ref = typed_ast::ResolvedTypeRef {
                 qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
             };
@@ -6446,6 +6462,18 @@ impl<'a> LowerCtx<'a> {
         let mut sorted_type_infos: Vec<_> = typed.exported_type_infos.iter().collect();
         sorted_type_infos.sort_by_key(|(name, _)| name.as_str());
         for (name, info) in &sorted_type_infos {
+            // Skip locally-declared private sums; the second loop owns them
+            // (see `register_struct_layouts` for the same rationale).
+            if info.source_module == typed.module_path {
+                let is_private = typed
+                    .type_visibility
+                    .get(*name)
+                    .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
+                    .unwrap_or(false);
+                if is_private {
+                    continue;
+                }
+            }
             if let ExportedTypeKind::Sum { variants } = &info.kind {
                 let type_ref = typed_ast::ResolvedTypeRef {
                     qualified_name: QualifiedName::new(info.source_module.clone(), (*name).clone()),
@@ -6859,8 +6887,21 @@ fn lower_struct_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<StructDef> {
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
-            let (type_params, fields) =
-                if let Some(info) = typed.exported_type_infos.get(&decl.name) {
+            // Locally-declared private structs use the IR-side fresh-id path
+            // (`register_struct_layouts` second loop) for self-consistency
+            // — registry-allocated ids that flow through `exported_type_infos`
+            // would mismatch the ids used by every other private-aware lookup.
+            let is_private = typed
+                .type_visibility
+                .get(&decl.name)
+                .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
+                .unwrap_or(false);
+            let info = if is_private {
+                None
+            } else {
+                typed.exported_type_infos.get(&decl.name)
+            };
+            let (type_params, fields) = if let Some(info) = info {
                     let type_ref = typed_ast::ResolvedTypeRef {
                         qualified_name: QualifiedName::new(
                             info.source_module.clone(),
@@ -6906,7 +6947,17 @@ fn lower_sum_type_defs(typed: &TypedModule, ctx: &LowerCtx) -> Vec<SumTypeDef> {
         .iter()
         .filter(|decl| decl.qualified_name.module_path == typed.module_path)
         .map(|decl| {
-            let type_params = if let Some(info) = typed.exported_type_infos.get(&decl.name) {
+            let is_private = typed
+                .type_visibility
+                .get(&decl.name)
+                .map(|v| matches!(v, krypton_parser::ast::Visibility::Private))
+                .unwrap_or(false);
+            let info = if is_private {
+                None
+            } else {
+                typed.exported_type_infos.get(&decl.name)
+            };
+            let type_params = if let Some(info) = info {
                 info.type_param_vars.clone()
             } else {
                 ctx.private_type_params
@@ -8339,6 +8390,9 @@ mod tests {
             exported_fn_qualifiers: FxHashMap::default(),
             type_visibility: FxHashMap::default(),
             private_names: FxHashSet::default(),
+            private_fns: vec![],
+            private_types: vec![],
+            is_test_companion_of: None,
         };
         krypton_typechecker::link_context::LinkContext::build(vec![iface])
     }

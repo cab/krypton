@@ -247,3 +247,163 @@ fn infer_test_module_reports_type_error_without_touching_phase1() {
         "phase 1 ModuleInterface for 'math' should be untouched"
     );
 }
+
+type CompanionTestResult = Result<
+    (
+        krypton_typechecker::typed_ast::TypedModule,
+        krypton_typechecker::module_interface::ModuleInterface,
+        Vec<(
+            krypton_typechecker::typed_ast::TypedModule,
+            krypton_typechecker::module_interface::ModuleInterface,
+        )>,
+    ),
+    Vec<InferError>,
+>;
+
+/// Helper: compile Phase 1, then `infer_test_module` with the given test
+/// source. Returns the test-module result so individual tests can poke at
+/// the typed module / interface / errors.
+fn infer_companion_test(
+    phase1: Vec<(&str, &str)>,
+    test_path: &str,
+    test_src: &str,
+) -> CompanionTestResult {
+    let unit = infer_unit(phase1.clone()).expect("phase 1 should typecheck");
+    let test_module = parse_ok(test_src);
+    let resolver = MemoryResolver::new(phase1);
+    infer_test_module(
+        &test_module,
+        test_path.to_string(),
+        &resolver,
+        CompileTarget::Jvm,
+        &unit,
+        Some(test_src.to_string()),
+    )
+}
+
+#[test]
+fn test_module_can_import_private_fn_from_companion() {
+    // `parser` defines `tokenize` without `pub`. `parser_test` imports it
+    // by name and the typechecker accepts the import via the companion
+    // bypass.
+    let test_src = "import parser.{tokenize}\n\nfun test_t() { let _ = tokenize(1) }\n";
+    let result = infer_companion_test(
+        vec![("parser", "fun tokenize(x: Int) -> Int = x\n")],
+        "parser_test",
+        test_src,
+    );
+    let (typed, _iface, _extras) = result.expect("companion private fn should be importable");
+    assert!(
+        typed.fn_types_by_name.contains_key("test_t"),
+        "test_t should be present"
+    );
+}
+
+#[test]
+fn test_module_can_use_private_type_from_companion() {
+    // `parser` declares a private record `Token`. `parser_test` imports
+    // both the type and a public helper that returns it, then constructs
+    // the type and reads its field.
+    let parser_src = "type Token = { kind: Int }\n\
+                      pub fun make_token() -> Token = Token { kind = 1 }\n";
+    let test_src = "import parser.{Token, make_token}\n\
+                    fun test_t() {\n\
+                    \x20 let t = Token { kind = 7 }\n\
+                    \x20 let _ = make_token()\n\
+                    \x20 let _ = t.kind\n\
+                    }\n";
+    let result = infer_companion_test(
+        vec![("parser", parser_src)],
+        "parser_test",
+        test_src,
+    );
+    let (typed, _iface, _extras) =
+        result.expect("companion private type should be constructible from test");
+    assert!(typed.fn_types_by_name.contains_key("test_t"));
+}
+
+#[test]
+fn test_module_cannot_import_private_from_sibling() {
+    // `parser` has a private fn. `lexer_test` is the companion of `lexer`
+    // — `parser` is a sibling, not the companion, so the import must fail
+    // with `PrivateName` (E0503).
+    let test_src = "import parser.{tokenize}\n\nfun test_t() { let _ = tokenize(1) }\n";
+    let result = infer_companion_test(
+        vec![
+            ("parser", "fun tokenize(x: Int) -> Int = x\n"),
+            ("lexer", "pub fun lex() -> Int = 0\n"),
+        ],
+        "lexer_test",
+        test_src,
+    );
+    let errors = match result {
+        Ok(_) => panic!("sibling module's privates must remain hidden"),
+        Err(errors) => errors,
+    };
+    let saw_private = errors.iter().any(|e| match e {
+        InferError::TypeError { error, .. } => matches!(
+            *error.error,
+            krypton_typechecker::type_error::TypeError::PrivateName { .. }
+        ),
+        _ => false,
+    });
+    assert!(
+        saw_private,
+        "expected PrivateName error for sibling import, got: {errors:?}"
+    );
+}
+
+#[test]
+fn test_module_with_no_companion_compiles() {
+    // `helpers_test.kr` exists but `helpers.kr` does not. The test file
+    // typechecks as a standalone module: no companion path is set, so no
+    // private bypass is available, but no error is raised either.
+    let test_src = "fun test_x() { }\n";
+    let (typed, iface, _extras) = infer_companion_test(
+        vec![("other", "pub fun other() -> Int = 1\n")],
+        "helpers_test",
+        test_src,
+    )
+    .expect("standalone test module should typecheck");
+    assert!(typed.fn_types_by_name.contains_key("test_x"));
+    assert!(
+        iface.is_test_companion_of.is_none(),
+        "no companion should be recorded when the source twin doesn't exist"
+    );
+}
+
+#[test]
+fn test_companion_bypass_does_not_propagate_to_extras() {
+    // The companion bypass must be scoped to the test file itself. Extras
+    // (modules pulled in by the test's import graph that Phase 1 didn't
+    // cover) must NOT see the bypass — they typecheck like any other
+    // consumer. We verify this structurally by checking the test
+    // interface's `is_test_companion_of`: it points at `parser`, so the
+    // test module bypasses `parser`'s privates, but no extras-loop module
+    // could possibly carry that flag because `infer_test_module` clears
+    // the companion arg for every extras call.
+    let parser_src = "fun internal() -> Int = 1\npub fun add(x: Int) -> Int = x + 1\n";
+    let test_src = "import parser.{internal}\n\nfun test_x() { let _ = internal() }\n";
+    let (_typed, iface, extras) = infer_companion_test(
+        vec![("parser", parser_src)],
+        "parser_test",
+        test_src,
+    )
+    .expect("companion access should typecheck");
+    assert_eq!(
+        iface.is_test_companion_of.as_ref().map(|p| p.as_str()),
+        Some("parser"),
+        "test interface must record its companion"
+    );
+    // Every extras interface — should there be any — must have a `None`
+    // companion flag. (Most commonly the extras list is empty when the
+    // test file pulls in nothing beyond the source unit; both cases are
+    // valid AC #5 evidence.)
+    for (_, extra_iface) in &extras {
+        assert!(
+            extra_iface.is_test_companion_of.is_none(),
+            "extras module {} must not carry a companion flag",
+            extra_iface.module_path
+        );
+    }
+}
