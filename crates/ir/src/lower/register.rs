@@ -14,7 +14,7 @@ use super::ctx::{
     InstanceSourceInfo, LocalFnAlloc, LowerCtx, ParamInstanceInfo, TraitConstraintList,
     TraitMethodConstraintInfo, TraitMethodTypeInfo,
 };
-use super::module_pipeline::{build_type_param_map, resolve_type_expr_simple};
+use super::type_expr::{build_type_param_map, resolve_type_expr_simple};
 use krypton_typechecker::typed_ast::TraitName;
 
 use super::LowerError;

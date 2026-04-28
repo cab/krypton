@@ -16,6 +16,7 @@
 // The public surface is just `lower_module`, `lower_all`, and `LowerError`.
 
 mod anf;
+mod bind;
 mod call;
 mod control;
 mod ctx;
@@ -23,9 +24,12 @@ mod dict;
 mod expr;
 mod lambda_fn;
 mod module_pipeline;
+mod op_resolve;
 mod patmat;
 mod register;
+mod resolved;
 mod scope;
+mod type_expr;
 mod util;
 
 pub use module_pipeline::{lower_all, lower_module};

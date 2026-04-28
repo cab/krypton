@@ -10,12 +10,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use krypton_typechecker::typed_ast::{QualifiedName, TraitName, TypedExpr};
 use krypton_typechecker::types::{SchemeVarId, Type, TypeVarId};
 
+use super::bind::{bind_instance_targets, bind_type_vars, ice_bind_conflict};
 use super::ctx::{LetBinding, LowerCtx, SuperclassProjectionHop, SuperclassProjectionPlan};
-use super::module_pipeline::strip_own;
-use super::util::{
-    atom_expr_at, bind_instance_targets, bind_type_vars, expr_at, ice_bind_conflict, simple_at,
-    substitute_ir_type,
-};
+use super::op_resolve::strip_own;
+use super::util::{atom_expr_at, expr_at, simple_at, substitute_ir_type};
 use super::LowerError;
 use crate::Type as IrType;
 use crate::{

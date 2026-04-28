@@ -10,16 +10,18 @@ use krypton_typechecker::types::Type;
 
 use super::ctx::{LetBinding, LoweredValue, LowerCtx};
 use crate::Type as IrType;
-use super::module_pipeline::{
-    callable_overload_signature, callable_qualified_name, convert_lit, extract_vec_element_type,
-    resolve_binop, resolve_unaryop, resolved_callable_ref, resolved_constructor_ref,
-    resolved_trait_method_ref, strip_own, variant_ref_from_constructor,
+use super::op_resolve::{
+    convert_lit, extract_vec_element_type, resolve_binop, resolve_unaryop, strip_own,
 };
-use super::util::{atom_expr_at, expr_at, replace_tail_with_jump, simple_at};
+use super::resolved::{
+    callable_overload_signature, callable_qualified_name, resolved_callable_ref,
+    resolved_constructor_ref, resolved_trait_method_ref, variant_ref_from_constructor,
+};
+use super::util::{atom_expr_at, expr_at, simple_at};
 use super::LowerError;
 use crate::{
     Atom, CanonicalRef, Expr, ExprKind, FnDef, Literal, LocalSymbolKey, ModulePath, SimpleExpr,
-    SimpleExprKind, VarId,
+    SimpleExprKind, SwitchBranch, VarId,
 };
 
 impl<'a> LowerCtx<'a> {
@@ -813,5 +815,123 @@ impl<'a> LowerCtx<'a> {
                 is_recur: false,
             },
         )
+    }
+}
+
+/// Replace tail positions of an expression with `jump target(tail_value)`.
+/// Private to ANF lowering: the only caller is `inline_compound_let` above.
+fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
+    let span = expr.span;
+    let result_ty = expr.ty.clone();
+    match expr.kind {
+        ExprKind::Atom(atom) => expr_at(
+            span,
+            result_ty,
+            ExprKind::Jump {
+                target,
+                args: vec![atom],
+            },
+        ),
+        ExprKind::Let {
+            bind,
+            ty,
+            value,
+            body,
+        } => {
+            let new_body = replace_tail_with_jump(*body, target);
+            expr_at(
+                span,
+                result_ty,
+                ExprKind::Let {
+                    bind,
+                    ty,
+                    value,
+                    body: Box::new(new_body),
+                },
+            )
+        }
+        ExprKind::BoolSwitch {
+            scrutinee,
+            true_body,
+            false_body,
+        } => expr_at(
+            span,
+            result_ty,
+            ExprKind::BoolSwitch {
+                scrutinee,
+                true_body: Box::new(replace_tail_with_jump(*true_body, target)),
+                false_body: Box::new(replace_tail_with_jump(*false_body, target)),
+            },
+        ),
+        ExprKind::Switch {
+            scrutinee,
+            branches,
+            default,
+        } => {
+            let new_branches: Vec<_> = branches
+                .into_iter()
+                .map(|b| SwitchBranch {
+                    tag: b.tag,
+                    bindings: b.bindings,
+                    body: replace_tail_with_jump(b.body, target),
+                })
+                .collect();
+            let new_default = default.map(|d| Box::new(replace_tail_with_jump(*d, target)));
+            expr_at(
+                span,
+                result_ty,
+                ExprKind::Switch {
+                    scrutinee,
+                    branches: new_branches,
+                    default: new_default,
+                },
+            )
+        }
+        ExprKind::LetJoin {
+            name,
+            params,
+            join_body,
+            body: join_scope,
+            is_recur,
+        } => {
+            let new_join_body = replace_tail_with_jump(*join_body, target);
+            let new_scope = replace_tail_with_jump(*join_scope, target);
+            expr_at(
+                span,
+                result_ty,
+                ExprKind::LetJoin {
+                    name,
+                    params,
+                    join_body: Box::new(new_join_body),
+                    body: Box::new(new_scope),
+                    is_recur,
+                },
+            )
+        }
+        ExprKind::AutoClose {
+            resource,
+            dict,
+            type_name,
+            null_slot,
+            body,
+        } => {
+            // Recurse into the AutoClose body: the tail atom inside is the
+            // real producer of the enclosing compound value. The close call
+            // itself is not a tail position.
+            let new_body = replace_tail_with_jump(*body, target);
+            expr_at(
+                span,
+                result_ty,
+                ExprKind::AutoClose {
+                    resource,
+                    dict,
+                    type_name,
+                    null_slot,
+                    body: Box::new(new_body),
+                },
+            )
+        }
+        // Jump and LetRec shouldn't appear as compound value tails
+        _ => expr,
     }
 }

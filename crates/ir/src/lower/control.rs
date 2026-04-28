@@ -8,7 +8,7 @@ use krypton_typechecker::typed_ast::{ScopeId, TraitName, TypedExpr, TypedExprKin
 use krypton_typechecker::types::Type;
 
 use super::ctx::{LoweredValue, LowerCtx};
-use super::module_pipeline::strip_own;
+use super::op_resolve::strip_own;
 use super::util::{atom_expr_at, expr_at, simple_at};
 use super::LowerError;
 use crate::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExprKind};

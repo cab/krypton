@@ -13,7 +13,7 @@ use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedMatchArm, Ty
 use krypton_typechecker::types::Type;
 
 use super::ctx::{Clause, ClausePayload, ColumnKind, LetBinding, LowerCtx};
-use super::module_pipeline::convert_lit;
+use super::op_resolve::convert_lit;
 use super::util::{atom_expr_at, expr_at, flatten_or_at_column, is_wildcard_or_var, pattern_type, simple_at};
 use super::LowerError;
 use crate::{Atom, Expr, ExprKind, Literal, PrimOp, SimpleExprKind, SwitchBranch, VarId};

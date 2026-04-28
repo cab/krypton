@@ -2,20 +2,19 @@
 // `LowerCtx` and have no shared mutable state, so they live as free `fn` items
 // here, separate from the impl-block files. Includes pattern-matrix helpers,
 // free-variable analysis on `TypedExpr`, expression-kind detection, IR-side
-// referenced-var collection, expression constructors, and instance-target
-// type binding.
+// referenced-var collection, expression constructors, and tuple-arity
+// collection on lowered IR.
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use std::rc::Rc;
 
 use krypton_parser::ast::{Lit, Span};
 use krypton_typechecker::typed_ast::{TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern};
-use krypton_typechecker::types::{self as types, Type, TypeVarId};
+use krypton_typechecker::types::{Type, TypeVarId};
 
 use super::ctx::Clause;
-use super::LowerError;
 use crate::Type as IrType;
-use crate::{Atom, Expr, ExprKind, SimpleExpr, SimpleExprKind, SwitchBranch, VarId};
+use crate::{Atom, Expr, ExprKind, SimpleExpr, SimpleExprKind, VarId};
 
 /// Check if a pattern is a wildcard or variable (always matches).
 pub(super) fn is_wildcard_or_var(pat: &TypedPattern) -> bool {
@@ -360,308 +359,122 @@ pub(super) fn substitute_ir_type(ty: &IrType, params: &[TypeVarId], args: &[IrTy
 }
 
 // ---------------------------------------------------------------------------
-// Tail-position rewriting
+// Tuple arity collection (on lowered IR)
 // ---------------------------------------------------------------------------
 
-/// Replace tail positions of an expression with `jump target(tail_value)`.
-pub(super) fn replace_tail_with_jump(expr: Expr, target: VarId) -> Expr {
-    let span = expr.span;
-    let result_ty = expr.ty.clone();
-    match expr.kind {
-        ExprKind::Atom(atom) => expr_at(
-            span,
-            result_ty,
-            ExprKind::Jump {
-                target,
-                args: vec![atom],
-            },
-        ),
-        ExprKind::Let {
-            bind,
-            ty,
-            value,
-            body,
-        } => {
-            let new_body = replace_tail_with_jump(*body, target);
-            expr_at(
-                span,
-                result_ty,
-                ExprKind::Let {
-                    bind,
-                    ty,
-                    value,
-                    body: Box::new(new_body),
-                },
-            )
+pub(super) fn collect_tuple_arities_from_fn(
+    func: &crate::FnDef,
+    arities: &mut std::collections::BTreeSet<usize>,
+) {
+    for (_, ty) in &func.params {
+        collect_tuple_arities_from_type(ty, arities);
+    }
+    collect_tuple_arities_from_type(&func.return_type, arities);
+    collect_tuple_arities_from_expr(&func.body, arities);
+}
+
+pub(super) fn collect_tuple_arities_from_type(
+    ty: &IrType,
+    arities: &mut std::collections::BTreeSet<usize>,
+) {
+    match ty {
+        IrType::Tuple(elems) => {
+            arities.insert(elems.len());
+            for e in elems {
+                collect_tuple_arities_from_type(e, arities);
+            }
         }
-        ExprKind::BoolSwitch {
-            scrutinee,
-            true_body,
-            false_body,
-        } => expr_at(
-            span,
-            result_ty,
-            ExprKind::BoolSwitch {
-                scrutinee,
-                true_body: Box::new(replace_tail_with_jump(*true_body, target)),
-                false_body: Box::new(replace_tail_with_jump(*false_body, target)),
-            },
-        ),
-        ExprKind::Switch {
-            scrutinee,
-            branches,
-            default,
+        IrType::Fn(params, ret) => {
+            for p in params {
+                collect_tuple_arities_from_type(p, arities);
+            }
+            collect_tuple_arities_from_type(ret, arities);
+        }
+        IrType::Named(_, args) => {
+            for a in args {
+                collect_tuple_arities_from_type(a, arities);
+            }
+        }
+        IrType::Own(inner) => collect_tuple_arities_from_type(inner, arities),
+        IrType::Dict { target_types, .. } => {
+            for t in target_types {
+                collect_tuple_arities_from_type(t, arities);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub(super) fn collect_tuple_arities_from_expr(
+    expr: &Expr,
+    arities: &mut std::collections::BTreeSet<usize>,
+) {
+    collect_tuple_arities_from_type(&expr.ty, arities);
+    match &expr.kind {
+        ExprKind::Let {
+            ty, value, body, ..
         } => {
-            let new_branches: Vec<_> = branches
-                .into_iter()
-                .map(|b| SwitchBranch {
-                    tag: b.tag,
-                    bindings: b.bindings,
-                    body: replace_tail_with_jump(b.body, target),
-                })
-                .collect();
-            let new_default = default.map(|d| Box::new(replace_tail_with_jump(*d, target)));
-            expr_at(
-                span,
-                result_ty,
-                ExprKind::Switch {
-                    scrutinee,
-                    branches: new_branches,
-                    default: new_default,
-                },
-            )
+            collect_tuple_arities_from_type(ty, arities);
+            collect_tuple_arities_from_simple(value, arities);
+            collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::LetRec { bindings, body } => {
+            for (_, ty, _, _) in bindings {
+                collect_tuple_arities_from_type(ty, arities);
+            }
+            collect_tuple_arities_from_expr(body, arities);
         }
         ExprKind::LetJoin {
-            name,
             params,
             join_body,
-            body: join_scope,
-            is_recur,
-        } => {
-            let new_join_body = replace_tail_with_jump(*join_body, target);
-            let new_scope = replace_tail_with_jump(*join_scope, target);
-            expr_at(
-                span,
-                result_ty,
-                ExprKind::LetJoin {
-                    name,
-                    params,
-                    join_body: Box::new(new_join_body),
-                    body: Box::new(new_scope),
-                    is_recur,
-                },
-            )
-        }
-        ExprKind::AutoClose {
-            resource,
-            dict,
-            type_name,
-            null_slot,
             body,
+            ..
         } => {
-            // Recurse into the AutoClose body: the tail atom inside is the
-            // real producer of the enclosing compound value. The close call
-            // itself is not a tail position.
-            let new_body = replace_tail_with_jump(*body, target);
-            expr_at(
-                span,
-                result_ty,
-                ExprKind::AutoClose {
-                    resource,
-                    dict,
-                    type_name,
-                    null_slot,
-                    body: Box::new(new_body),
-                },
-            )
+            for (_, ty) in params {
+                collect_tuple_arities_from_type(ty, arities);
+            }
+            collect_tuple_arities_from_expr(join_body, arities);
+            collect_tuple_arities_from_expr(body, arities);
         }
-        // Jump and LetRec shouldn't appear as compound value tails
-        _ => expr,
+        ExprKind::BoolSwitch {
+            true_body,
+            false_body,
+            ..
+        } => {
+            collect_tuple_arities_from_expr(true_body, arities);
+            collect_tuple_arities_from_expr(false_body, arities);
+        }
+        ExprKind::Switch {
+            branches, default, ..
+        } => {
+            for branch in branches {
+                for (_, ty) in &branch.bindings {
+                    collect_tuple_arities_from_type(ty, arities);
+                }
+                collect_tuple_arities_from_expr(&branch.body, arities);
+            }
+            if let Some(d) = default {
+                collect_tuple_arities_from_expr(d, arities);
+            }
+        }
+        ExprKind::AutoClose { body, .. } => {
+            collect_tuple_arities_from_expr(body, arities);
+        }
+        ExprKind::Jump { .. } | ExprKind::Atom(_) => {}
     }
 }
 
-// ---------------------------------------------------------------------------
-// Type-var binding (instance dispatch + dict resolution)
-// ---------------------------------------------------------------------------
-
-/// Wrap a [`crate::BindConflict`] as a [`LowerError::InternalError`] carrying
-/// the offending variable, its pre-existing binding, and the binding the
-/// current match would have introduced. Used by `resolve_call_dicts`,
-/// `resolve_dispatch_type_with_bindings`, and `lower_constrained_fn_as_value`
-/// to turn typechecker-authorized pin conflicts into loud ICEs.
-pub(super) fn ice_bind_conflict(where_: &str, bc: crate::BindConflict<Type>) -> LowerError {
-    LowerError::InternalError(format!(
-        "ICE: bind conflict in {}: var {:?} pinned to {:?} but pattern would bind it to {:?}",
-        where_, bc.var, bc.existing, bc.proposed,
-    ))
-}
-
-/// Match a type pattern against a concrete type to bind type variables.
-/// Ported from codegen's `bind_type_vars` (calls.rs).
-///
-/// * `Ok(true)` — bindings extended (or already consistent); pattern matches.
-/// * `Ok(false)` — structural mismatch.
-/// * `Err(BindConflict)` — existing binding disagrees with what this match
-///   would assign.
-pub(super) fn bind_type_vars(
-    pattern: &Type,
-    actual: &Type,
-    bindings: &mut FxHashMap<TypeVarId, Type>,
-) -> Result<bool, crate::BindConflict<Type>> {
-    match (pattern, actual) {
-        (Type::Var(id), _) => match bindings.get(id) {
-            Some(existing) => {
-                if existing == actual {
-                    Ok(true)
-                } else {
-                    Err(crate::BindConflict {
-                        var: *id,
-                        existing: Box::new(existing.clone()),
-                        proposed: Box::new(actual.clone()),
-                    })
-                }
-            }
-            None => {
-                bindings.insert(*id, actual.clone());
-                Ok(true)
-            }
-        },
-        (Type::Named(p_name, p_args), Type::Named(a_name, a_args)) => {
-            if p_name != a_name || p_args.len() != a_args.len() {
-                return Ok(false);
-            }
-            for (p, a) in p_args.iter().zip(a_args.iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
+pub(super) fn collect_tuple_arities_from_simple(
+    expr: &SimpleExpr,
+    arities: &mut std::collections::BTreeSet<usize>,
+) {
+    match &expr.kind {
+        SimpleExprKind::MakeTuple { elements } => {
+            arities.insert(elements.len());
         }
-        (Type::Fn(p_params, p_ret), Type::Fn(a_params, a_ret)) => {
-            if p_params.len() != a_params.len() {
-                return Ok(false);
-            }
-            for ((_, p), (_, a)) in p_params.iter().zip(a_params.iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            bind_type_vars(p_ret, a_ret, bindings)
+        SimpleExprKind::MakeVec { element_type, .. } => {
+            collect_tuple_arities_from_type(element_type, arities);
         }
-        (Type::Tuple(p_elems), Type::Tuple(a_elems)) => {
-            if p_elems.len() != a_elems.len() {
-                return Ok(false);
-            }
-            for (p, a) in p_elems.iter().zip(a_elems.iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        (Type::Own(p), Type::Own(a)) => bind_type_vars(p, a, bindings),
-        (Type::Own(p), a) => bind_type_vars(p, a, bindings),
-        (a, Type::Own(p)) => bind_type_vars(a, p, bindings),
-        (Type::App(p_ctor, p_args), Type::App(a_ctor, a_args)) => {
-            if !bind_type_vars(p_ctor, a_ctor, bindings)? {
-                return Ok(false);
-            }
-            if p_args.len() != a_args.len() {
-                return Ok(false);
-            }
-            for (p, a) in p_args.iter().zip(a_args.iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        // HKT cross-arm: App(Var(f), [a]) vs Named("Box", [Int])
-        // Partial application: when a_args.len() > p_args.len(), the prefix bakes
-        // into the constructor (f = Named("Result", [String]) when pattern is
-        // f[a] and actual is Result[String, Int]).
-        (Type::App(p_ctor, p_args), Type::Named(a_name, a_args)) => {
-            if p_args.len() > a_args.len() {
-                return Ok(false);
-            }
-            let prefix_len = a_args.len() - p_args.len();
-            let prefix: Vec<Type> = a_args[..prefix_len].to_vec();
-            if !bind_type_vars(p_ctor, &Type::Named(a_name.clone(), prefix), bindings)? {
-                return Ok(false);
-            }
-            for (p, a) in p_args.iter().zip(a_args[prefix_len..].iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        // HKT cross-arm: App(Var(f), [a]) vs Fn([Int], Int)
-        (Type::App(p_ctor, p_args), Type::Fn(a_params, a_ret))
-            if types::decompose_fn_for_app(a_params, a_ret, p_args.len()).is_some() =>
-        {
-            let (ctor_fn, remaining) =
-                types::decompose_fn_for_app(a_params, a_ret, p_args.len()).unwrap();
-            if !bind_type_vars(p_ctor, &ctor_fn, bindings)? {
-                return Ok(false);
-            }
-            if remaining.len() != p_args.len() {
-                return Ok(false);
-            }
-            for (p, a) in p_args.iter().zip(remaining.iter()) {
-                if !bind_type_vars(p, a, bindings)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        _ => Ok(pattern == actual),
+        _ => {}
     }
-}
-
-/// Match a single instance-target pattern against a dispatch type.
-///
-/// Instance patterns are stored in full form (e.g. `Map[Var(k), Var(anon)]`);
-/// dispatch types may be partial (e.g. `Map[String]`) when HKT method
-/// resolution binds the trait's type var to a partial constructor. At the
-/// top level of a target type, a pattern with more slots than the actual
-/// matches by zipping the prefix — trailing pattern slots stay unbound.
-/// Nested types use strict [`bind_type_vars`].
-pub(super) fn bind_instance_target(
-    pattern: &Type,
-    actual: &Type,
-    bindings: &mut FxHashMap<TypeVarId, Type>,
-) -> bool {
-    match (pattern, actual) {
-        (Type::Named(p_name, p_args), Type::Named(a_name, a_args))
-            if p_args.len() > a_args.len() =>
-        {
-            if p_name != a_name {
-                return false;
-            }
-            for (p, a) in p_args.iter().take(a_args.len()).zip(a_args.iter()) {
-                if !matches!(bind_type_vars(p, a, bindings), Ok(true)) {
-                    return false;
-                }
-            }
-            true
-        }
-        _ => matches!(bind_type_vars(pattern, actual, bindings), Ok(true)),
-    }
-}
-
-/// Array-level counterpart to [`bind_instance_target`]: zips instance-target
-/// tuples with dispatch tuples.
-pub(super) fn bind_instance_targets(
-    patterns: &[Type],
-    dispatch_tys: &[Type],
-    bindings: &mut FxHashMap<TypeVarId, Type>,
-) -> bool {
-    if patterns.len() != dispatch_tys.len() {
-        return false;
-    }
-    patterns
-        .iter()
-        .zip(dispatch_tys.iter())
-        .all(|(p, a)| bind_instance_target(p, a, bindings))
 }

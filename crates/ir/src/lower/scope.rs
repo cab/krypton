@@ -16,8 +16,9 @@ use krypton_typechecker::typed_ast::{
 };
 use krypton_typechecker::types::Type;
 
+use super::bind::bind_instance_targets;
 use super::ctx::{CloseMode, LowerCtx, ResolvedClose, ScopeTrack};
-use super::util::{bind_instance_targets, expr_at};
+use super::util::expr_at;
 use super::LowerError;
 use crate::Type as IrType;
 use crate::{

@@ -11,7 +11,7 @@ use krypton_typechecker::typed_ast::{
 use krypton_typechecker::types::Type;
 
 use super::ctx::{LetBinding, LowerCtx};
-use super::module_pipeline::{
+use super::resolved::{
     callable_overload_signature, callable_qualified_name, extract_call_info,
     variant_ref_from_constructor,
 };

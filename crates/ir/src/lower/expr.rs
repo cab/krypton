@@ -11,10 +11,12 @@ use krypton_typechecker::typed_ast::{
 use krypton_typechecker::types::{SchemeVarId, Type};
 
 use super::ctx::{CloseMode, LetBinding, LoweredValue, LowerCtx};
-use super::module_pipeline::{
-    callable_overload_signature, callable_qualified_name, convert_lit, extract_vec_element_type,
-    resolve_binop, resolve_unaryop, resolved_callable_ref, resolved_constructor_ref,
-    resolved_trait_method_ref, strip_own, variant_ref_from_constructor,
+use super::op_resolve::{
+    convert_lit, extract_vec_element_type, resolve_binop, resolve_unaryop, strip_own,
+};
+use super::resolved::{
+    callable_overload_signature, callable_qualified_name, resolved_callable_ref,
+    resolved_constructor_ref, resolved_trait_method_ref, variant_ref_from_constructor,
 };
 use super::util::{atom_expr_at, expr_at, simple_at};
 use super::LowerError;
