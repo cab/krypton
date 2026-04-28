@@ -419,6 +419,13 @@ pub(super) struct Compiler<'link> {
     pub(super) variant_field_types: HashMap<String, Vec<Type>>,
     pub(super) raw_extern_functions: HashMap<String, FunctionInfo>,
     pub(super) raw_extern_classes: HashMap<String, u16>,
+    /// Source filename basename (e.g. `math_test.kr`) for the `SourceFile`
+    /// class attribute. `None` for synthesized modules with no source text.
+    source_basename: Option<String>,
+    /// Cumulative byte offset of the start of each line (1-indexed line N at
+    /// `line_starts[N - 1]`). Set when `source_text` is provided so that
+    /// span byte offsets can be mapped to source lines for `LineNumberTable`.
+    line_starts: Option<Vec<u32>>,
 }
 
 /// Assert that a per-variant compile method left exactly the JVM slot count
@@ -479,6 +486,8 @@ impl<'link> Compiler<'link> {
     pub(super) fn new(
         class_name: &str,
         link_view: &'link krypton_typechecker::link_context::ModuleLinkView<'link>,
+        source_text: Option<&str>,
+        source_basename: Option<&str>,
     ) -> Result<Self, CodegenError> {
         let mut cp = ConstantPool::default();
 
@@ -536,6 +545,14 @@ impl<'link> Compiler<'link> {
         let system_err_field = cp.add_field_ref(system_class, "err", "Ljava/io/PrintStream;")?;
         let printstream_println =
             cp.add_method_ref(printstream_class, "println", "(Ljava/lang/String;)V")?;
+        // Source-location debug attribute support — only register the UTF8
+        // when we have source text to attribute against. A zero index serves
+        // as the "do not emit LineNumberTable" sentinel in `finish_method`.
+        let line_number_table_utf8 = if source_text.is_some() {
+            cp.add_utf8("LineNumberTable")?
+        } else {
+            0
+        };
         let refs = CpoolRefs {
             code_utf8,
             object_init,
@@ -564,12 +581,25 @@ impl<'link> Compiler<'link> {
             throwable_class,
             system_err_field,
             printstream_println,
+            line_number_table_utf8,
         };
         let mut builder = BytecodeBuilder::new(refs);
         builder.next_local = 1; // slot 0 = String[] args for main
         builder.frame.local_types = vec![VerificationType::Object {
             cpool_index: builder.refs.string_arr_class,
         }];
+
+        let line_starts = source_text.map(|s| {
+            let mut starts = vec![0u32];
+            let mut offset: u32 = 0;
+            for byte in s.bytes() {
+                offset += 1;
+                if byte == b'\n' {
+                    starts.push(offset);
+                }
+            }
+            starts
+        });
 
         let compiler = Compiler {
             link_view,
@@ -622,9 +652,33 @@ impl<'link> Compiler<'link> {
             variant_field_types: HashMap::new(),
             raw_extern_functions: HashMap::new(),
             raw_extern_classes: HashMap::new(),
+            source_basename: source_basename.map(|s| s.to_string()),
+            line_starts,
         };
 
         Ok(compiler)
+    }
+
+    /// Map a span byte offset to a 1-indexed source line, if we have source
+    /// text. Returns `None` for synthesized spans `(0, 0)` and for modules
+    /// without recorded source.
+    pub(super) fn line_for_span(&self, span: krypton_parser::ast::Span) -> Option<u16> {
+        let starts = self.line_starts.as_ref()?;
+        // The lowering pipeline uses (0, 0) as the "synthesized" sentinel.
+        // A real source span starts at byte 0 of the file only for the very
+        // first character; spans there have non-zero `end`, so guard on the
+        // pair being entirely zero.
+        if span.0 == 0 && span.1 == 0 {
+            return None;
+        }
+        let offset = span.0 as u32;
+        // Binary search for the greatest line-start <= offset.
+        let line_idx = match starts.binary_search(&offset) {
+            Ok(i) => i,
+            Err(i) => i.saturating_sub(1),
+        };
+        let line_1_indexed = (line_idx as u32).saturating_add(1);
+        u16::try_from(line_1_indexed).ok()
     }
 
     /// Map a typechecker Type to a JvmType, using struct_info/sum_type_info for Named types.
@@ -1360,6 +1414,9 @@ impl<'link> Compiler<'link> {
         bind_ty: &Type,
         ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
+        if let Some(line) = self.line_for_span(value.span) {
+            self.builder.record_line(line);
+        }
         match &value.kind {
             SimpleExprKind::Atom(atom) => self.compile_ir_atom(atom),
             SimpleExprKind::PrimOp { op, args } => self.compile_ir_primop(*op, args),
@@ -2396,6 +2453,9 @@ impl<'link> Compiler<'link> {
         expr: &krypton_ir::Expr,
         ir_module: &krypton_ir::Module,
     ) -> Result<JvmType, CodegenError> {
+        if let Some(line) = self.line_for_span(expr.span) {
+            self.builder.record_line(line);
+        }
         match &expr.kind {
             krypton_ir::ExprKind::Atom(atom) => self.compile_ir_atom(atom),
 
@@ -3729,6 +3789,14 @@ impl<'link> Compiler<'link> {
             class_attributes.push(Attribute::BootstrapMethods {
                 name_index: bsm_name,
                 methods: std::mem::take(&mut self.lambda.bootstrap_methods),
+            });
+        }
+        if let Some(basename) = self.source_basename.clone() {
+            let source_file_name_idx = self.cp.add_utf8("SourceFile")?;
+            let source_file_idx = self.cp.add_utf8(&basename)?;
+            class_attributes.push(Attribute::SourceFile {
+                name_index: source_file_name_idx,
+                source_file_index: source_file_idx,
             });
         }
 

@@ -215,6 +215,59 @@ public final class ConstrainedHost {
 "#;
 
 #[test]
+fn linenumber_attribute_emitted_for_user_module() {
+    // Compile a tiny user module and verify the resulting class carries both
+    // a `SourceFile` attribute (basename = `test.kr`) and a `LineNumberTable`
+    // covering the user method body. The stack-walk source-location helper
+    // in `core/test` depends on these attributes being populated for every
+    // user-written method.
+    let source = "fun main() = println(\n    1 + 2\n)\n";
+    let full_source = format!("{PRINTLN_EXTERN}\n{source}");
+    let (module, errors) = parse(&full_source);
+    assert!(errors.is_empty(), "parse errors: {errors:?}");
+
+    let (typed_modules, interfaces) = infer_module(
+        &module,
+        &CompositeResolver::stdlib_only(),
+        "test".to_string(),
+        krypton_parser::ast::CompileTarget::Jvm,
+    )
+    .expect("type check should succeed");
+    // `infer_module` only attaches `module_source` for dep modules — the
+    // root module's source is normally re-attached by callers (e.g. the
+    // test runner does this). Mirror that here so `module_sources` contains
+    // an entry for the root, exercising the SourceFile/LineNumberTable
+    // emission path for user-written modules.
+    let mut typed_modules = typed_modules;
+    typed_modules[0].module_source = Some(full_source.clone());
+
+    let link_ctx = krypton_typechecker::link_context::LinkContext::build(interfaces);
+    let (ir_modules, module_sources) =
+        lower_all(&typed_modules, "Test", &link_ctx).expect("lowering should succeed");
+    let classes = compile_modules(&ir_modules, "Test", true, &link_ctx, &module_sources)
+        .expect("compile_modules should succeed");
+
+    let dir = tempfile::tempdir().unwrap();
+    for (name, bytes) in &classes {
+        let class_path = dir.path().join(format!("{name}.class"));
+        if let Some(parent) = class_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&class_path, bytes).unwrap();
+    }
+
+    let out = javap_output(&dir.path().join("Test.class"), true);
+    assert!(
+        out.contains("SourceFile: \"test.kr\""),
+        "expected `SourceFile: \"test.kr\"` in javap -v output, got:\n{out}"
+    );
+    assert!(
+        out.contains("LineNumberTable:"),
+        "expected `LineNumberTable:` in javap -v output, got:\n{out}"
+    );
+}
+
+#[test]
 fn test_int_addition() {
     assert_eq!(run_program("fun main() = println(1 + 2)"), "3");
 }

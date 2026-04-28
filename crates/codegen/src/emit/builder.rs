@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use ristretto_classfile::attributes::{
-    Attribute, ExceptionTableEntry, Instruction, StackFrame, VerificationType,
+    Attribute, ExceptionTableEntry, Instruction, LineNumber, StackFrame, VerificationType,
 };
 
 use super::compiler::JvmType;
@@ -41,6 +41,8 @@ pub(super) struct CpoolRefs {
     pub(super) throwable_class: u16,
     pub(super) system_err_field: u16,
     pub(super) printstream_println: u16,
+    // Source-location debug attribute support
+    pub(super) line_number_table_utf8: u16,
 }
 
 /// StackMapTable / verification type tracking.
@@ -208,6 +210,11 @@ pub(super) struct BytecodeBuilder {
     pub(super) local_fn_info: HashMap<String, (Vec<JvmType>, JvmType)>,
     pub(super) exception_table: Vec<ExceptionTableEntry>,
     pub(super) dead_code: bool,
+    /// `(instruction_index, line_number)` pairs in emission order. Converted
+    /// to byte offsets in `finish_method` and emitted as a `LineNumberTable`
+    /// `Code` attribute. Empty when source lines are unavailable (synthesized
+    /// expressions, modules without recorded source text).
+    pub(super) line_table: Vec<(u16, u16)>,
 }
 
 impl BytecodeBuilder {
@@ -226,7 +233,29 @@ impl BytecodeBuilder {
             local_fn_info: HashMap::new(),
             exception_table: Vec::new(),
             dead_code: false,
+            line_table: Vec::new(),
         }
+    }
+
+    /// Record that the next instruction will be at the given source line.
+    /// `line` is 1-indexed; line 0 is the "no info" sentinel and is ignored.
+    /// Adjacent entries on the same line collapse to one entry.
+    pub(super) fn record_line(&mut self, line: u16) {
+        if line == 0 {
+            return;
+        }
+        let pc = self.code.len() as u16;
+        if let Some(&(prev_pc, prev_line)) = self.line_table.last() {
+            if prev_line == line {
+                return;
+            }
+            // Collapse two entries at the same instruction index — a later
+            // record_line in the same position supersedes an earlier one.
+            if prev_pc == pc {
+                self.line_table.pop();
+            }
+        }
+        self.line_table.push((pc, line));
     }
 
     pub(super) fn emit(&mut self, instr: Instruction) {
@@ -407,14 +436,37 @@ impl BytecodeBuilder {
     pub(super) fn build_code_attributes(&self) -> Vec<Attribute> {
         let byte_offsets = compute_byte_offsets(&self.code);
         let stack_map_frames = self.frame.build_stack_map_frames(Some(&byte_offsets));
-        if stack_map_frames.is_empty() {
-            vec![]
-        } else {
-            vec![Attribute::StackMapTable {
+        let mut attrs: Vec<Attribute> = Vec::new();
+        if !stack_map_frames.is_empty() {
+            attrs.push(Attribute::StackMapTable {
                 name_index: self.refs.smt_name,
                 frames: stack_map_frames,
-            }]
+            });
         }
+        if !self.line_table.is_empty() && self.refs.line_number_table_utf8 != 0 {
+            // ristretto stores `start_pc` as an instruction index in memory and
+            // converts to byte offsets when serializing — so we record the
+            // instruction index directly. Drop entries whose pc lies past the
+            // last emitted instruction (only possible if record_line was
+            // followed by no-op truncation; harmless guard).
+            let num_instructions = self.code.len() as u16;
+            let line_numbers: Vec<LineNumber> = self
+                .line_table
+                .iter()
+                .filter(|&&(instr_idx, _)| instr_idx < num_instructions)
+                .map(|&(instr_idx, line_number)| LineNumber {
+                    start_pc: instr_idx,
+                    line_number,
+                })
+                .collect();
+            if !line_numbers.is_empty() {
+                attrs.push(Attribute::LineNumberTable {
+                    name_index: self.refs.line_number_table_utf8,
+                    line_numbers,
+                });
+            }
+        }
+        attrs
     }
 
     /// Build a complete Code attribute, consuming the instruction buffer.
@@ -444,5 +496,6 @@ impl BytecodeBuilder {
         self.local_fn_info.clear();
         self.exception_table.clear();
         self.dead_code = false;
+        self.line_table.clear();
     }
 }

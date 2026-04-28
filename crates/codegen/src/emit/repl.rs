@@ -71,14 +71,26 @@ pub fn compile_repl_input(
             all_classes.extend(classes);
         } else {
             // Non-entry modules compile normally (no main required)
-            let classes =
-                compile_module_inner(ir_module, class_name, false, &view).map_err(|e| {
-                    if let Some(s) = module_sources.get(ir_module.module_path.as_str()) {
-                        return e
-                            .with_source(ir_module.module_path.as_str().to_string(), s.clone());
-                    }
-                    e
-                })?;
+            let module_path_str = ir_module.module_path.as_str();
+            let source_text = module_sources.get(module_path_str).map(String::as_str);
+            let source_basename = source_text.map(|_| {
+                let last_segment = module_path_str.rsplit('/').next().unwrap_or(module_path_str);
+                format!("{last_segment}.kr")
+            });
+            let classes = compile_module_inner(
+                ir_module,
+                class_name,
+                false,
+                &view,
+                source_text,
+                source_basename.as_deref(),
+            )
+            .map_err(|e| {
+                if let Some(s) = module_sources.get(module_path_str) {
+                    return e.with_source(module_path_str.to_string(), s.clone());
+                }
+                e
+            })?;
             all_classes.extend(classes);
         }
     }
@@ -95,7 +107,7 @@ fn compile_repl_module(
     store_var: Option<&str>,
     show_wrapped: bool,
 ) -> Result<Vec<(String, Vec<u8>)>, CodegenError> {
-    let mut compiler = Compiler::new(class_name, link_view)?;
+    let mut compiler = Compiler::new(class_name, link_view, None, None)?;
     compiler.types.class_descriptors.insert(
         compiler.builder.refs.object_class,
         "Ljava/lang/Object;".to_string(),

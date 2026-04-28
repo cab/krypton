@@ -65,6 +65,9 @@ pub fn generate_test_harness(entries: &[TestHarnessEntry]) -> Result<Vec<u8>, Co
     let exit_ref = cp.add_method_ref(system_class, "exit", "(I)V")?;
 
     let runtime_exception_class = cp.add_class("java/lang/RuntimeException")?;
+    let throwable_class = cp.add_class("java/lang/Throwable")?;
+    let throwable_get_message =
+        cp.add_method_ref(throwable_class, "getMessage", "()Ljava/lang/String;")?;
     let string_arr_class = cp.add_class("[Ljava/lang/String;")?;
 
     // Default constructor.
@@ -150,6 +153,11 @@ pub fn generate_test_harness(entries: &[TestHarnessEntry]) -> Result<Vec<u8>, Co
         code.push(Instruction::Astore_3); // stash exception in slot 3
         code.push(Instruction::Getstatic(system_out_field));
         push_ldc_string(&mut code, fail_msg_idx);
+        code.push(Instruction::Invokevirtual(println_string));
+        // minimal print of e.getMessage(); refined by M44-T12 (output layout)
+        code.push(Instruction::Getstatic(system_out_field));
+        code.push(Instruction::Aload_3);
+        code.push(Instruction::Invokevirtual(throwable_get_message));
         code.push(Instruction::Invokevirtual(println_string));
         code.push(Instruction::Iinc(2, 1)); // failCount++
 

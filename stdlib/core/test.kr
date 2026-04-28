@@ -1,26 +1,48 @@
-import core/string.{concat}
+import core/string.{concat, replace}
 import core/result.{Result, Ok, Err}
 import core/option.{Option, Some, None}
 
+# v0.1 source-location helper. Walks the live thread's stack trace and picks
+# the first frame whose source file ends in `_test.kr`. Module-private (no
+# `pub`) so user code cannot accidentally depend on it. To be replaced by
+# SourceLoc compiler-inserted caller location once that lands.
+extern java "krypton.runtime.KryptonTestSupport" {
+    fun firstTestFrame() -> String
+}
+
+fun at_line() -> String = concat("\n  at ", firstTestFrame())
+
+# Indent continuation lines of a multi-line `Show` rendering to column 12,
+# matching the column of the first character after `"  expected: "` /
+# `"  got:      "` in failure messages. This keeps custom-record `Show`
+# output legible regardless of how many lines it spans.
+fun indent_show(s: String) -> String = replace(s, "\n", "\n            ")
+
 pub fun assert(cond: Bool) -> Unit =
-    if cond { () } else { panic("assertion failed: assert") }
+    if cond { () } else { panic(concat("assertion failed: assert", at_line())) }
 
 pub fun assert_true(cond: Bool) -> Unit =
-    if cond { () } else { panic("assertion failed: assert_true") }
+    if cond { () } else { panic(concat("assertion failed: assert_true", at_line())) }
 
 pub fun assert_true_msg(cond: Bool, msg: String) -> Unit =
     if cond {
         ()
     } else {
-        panic(concat("assertion failed: assert_true\ncontext: ", msg))
+        panic(concat(
+            concat("assertion failed: assert_true\n  context: ", msg),
+            at_line()
+        ))
     }
 
 pub fun assert_false(cond: Bool) -> Unit =
-    if cond { panic("assertion failed: assert_false") } else { () }
+    if cond { panic(concat("assertion failed: assert_false", at_line())) } else { () }
 
 pub fun assert_false_msg(cond: Bool, msg: String) -> Unit =
     if cond {
-        panic(concat("assertion failed: assert_false\ncontext: ", msg))
+        panic(concat(
+            concat("assertion failed: assert_false\n  context: ", msg),
+            at_line()
+        ))
     } else {
         ()
     }
@@ -30,8 +52,11 @@ pub fun assert_eq[a](left: a, right: a) -> Unit where a: Eq + Show + shared =
         ()
     } else {
         panic(concat(
-            concat("assertion failed: assert_eq\n  expected: ", show(right)),
-            concat("\n  got:      ", show(left))
+            concat(
+                concat("assertion failed: assert_eq\n  expected: ", indent_show(show(right))),
+                concat("\n  got:      ", indent_show(show(left)))
+            ),
+            at_line()
         ))
     }
 
@@ -42,16 +67,22 @@ pub fun assert_eq_msg[a](left: a, right: a, msg: String) -> Unit
     } else {
         panic(concat(
             concat(
-                concat("assertion failed: assert_eq\n  expected: ", show(right)),
-                concat("\n  got:      ", show(left))
+                concat(
+                    concat("assertion failed: assert_eq\n  expected: ", indent_show(show(right))),
+                    concat("\n  got:      ", indent_show(show(left)))
+                ),
+                concat("\n  context: ", msg)
             ),
-            concat("\ncontext: ", msg)
+            at_line()
         ))
     }
 
 pub fun assert_neq[a](left: a, right: a) -> Unit where a: Eq + Show + shared =
     if eq(left, right) {
-        panic(concat("assertion failed: assert_neq (both equal): ", show(left)))
+        panic(concat(
+            concat("assertion failed: assert_neq (both equal): ", indent_show(show(left))),
+            at_line()
+        ))
     } else {
         ()
     }
@@ -60,8 +91,11 @@ pub fun assert_neq_msg[a](left: a, right: a, msg: String) -> Unit
     where a: Eq + Show + shared =
     if eq(left, right) {
         panic(concat(
-            concat("assertion failed: assert_neq (both equal): ", show(left)),
-            concat("\ncontext: ", msg)
+            concat(
+                concat("assertion failed: assert_neq (both equal): ", indent_show(show(left))),
+                concat("\n  context: ", msg)
+            ),
+            at_line()
         ))
     } else {
         ()
@@ -69,55 +103,73 @@ pub fun assert_neq_msg[a](left: a, right: a, msg: String) -> Unit
 
 pub fun assert_ok[e, a](r: Result[e, a]) -> a where e: Show + shared = match r {
     Ok(x) => x,
-    Err(err) => panic(concat("assertion failed: assert_ok\n  got Err: ", show(err))),
+    Err(err) => panic(concat(
+        concat("assertion failed: assert_ok\n  got: Err(", indent_show(show(err))),
+        concat(")", at_line())
+    )),
 }
 
 pub fun assert_ok_msg[e, a](r: Result[e, a], msg: String) -> a
     where e: Show + shared = match r {
     Ok(x) => x,
     Err(err) => panic(concat(
-        concat("assertion failed: assert_ok\n  got Err: ", show(err)),
-        concat("\ncontext: ", msg)
+        concat(
+            concat("assertion failed: assert_ok\n  got: Err(", indent_show(show(err))),
+            concat(")\n  context: ", msg)
+        ),
+        at_line()
     )),
 }
 
 pub fun assert_err[e, a](r: Result[e, a]) -> e where a: Show + shared = match r {
     Err(err) => err,
-    Ok(x) => panic(concat("assertion failed: assert_err\n  got Ok: ", show(x))),
+    Ok(x) => panic(concat(
+        concat("assertion failed: assert_err\n  got: Ok(", indent_show(show(x))),
+        concat(")", at_line())
+    )),
 }
 
 pub fun assert_err_msg[e, a](r: Result[e, a], msg: String) -> e
     where a: Show + shared = match r {
     Err(err) => err,
     Ok(x) => panic(concat(
-        concat("assertion failed: assert_err\n  got Ok: ", show(x)),
-        concat("\ncontext: ", msg)
+        concat(
+            concat("assertion failed: assert_err\n  got: Ok(", indent_show(show(x))),
+            concat(")\n  context: ", msg)
+        ),
+        at_line()
     )),
 }
 
 pub fun assert_some[a](o: Option[a]) -> a = match o {
     Some(v) => v,
-    None => panic("assertion failed: assert_some\n  got None"),
+    None => panic(concat("assertion failed: assert_some\n  got: None", at_line())),
 }
 
 pub fun assert_some_msg[a](o: Option[a], msg: String) -> a = match o {
     Some(v) => v,
     None => panic(concat(
-        "assertion failed: assert_some\n  got None\ncontext: ",
-        msg
+        concat("assertion failed: assert_some\n  got: None\n  context: ", msg),
+        at_line()
     )),
 }
 
 pub fun assert_none[a](o: Option[a]) -> Unit where a: Show + shared = match o {
     None => (),
-    Some(v) => panic(concat("assertion failed: assert_none\n  got Some: ", show(v))),
+    Some(v) => panic(concat(
+        concat("assertion failed: assert_none\n  got: Some(", indent_show(show(v))),
+        concat(")", at_line())
+    )),
 }
 
 pub fun assert_none_msg[a](o: Option[a], msg: String) -> Unit
     where a: Show + shared = match o {
     None => (),
     Some(v) => panic(concat(
-        concat("assertion failed: assert_none\n  got Some: ", show(v)),
-        concat("\ncontext: ", msg)
+        concat(
+            concat("assertion failed: assert_none\n  got: Some(", indent_show(show(v))),
+            concat(")\n  context: ", msg)
+        ),
+        at_line()
     )),
 }

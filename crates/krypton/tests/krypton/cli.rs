@@ -2819,8 +2819,8 @@ fn test_run_assert_ok_msg_panic_includes_context_line() {
         "header must use base name (assert_ok), not assert_ok_msg; got stdout={stdout} stderr={stderr}"
     );
     assert!(
-        combined.contains("got Err: \"boom\"") || combined.contains("got Err: boom"),
-        "expected 'got Err: ...' line with err payload, got stdout={stdout} stderr={stderr}"
+        combined.contains("got: Err(\"boom\")") || combined.contains("got: Err(boom)"),
+        "expected 'got: Err(...)' line with err payload, got stdout={stdout} stderr={stderr}"
     );
     assert!(
         combined.contains("context: load step"),
@@ -2864,8 +2864,8 @@ fn test_run_assert_none_msg_panic_includes_context_line() {
         "header must use base name (assert_none), not assert_none_msg; got stdout={stdout} stderr={stderr}"
     );
     assert!(
-        combined.contains("got Some: 99"),
-        "expected 'got Some: 99' line, got stdout={stdout} stderr={stderr}"
+        combined.contains("got: Some(99)"),
+        "expected 'got: Some(99)' line, got stdout={stdout} stderr={stderr}"
     );
     assert!(
         combined.contains("context: lookup"),
@@ -2992,5 +2992,280 @@ fn test_test_assert_msg_passing_calls_emit_no_context_noise() {
     assert!(
         !stdout.contains("context:"),
         "passing _msg calls must not emit any 'context:' line, got stdout={stdout}"
+    );
+}
+
+#[test]
+fn test_test_assert_eq_failure_includes_at_line() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // The assert_eq call sits on line 3 of the file. The test asserts the
+    // failure message points at that line via the `at src/sample_test.kr:3`
+    // footer.
+    std::fs::write(
+        project.join("src/sample_test.kr"),
+        "import core/test.{assert_eq}\n\
+         fun test_fail() {\n\
+         \x20   assert_eq(3, 4)\n\
+         }\n",
+    )
+    .expect("write sample_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "assert_eq(3, 4) should fail; stdout={stdout} stderr={stderr}"
+    );
+    // `assert_eq(left, right)` reports `expected: <right>` (the second arg
+    // — the value we expected to see) and `got: <left>` (the first arg — the
+    // value actually produced). This is the same orientation as Rust's
+    // `assert_eq!` macro: arg-1 is the value-under-test, arg-2 is the
+    // expected reference.
+    for needle in [
+        "assertion failed: assert_eq",
+        "expected: 4",
+        "got:      3",
+        "at src/sample_test.kr:3",
+    ] {
+        assert!(
+            stdout.contains(needle),
+            "expected stdout to contain `{needle}`, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_test_assert_at_line_skips_core_test_frames() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // `do_assert` sits in the same `_test.kr` file as `test_fail`. The
+    // stack-walk picks the most-recent (deepest) frame whose source file
+    // ends in `_test.kr`, which is the `do_assert` body itself — line 4 of
+    // skip_test.kr. core/test frames are skipped because their file is
+    // `test.kr` (no `_test.kr` suffix).
+    std::fs::write(
+        project.join("src/skip_test.kr"),
+        "import core/test.{assert_eq}\n\
+         \n\
+         fun do_assert() {\n\
+         \x20   assert_eq(1, 2)\n\
+         }\n\
+         \n\
+         fun test_fail() {\n\
+         \x20   do_assert()\n\
+         }\n",
+    )
+    .expect("write skip_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "stack-walk skip test should fail; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("at src/skip_test.kr:4"),
+        "expected `at src/skip_test.kr:4` (helper-body line), got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_short_form_assertions_have_no_expected_got() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // The `assert(false)` call is on line 3. Short-form assertions render
+    // only the assertion-name line and the `at` footer — no `expected:` /
+    // `got:` lines (AC3).
+    std::fs::write(
+        project.join("src/short_test.kr"),
+        "import core/test.{assert}\n\
+         fun test_fail() {\n\
+         \x20   assert(false)\n\
+         }\n",
+    )
+    .expect("write short_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "short-form assert should fail; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("assertion failed: assert"),
+        "expected `assertion failed: assert`, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("at src/short_test.kr:3"),
+        "expected `at src/short_test.kr:3`, got: {stdout}"
+    );
+    // Slice the failure message between `assertion failed:` and the next
+    // FAIL/summary line — the `expected:`/`got:` exclusion only applies
+    // there, not anywhere else in the output.
+    let failure_segment = stdout
+        .split_once("assertion failed: assert")
+        .map(|(_, rest)| rest.split("\n0 passed").next().unwrap_or(rest))
+        .unwrap_or(&stdout);
+    assert!(
+        !failure_segment.contains("expected:"),
+        "short-form must not contain `expected:`, got: {stdout}"
+    );
+    assert!(
+        !failure_segment.contains("got:"),
+        "short-form must not contain `got:`, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_assert_none_shows_got_some_value() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/none_test.kr"),
+        "import core/test.{assert_none}\n\
+         import core/option.{Some}\n\
+         fun test_fail() {\n\
+         \x20   assert_none(Some(42))\n\
+         }\n",
+    )
+    .expect("write none_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "assert_none(Some(42)) should fail; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("got: Some(42)"),
+        "expected `got: Some(42)`, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("at src/none_test.kr:4"),
+        "expected `at src/none_test.kr:4`, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_assert_eq_multiline_show_is_indented() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // A custom Show instance whose render contains a newline. The continuation
+    // lines must be re-indented to column 12 so they align with the value
+    // column under `expected:` / `got:` (AC5).
+    // The custom `Show` instance returns a multi-line string. Continuation
+    // lines start at the very first column of the rendered string —
+    // `indent_show` is responsible for re-indenting every newline to match
+    // the value column under `expected:` / `got:`. The fixture deliberately
+    // emits a value whose own lines start at column 0 so the reindent shows
+    // up unambiguously as exactly 12 leading spaces.
+    std::fs::write(
+        project.join("src/multi_test.kr"),
+        "import core/test.{assert_eq}\n\
+         import core/show.{Show}\n\
+         \n\
+         pub type Foo = Foo(Int)\n\
+         \n\
+         impl Show[Foo] {\n\
+         \x20   fun show(f: Foo) -> String = match f {\n\
+         \x20       Foo(n) => \"Foo {\\nx: 1\\ny: 2\\n}\",\n\
+         \x20   }\n\
+         }\n\
+         \n\
+         impl Eq[Foo] {\n\
+         \x20   fun eq(a: Foo, b: Foo) -> Bool = false\n\
+         }\n\
+         \n\
+         fun test_fail() {\n\
+         \x20   assert_eq(Foo(1), Foo(2))\n\
+         }\n",
+    )
+    .expect("write multi_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "multiline-show assert_eq should fail; stdout={stdout} stderr={stderr}"
+    );
+    // Continuation lines are indented to column 12 so they line up under the
+    // `expected:` / `got:` value columns. The `Foo {` opening line is
+    // followed by `<12 spaces>x: 1` (the literal indent emitted by
+    // `indent_show`).
+    assert!(
+        stdout.contains("Foo {\n            x: 1"),
+        "expected continuation line indented to column 12 after `Foo {{`, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_first_test_frame_helper_is_not_public() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Importing `firstTestFrame` from the project entry point (`src/main.kr`)
+    // must fail because the helper is module-private (no `pub`) inside
+    // `core/test`. AC6. We overwrite the scaffolded `main.kr` so the build
+    // exercises the import-path visibility check on the real entry — random
+    // sibling files like `src/leak.kr` are not compiled by `krypton build`.
+    std::fs::write(
+        project.join("src/main.kr"),
+        "import core/test.{firstTestFrame}\n\
+         pub fun main() -> Unit = ()\n",
+    )
+    .expect("write main.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("build")
+        .output()
+        .expect("failed to run krypton build");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "build must fail when leaking firstTestFrame; stdout={stdout} stderr={stderr}"
+    );
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("firstTestFrame"),
+        "diagnostic should mention `firstTestFrame`, got: {combined}"
     );
 }
