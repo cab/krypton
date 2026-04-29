@@ -1,7 +1,10 @@
 package krypton.runtime;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Runtime support for {@code core/test} assertions and the {@code krypton test}
@@ -72,18 +75,62 @@ public final class KryptonTestSupport {
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("test runner: " + e, e);
         }
-        runWithTimeout(() -> {
-            try {
-                method.invoke(null);
-            } catch (InvocationTargetException ex) {
-                Throwable cause = ex.getCause();
-                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
-                if (cause instanceof Error) throw (Error) cause;
-                throw new RuntimeException(cause);
-            } catch (IllegalAccessException ex) {
-                throw new RuntimeException("test runner: " + ex, ex);
-            }
-        }, TEST_TIMEOUT_MS);
+
+        PrintStream origOut = System.out;
+        PrintStream origErr = System.err;
+        ByteArrayOutputStream stdoutBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream stderrBuf = new ByteArrayOutputStream();
+        PrintStream capturedOut = new PrintStream(stdoutBuf, true, StandardCharsets.UTF_8);
+        PrintStream capturedErr = new PrintStream(stderrBuf, true, StandardCharsets.UTF_8);
+        System.setOut(capturedOut);
+        System.setErr(capturedErr);
+        try {
+            runWithTimeout(() -> {
+                try {
+                    method.invoke(null);
+                } catch (InvocationTargetException ex) {
+                    Throwable cause = ex.getCause();
+                    if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                    if (cause instanceof Error) throw (Error) cause;
+                    throw new RuntimeException(cause);
+                } catch (IllegalAccessException ex) {
+                    throw new RuntimeException("test runner: " + ex, ex);
+                }
+            }, TEST_TIMEOUT_MS);
+        } catch (RuntimeException original) {
+            capturedOut.flush();
+            capturedErr.flush();
+            String stdout = stdoutBuf.toString(StandardCharsets.UTF_8);
+            String stderr = stderrBuf.toString(StandardCharsets.UTF_8);
+            throw new RuntimeException(
+                augmentMessage(original.getMessage(), stdout, stderr),
+                original);
+        } finally {
+            System.setOut(origOut);
+            System.setErr(origErr);
+        }
+    }
+
+    private static String augmentMessage(String original, String stdout, String stderr) {
+        StringBuilder msg = new StringBuilder();
+        if (original != null) msg.append(original);
+        appendCaptureBlock(msg, "captured stdout", stdout);
+        appendCaptureBlock(msg, "captured stderr", stderr);
+        return msg.toString();
+    }
+
+    private static void appendCaptureBlock(StringBuilder msg, String heading, String content) {
+        if (content.isEmpty()) return;
+        if (msg.length() > 0 && msg.charAt(msg.length() - 1) != '\n') msg.append('\n');
+        msg.append(heading).append(":\n");
+        // Strip exactly one trailing '\n' (the terminator from the last println)
+        // so the harness's own println on the augmented message does not produce
+        // a trailing blank line. Internal newlines are preserved verbatim.
+        if (content.endsWith("\n")) {
+            msg.append(content, 0, content.length() - 1);
+        } else {
+            msg.append(content);
+        }
     }
 
     /**

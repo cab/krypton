@@ -1719,6 +1719,67 @@ fn test_test_one_passing_one_panicking_exits_1() {
 }
 
 #[test]
+fn test_test_capture_passing_println_silenced_failing_println_shown() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/capture_test.kr"),
+        "import core/io.{println}\n\
+         import core/test.{assert}\n\
+         \n\
+         fun test_passes_with_println() { println(\"alpha-secret-passing\") }\n\
+         \n\
+         fun test_fails_with_println() {\n    \
+             println(\"beta-failing-output\")\n    \
+             assert(false)\n\
+         }\n",
+    )
+    .expect("write capture_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when any test fails; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok capture_test/test_passes_with_println"),
+        "passing test must still emit its 'ok' line, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL capture_test/test_fails_with_println"),
+        "failing test must emit its 'FAIL' line, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("assertion failed: assert"),
+        "M44-T9 failure diagnostic must be preserved before capture block, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("captured stdout:"),
+        "failing test must surface a 'captured stdout:' heading, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("beta-failing-output"),
+        "failing test's println output must be visible, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("alpha-secret-passing"),
+        "passing test's println output must be suppressed, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("1 passed, 1 failed"),
+        "expected summary '1 passed, 1 failed', got: {stdout}"
+    );
+}
+
+#[test]
 fn test_test_companion_compile_error_still_runs_passing_sibling() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
