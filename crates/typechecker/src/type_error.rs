@@ -134,6 +134,7 @@ pub enum TypeErrorCode {
     E0519, // Unknown export (name does not exist in module)
     E0520, // Wildcard not allowed in this position
     E0521, // Test module imported from non-test code
+    E0522, // Test-only fn imported from non-test code
     E0017, // Cannot construct uninhabited type
     E0018, // Irrefutable if-let pattern
     E0112, // `Disposable` cannot be implemented for a function type (`~fn` is consumed by calling it)
@@ -306,6 +307,10 @@ pub enum TypeError {
     },
     TestModuleImport {
         path: String,
+    },
+    TestOnlyFn {
+        name: String,
+        module_path: String,
     },
     CircularImport {
         cycle: Vec<String>,
@@ -653,6 +658,7 @@ impl TypeError {
             TypeError::QuestionMarkMismatch { .. } => TypeErrorCode::E0403,
             TypeError::UnknownModule { .. } => TypeErrorCode::E0501,
             TypeError::TestModuleImport { .. } => TypeErrorCode::E0521,
+            TypeError::TestOnlyFn { .. } => TypeErrorCode::E0522,
             TypeError::CircularImport { .. } => TypeErrorCode::E0502,
             TypeError::PrivateName { .. } => TypeErrorCode::E0503,
             TypeError::BareImport { .. } => TypeErrorCode::E0504,
@@ -913,6 +919,9 @@ impl TypeError {
             TypeError::TestModuleImport { .. } => Some(
                 "modules whose file name ends in `_test.kr` are only visible to `krypton test`. Move the code to a non-test module, or move the importer into a `_test.kr` file.".to_string(),
             ),
+            TypeError::TestOnlyFn { name, module_path } => Some(format!(
+                "`{name}` from module `{module_path}` is only callable from `_test.kr` files"
+            )),
             TypeError::CircularImport { cycle } => {
                 Some(format!("import cycle: {}", cycle.join(" → ")))
             }
@@ -1666,6 +1675,13 @@ impl fmt::Display for TypeError {
                     f,
                     "cannot import test module `{}` from non-test code",
                     path
+                )
+            }
+            TypeError::TestOnlyFn { name, module_path } => {
+                write!(
+                    f,
+                    "test-only fn `{}` from module `{}` cannot be used from non-test code",
+                    name, module_path
                 )
             }
             TypeError::CircularImport { cycle } => {

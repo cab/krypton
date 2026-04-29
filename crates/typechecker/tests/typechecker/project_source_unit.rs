@@ -407,3 +407,71 @@ fn test_companion_bypass_does_not_propagate_to_extras() {
         );
     }
 }
+
+#[test]
+fn assert_panics_callable_from_test_module() {
+    // `core/test::assert_panics` is `is_test_only`. Importing it from a
+    // `_test.kr` companion must succeed: the test module's leaf ends in
+    // `_test`, so the resolver hands it back as a normal `Fn`.
+    let phase1 = vec![("math", "pub fun nope() -> Unit = panic(\"x\")\n")];
+    let test_src = "import core/test.{assert_panics}\n\
+                    import math.{nope}\n\
+                    fun test_p() {\n\
+                    \x20 let m = assert_panics(() -> nope())\n\
+                    \x20 ()\n\
+                    }\n";
+    let result = infer_companion_test(phase1, "math_test", test_src);
+    let (typed, _iface, _extras) =
+        result.expect("assert_panics should be importable from a `_test.kr` companion");
+    assert!(
+        typed.fn_types_by_name.contains_key("test_p"),
+        "test_p should be present"
+    );
+}
+
+#[test]
+fn assert_panics_rejected_when_imported_from_non_test() {
+    // Importing `assert_panics` from a non-test module must fail with
+    // `TypeError::TestOnlyFn` (E0522).
+    let result = infer_unit(vec![(
+        "app",
+        "import core/test.{assert_panics}\nfun main() = ()\n",
+    )]);
+    let errors = match result {
+        Ok(_) => panic!("expected E0522 for non-test import of assert_panics"),
+        Err(errors) => errors,
+    };
+    let test_only_err = errors.iter().find_map(|e| match e {
+        InferError::TypeError { error, .. } => match &*error.error {
+            krypton_typechecker::type_error::TypeError::TestOnlyFn { name, module_path } => {
+                Some((name.clone(), module_path.clone()))
+            }
+            _ => None,
+        },
+        _ => None,
+    });
+    let (name, module_path) = test_only_err.unwrap_or_else(|| {
+        panic!(
+            "expected TypeError::TestOnlyFn in errors, got: {errors:?}"
+        )
+    });
+    assert_eq!(name, "assert_panics");
+    assert_eq!(module_path, "core/test");
+}
+
+#[test]
+fn other_assertions_still_importable_from_non_test() {
+    // Guard against accidental over-restriction: `assert_eq` (and every other
+    // pub fn in `core/test`) must remain importable from non-test code,
+    // because production code that wraps `core/test` helpers in convenience
+    // utilities is supported.
+    let unit = infer_unit(vec![(
+        "app",
+        "import core/test.{assert_eq}\nfun main() = assert_eq(1, 1)\n",
+    )])
+    .expect("assert_eq must remain importable from non-test code");
+    assert!(
+        unit.typed_modules.iter().any(|tm| tm.module_path == "app"),
+        "app must be present in typed_modules"
+    );
+}

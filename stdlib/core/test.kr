@@ -8,6 +8,7 @@ import core/option.{Option, Some, None}
 # SourceLoc compiler-inserted caller location once that lands.
 extern java "krypton.runtime.KryptonTestSupport" {
     fun firstTestFrame() -> String
+    fun assertPanickedImpl(thunk: () -> Unit, on_success_msg: String) -> String
 }
 
 fun at_line() -> String = concat("\n  at ", firstTestFrame())
@@ -173,3 +174,16 @@ pub fun assert_none_msg[a](o: Option[a], msg: String) -> Unit
         at_line()
     )),
 }
+
+# Test-only intrinsic. The success-path message is composed eagerly so the
+# `at_line()` stack walk runs while `assert_panics` is still on the live thread,
+# before `f` is invoked — same idiom as every other assertion above. The
+# typechecker rejects access from non-`_test.kr` modules with E0522.
+pub fun assert_panics(f: () -> Unit) -> String =
+    assertPanickedImpl(
+        f,
+        concat(
+            "assertion failed: assert_panics\n  expected panic, but function returned normally",
+            at_line()
+        )
+    )

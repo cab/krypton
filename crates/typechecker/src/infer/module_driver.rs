@@ -660,7 +660,12 @@ pub(crate) fn infer_module_inner(
         state.build_synthetic_prelude_import(is_prelude_tree, interface_cache);
 
     state
-        .process_imports(module, interface_cache, synthetic_prelude_import.as_ref())
+        .process_imports(
+            module,
+            interface_cache,
+            synthetic_prelude_import.as_ref(),
+            &module_path,
+        )
         .map_err(|e| vec![e])?;
     reserve_gen_for_env_schemes(&state.env, &mut state.gen);
     let (extern_fns, extern_types, extern_bindings, extern_fn_constraints, pending_extern_traits) =

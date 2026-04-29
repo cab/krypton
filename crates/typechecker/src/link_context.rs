@@ -8,6 +8,7 @@ use crate::module_interface::{
 };
 use crate::typed_ast::TraitName;
 use crate::types::{substitute_type_params, Type, TypeVarId};
+use krypton_modules::module_resolver::is_test_module_path;
 use krypton_parser::ast::Visibility;
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,11 @@ enum FnEntry {
         /// vector, and `ModuleLinkView` enforces that private entries are only
         /// reachable from the defining module or its designated private friend.
         private: bool,
+        /// `true` when the underlying summary has `is_test_only` set. Mirrors
+        /// `private`: the lookup view rejects access from non-test modules,
+        /// preserving principle P7 ("Krypton code never catches its own
+        /// panics") for `assert_panics`.
+        test_only: bool,
     },
     Reexport {
         canonical_module: ModuleId,
@@ -176,6 +182,7 @@ impl LinkContext {
                     FnEntry::Direct {
                         index: i,
                         private: false,
+                        test_only: f.is_test_only,
                     },
                 );
             }
@@ -200,6 +207,7 @@ impl LinkContext {
                     FnEntry::Direct {
                         index: i,
                         private: true,
+                        test_only: f.is_test_only,
                     },
                 );
             }
@@ -403,7 +411,7 @@ impl LinkContext {
     pub fn lookup_fn_summary(&self, path: &ModulePath, name: &str) -> Option<&ExportedFnSummary> {
         let id = self.interner.lookup(path)?;
         match self.fn_index.get(&(id, name.to_string()))? {
-            FnEntry::Direct { index, private } => {
+            FnEntry::Direct { index, private, .. } => {
                 let iface = self.interfaces.get(&id)?;
                 if *private {
                     iface.private_fns.get(*index)
@@ -425,6 +433,7 @@ impl LinkContext {
                     FnEntry::Direct {
                         index,
                         private: false,
+                        ..
                     } => self
                         .interfaces
                         .get(canonical_module)?
@@ -633,13 +642,27 @@ impl<'a> ModuleLinkView<'a> {
         if !self.reachable.contains(&target_id) {
             return None;
         }
-        // Reject hits in the target module's `private_fns` unless the caller
-        // is the defining module itself or its designated private friend.
-        if let Some(FnEntry::Direct { private: true, .. }) =
-            self.ctx.fn_index.get(&(target_id, name.to_string()))
-        {
-            if target_id != self.module_id && Some(target_id) != self.friend_module_id {
-                return None;
+        if let Some(entry) = self.ctx.fn_index.get(&(target_id, name.to_string())) {
+            // Reject hits in the target module's `private_fns` unless the
+            // caller is the defining module itself or its designated private
+            // friend.
+            if let FnEntry::Direct { private: true, .. } = entry {
+                if target_id != self.module_id && Some(target_id) != self.friend_module_id {
+                    return None;
+                }
+            }
+            // Reject test-only intrinsics from non-test modules. The caller
+            // is identified by the path interned for `self.module_id`; only
+            // `_test.kr` companions (leaf ending in `_test`) are permitted to
+            // reach a `is_test_only` summary.
+            if let FnEntry::Direct {
+                test_only: true, ..
+            } = entry
+            {
+                let caller_path = self.ctx.interner.resolve(self.module_id);
+                if !is_test_module_path(caller_path.as_str()) {
+                    return None;
+                }
             }
         }
         self.ctx.lookup_fn_summary(path, name)
@@ -817,6 +840,7 @@ mod tests {
             },
             origin: None,
             def_span: None,
+            is_test_only: false,
         }
     }
 

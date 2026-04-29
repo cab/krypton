@@ -135,7 +135,10 @@ impl ModuleInferenceState {
         module: &Module,
         interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
         synthetic_prelude_import: Option<&Decl>,
+        caller_module_path: &str,
     ) -> Result<(), SpannedTypeError> {
+        let caller_is_test =
+            krypton_modules::module_resolver::is_test_module_path(caller_module_path);
         // Build decl list: synthetic prelude import (if any) + module's own decls
         let all_decls: Vec<&Decl> = synthetic_prelude_import
             .into_iter()
@@ -150,7 +153,14 @@ impl ModuleInferenceState {
                 ..
             } = decl
             {
-                self.process_single_import(*is_pub, path, names, *span, interface_cache)?;
+                self.process_single_import(
+                    *is_pub,
+                    path,
+                    names,
+                    *span,
+                    interface_cache,
+                    caller_is_test,
+                )?;
             }
         }
         Ok(())
@@ -163,6 +173,7 @@ impl ModuleInferenceState {
         names: &[ImportName],
         span: Span,
         interface_cache: &FxHashMap<String, crate::module_interface::ModuleInterface>,
+        caller_is_test: bool,
     ) -> Result<(), SpannedTypeError> {
         // Module should already be type-checked (topological order guarantees this)
         let iface = interface_cache
@@ -187,7 +198,7 @@ impl ModuleInferenceState {
         let resolver = if is_friend_import {
             ImportResolver::for_private_friend(iface)
         } else {
-            ImportResolver::new(iface)
+            ImportResolver::new(iface, caller_is_test)
         };
 
         // Pass A — visibility
@@ -205,6 +216,15 @@ impl ModuleInferenceState {
                 ResolveResult::Private => {
                     return Err(spanned(
                         TypeError::PrivateName {
+                            name: name.to_string(),
+                            module_path: path.to_string(),
+                        },
+                        span,
+                    ));
+                }
+                ResolveResult::TestOnly => {
+                    return Err(spanned(
+                        TypeError::TestOnlyFn {
                             name: name.to_string(),
                             module_path: path.to_string(),
                         },
@@ -293,8 +313,10 @@ impl ModuleInferenceState {
                         span,
                         is_synthetic_prelude_import,
                     )?,
-                ResolveResult::Unknown | ResolveResult::Private => {
-                    unreachable!("Pass A rejects Unknown / Private before Pass B runs");
+                ResolveResult::Unknown | ResolveResult::Private | ResolveResult::TestOnly => {
+                    unreachable!(
+                        "Pass A rejects Unknown / Private / TestOnly before Pass B runs"
+                    );
                 }
             }
         }

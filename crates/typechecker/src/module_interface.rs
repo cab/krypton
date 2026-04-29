@@ -160,6 +160,11 @@ pub struct ExportedFnSummary {
     pub scheme: TypeScheme,
     pub origin: Option<TraitName>,
     pub def_span: Option<Span>,
+    /// `true` for harness-level intrinsics that must be unreachable from
+    /// non-test code. The link-context layer rejects any cross-module
+    /// reference to a test-only fn unless the calling module's path is a
+    /// `_test.kr` companion. Currently set only for `core/test::assert_panics`.
+    pub is_test_only: bool,
 }
 
 /// A reexported function — points back to the canonical defining module.
@@ -421,7 +426,8 @@ pub fn extract_interface(
         }
     }
 
-    let exported_fns = extract_exported_fns(&typed.exported_fn_types, &constructor_names);
+    let exported_fns =
+        extract_exported_fns(&typed.exported_fn_types, &constructor_names, &typed.module_path);
     let reexported_fns = extract_reexported_fns(typed);
     let exported_types = extract_exported_types(typed);
     let reexported_types = extract_reexported_types(typed);
@@ -463,6 +469,7 @@ pub fn extract_interface(
 fn extract_exported_fns(
     exported: &[ExportedFn],
     constructor_names: &FxHashMap<String, String>,
+    module_path: &str,
 ) -> Vec<ExportedFnSummary> {
     let exported_symbols = mangle_overload_symbols(exported);
     exported
@@ -484,9 +491,18 @@ fn extract_exported_fns(
                 scheme: ef.scheme.clone(),
                 origin: ef.origin.clone(),
                 def_span: ef.def_span,
+                is_test_only: is_test_only_intrinsic(module_path, &ef.name),
             }
         })
         .collect()
+}
+
+/// Returns `true` for the closed set of harness-level test intrinsics whose
+/// access from non-test modules is rejected at the link-context layer with
+/// E0522. The set is kept small and explicit on purpose; if it grows, lift
+/// it to an attribute on the source declaration rather than a hardcoded list.
+fn is_test_only_intrinsic(module_path: &str, fn_name: &str) -> bool {
+    matches!((module_path, fn_name), ("core/test", "assert_panics"))
 }
 
 /// Assign source-order mangled symbol names to an exported-fn slice.
@@ -852,6 +868,7 @@ fn extract_private_fns(
                 scheme: e.scheme.clone(),
                 origin: e.origin.clone(),
                 def_span: span,
+                is_test_only: false,
             }
         })
         .collect()

@@ -32,6 +32,11 @@ pub(super) enum ResolveResult<'a> {
         method: &'a TraitMethodSummary,
     },
     Private,
+    /// The name resolves to a `pub` fn whose summary has `is_test_only` set,
+    /// but the calling module is not a `_test.kr` companion. Emitted only by
+    /// `ImportResolver` instances configured with `caller_is_test = false`.
+    /// `imports.rs` translates this into `TypeError::TestOnlyFn` (E0522).
+    TestOnly,
     Unknown,
 }
 
@@ -47,13 +52,18 @@ pub(super) struct ImportResolver<'a> {
     /// a private-friend module's import of the friend target; every other
     /// import path uses the standard filtered resolver.
     bypass_visibility: bool,
+    /// `true` when the calling module's path is a `_test.kr` companion
+    /// (leaf segment ends with `_test`). Lets the resolver hand back
+    /// `is_test_only` fns as `Fn`; non-test callers get `TestOnly` instead.
+    caller_is_test: bool,
 }
 
 impl<'a> ImportResolver<'a> {
-    pub(super) fn new(iface: &'a ModuleInterface) -> Self {
+    pub(super) fn new(iface: &'a ModuleInterface, caller_is_test: bool) -> Self {
         Self {
             iface,
             bypass_visibility: false,
+            caller_is_test,
         }
     }
 
@@ -61,10 +71,13 @@ impl<'a> ImportResolver<'a> {
     /// target's interface. Returns `Fn`/`Type` for entries in
     /// `iface.private_fns` / `iface.private_types` and lets
     /// `Visibility::Private` `exported_types` flow through unfiltered.
+    /// Private-friend modules are always `_test.kr` companions today, so
+    /// `caller_is_test` is unconditionally `true` here.
     pub(super) fn for_private_friend(iface: &'a ModuleInterface) -> Self {
         Self {
             iface,
             bypass_visibility: true,
+            caller_is_test: true,
         }
     }
 
@@ -138,6 +151,9 @@ impl<'a> ImportResolver<'a> {
         }
 
         if let Some(ef) = exported_fn {
+            if ef.is_test_only && !self.caller_is_test {
+                return ResolveResult::TestOnly;
+            }
             return ResolveResult::Fn(ef);
         }
         if let Some(rf) = reexported_fn {
@@ -225,6 +241,7 @@ mod tests {
             scheme: unit_scheme(),
             origin: None,
             def_span: None,
+            is_test_only: false,
         }
     }
 
@@ -244,7 +261,7 @@ mod tests {
     fn resolves_exported_fn() {
         let mut iface = empty_iface();
         iface.exported_fns.push(make_fn_summary("foo"));
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("foo"), ResolveResult::Fn(_)));
     }
 
@@ -261,7 +278,7 @@ mod tests {
             origin: None,
             def_span: None,
         });
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("bar"), ResolveResult::ReexportedFn(_)));
     }
 
@@ -271,7 +288,7 @@ mod tests {
         iface
             .exported_types
             .push(make_type_summary("T", Visibility::Pub));
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("T"), ResolveResult::Type(_)));
     }
 
@@ -285,7 +302,7 @@ mod tests {
             .exported_types
             .push(make_type_summary("Hidden", Visibility::Private));
         iface.private_names.insert("Hidden".to_string());
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("Hidden"), ResolveResult::Private));
     }
 
@@ -300,7 +317,7 @@ mod tests {
             },
             visibility: Visibility::Pub,
         });
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(
             r.resolve("Opt"),
             ResolveResult::ReexportedType(_)
@@ -316,7 +333,7 @@ mod tests {
             target: ExternTarget::Java,
             lifts: None,
         });
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("Ref"), ResolveResult::ExternType(_)));
     }
 
@@ -350,7 +367,7 @@ mod tests {
         iface
             .exported_traits
             .push(make_trait_summary("Eq", vec!["eq"]));
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("Eq"), ResolveResult::Trait(_)));
     }
 
@@ -360,7 +377,7 @@ mod tests {
         iface
             .exported_traits
             .push(make_trait_summary("Functor", vec!["map", "lift"]));
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         match r.resolve("map") {
             ResolveResult::TraitMethod { trait_def, method } => {
                 assert_eq!(trait_def.name, "Functor");
@@ -374,14 +391,14 @@ mod tests {
     fn resolves_private_name() {
         let mut iface = empty_iface();
         iface.private_names.insert("hidden".to_string());
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("hidden"), ResolveResult::Private));
     }
 
     #[test]
     fn unknown_name() {
         let iface = empty_iface();
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("missing"), ResolveResult::Unknown));
     }
 
@@ -410,7 +427,7 @@ mod tests {
         let mut iface = empty_iface();
         iface.private_fns.push(make_fn_summary("private_x"));
         iface.private_names.insert("private_x".to_string());
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("private_x"), ResolveResult::Private));
     }
 
@@ -423,7 +440,7 @@ mod tests {
         iface
             .exported_types
             .push(make_type_summary("Both", Visibility::Pub));
-        let r = ImportResolver::new(&iface);
+        let r = ImportResolver::new(&iface, false);
         assert!(matches!(r.resolve("Both"), ResolveResult::Fn(_)));
     }
 }

@@ -213,6 +213,32 @@ public final class KryptonTestSupport {
     }
 
     /**
+     * JVM-level catch for the runtime exception {@code panic} throws. Invoked by
+     * the {@code core/test::assert_panics} stdlib helper through an extern java
+     * declaration: the Krypton wrapper passes a thunk plus a pre-formatted
+     * "function returned normally" message (built before the call so the
+     * {@link #firstTestFrame()} stack walk runs while the test method is still
+     * on the live thread). If {@code thunk} panics, return the panic's message
+     * (an empty string when the panic carries a {@code null} message). If it
+     * returns normally, throw {@link RuntimeException} with the supplied
+     * {@code onSuccessMessage} so the harness reports it the same way it
+     * reports any other failed assertion.
+     *
+     * <p>Principle P7 ("Krypton code never catches its own panics") is
+     * preserved: the catch happens in runtime infrastructure, not in
+     * user-visible Krypton code.
+     */
+    public static String assertPanickedImpl(Fun0<Object> thunk, String onSuccessMessage) {
+        try {
+            thunk.apply();
+        } catch (RuntimeException e) {
+            String msg = e.getMessage();
+            return msg == null ? "" : msg;
+        }
+        throw new RuntimeException(onSuccessMessage);
+    }
+
+    /**
      * Run {@code body} on a short-lived daemon worker, joining for at most
      * {@code timeoutMs} milliseconds. On expiry the worker is interrupted
      * (cooperative — a non-cooperative test continues running but does not

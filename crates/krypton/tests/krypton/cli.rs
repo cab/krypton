@@ -1817,6 +1817,70 @@ fn test_test_capture_passing_println_silenced_failing_println_shown() {
 }
 
 #[test]
+fn test_test_assert_panics_catches_panic_message_and_fails_when_no_panic() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    // Three behaviours bundled into a single suite so a single `krypton test`
+    // run exercises every code path of `assert_panics`:
+    //   - returns the panic's message string (assert_eq on the return value)
+    //   - returns `""` when the panic message is empty
+    //   - panics with the "expected panic" diagnostic when the thunk returns
+    std::fs::write(
+        project.join("src/panics_test.kr"),
+        "import core/test.{assert_panics, assert_eq}\n\
+         \n\
+         fun test_returns_message() {\n    \
+             let m = assert_panics(() -> panic(\"boom\"))\n    \
+             assert_eq(m, \"boom\")\n\
+         }\n\
+         \n\
+         fun test_handles_no_message() {\n    \
+             let m = assert_panics(() -> panic(\"\"))\n    \
+             assert_eq(m, \"\")\n\
+         }\n\
+         \n\
+         fun test_no_panic_fails() {\n    \
+             let _ = assert_panics(() -> ())\n\
+         }\n",
+    )
+    .expect("write panics_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when any test panics; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok   panics_test/test_returns_message"),
+        "expected 'ok   panics_test/test_returns_message', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("ok   panics_test/test_handles_no_message"),
+        "expected 'ok   panics_test/test_handles_no_message', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL panics_test/test_no_panic_fails"),
+        "expected 'FAIL panics_test/test_no_panic_fails', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("expected panic, but function returned normally"),
+        "failing-test diagnostic must mention the expected-panic message, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed, 1 failed"),
+        "expected summary '2 passed, 1 failed', got: {stdout}"
+    );
+}
+
+#[test]
 fn test_test_companion_compile_error_still_runs_passing_sibling() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
