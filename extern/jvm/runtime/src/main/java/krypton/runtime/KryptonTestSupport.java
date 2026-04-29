@@ -28,6 +28,85 @@ public final class KryptonTestSupport {
     /** Per-test wall-clock budget enforced by {@link #runTestWithTimeout}. */
     public static final long TEST_TIMEOUT_MS = 5_000L;
 
+    // Suite-level state owned by the harness JVM process. The harness calls
+    // recordSuiteStart() exactly once before any runOneTest() call and
+    // printSummary() exactly once after the last one, so racy reads are not
+    // possible.
+    private static long suiteStartNanos;
+    private static int passes;
+    private static int fails;
+
+    /**
+     * Reset suite counters and capture the start time. Called from generated
+     * harness bytecode at the top of {@code main}.
+     */
+    public static void recordSuiteStart() {
+        suiteStartNanos = System.nanoTime();
+        passes = 0;
+        fails = 0;
+    }
+
+    /**
+     * Run a single test and emit its output line. Called from generated
+     * harness bytecode once per discovered {@code test_*} function. The
+     * elapsed time is measured here so the bytecode does not need to do any
+     * long arithmetic.
+     *
+     * <p>{@code columnWidth} is the longest qualified-name width in the
+     * suite — every line in the suite uses the same value so the time
+     * column lines up.
+     */
+    public static void runOneTest(String className, String methodName,
+                                  String qualifiedName, int columnWidth) {
+        long start = System.nanoTime();
+        try {
+            runTestWithTimeout(className, methodName);
+            printPass(qualifiedName, System.nanoTime() - start, columnWidth);
+            passes++;
+        } catch (RuntimeException e) {
+            printFail(qualifiedName, System.nanoTime() - start, columnWidth, e);
+            fails++;
+        }
+    }
+
+    /**
+     * Emit the {@code "<P> passed, <F> failed (<T>ms)"} summary line and
+     * flush the standard-output stream so callers see the suite result
+     * even when stdout is line-buffered.
+     */
+    public static void printSummary() {
+        long elapsedMs = (System.nanoTime() - suiteStartNanos) / 1_000_000L;
+        System.out.printf("%d passed, %d failed (%dms)%n", passes, fails, elapsedMs);
+        System.out.flush();
+    }
+
+    /** Returns 1 if any test failed, otherwise 0. */
+    public static int exitCodeFromCounters() {
+        return fails > 0 ? 1 : 0;
+    }
+
+    private static void printPass(String name, long elapsedNanos, int columnWidth) {
+        long ms = elapsedNanos / 1_000_000L;
+        System.out.printf("ok   %-" + columnWidth + "s    %dms%n", name, ms);
+        System.out.flush();
+    }
+
+    private static void printFail(String name, long elapsedNanos, int columnWidth,
+                                  RuntimeException e) {
+        long ms = elapsedNanos / 1_000_000L;
+        System.out.printf("FAIL %-" + columnWidth + "s    %dms%n", name, ms);
+        String message = e.getMessage();
+        if (message != null && !message.isEmpty()) {
+            // The augmented message produced by runTestWithTimeout already
+            // strips a trailing '\n' (see appendCaptureBlock), so split with
+            // limit -1 will not invent a stray empty line at the end.
+            for (String line : message.split("\n", -1)) {
+                System.out.println("     " + line);
+            }
+        }
+        System.out.flush();
+    }
+
     /**
      * Returns {@code "src/<dir>/<file>:<line>"} for the first stack frame
      * whose source file ends in {@code _test.kr}, or {@code "<unknown>"} if

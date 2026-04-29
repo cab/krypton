@@ -275,6 +275,34 @@ fn test_init_errors_on_invalid_name() {
 /// Run `krypton init` inside `parent_dir`, returning the created project path
 /// and a cache root (to be threaded via `KRYPTON_HOME` so tests never touch
 /// the developer's real `~/.krypton`).
+/// Normalize every run of digits immediately followed by `ms` (e.g. `1ms`,
+/// `12ms`, `(3ms)`) to the literal `Xms`. Other digit sequences (line
+/// numbers, pass/fail counters) are left untouched. Used by output-layout
+/// fixtures so per-test elapsed-time numbers do not flake the assertion.
+fn normalize_ms(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut result = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i + 2 <= bytes.len() && &bytes[i..i + 2] == b"ms" {
+                result.push_str("Xms");
+                i += 2;
+            } else {
+                result.push_str(&input[start..i]);
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
 fn init_project_for_test(parent_dir: &std::path::Path) -> PathBuf {
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(parent_dir)
@@ -1705,8 +1733,8 @@ fn test_test_one_passing_one_panicking_exits_1() {
         "exit code must be 1 when any test panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok simple_test/test_passes"),
-        "expected 'ok simple_test/test_passes' line, got: {stdout}"
+        stdout.contains("ok   simple_test/test_passes"),
+        "expected 'ok   simple_test/test_passes' line, got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL simple_test/test_panics"),
@@ -1750,7 +1778,7 @@ fn test_test_capture_passing_println_silenced_failing_println_shown() {
         "exit code must be 1 when any test fails; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok capture_test/test_passes_with_println"),
+        stdout.contains("ok   capture_test/test_passes_with_println"),
         "passing test must still emit its 'ok' line, got: {stdout}"
     );
     assert!(
@@ -1805,7 +1833,7 @@ fn test_test_companion_compile_error_still_runs_passing_sibling() {
         "exit code must be 1 when any test file fails to compile; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok good_test/test_x"),
+        stdout.contains("ok   good_test/test_x"),
         "passing sibling must run even when another test file fails to compile, got: {stdout}"
     );
     assert!(
@@ -1846,7 +1874,7 @@ fn test_test_invalid_test_signature_is_compile_error() {
         "expected at least two E0019 diagnostics (one per invalid signature), got {e0019_count}: {combined}"
     );
     assert!(
-        !stdout.contains("ok bad_sig_test/test_ok"),
+        !stdout.contains("ok   bad_sig_test/test_ok"),
         "test_ok must not run because the file failed to compile, got: {stdout}"
     );
 }
@@ -1878,8 +1906,8 @@ fn test_test_assert_eq_passes_and_fails() {
         "exit code must be 1 when an assert_eq panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok eq_test/test_assert_eq_passes"),
-        "expected 'ok eq_test/test_assert_eq_passes', got: {stdout}"
+        stdout.contains("ok   eq_test/test_assert_eq_passes"),
+        "expected 'ok   eq_test/test_assert_eq_passes', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL eq_test/test_assert_eq_fails"),
@@ -1922,7 +1950,7 @@ fn test_test_assert_true_false_and_assert() {
         "test_assert_true_helper_pass",
         "test_assert_false_pass",
     ] {
-        let line = format!("ok bool_test/{name}");
+        let line = format!("ok   bool_test/{name}");
         assert!(
             stdout.contains(&line),
             "expected '{line}' line, got: {stdout}"
@@ -1968,8 +1996,8 @@ fn test_test_assert_neq_passes_and_fails() {
         "exit code must be 1 when assert_neq panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok neq_test/test_assert_neq_passes"),
-        "expected 'ok neq_test/test_assert_neq_passes', got: {stdout}"
+        stdout.contains("ok   neq_test/test_assert_neq_passes"),
+        "expected 'ok   neq_test/test_assert_neq_passes', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL neq_test/test_assert_neq_fails"),
@@ -2008,8 +2036,8 @@ fn test_test_assert_does_not_consume_borrowed_subject() {
         "test should pass when assert_eq does not consume its subject; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok borrow_test/test_buffer_length"),
-        "expected 'ok borrow_test/test_buffer_length', got: {stdout}"
+        stdout.contains("ok   borrow_test/test_buffer_length"),
+        "expected 'ok   borrow_test/test_buffer_length', got: {stdout}"
     );
 }
 
@@ -2047,8 +2075,8 @@ fn test_test_import_core_test_from_non_test_file() {
         "non-test files must be allowed to import core/test assertions; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok util_test/test_check_one_passes"),
-        "expected 'ok util_test/test_check_one_passes', got: {stdout}"
+        stdout.contains("ok   util_test/test_check_one_passes"),
+        "expected 'ok   util_test/test_check_one_passes', got: {stdout}"
     );
 }
 
@@ -2087,8 +2115,8 @@ fn test_test_assert_ok_passes_and_fails() {
         "exit code must be 1 when assert_ok panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok assert_ok_test/test_assert_ok_pass"),
-        "expected 'ok assert_ok_test/test_assert_ok_pass', got: {stdout}"
+        stdout.contains("ok   assert_ok_test/test_assert_ok_pass"),
+        "expected 'ok   assert_ok_test/test_assert_ok_pass', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL assert_ok_test/test_assert_ok_fail"),
@@ -2131,8 +2159,8 @@ fn test_test_assert_err_passes_and_fails() {
         "exit code must be 1 when assert_err panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok assert_err_test/test_assert_err_pass"),
-        "expected 'ok assert_err_test/test_assert_err_pass', got: {stdout}"
+        stdout.contains("ok   assert_err_test/test_assert_err_pass"),
+        "expected 'ok   assert_err_test/test_assert_err_pass', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL assert_err_test/test_assert_err_fail"),
@@ -2174,8 +2202,8 @@ fn test_test_assert_some_passes_and_fails() {
         "exit code must be 1 when assert_some panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok assert_some_test/test_assert_some_pass"),
-        "expected 'ok assert_some_test/test_assert_some_pass', got: {stdout}"
+        stdout.contains("ok   assert_some_test/test_assert_some_pass"),
+        "expected 'ok   assert_some_test/test_assert_some_pass', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL assert_some_test/test_assert_some_fail"),
@@ -2217,8 +2245,8 @@ fn test_test_assert_none_passes_and_fails() {
         "exit code must be 1 when assert_none panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok assert_none_test/test_assert_none_pass"),
-        "expected 'ok assert_none_test/test_assert_none_pass', got: {stdout}"
+        stdout.contains("ok   assert_none_test/test_assert_none_pass"),
+        "expected 'ok   assert_none_test/test_assert_none_pass', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL assert_none_test/test_assert_none_fail"),
@@ -2258,8 +2286,8 @@ fn test_test_assert_ok_chained_unwrap() {
         "chained assert_ok unwrap should pass; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok chain_test/test_assert_ok_chained"),
-        "expected 'ok chain_test/test_assert_ok_chained', got: {stdout}"
+        stdout.contains("ok   chain_test/test_assert_ok_chained"),
+        "expected 'ok   chain_test/test_assert_ok_chained', got: {stdout}"
     );
 }
 
@@ -2298,8 +2326,8 @@ fn test_test_companion_private_fn_callable_from_test_file() {
         "test should succeed when test imports companion's private fn; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok parser_test/test_tokenize"),
-        "expected 'ok parser_test/test_tokenize', got: {stdout}"
+        stdout.contains("ok   parser_test/test_tokenize"),
+        "expected 'ok   parser_test/test_tokenize', got: {stdout}"
     );
 }
 
@@ -2385,8 +2413,8 @@ fn test_test_companion_private_type_and_constructor_visible() {
         "test should succeed when test constructs companion's private type; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok data_test/test_inner"),
-        "expected 'ok data_test/test_inner', got: {stdout}"
+        stdout.contains("ok   data_test/test_inner"),
+        "expected 'ok   data_test/test_inner', got: {stdout}"
     );
 }
 
@@ -2417,8 +2445,8 @@ fn test_test_helpers_test_with_no_companion_compiles() {
         "standalone test file with no companion source must still run; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok helpers_test/test_x"),
-        "expected 'ok helpers_test/test_x', got: {stdout}"
+        stdout.contains("ok   helpers_test/test_x"),
+        "expected 'ok   helpers_test/test_x', got: {stdout}"
     );
 }
 
@@ -2502,7 +2530,7 @@ fn test_test_assert_true_msg_passes_and_fails() {
         "exit code must be 1 when assert_true_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok true_msg_test/test_assert_true_msg_pass"),
+        stdout.contains("ok   true_msg_test/test_assert_true_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2538,7 +2566,7 @@ fn test_test_assert_false_msg_passes_and_fails() {
         "exit code must be 1 when assert_false_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok false_msg_test/test_assert_false_msg_pass"),
+        stdout.contains("ok   false_msg_test/test_assert_false_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2574,7 +2602,7 @@ fn test_test_assert_eq_msg_passes_and_fails() {
         "exit code must be 1 when assert_eq_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok eq_msg_test/test_assert_eq_msg_pass"),
+        stdout.contains("ok   eq_msg_test/test_assert_eq_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2610,7 +2638,7 @@ fn test_test_assert_neq_msg_passes_and_fails() {
         "exit code must be 1 when assert_neq_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok neq_msg_test/test_assert_neq_msg_pass"),
+        stdout.contains("ok   neq_msg_test/test_assert_neq_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2654,7 +2682,7 @@ fn test_test_assert_ok_msg_passes_and_fails() {
         "exit code must be 1 when assert_ok_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok ok_msg_test/test_assert_ok_msg_pass"),
+        stdout.contains("ok   ok_msg_test/test_assert_ok_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2698,7 +2726,7 @@ fn test_test_assert_err_msg_passes_and_fails() {
         "exit code must be 1 when assert_err_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok err_msg_test/test_assert_err_msg_pass"),
+        stdout.contains("ok   err_msg_test/test_assert_err_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2741,7 +2769,7 @@ fn test_test_assert_some_msg_passes_and_fails() {
         "exit code must be 1 when assert_some_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok some_msg_test/test_assert_some_msg_pass"),
+        stdout.contains("ok   some_msg_test/test_assert_some_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -2784,7 +2812,7 @@ fn test_test_assert_none_msg_passes_and_fails() {
         "exit code must be 1 when assert_none_msg panics; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok none_msg_test/test_assert_none_msg_pass"),
+        stdout.contains("ok   none_msg_test/test_assert_none_msg_pass"),
         "expected pass line, got: {stdout}"
     );
     assert!(
@@ -3012,8 +3040,8 @@ fn test_test_assert_ok_msg_and_some_msg_chained_unwrap() {
         "chained _msg unwraps should pass; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok chain_msg_test/test_chain"),
-        "expected 'ok chain_msg_test/test_chain', got: {stdout}"
+        stdout.contains("ok   chain_msg_test/test_chain"),
+        "expected 'ok   chain_msg_test/test_chain', got: {stdout}"
     );
 }
 
@@ -3047,8 +3075,8 @@ fn test_test_assert_msg_passing_calls_emit_no_context_noise() {
         "passing _msg calls should produce a green run; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok quiet_msg_test/test_quiet"),
-        "expected 'ok quiet_msg_test/test_quiet', got: {stdout}"
+        stdout.contains("ok   quiet_msg_test/test_quiet"),
+        "expected 'ok   quiet_msg_test/test_quiet', got: {stdout}"
     );
     assert!(
         !stdout.contains("context:"),
@@ -3241,15 +3269,14 @@ fn test_test_assert_eq_multiline_show_is_indented() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
-    // A custom Show instance whose render contains a newline. The continuation
-    // lines must be re-indented to column 12 so they align with the value
-    // column under `expected:` / `got:` (AC5).
-    // The custom `Show` instance returns a multi-line string. Continuation
-    // lines start at the very first column of the rendered string —
-    // `indent_show` is responsible for re-indenting every newline to match
-    // the value column under `expected:` / `got:`. The fixture deliberately
-    // emits a value whose own lines start at column 0 so the reindent shows
-    // up unambiguously as exactly 12 leading spaces.
+    // A custom Show instance whose render contains a newline. The
+    // continuation lines must align under the value column of
+    // `expected:` / `got:` (AC5). `indent_show` emits 12 spaces of inner
+    // indent so the continuation aligns under the value column of the raw
+    // failure message; the harness then prefixes every body line with
+    // 5 spaces of `FAIL ` indent, putting the continuation at column 17 in
+    // the rendered output. The fixture deliberately emits a value whose own
+    // lines start at column 0 so the reindent shows up unambiguously.
     std::fs::write(
         project.join("src/multi_test.kr"),
         "import core/test.{assert_eq}\n\
@@ -3285,13 +3312,13 @@ fn test_test_assert_eq_multiline_show_is_indented() {
         !output.status.success(),
         "multiline-show assert_eq should fail; stdout={stdout} stderr={stderr}"
     );
-    // Continuation lines are indented to column 12 so they line up under the
-    // `expected:` / `got:` value columns. The `Foo {` opening line is
-    // followed by `<12 spaces>x: 1` (the literal indent emitted by
-    // `indent_show`).
+    // Continuation lines line up under the `expected:` / `got:` value
+    // column. `Foo {` opens that column at offset 17 (5 from the harness
+    // `FAIL `-line indent + 12 from `indent_show`), and the next line
+    // (`x: 1`) carries the same 17-space leading indent.
     assert!(
-        stdout.contains("Foo {\n            x: 1"),
-        "expected continuation line indented to column 12 after `Foo {{`, got: {stdout}"
+        stdout.contains("Foo {\n                 x: 1"),
+        "expected continuation line indented to column 17 after `Foo {{`, got: {stdout}"
     );
 }
 
@@ -3364,8 +3391,8 @@ fn test_test_timeout_marks_test_as_failed_and_continues() {
         "exit code must be 1 when a test times out; stdout={stdout} stderr={stderr}"
     );
     assert!(
-        stdout.contains("ok timeout_test/test_a_passes"),
-        "expected 'ok timeout_test/test_a_passes', got: {stdout}"
+        stdout.contains("ok   timeout_test/test_a_passes"),
+        "expected 'ok   timeout_test/test_a_passes', got: {stdout}"
     );
     assert!(
         stdout.contains("FAIL timeout_test/test_b_loops"),
@@ -3376,11 +3403,71 @@ fn test_test_timeout_marks_test_as_failed_and_continues() {
         "expected 'test timed out' message in failure output, got: {stdout}"
     );
     assert!(
-        stdout.contains("ok timeout_test/test_c_after"),
+        stdout.contains("ok   timeout_test/test_c_after"),
         "subsequent test must still run after a timeout, got: {stdout}"
     );
     assert!(
         stdout.contains("2 passed, 1 failed"),
         "expected summary '2 passed, 1 failed', got: {stdout}"
+    );
+}
+
+/// Pin the exact byte layout the spec requires for `krypton test` output:
+///
+/// * `ok` / `FAIL` prefixes are 5 chars wide (`"ok   "` / `"FAIL "`).
+/// * Qualified names are left-padded to the longest name in the suite
+///   (here: `sample_test/test_three`, 22 chars).
+/// * Elapsed time follows after exactly 4 spaces of separator and is rendered
+///   as `<N>ms`.
+/// * Failure body lines are indented by 5 spaces so they line up under the
+///   first character of the qualified name.
+/// * The summary line carries a `(<N>ms)` suffix.
+///
+/// Per-test and total elapsed-time runs are normalized via [`normalize_ms`]
+/// before comparing, so this fixture is hermetic against host scheduling
+/// jitter.
+#[test]
+fn test_test_output_layout_exact_format() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/sample_test.kr"),
+        "import core/test.{assert, assert_eq}\n\
+         \n\
+         fun test_one() { assert(true) }\n\
+         fun test_two() { assert_eq(2 + 2, 4) }\n\
+         fun test_three() { assert_eq(3, 4) }\n",
+    )
+    .expect("write sample_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "suite with one failing test must exit 1; stdout={stdout} stderr={stderr}"
+    );
+
+    let normalized = normalize_ms(&stdout);
+    let expected = "\
+ok   sample_test/test_one      Xms
+ok   sample_test/test_two      Xms
+FAIL sample_test/test_three    Xms
+     assertion failed: assert_eq
+       expected: 4
+       got:      3
+       at src/sample_test.kr:5
+2 passed, 1 failed (Xms)
+";
+    assert_eq!(
+        normalized, expected,
+        "stdout must match the spec layout byte-for-byte after `Xms` normalization;\n\
+         stderr={stderr}\nraw stdout={stdout}"
     );
 }
