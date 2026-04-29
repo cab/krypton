@@ -1010,9 +1010,14 @@ fn check_project(timings: bool) -> ! {
 /// (discovering `test_*` functions, invoking them, reporting results)
 /// lands in M44-T4.
 ///
-/// `filters` is accepted for forward compatibility with the full
-/// discovery + execution pipeline and currently ignored.
-fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
+/// `filters` narrows what runs: each filter is compared as an exact string
+/// against each discovered test file's module path (the path relative to
+/// `src/` with the `.kr` extension stripped). Multiple filters are OR'd.
+/// A filter matching no discovered file fails fast with
+/// `no tests matched filter: <arg>` and exit 1. There is no name-level
+/// filtering in v0.1. All `_test.kr` files are still compiled regardless of
+/// filters so that compile errors in unfiltered siblings are still surfaced.
+fn cmd_test(filters: Vec<String>, verbose: bool, timings: bool) -> ! {
     let (ctx, resolve_dur) = load_project_context();
 
     let src_dir = ctx.project_root.join("src");
@@ -1023,6 +1028,24 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
 
     if verbose {
         println!("discovered {} test file(s)", files.tests.len());
+    }
+
+    if !filters.is_empty() {
+        let discovered: std::collections::HashSet<String> = files
+            .tests
+            .iter()
+            .map(|f| source_walker::module_path_from_file(f, &src_dir))
+            .collect();
+        let mut all_matched = true;
+        for filter in &filters {
+            if !discovered.contains(filter) {
+                println!("no tests matched filter: {filter}");
+                all_matched = false;
+            }
+        }
+        if !all_matched {
+            process::exit(1);
+        }
     }
 
     let deps = ctx.graph.source_roots(&ctx.manifest);
@@ -1382,6 +1405,10 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
             }
             TestFileOutcome::Compiled(c) => compiled_files.push(c),
         }
+    }
+
+    if !filters.is_empty() {
+        compiled_files.retain(|f| filters.iter().any(|filt| filt == &f.module_path));
     }
 
     // If nothing compiled (or there are no test files at all), skip the

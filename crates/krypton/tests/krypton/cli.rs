@@ -1285,6 +1285,15 @@ fn test_test_accepts_filter_args() {
     let dir = tempdir().expect("failed to create temp dir");
     let project = init_project_for_test(dir.path());
 
+    std::fs::write(project.join("src/math_test.kr"), "fun test_math() { }\n")
+        .expect("write math_test.kr");
+    std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
+    std::fs::write(
+        project.join("src/parser/lexer_test.kr"),
+        "fun test_lex() { }\n",
+    )
+    .expect("write parser/lexer_test.kr");
+
     let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
         .current_dir(&project)
         .env("KRYPTON_HOME", dir.path().join("krypton-home"))
@@ -3469,5 +3478,295 @@ FAIL sample_test/test_three    Xms
         normalized, expected,
         "stdout must match the spec layout byte-for-byte after `Xms` normalization;\n\
          stderr={stderr}\nraw stdout={stdout}"
+    );
+}
+
+#[test]
+fn test_test_filter_runs_only_matching_file() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/math_test.kr"),
+        "import core/io.{println}\n\
+         import core/test.{assert}\n\
+         \n\
+         fun test_math() {\n    \
+             println(\"math-sentinel-XYZ\")\n    \
+             assert(false)\n\
+         }\n",
+    )
+    .expect("write math_test.kr");
+    std::fs::write(
+        project.join("src/string_test.kr"),
+        "import core/io.{println}\n\
+         import core/test.{assert}\n\
+         \n\
+         fun test_string() {\n    \
+             println(\"string-sentinel-XYZ\")\n    \
+             assert(false)\n\
+         }\n",
+    )
+    .expect("write string_test.kr");
+    std::fs::write(
+        project.join("src/list_test.kr"),
+        "import core/io.{println}\n\
+         import core/test.{assert}\n\
+         \n\
+         fun test_list() {\n    \
+             println(\"list-sentinel-XYZ\")\n    \
+             assert(false)\n\
+         }\n",
+    )
+    .expect("write list_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "math_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit must be 1 for one failing filtered test; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("FAIL math_test/test_math"),
+        "expected FAIL line for math_test/test_math, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("math-sentinel-XYZ"),
+        "expected math sentinel under FAIL captured-output, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("string_test/"),
+        "string_test must not run under filter math_test, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("list_test/"),
+        "list_test must not run under filter math_test, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_filter_with_nested_path() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::create_dir_all(project.join("src/parser")).expect("create parser dir");
+    std::fs::write(
+        project.join("src/parser/lexer_test.kr"),
+        "fun test_lex() { }\n",
+    )
+    .expect("write parser/lexer_test.kr");
+    std::fs::write(project.join("src/math_test.kr"), "fun test_math() { }\n")
+        .expect("write math_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "parser/lexer_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should succeed under nested-path filter; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok   parser/lexer_test/test_lex"),
+        "expected 'ok   parser/lexer_test/test_lex' line, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("math_test/"),
+        "math_test must not appear under nested-path filter, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_multiple_filters_or_semantics() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/a_test.kr"), "fun test_a() { }\n").expect("write a_test.kr");
+    std::fs::write(project.join("src/b_test.kr"), "fun test_b() { }\n").expect("write b_test.kr");
+    std::fs::write(project.join("src/c_test.kr"), "fun test_c() { }\n").expect("write c_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "a_test", "c_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should succeed with two passing filters; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("a_test/"),
+        "expected a_test/ line under OR filters, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("c_test/"),
+        "expected c_test/ line under OR filters, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("b_test/"),
+        "b_test must not appear under filters [a_test, c_test], got: {stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed"),
+        "summary must report '2 passed', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_filter_no_match_prints_and_exits_1() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/math_test.kr"), "fun test_math() { }\n")
+        .expect("write math_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "typo_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit must be 1 for unmatched filter; stdout={stdout} stderr={stderr}"
+    );
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("no tests matched filter: typo_test"),
+        "expected 'no tests matched filter: typo_test' on combined output, got stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        !stdout.contains("ok "),
+        "no `ok ` lines should appear when filter has no match, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_filter_compiles_unmatched_files() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/math_test.kr"), "fun test_math() { }\n")
+        .expect("write math_test.kr");
+    std::fs::write(
+        project.join("src/broken_test.kr"),
+        "fun test_broken() { let x: Int = \"not an int\" }\n",
+    )
+    .expect("write broken_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "math_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit must be 1 due to compile error in unfiltered file; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("FAIL src/broken_test.kr — compile error"),
+        "compile error in unfiltered file must still surface, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("ok   math_test/test_math"),
+        "matched file's tests must still run, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_filter_preserves_execution_order() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/multi_test.kr"),
+        "fun test_alpha() { }\nfun test_zeta() { }\nfun test_mid() { }\n",
+    )
+    .expect("write multi_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "multi_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "test should succeed; stdout={stdout} stderr={stderr}"
+    );
+    let alpha = stdout
+        .find("multi_test/test_alpha")
+        .expect("expected test_alpha in stdout");
+    let zeta = stdout
+        .find("multi_test/test_zeta")
+        .expect("expected test_zeta in stdout");
+    let mid = stdout
+        .find("multi_test/test_mid")
+        .expect("expected test_mid in stdout");
+    assert!(
+        alpha < zeta && zeta < mid,
+        "tests must run in source order alpha < zeta < mid, got positions {alpha},{zeta},{mid} in stdout: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_three_files_one_filter() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(project.join("src/alpha_test.kr"), "fun test_alpha() { }\n")
+        .expect("write alpha_test.kr");
+    std::fs::write(project.join("src/beta_test.kr"), "fun test_beta() { }\n")
+        .expect("write beta_test.kr");
+    std::fs::write(project.join("src/gamma_test.kr"), "fun test_gamma() { }\n")
+        .expect("write gamma_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .args(["test", "beta_test"])
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "filtered run should exit 0; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("1 passed"),
+        "summary must report '1 passed', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("beta_test/"),
+        "expected beta_test/ line, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("alpha_test/"),
+        "alpha_test must not appear under filter beta_test, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("gamma_test/"),
+        "gamma_test must not appear under filter beta_test, got: {stdout}"
     );
 }
