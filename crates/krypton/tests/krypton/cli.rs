@@ -3269,3 +3269,57 @@ fn test_test_first_test_frame_helper_is_not_public() {
         "diagnostic should mention `firstTestFrame`, got: {combined}"
     );
 }
+
+/// A non-cooperative tail-recursive helper drives a wall-clock timeout in the
+/// middle test. The two surrounding tests must pass, the timing-out test must
+/// be marked FAIL with the message `test timed out`, and the suite must
+/// continue executing past the timeout — covering acceptance criteria 1, 3,
+/// 5 and 6 of M44-T10 in a single 5-second-budget fixture.
+#[test]
+fn test_test_timeout_marks_test_as_failed_and_continues() {
+    let dir = tempdir().expect("failed to create temp dir");
+    let project = init_project_for_test(dir.path());
+
+    std::fs::write(
+        project.join("src/timeout_test.kr"),
+        "fun loop_forever() -> Unit = recur()\n\
+         \n\
+         fun test_a_passes() { }\n\
+         fun test_b_loops() { loop_forever() }\n\
+         fun test_c_after() { }\n",
+    )
+    .expect("write timeout_test.kr");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
+        .current_dir(&project)
+        .env("KRYPTON_HOME", dir.path().join("krypton-home"))
+        .arg("test")
+        .output()
+        .expect("failed to run krypton test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "exit code must be 1 when a test times out; stdout={stdout} stderr={stderr}"
+    );
+    assert!(
+        stdout.contains("ok timeout_test/test_a_passes"),
+        "expected 'ok timeout_test/test_a_passes', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL timeout_test/test_b_loops"),
+        "expected 'FAIL timeout_test/test_b_loops', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("test timed out"),
+        "expected 'test timed out' message in failure output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("ok timeout_test/test_c_after"),
+        "subsequent test must still run after a timeout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("2 passed, 1 failed"),
+        "expected summary '2 passed, 1 failed', got: {stdout}"
+    );
+}

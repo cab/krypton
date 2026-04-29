@@ -20,14 +20,14 @@ use super::JAVA_21;
 
 /// One discovered `test_*` function, ordered by the caller in the sequence the
 /// harness should invoke them. `class_name` is the JVM-internal name of the
-/// class that owns the static method. `method_descriptor` is the full JVM
-/// descriptor (e.g. `()Z` for `() -> Unit`, `()Lcore/never/Never;` for tests
-/// that always panic) used to look the method up in the constant pool.
+/// class that owns the static method; the harness emits this as a string
+/// constant and resolves the method reflectively at runtime through
+/// `KryptonTestSupport.runTestWithTimeout`, so no JVM descriptor is needed
+/// in the constant pool.
 #[derive(Debug, Clone)]
 pub struct TestHarnessEntry {
     pub class_name: String,
     pub method_name: String,
-    pub method_descriptor: String,
     pub qualified_name: String,
 }
 
@@ -69,6 +69,17 @@ pub fn generate_test_harness(entries: &[TestHarnessEntry]) -> Result<Vec<u8>, Co
     let throwable_get_message =
         cp.add_method_ref(throwable_class, "getMessage", "()Ljava/lang/String;")?;
     let string_arr_class = cp.add_class("[Ljava/lang/String;")?;
+
+    // Per-test timeout dispatcher. The harness no longer invokes the test
+    // method directly; it hands the class+method pair to
+    // `KryptonTestSupport.runTestWithTimeout`, which runs the test on a
+    // short-lived daemon worker and joins with a 5-second deadline.
+    let test_support_class = cp.add_class("krypton/runtime/KryptonTestSupport")?;
+    let run_test_with_timeout_ref = cp.add_method_ref(
+        test_support_class,
+        "runTestWithTimeout",
+        "(Ljava/lang/String;Ljava/lang/String;)V",
+    )?;
 
     // Default constructor.
     let constructor = Method {
@@ -115,22 +126,17 @@ pub fn generate_test_harness(entries: &[TestHarnessEntry]) -> Result<Vec<u8>, Co
     let mut prev_frame_idx: Option<u16> = None;
 
     for entry in entries {
-        let test_class_idx = cp.add_class(&entry.class_name)?;
-        // Krypton's lowered `() -> Unit` returns the boolean unit sentinel, so
-        // method descriptor is `()Z`.
-        let test_method_ref = cp.add_method_ref(
-            test_class_idx,
-            entry.method_name.as_str(),
-            entry.method_descriptor.as_str(),
-        )?;
+        let class_name_idx = cp.add_string(entry.class_name.clone())?;
+        let method_name_idx = cp.add_string(entry.method_name.clone())?;
 
         let ok_msg_idx = cp.add_string(format!("ok {}", entry.qualified_name))?;
         let fail_msg_idx = cp.add_string(format!("FAIL {}", entry.qualified_name))?;
 
         // tryStart:
         let try_start = code.len() as u16;
-        code.push(Instruction::Invokestatic(test_method_ref));
-        code.push(Instruction::Pop); // drop the unit sentinel
+        push_ldc_string(&mut code, class_name_idx);
+        push_ldc_string(&mut code, method_name_idx);
+        code.push(Instruction::Invokestatic(run_test_with_timeout_ref));
         code.push(Instruction::Getstatic(system_out_field));
         push_ldc_string(&mut code, ok_msg_idx);
         code.push(Instruction::Invokevirtual(println_string));

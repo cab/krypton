@@ -1,7 +1,11 @@
 package krypton.runtime;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 /**
- * Runtime support for {@code core/test} assertions.
+ * Runtime support for {@code core/test} assertions and the {@code krypton test}
+ * harness.
  *
  * <p>v0.1 source location is recovered by walking the live thread's stack
  * trace and picking the first frame whose source file ends in {@code _test.kr}.
@@ -17,6 +21,9 @@ package krypton.runtime;
  */
 public final class KryptonTestSupport {
     private KryptonTestSupport() {}
+
+    /** Per-test wall-clock budget enforced by {@link #runTestWithTimeout}. */
+    public static final long TEST_TIMEOUT_MS = 5_000L;
 
     /**
      * Returns {@code "src/<dir>/<file>:<line>"} for the first stack frame
@@ -43,5 +50,83 @@ public final class KryptonTestSupport {
             return "src/" + dir + fileName + ":" + line;
         }
         return "<unknown>";
+    }
+
+    /**
+     * Invoke {@code className.methodName()} with the standard 5-second per-test
+     * timeout. The class name is the JVM-internal slash-separated form (the
+     * harness emits these directly from the codegen's class names).
+     *
+     * <p>Called from generated harness bytecode. A {@link RuntimeException}
+     * with message {@code "test timed out"} is thrown when the test does not
+     * complete within {@link #TEST_TIMEOUT_MS}; the harness's existing
+     * {@code RuntimeException} catch handler picks this up the same way it
+     * picks up assertion panics.
+     */
+    public static void runTestWithTimeout(String className, String methodName) {
+        final Method method;
+        try {
+            Class<?> cls = Class.forName(className.replace('/', '.'));
+            method = cls.getDeclaredMethod(methodName);
+            method.setAccessible(true);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException("test runner: " + e, e);
+        }
+        runWithTimeout(() -> {
+            try {
+                method.invoke(null);
+            } catch (InvocationTargetException ex) {
+                Throwable cause = ex.getCause();
+                if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+                if (cause instanceof Error) throw (Error) cause;
+                throw new RuntimeException(cause);
+            } catch (IllegalAccessException ex) {
+                throw new RuntimeException("test runner: " + ex, ex);
+            }
+        }, TEST_TIMEOUT_MS);
+    }
+
+    /**
+     * Run {@code body} on a short-lived daemon worker, joining for at most
+     * {@code timeoutMs} milliseconds. On expiry the worker is interrupted
+     * (cooperative — a non-cooperative test continues running but does not
+     * block the suite, and dies when the harness's {@code System.exit}
+     * tears down the JVM) and a {@link RuntimeException} with message
+     * {@code "test timed out"} is thrown to the caller.
+     *
+     * <p>Cross-thread error propagation uses a one-element {@link Throwable}
+     * array; the {@link Thread#start} / {@link Thread#join} pair establishes
+     * the necessary happens-before edge.
+     *
+     * <p>Package-private overload exists so unit tests can exercise the
+     * timeout mechanic with sub-second deadlines instead of paying the
+     * full 5-second wall-clock.
+     */
+    static void runWithTimeout(Runnable body, long timeoutMs) {
+        final Throwable[] thrown = new Throwable[1];
+        Thread t = new Thread(() -> {
+            try {
+                body.run();
+            } catch (Throwable ex) {
+                thrown[0] = ex;
+            }
+        }, "krypton-test-runner");
+        t.setDaemon(true);
+        t.start();
+        try {
+            t.join(timeoutMs);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("test runner interrupted", ie);
+        }
+        if (t.isAlive()) {
+            t.interrupt();
+            throw new RuntimeException("test timed out");
+        }
+        Throwable err = thrown[0];
+        if (err == null) return;
+        if (err instanceof RuntimeException) throw (RuntimeException) err;
+        if (err instanceof Error) throw (Error) err;
+        throw new RuntimeException(err);
     }
 }

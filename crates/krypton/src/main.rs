@@ -572,25 +572,6 @@ fn class_name_from_stem(stem: &str) -> String {
     format!("Kr${base}")
 }
 
-/// Build the JVM return-type descriptor for a `test_*` function's typechecker
-/// scheme. The signature has already been validated as `() -> Unit` or
-/// `() -> Never`; both lower to single-slot return values, so the only thing
-/// the harness needs is the descriptor string used for the Invokestatic
-/// constant pool entry.
-fn test_fn_return_descriptor(scheme_ty: &krypton_typechecker::types::Type) -> String {
-    use krypton_typechecker::types::Type;
-    let ret = match scheme_ty {
-        Type::Fn(_, ret) => ret.as_ref(),
-        other => other,
-    };
-    if ret.is_never() {
-        "Lcore/never/Never;".to_string()
-    } else {
-        // Type::Unit lowers to JVM boolean (Z) per codegen's type_to_jvm_basic.
-        "Z".to_string()
-    }
-}
-
 /// Walk up from `start` looking for a `krypton.toml`; the first ancestor
 /// (including `start` itself) that contains one is the project root. Returns
 /// `None` if we reach the filesystem root without finding one.
@@ -1170,7 +1151,6 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
 
     struct TestEntry {
         method_name: String,
-        method_descriptor: String,
         def_span_start: usize,
     }
 
@@ -1313,19 +1293,9 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
                     .functions
                     .iter()
                     .filter(|f| f.name.starts_with("test_"))
-                    .map(|f| {
-                        let ret_desc = typed_test
-                            .fn_types_by_name
-                            .get(&f.name)
-                            .map(|&idx| {
-                                test_fn_return_descriptor(&typed_test.fn_types[idx].scheme.ty)
-                            })
-                            .unwrap_or_else(|| "Z".to_string());
-                        TestEntry {
-                            method_name: f.name.clone(),
-                            method_descriptor: format!("(){ret_desc}"),
-                            def_span_start: f.def_span.0,
-                        }
+                    .map(|f| TestEntry {
+                        method_name: f.name.clone(),
+                        def_span_start: f.def_span.0,
                     })
                     .collect();
                 outcomes.push(TestFileOutcome::Compiled(TestFileCompiled {
@@ -1439,7 +1409,6 @@ fn cmd_test(_filters: Vec<String>, verbose: bool, timings: bool) -> ! {
                     move |t| krypton_codegen::emit::test_harness::TestHarnessEntry {
                         class_name: f.class_name.clone(),
                         method_name: t.method_name.clone(),
-                        method_descriptor: t.method_descriptor.clone(),
                         qualified_name: format!("{}/{}", f.module_path, t.method_name),
                     },
                 )
