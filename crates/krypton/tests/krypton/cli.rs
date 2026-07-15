@@ -2,14 +2,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf()
-}
+use super::helpers::{init_project_for_test, normalize_ms, workspace_root};
 
 #[test]
 fn test_compile_produces_jar() {
@@ -270,51 +263,6 @@ fn test_init_errors_on_invalid_name() {
         .output()
         .expect("failed to run krypton");
     assert!(!output.status.success(), "init should fail on invalid name");
-}
-
-/// Run `krypton init` inside `parent_dir`, returning the created project path
-/// and a cache root (to be threaded via `KRYPTON_HOME` so tests never touch
-/// the developer's real `~/.krypton`).
-/// Normalize every run of digits immediately followed by `ms` (e.g. `1ms`,
-/// `12ms`, `(3ms)`) to the literal `Xms`. Other digit sequences (line
-/// numbers, pass/fail counters) are left untouched. Used by output-layout
-/// fixtures so per-test elapsed-time numbers do not flake the assertion.
-fn normalize_ms(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut result = String::with_capacity(input.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i].is_ascii_digit() {
-            let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
-            }
-            if i + 2 <= bytes.len() && &bytes[i..i + 2] == b"ms" {
-                result.push_str("Xms");
-                i += 2;
-            } else {
-                result.push_str(&input[start..i]);
-            }
-        } else {
-            result.push(bytes[i] as char);
-            i += 1;
-        }
-    }
-    result
-}
-
-fn init_project_for_test(parent_dir: &std::path::Path) -> PathBuf {
-    let output = Command::new(env!("CARGO_BIN_EXE_krypton"))
-        .current_dir(parent_dir)
-        .args(["init", "clementine/my-app"])
-        .output()
-        .expect("failed to run krypton init");
-    assert!(
-        output.status.success(),
-        "init should succeed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    parent_dir.join("my-app")
 }
 
 #[test]
